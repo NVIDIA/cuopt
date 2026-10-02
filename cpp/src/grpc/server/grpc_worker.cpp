@@ -141,6 +141,24 @@ bool apply_job_parameters(DeserializedJob& dj, const PbSettings& pb_settings)
   return true;
 }
 
+// Warm start is checked against the reconstructed problem before it is stored.
+// A rejected payload fails this job, so copy_warmstart_data_to_device never
+// sees it.
+bool apply_lp_job_settings(DeserializedJob& dj,
+                           const cuopt::remote::PDLPSolverSettings& pb_settings)
+{
+  try {
+    map_proto_to_pdlp_settings(pb_settings,
+                               dj.settings.get_pdlp_settings(),
+                               dj.problem.get_n_variables(),
+                               dj.problem.get_n_constraints());
+  } catch (const std::exception& e) {
+    dj.error_message = e.what();
+    return false;
+  }
+  return apply_job_parameters(dj, pb_settings);
+}
+
 struct SolveResult {
   cuopt::remote::ChunkedResultHeader header;
   std::map<int32_t, std::vector<uint8_t>> arrays;
@@ -376,18 +394,18 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
         container_arrays.size(),
         container_total_bytes);
     }
+    dj.enable_incumbents    = chunked_header.enable_incumbents();
+    dj.enable_set_incumbent = chunked_header.enable_set_incumbent();
+    // Problem first: warm-start lengths are checked against these dimensions.
+    cuopt::mathematical_optimization::map_chunked_arrays_to_problem(
+      chunked_header, arrays, container_arrays, dj.problem);
     if (chunked_header.has_lp_settings()) {
-      map_proto_to_pdlp_settings(chunked_header.lp_settings(), dj.settings.get_pdlp_settings());
-      if (!apply_job_parameters(dj, chunked_header.lp_settings())) { return; }
+      if (!apply_lp_job_settings(dj, chunked_header.lp_settings())) { return; }
     }
     if (chunked_header.has_mip_settings()) {
       map_proto_to_mip_settings(chunked_header.mip_settings(), dj.settings.get_mip_settings());
       if (!apply_job_parameters(dj, chunked_header.mip_settings())) { return; }
     }
-    dj.enable_incumbents    = chunked_header.enable_incumbents();
-    dj.enable_set_incumbent = chunked_header.enable_set_incumbent();
-    cuopt::mathematical_optimization::map_chunked_arrays_to_problem(
-      chunked_header, arrays, container_arrays, dj.problem);
   } else {
     // Unary path: the entire SubmitJobRequest was serialized as a single
     // protobuf blob.  Simpler but copies more memory for large problems.
@@ -408,8 +426,7 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
       const auto& req = submit_request.lp_request();
       SERVER_LOG_INFO("[Worker] IPC path: UNARY LP (%zu bytes)", request_data.size());
       map_proto_to_problem(req.problem(), dj.problem);
-      map_proto_to_pdlp_settings(req.settings(), dj.settings.get_pdlp_settings());
-      if (!apply_job_parameters(dj, req.settings())) { return; }
+      if (!apply_lp_job_settings(dj, req.settings())) { return; }
     } else if (submit_request.has_mip_request()) {
       const auto& req = submit_request.mip_request();
       SERVER_LOG_INFO("[Worker] IPC path: UNARY MIP (%zu bytes)", request_data.size());

@@ -37,10 +37,18 @@ void map_pdlp_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& settings
  *
  * Reads from a protobuf message using the generated protobuf C++ API.
  * Does not perform deserialization — that is handled by the protobuf library.
+ *
+ * When @p n_variables and @p n_constraints are non-negative, a warm start is
+ * checked against those dimensions before it is stored. A negative count skips
+ * that check. Non-finite values and iteration counters below the -1 sentinel
+ * are always rejected. Throws std::invalid_argument and leaves the warm start
+ * unset.
  */
 template <typename i_t, typename f_t>
 void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_settings,
-                                pdlp_solver_settings_t<i_t, f_t>& settings);
+                                pdlp_solver_settings_t<i_t, f_t>& settings,
+                                i_t n_variables   = -1,
+                                i_t n_constraints = -1);
 
 /**
  * @brief Bytes of PDLP warm start that ride in the settings message.

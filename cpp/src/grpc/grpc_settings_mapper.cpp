@@ -96,32 +96,127 @@ size_t warm_start_vector_bytes(const std::vector<f_t>& values)
   return values.size() * sizeof(double) + (values.empty() ? 0 : kFieldOverhead);
 }
 
+template <typename f_t>
+void require_finite_warm_start(f_t value, const char* name)
+{
+  if (!std::isfinite(value)) {
+    throw std::invalid_argument(std::string("PDLP warm start ") + name + " is not finite");
+  }
+}
+
+template <typename f_t>
+void require_finite_warm_start(const std::vector<f_t>& values, const char* name)
+{
+  for (const auto& value : values) {
+    require_finite_warm_start(value, name);
+  }
+}
+
+// -1 is the unset sentinel on cpu_pdlp_warm_start_data_t. Any smaller value is
+// not a count the solver can resume from.
+template <typename i_t>
+void require_warm_start_iteration(i_t value, const char* name)
+{
+  if (value < static_cast<i_t>(-1)) {
+    throw std::invalid_argument(std::string("PDLP warm start ") + name +
+                                " must be -1 or non-negative");
+  }
+}
+
+template <typename f_t, typename i_t>
+void require_warm_start_length(const std::vector<f_t>& values,
+                               i_t expected,
+                               const char* name,
+                               const char* what)
+{
+  if (values.size() != static_cast<size_t>(expected)) {
+    throw std::invalid_argument(std::string("PDLP warm start ") + name + " has " +
+                                std::to_string(values.size()) + " values; expected " +
+                                std::to_string(static_cast<long long>(expected)) + " " + what);
+  }
+}
+
+template <typename i_t, typename f_t>
+void validate_settings_warm_start(const cpu_pdlp_warm_start_data_t<i_t, f_t>& ws,
+                                  i_t n_variables,
+                                  i_t n_constraints)
+{
+  require_finite_warm_start(ws.current_primal_solution_, "current_primal_solution");
+  require_finite_warm_start(ws.current_dual_solution_, "current_dual_solution");
+  require_finite_warm_start(ws.initial_primal_average_, "initial_primal_average");
+  require_finite_warm_start(ws.initial_dual_average_, "initial_dual_average");
+  require_finite_warm_start(ws.current_ATY_, "current_ATY");
+  require_finite_warm_start(ws.sum_primal_solutions_, "sum_primal_solutions");
+  require_finite_warm_start(ws.sum_dual_solutions_, "sum_dual_solutions");
+  require_finite_warm_start(ws.last_restart_duality_gap_primal_solution_,
+                            "last_restart_duality_gap_primal_solution");
+  require_finite_warm_start(ws.last_restart_duality_gap_dual_solution_,
+                            "last_restart_duality_gap_dual_solution");
+  require_finite_warm_start(ws.initial_primal_weight_, "initial_primal_weight");
+  require_finite_warm_start(ws.initial_step_size_, "initial_step_size");
+  require_finite_warm_start(ws.last_candidate_kkt_score_, "last_candidate_kkt_score");
+  require_finite_warm_start(ws.last_restart_kkt_score_, "last_restart_kkt_score");
+  require_finite_warm_start(ws.sum_solution_weight_, "sum_solution_weight");
+  require_warm_start_iteration(ws.total_pdlp_iterations_, "total_pdlp_iterations");
+  require_warm_start_iteration(ws.total_pdhg_iterations_, "total_pdhg_iterations");
+  require_warm_start_iteration(ws.iterations_since_last_restart_, "iterations_since_last_restart");
+
+  // A negative count means the caller has no problem yet (mapper round-trip).
+  // The worker always passes the reconstructed dimensions.
+  if (n_variables < 0 || n_constraints < 0) { return; }
+  require_warm_start_length(
+    ws.current_primal_solution_, n_variables, "current_primal_solution", "variables");
+  require_warm_start_length(
+    ws.initial_primal_average_, n_variables, "initial_primal_average", "variables");
+  require_warm_start_length(ws.current_ATY_, n_variables, "current_ATY", "variables");
+  require_warm_start_length(
+    ws.sum_primal_solutions_, n_variables, "sum_primal_solutions", "variables");
+  require_warm_start_length(ws.last_restart_duality_gap_primal_solution_,
+                            n_variables,
+                            "last_restart_duality_gap_primal_solution",
+                            "variables");
+  require_warm_start_length(
+    ws.current_dual_solution_, n_constraints, "current_dual_solution", "constraints");
+  require_warm_start_length(
+    ws.initial_dual_average_, n_constraints, "initial_dual_average", "constraints");
+  require_warm_start_length(
+    ws.sum_dual_solutions_, n_constraints, "sum_dual_solutions", "constraints");
+  require_warm_start_length(ws.last_restart_duality_gap_dual_solution_,
+                            n_constraints,
+                            "last_restart_duality_gap_dual_solution",
+                            "constraints");
+}
+
 template <typename i_t, typename f_t>
 void read_settings_warm_start(const cuopt::remote::PDLPSolverSettings& pb_settings,
-                              pdlp_solver_settings_t<i_t, f_t>& settings)
+                              pdlp_solver_settings_t<i_t, f_t>& settings,
+                              i_t n_variables,
+                              i_t n_constraints)
 {
   if (!pb_settings.has_warm_start_data()) { return; }
   const auto& pb_ws = pb_settings.warm_start_data();
-  auto& ws          = settings.get_cpu_pdlp_warm_start_data();
-  copy_repeated(pb_ws.current_primal_solution(), ws.current_primal_solution_);
-  copy_repeated(pb_ws.current_dual_solution(), ws.current_dual_solution_);
-  copy_repeated(pb_ws.initial_primal_average(), ws.initial_primal_average_);
-  copy_repeated(pb_ws.initial_dual_average(), ws.initial_dual_average_);
-  copy_repeated(pb_ws.current_aty(), ws.current_ATY_);
-  copy_repeated(pb_ws.sum_primal_solutions(), ws.sum_primal_solutions_);
-  copy_repeated(pb_ws.sum_dual_solutions(), ws.sum_dual_solutions_);
+  cpu_pdlp_warm_start_data_t<i_t, f_t> decoded;
+  copy_repeated(pb_ws.current_primal_solution(), decoded.current_primal_solution_);
+  copy_repeated(pb_ws.current_dual_solution(), decoded.current_dual_solution_);
+  copy_repeated(pb_ws.initial_primal_average(), decoded.initial_primal_average_);
+  copy_repeated(pb_ws.initial_dual_average(), decoded.initial_dual_average_);
+  copy_repeated(pb_ws.current_aty(), decoded.current_ATY_);
+  copy_repeated(pb_ws.sum_primal_solutions(), decoded.sum_primal_solutions_);
+  copy_repeated(pb_ws.sum_dual_solutions(), decoded.sum_dual_solutions_);
   copy_repeated(pb_ws.last_restart_duality_gap_primal_solution(),
-                ws.last_restart_duality_gap_primal_solution_);
+                decoded.last_restart_duality_gap_primal_solution_);
   copy_repeated(pb_ws.last_restart_duality_gap_dual_solution(),
-                ws.last_restart_duality_gap_dual_solution_);
-  ws.initial_primal_weight_         = static_cast<f_t>(pb_ws.initial_primal_weight());
-  ws.initial_step_size_             = static_cast<f_t>(pb_ws.initial_step_size());
-  ws.total_pdlp_iterations_         = static_cast<i_t>(pb_ws.total_pdlp_iterations());
-  ws.total_pdhg_iterations_         = static_cast<i_t>(pb_ws.total_pdhg_iterations());
-  ws.last_candidate_kkt_score_      = static_cast<f_t>(pb_ws.last_candidate_kkt_score());
-  ws.last_restart_kkt_score_        = static_cast<f_t>(pb_ws.last_restart_kkt_score());
-  ws.sum_solution_weight_           = static_cast<f_t>(pb_ws.sum_solution_weight());
-  ws.iterations_since_last_restart_ = static_cast<i_t>(pb_ws.iterations_since_last_restart());
+                decoded.last_restart_duality_gap_dual_solution_);
+  decoded.initial_primal_weight_         = static_cast<f_t>(pb_ws.initial_primal_weight());
+  decoded.initial_step_size_             = static_cast<f_t>(pb_ws.initial_step_size());
+  decoded.total_pdlp_iterations_         = static_cast<i_t>(pb_ws.total_pdlp_iterations());
+  decoded.total_pdhg_iterations_         = static_cast<i_t>(pb_ws.total_pdhg_iterations());
+  decoded.last_candidate_kkt_score_      = static_cast<f_t>(pb_ws.last_candidate_kkt_score());
+  decoded.last_restart_kkt_score_        = static_cast<f_t>(pb_ws.last_restart_kkt_score());
+  decoded.sum_solution_weight_           = static_cast<f_t>(pb_ws.sum_solution_weight());
+  decoded.iterations_since_last_restart_ = static_cast<i_t>(pb_ws.iterations_since_last_restart());
+  validate_settings_warm_start(decoded, n_variables, n_constraints);
+  settings.get_cpu_pdlp_warm_start_data() = std::move(decoded);
 }
 
 }  // namespace
@@ -153,7 +248,9 @@ size_t estimate_pdlp_warm_start_proto_size(const pdlp_solver_settings_t<i_t, f_t
 
 template <typename i_t, typename f_t>
 void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_settings,
-                                pdlp_solver_settings_t<i_t, f_t>& settings)
+                                pdlp_solver_settings_t<i_t, f_t>& settings,
+                                i_t n_variables,
+                                i_t n_constraints)
 {
 #include "generated_proto_to_pdlp_settings.inc"
 
@@ -176,7 +273,7 @@ void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_sett
   if (pb_settings.iteration_limit() > static_cast<int64_t>(std::numeric_limits<i_t>::max())) {
     settings.iteration_limit = std::numeric_limits<i_t>::max();
   }
-  read_settings_warm_start(pb_settings, settings);
+  read_settings_warm_start(pb_settings, settings, n_variables, n_constraints);
 }
 
 template <typename i_t, typename f_t>
@@ -267,7 +364,9 @@ template CUOPT_EXPORT void map_pdlp_settings_to_proto(
   cuopt::remote::PDLPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_pdlp_settings(
   const cuopt::remote::PDLPSolverSettings& pb_settings,
-  pdlp_solver_settings_t<int32_t, float>& settings);
+  pdlp_solver_settings_t<int32_t, float>& settings,
+  int32_t n_variables,
+  int32_t n_constraints);
 template CUOPT_EXPORT size_t
 estimate_pdlp_warm_start_proto_size(const pdlp_solver_settings_t<int32_t, float>& settings);
 template CUOPT_EXPORT void map_mip_settings_to_proto(
@@ -290,7 +389,9 @@ template CUOPT_EXPORT void map_pdlp_settings_to_proto(
   cuopt::remote::PDLPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_pdlp_settings(
   const cuopt::remote::PDLPSolverSettings& pb_settings,
-  pdlp_solver_settings_t<int32_t, double>& settings);
+  pdlp_solver_settings_t<int32_t, double>& settings,
+  int32_t n_variables,
+  int32_t n_constraints);
 template CUOPT_EXPORT size_t
 estimate_pdlp_warm_start_proto_size(const pdlp_solver_settings_t<int32_t, double>& settings);
 template CUOPT_EXPORT void map_mip_settings_to_proto(
