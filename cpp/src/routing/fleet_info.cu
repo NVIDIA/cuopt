@@ -26,6 +26,7 @@ void populate_matrices(data_model_view_t<i_t, f_t> const& data_model, d_mdarray_
 
   // Check for consistency of cost matrices
   const auto& cost_matrices         = data_model.get_cost_matrices();
+  const auto& distance_matrices     = data_model.get_distance_matrices();
   const auto& transit_time_matrices = data_model.get_transit_time_matrices();
 
   if (cost_matrices.empty()) { EXE_CUOPT_FAIL("Cost matrix (or matrices) must be specified!"); }
@@ -47,6 +48,29 @@ void populate_matrices(data_model_view_t<i_t, f_t> const& data_model, d_mdarray_
                    std::string(" is not specified");
         execute_cuopt_fail(msg);
       }
+    }
+  }
+
+  if (!distance_matrices.empty()) {
+    for (auto const& [vtype, distance_matrix] : distance_matrices) {
+      cuopt_expects(cost_matrices.count(vtype) > 0,
+                    error_type_t::ValidationError,
+                    "Distance matrix vehicle types must have corresponding cost matrices");
+      const size_t matrix_size = static_cast<size_t>(nlocations) * nlocations;
+      const bool valid =
+        thrust::all_of(handle_ptr_->get_thrust_policy(),
+                       distance_matrix,
+                       distance_matrix + matrix_size,
+                       [] __device__(f_t value) { return value == value && value >= f_t{0}; });
+      cuopt_expects(valid,
+                    error_type_t::ValidationError,
+                    "Distance matrix values must be non-negative and not NaN");
+    }
+    auto const types = get_unique_vehicle_types(data_model.get_vehicle_types(), stream_view_);
+    for (auto const& [vtype, mapped_type] : types) {
+      cuopt_expects(distance_matrices.count(vtype) > 0,
+                    error_type_t::ValidationError,
+                    "All vehicle distance matrices should be set");
     }
   }
 
