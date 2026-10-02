@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace cuopt::mathematical_optimization {
@@ -52,6 +53,85 @@ void expect_optimal_solution(const std::string& lp_text,
 }
 
 }  // namespace
+
+class MixedIntegerQuadraticTest : public ::testing::TestWithParam<std::tuple<bool, bool>> {};
+
+TEST_P(MixedIntegerQuadraticTest, rejects_before_presolve)
+{
+  auto const [quadratic_objective, presolve] = GetParam();
+  std::string text =
+    quadratic_objective ? "Minimize\n obj: - x + [ 2 x ^ 2 ] / 2\n" : "Minimize\n obj: - x\n";
+  text += "Subject To\n c: x + y <= 2\n";
+  if (!quadratic_objective) { text += " q: [ x ^ 2 + y ^ 2 ] <= 2\n"; }
+  text += "Bounds\n 0 <= x <= 1\n 0 <= y <= 2\nBinaries\n x\nGenerals\n y\nEnd\n";
+  auto parsed = io::read_lp_from_string<int, double>(text);
+  ASSERT_EQ(parsed.has_quadratic_objective(), quadratic_objective);
+  ASSERT_EQ(parsed.has_quadratic_constraints(), !quadratic_objective);
+  raft::handle_t handle;
+  auto problem = mps_data_model_to_optimization_problem(&handle, parsed);
+  ASSERT_EQ(problem.get_problem_category(), problem_category_t::IP);
+  mip_solver_settings_t<int, double> settings;
+  settings.num_cpu_threads = 2;
+  settings.time_limit      = 2.0;
+  settings.presolver       = presolve ? presolver_t::Default : presolver_t::None;
+  try {
+    solve_mip(problem, settings);
+    FAIL() << "Expected an unsupported mixed-integer quadratic model error";
+  } catch (const cuopt::logic_error& error) {
+    EXPECT_EQ(error.get_error_type(), cuopt::error_type_t::ValidationError);
+    EXPECT_NE(std::string(error.what()).find("MIQP/MIQCP) are not supported"), std::string::npos);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+  UnsupportedModels,
+  MixedIntegerQuadraticTest,
+  ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+  [](const ::testing::TestParamInfo<MixedIntegerQuadraticTest::ParamType>& info) {
+    return std::string(std::get<0>(info.param) ? "QuadraticObjective" : "QuadraticConstraint") +
+           (std::get<1>(info.param) ? "WithPresolve" : "WithoutPresolve");
+  });
+
+TEST(lp_parser_solve, explicit_miqp_relaxation)
+{
+  expect_optimal_solution(R"LP(
+Minimize
+ obj: - x + [ 2 x ^ 2 ] / 2
+Subject To
+ c: x <= 1
+Bounds
+ 0 <= x <= 1
+Binaries
+ x
+End
+)LP",
+                          -0.25,
+                          {0.5});
+}
+
+TEST(lp_parser_solve, linear_mip_remains_supported)
+{
+  auto parsed = io::read_lp_from_string<int, double>(R"LP(
+Minimize
+ obj: - x + y
+Subject To
+ c: x + y <= 2
+Bounds
+ 0 <= x <= 1
+ 0 <= y <= 2
+Binaries
+ x
+End
+)LP");
+  raft::handle_t handle;
+  mip_solver_settings_t<int, double> settings;
+  settings.num_cpu_threads = 2;
+  settings.time_limit      = 5.0;
+  auto solution            = solve_mip(&handle, parsed, settings);
+  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::Success);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(solution.get_objective_value(), -1.0, 1e-6);
+}
 
 // Diagonal-only quadratic objective.
 // Minimize x1^2 + 4 x2^2 - 8 x1 - 16 x2 s.t. x1 + x2 >= 5, 0 <= x1, x2 <= 10.
