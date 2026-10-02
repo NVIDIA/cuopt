@@ -14,6 +14,17 @@
 #include <math.h>
 #endif
 
+// Cache-busting touch for the #1976 CI-hang debug run (debug/cpp-build-hang-1976): a
+// comment alone does not survive preprocessing, so sccache's preprocessor-hash cache key
+// is unchanged by one and this TU would still hit -- verified empirically before landing
+// this. static_assert is actual code and always appears in the preprocessed output of
+// every TU that includes this header (mip_constants.hpp -> population.cu,
+// assignment_hash_map.cu, etc.), forcing a real cold miss. Matches the trigger pattern
+// observed on #1953 and #2001. Revert alongside the rest of the debug scaffolding.
+#ifdef __cplusplus
+static_assert(true, "cuopt: #1976 debug cache-bust (debug/cpp-build-hang-1976)");
+#endif
+
 #define CUOPT_INSTANTIATE_FLOAT  0
 #define CUOPT_INSTANTIATE_DOUBLE 1
 #define CUOPT_INSTANTIATE_INT32  1
