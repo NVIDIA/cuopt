@@ -7,6 +7,7 @@
 
 #include <cuopt_remote.pb.h>
 
+#include <cstddef>
 #include <cstdint>
 
 namespace cuopt::mathematical_optimization {
@@ -40,6 +41,17 @@ void map_pdlp_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& settings
 template <typename i_t, typename f_t>
 void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_settings,
                                 pdlp_solver_settings_t<i_t, f_t>& settings);
+
+/**
+ * @brief Bytes of PDLP warm start that ride in the settings message.
+ *
+ * Returns 0 when the warm start is empty. Otherwise an upper bound on the
+ * protobuf size of PDLPWarmStartData. Chunked upload leaves this payload in
+ * the header, so the caller counts it against both the unary size and the
+ * message cap.
+ */
+template <typename i_t, typename f_t>
+size_t estimate_pdlp_warm_start_proto_size(const pdlp_solver_settings_t<i_t, f_t>& settings);
 
 /**
  * @brief Map mip_solver_settings_t to protobuf MIPSolverSettings message.

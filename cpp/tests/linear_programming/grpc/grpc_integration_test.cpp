@@ -12,7 +12,7 @@
  *
  * Fixture layout:
  *   NoServerTests          - Tests that don't need a server
- *   DefaultServerTests     - Shared server with default config (~21 tests)
+ *   DefaultServerTests     - Shared server with default config (~22 tests)
  *   ChunkedUploadTests     - Shared server with --max-message-mb 256 (4 tests)
  *   PathSelectionTests     - Shared server with --max-message-bytes 4096 --verbose (4 tests)
  *   ErrorRecoveryTests     - Per-test server lifecycle (4 tests)
@@ -1303,6 +1303,69 @@ TEST_F(DefaultServerTests, SolveLPReturnsWarmStartData)
   EXPECT_GT(ws.initial_step_size_, 0.0) << "initial_step_size should be positive";
   EXPECT_GE(ws.total_pdlp_iterations_, 0) << "total_pdlp_iterations should be non-negative";
   EXPECT_GE(ws.total_pdhg_iterations_, 0) << "total_pdhg_iterations should be non-negative";
+}
+
+// A one-step cap makes a resumed solve and a cold solve disagree. PDLP copies
+// total_pdlp_iterations_ out of the supplied warm start, and the solution's
+// warm-start blob reports that live counter. get_num_iterations() is only the
+// steps taken in this run, so it stays near 1 for both and is not the signal.
+// Stable2 is required; the default Stable3 rejects warm start. Presolve stays
+// off so the vectors match the original problem: a later solve skips presolve
+// whenever total_pdlp_iterations_ != -1.
+TEST_F(DefaultServerTests, SolveLPWarmStartIsApplied)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  auto make_settings = []() {
+    pdlp_solver_settings_t<int32_t, double> settings;
+    settings.time_limit       = 30.0;
+    settings.method           = method_t::PDLP;
+    settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable2;
+    settings.presolver        = presolver_t::None;
+    return settings;
+  };
+
+  auto full = client->solve_lp(problem, make_settings());
+  ASSERT_TRUE(full.success) << full.error_message;
+  ASSERT_NE(full.solution, nullptr);
+  ASSERT_TRUE(full.solution->has_warm_start_data());
+  const auto seeded_iterations =
+    full.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+  ASSERT_GT(seeded_iterations, 1) << "full solve must take more than one PDLP iteration so a "
+                                     "one-step cap can tell the runs apart";
+  const auto full_objective = full.solution->get_objective_value();
+
+  auto warm_settings                           = make_settings();
+  warm_settings.iteration_limit                = 1;
+  warm_settings.get_cpu_pdlp_warm_start_data() = full.solution->get_cpu_pdlp_warm_start_data();
+  auto warm                                    = client->solve_lp(problem, warm_settings);
+  ASSERT_TRUE(warm.success) << warm.error_message;
+  ASSERT_NE(warm.solution, nullptr);
+  ASSERT_TRUE(warm.solution->has_warm_start_data());
+  const auto warm_iterations = warm.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  auto cold_settings            = make_settings();
+  cold_settings.iteration_limit = 1;
+  auto cold                     = client->solve_lp(problem, cold_settings);
+  ASSERT_TRUE(cold.success) << cold.error_message;
+  ASSERT_NE(cold.solution, nullptr);
+  ASSERT_TRUE(cold.solution->has_warm_start_data());
+  const auto cold_iterations = cold.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  EXPECT_GE(warm_iterations, seeded_iterations)
+    << "resumed solve should keep the seeded PDLP iteration counter";
+  EXPECT_LT(cold_iterations, seeded_iterations)
+    << "one-step cold solve should not reach the full-solve iteration count";
+
+  const auto warm_obj_gap = std::abs(warm.solution->get_objective_value() - full_objective);
+  const auto cold_obj_gap = std::abs(cold.solution->get_objective_value() - full_objective);
+  EXPECT_LT(warm_obj_gap, cold_obj_gap)
+    << "warm objective " << warm.solution->get_objective_value() << " cold objective "
+    << cold.solution->get_objective_value() << " full objective " << full_objective;
 }
 
 // -- MIP Log Callback --

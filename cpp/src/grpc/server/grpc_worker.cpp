@@ -538,6 +538,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     dj.settings.set_parameter_from_string(CUOPT_LOG_FILE, log_file);
     dj.settings.set_parameter(CUOPT_LOG_TO_CONSOLE, config.log_to_console);
     apply_initial_solutions_to_pdlp_settings(dj.problem, dj.settings.get_pdlp_settings());
+    cuopt::mathematical_optimization::copy_warmstart_data_to_device(dj.settings, &handle);
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");
     auto gpu_problem = to_optimization_problem(dj.problem, &handle);
