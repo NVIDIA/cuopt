@@ -2209,8 +2209,21 @@ TEST_F(ErrorRecoveryTests, PreJobGpuHealthFailureShutsDownWithoutRespawn)
   auto submitted      = client->submit_mip(create_simple_mip(), settings);
   ASSERT_TRUE(submitted.success);
 
+  // start_server() returns when the parent accepts RPCs, not when the worker
+  // finishes CUDA/RMM init. That init can exceed 60s on a busy runner;
+  // warm_up_worker() allows 180s for it. The injected failure is logged only
+  // after init, and the server logger flushes on info. The 15s budget is
+  // shutdown only.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(
+    log_capture.wait_for_server_log("Injected before-job GPU liveness probe failure", 180000))
+    << "Injected pre-job GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
   ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
-    << "Server did not exit after the pre-job GPU health failure";
+    << "Server did not exit after the pre-job GPU health failure\n"
+    << log_capture.get_server_logs();
   EXPECT_EQ(server_.exit_code(), 1);
 
   const std::string logs = read_file_contents(log_path);
@@ -2224,8 +2237,17 @@ TEST_F(ErrorRecoveryTests, IdleGpuHealthFailureShutsDownWithoutRespawn)
     {}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "idle"}, {"CUOPT_GRPC_TEST_GPU_IDLE_MS", "3000"}}));
   const std::string log_path = server_.log_path();
 
+  // Same split as the pre-job test: 180s covers CUDA/RMM init plus the 3s idle
+  // interval. The 15s budget starts only after the injected failure is logged.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("Injected idle GPU liveness probe failure", 180000))
+    << "Injected idle GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
   ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
-    << "Server did not exit after the idle GPU health failure";
+    << "Server did not exit after the idle GPU health failure\n"
+    << log_capture.get_server_logs();
   EXPECT_EQ(server_.exit_code(), 1);
 
   const std::string logs = read_file_contents(log_path);
