@@ -891,6 +891,20 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
 cuopt_int_t cuOptCreateSolverSettings(cuOptSolverSettings* settings_ptr)
 {
   if (settings_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  // cuopt_mathopt builds this object and cuopt_client mutates it, so both must agree on its
+  // layout. They are built independently and the layout depends on third-party headers, so
+  // check rather than assume: a mismatch here would otherwise surface as a write through a
+  // wrong offset, far from the cause.
+  if (const auto client_size =
+        cuopt::mathematical_optimization::detail::client_solver_settings_size();
+      client_size != sizeof(cuopt::mathematical_optimization::solver_settings_t<int, double>)) {
+    CUOPT_LOG_ERROR(
+      "ABI mismatch: cuopt_client sees sizeof(solver_settings_t)=%zu, cuopt_mathopt sees %zu. "
+      "These libraries were built against different dependency versions and cannot be mixed.",
+      client_size,
+      sizeof(cuopt::mathematical_optimization::solver_settings_t<int, double>));
+    return CUOPT_RUNTIME_ERROR;
+  }
   solver_settings_handle_t* settings_handle = new solver_settings_handle_t();
   *settings_ptr                             = static_cast<cuOptSolverSettings>(settings_handle);
   return CUOPT_SUCCESS;
