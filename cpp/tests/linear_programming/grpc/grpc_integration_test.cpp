@@ -91,7 +91,7 @@ namespace {
 
 class ServerProcess {
  public:
-  ServerProcess() : pid_(-1), pgid_(-1), port_(0) {}
+  ServerProcess() : pid_(-1), pgid_(-1), port_(0), exit_code_(-1) {}
   ServerProcess(const ServerProcess&)            = delete;
   ServerProcess& operator=(const ServerProcess&) = delete;
   ~ServerProcess()
@@ -108,7 +108,9 @@ class ServerProcess {
     tls_client_key_  = client_key;
   }
 
-  bool start(int port, const std::vector<std::string>& extra_args = {})
+  bool start(int port,
+             const std::vector<std::string>& extra_args                                = {},
+             const std::vector<std::pair<std::string, std::string>>& extra_environment = {})
   {
     if (pid_ > 0) {
       std::cerr << "Cannot reuse a ServerProcess while it still owns a process lifecycle\n";
@@ -125,8 +127,9 @@ class ServerProcess {
     // onto this test process so stop() can reap it without relying on init.
     prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
 
-    port_ = port;
-    pid_  = fork();
+    port_      = port;
+    exit_code_ = -1;
+    pid_       = fork();
     if (pid_ < 0) {
       std::cerr << "fork() failed\n";
       return false;
@@ -134,6 +137,10 @@ class ServerProcess {
 
     if (pid_ == 0) {
       setpgid(0, 0);  // child leads its own group; parent mirrors this below
+
+      for (const auto& [name, value] : extra_environment) {
+        setenv(name.c_str(), value.c_str(), 1);
+      }
 
       std::vector<const char*> args;
       args.push_back(server_path.c_str());
@@ -197,6 +204,8 @@ class ServerProcess {
 
   pid_t pid() const { return pid_; }
 
+  int exit_code() const { return exit_code_; }
+
   bool is_running() const
   {
     if (pid_ <= 0) return false;
@@ -217,6 +226,7 @@ class ServerProcess {
       int status = 0;
       pid_t ret  = waitpid(pid_, &status, WNOHANG);
       if (ret == pid_ || (ret < 0 && errno == ECHILD)) {
+        if (ret == pid_) { exit_code_ = WIFEXITED(status) ? WEXITSTATUS(status) : -1; }
         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
           deadline - std::chrono::steady_clock::now());
         if (remaining > std::chrono::milliseconds(2000)) {
@@ -342,6 +352,7 @@ class ServerProcess {
 
       int status = 0;
       if (waitpid(pid_, &status, WNOHANG) == pid_) {
+        exit_code_ = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
         std::cerr << "Server process died during startup\n";
         return false;
       }
@@ -353,6 +364,7 @@ class ServerProcess {
   pid_t pid_;
   pid_t pgid_;
   int port_;
+  int exit_code_;
   std::string tls_root_certs_;
   std::string tls_client_cert_;
   std::string tls_client_key_;
@@ -2112,13 +2124,73 @@ class ErrorRecoveryTests : public GrpcIntegrationTestBase {
   void SetUp() override { port_ = get_test_port(); }
   void TearDown() override { EXPECT_TRUE(server_.stop()); }
 
-  bool start_server(const std::vector<std::string>& extra_args = {})
+  bool start_server(const std::vector<std::string>& extra_args                                = {},
+                    const std::vector<std::pair<std::string, std::string>>& extra_environment = {})
   {
-    return server_.start(port_, extra_args);
+    return server_.start(port_, extra_args, extra_environment);
   }
 
   ServerProcess server_;
 };
+
+TEST_F(ErrorRecoveryTests, PreJobGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server({}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "before-job"}}));
+  const std::string log_path = server_.log_path();
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 5.0;
+  auto submitted      = client->submit_mip(create_simple_mip(), settings);
+  ASSERT_TRUE(submitted.success);
+
+  // start_server() returns when the parent accepts RPCs, not when the worker
+  // finishes CUDA/RMM init. That init can exceed 60s on a busy runner;
+  // warm_up_worker() allows 180s for it. The injected failure is logged only
+  // after init, and the server logger flushes on info. The 15s budget is
+  // shutdown only.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(
+    log_capture.wait_for_server_log("Injected before-job GPU liveness probe failure", 180000))
+    << "Injected pre-job GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the pre-job GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during pre-job probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+TEST_F(ErrorRecoveryTests, IdleGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server(
+    {}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "idle"}, {"CUOPT_GRPC_TEST_GPU_IDLE_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  // Same split as the pre-job test: 180s covers CUDA/RMM init plus the 3s idle
+  // interval. The 15s budget starts only after the injected failure is logged.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("Injected idle GPU liveness probe failure", 180000))
+    << "Injected idle GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the idle GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during idle probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
 
 TEST_F(ErrorRecoveryTests, ClientReconnectsAfterServerRestart)
 {
