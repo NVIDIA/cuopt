@@ -65,27 +65,29 @@ void problem_checking_t<i_t, f_t>::check_initial_primal_representation(
       "has size %zu, while objective vector has size %zu.",
       primal_initial_solution.size(),
       op_problem.get_objective_coefficients().size());
-    cuopt_expects(!thrust::any_of(op_problem.get_handle_ptr()->get_thrust_policy(),
-                                  thrust::make_counting_iterator(0),
-                                  thrust::make_counting_iterator(0) + op_problem.get_n_variables(),
-                                  [lower_bounds = make_span(op_problem.get_variable_lower_bounds()),
-                                   upper_bounds = make_span(op_problem.get_variable_upper_bounds()),
-                                   variable_types  = make_span(op_problem.get_variable_types()),
-                                   assignment_span = make_span(primal_initial_solution),
-                                   int_tol         = 1e-8] __device__(i_t idx) -> bool {
-                                    if (variable_types[idx] == var_t::SEMI_CONTINUOUS) {
-                                      const bool is_off = assignment_span[idx] >= -int_tol &&
-                                                          assignment_span[idx] <= int_tol;
-                                      const bool is_on =
-                                        assignment_span[idx] >= lower_bounds[idx] - int_tol &&
-                                        assignment_span[idx] <= upper_bounds[idx] + int_tol;
-                                      return !is_off && !is_on;
-                                    }
-                                    return assignment_span[idx] < lower_bounds[idx] - int_tol ||
-                                           assignment_span[idx] > upper_bounds[idx] + int_tol;
-                                  }),
-                  error_type_t::ValidationError,
-                  "Initial solution violates variable bounds.");
+    cuopt_expects(
+      !thrust::any_of(
+        op_problem.get_handle_ptr()->get_thrust_policy(),
+        thrust::make_counting_iterator(0),
+        thrust::make_counting_iterator(0) + op_problem.get_n_variables(),
+        [lower_bounds    = make_span(op_problem.get_variable_lower_bounds()),
+         upper_bounds    = make_span(op_problem.get_variable_upper_bounds()),
+         variable_types  = make_span(op_problem.get_variable_types()),
+         assignment_span = make_span(primal_initial_solution),
+         int_tol         = 1e-8] __device__(i_t idx) -> bool {
+          // variable_types may be unset (e.g. an LP built without
+          // them, or a presolved problem), meaning all continuous.
+          if (variable_types.size() > 0 && variable_types[idx] == var_t::SEMI_CONTINUOUS) {
+            const bool is_off = assignment_span[idx] >= -int_tol && assignment_span[idx] <= int_tol;
+            const bool is_on  = assignment_span[idx] >= lower_bounds[idx] - int_tol &&
+                               assignment_span[idx] <= upper_bounds[idx] + int_tol;
+            return !is_off && !is_on;
+          }
+          return assignment_span[idx] < lower_bounds[idx] - int_tol ||
+                 assignment_span[idx] > upper_bounds[idx] + int_tol;
+        }),
+      error_type_t::ValidationError,
+      "Initial solution violates variable bounds.");
   }
 }
 
