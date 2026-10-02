@@ -21,7 +21,7 @@ options.
 Using the Maven Artifact
 -------------------------
 
-``com.nvidia:cuopt`` publishes classifier jars (``cuda12``,
+``com.nvidia.cuopt:cuopt`` publishes classifier jars (``cuda12``,
 ``cuda12-arm64``, ``cuda13``, ``cuda13-arm64``) to the Sonatype snapshot and
 release repositories. Each classifier jar embeds ``libcuopt_jni.so`` and
 cuOpt's own native dependencies (``libcuopt``, rmm, cuDSS, NCCL, TBB), which
@@ -40,7 +40,7 @@ no ``cuopt.native.dir`` is required:
    </repositories>
 
    <dependency>
-     <groupId>com.nvidia</groupId>
+     <groupId>com.nvidia.cuopt</groupId>
      <artifactId>cuopt</artifactId>
      <version>26.10.0-SNAPSHOT</version>
      <classifier>cuda12</classifier>

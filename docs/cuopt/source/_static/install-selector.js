@@ -408,7 +408,7 @@
       cmd =
         repoBlock +
         "<dependency>\n" +
-        "  <groupId>com.nvidia</groupId>\n" +
+        "  <groupId>com.nvidia.cuopt</groupId>\n" +
         "  <artifactId>cuopt</artifactId>\n" +
         "  <version>" + mvnVersion + "</version>\n" +
         "  <classifier>" + classifier + "</classifier>\n" +

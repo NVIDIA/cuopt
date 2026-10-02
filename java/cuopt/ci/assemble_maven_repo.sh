@@ -8,7 +8,7 @@
 # Input:  one directory per classifier, as build_cuopt_java_jar.sh writes them, each holding
 #           cuopt-<version>-<classifier>.jar
 #           cuopt-<version>.pom
-# Output: com/nvidia/cuopt/<version>/ holding every classifier JAR, an unclassified
+# Output: com/nvidia/cuopt/cuopt/<version>/ holding every classifier JAR, an unclassified
 #         cuopt-<version>.jar (a copy of the cuda12 classifier, see below), the sources and
 #         javadoc JARs, and the POM named cuopt-<version>.pom.
 #
@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=java/cuopt/ci/argparse.sh
 source "${SCRIPT_DIR}/argparse.sh"
 
-GROUP_PATH="com/nvidia"
+GROUP_PATH="com/nvidia/cuopt"
 ARTIFACT_ID="cuopt"
 JARS_DIR=""
 OUTPUT_DIR=""
@@ -104,7 +104,7 @@ fi
 # file and attaches everything else as a classifier. cuOpt has no CUDA-version-agnostic build, so
 # there's nothing distinct to put there -- seed it from cuda12, matching cudf's
 # java/ci/assemble_maven_repo.sh, and for the same reason: broader compatibility. Consumers
-# depending on com.nvidia:cuopt without a <classifier> get this cuda12 build.
+# depending on com.nvidia.cuopt:cuopt without a <classifier> get this cuda12 build.
 primary_source="${TARGET}/${ARTIFACT_ID}-${VERSION}-cuda12.jar"
 if [[ ! -f "${primary_source}" ]]; then
   echo "no ${ARTIFACT_ID}-${VERSION}-cuda12.jar found; cannot seed the unclassified primary" >&2
