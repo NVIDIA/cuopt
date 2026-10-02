@@ -130,7 +130,7 @@ Fixed Cost per Vehicle
 Vehicles can have different fixed costs associated with them. This helps in scenarios where a single vehicle with a higher cost can be avoided if it can be done with two or more vehicles with lesser costs. This would be dependent on the objective function.
 
 Independent Distance Matrices
-----------------------------
+-----------------------------
 The C++ routing data model accepts optional physical-distance matrices through
 ``data_model_view_t::add_distance_matrix``. The CPU problem representation stores
 them in ``cpu_routing_problem_t::distance_matrices`` and copies them to device
