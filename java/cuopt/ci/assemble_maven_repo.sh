@@ -8,7 +8,8 @@
 # Input:  one directory per classifier, as build_cuopt_java_jar.sh writes them, each holding
 #           cuopt-<version>-<classifier>.jar
 #           cuopt-<version>.pom
-# Output: com/nvidia/cuopt/cuopt/<version>/ holding every classifier JAR, the sources and
+# Output: com/nvidia/cuopt/cuopt/<version>/ holding every classifier JAR, an unclassified
+#         cuopt-<version>.jar (a copy of the cuda12 classifier, see below), the sources and
 #         javadoc JARs, and the POM named cuopt-<version>.pom.
 #
 # The POM must be named after the artifact rather than left as pom.xml, and the sources and
@@ -97,6 +98,20 @@ if [[ "${classifiers}" -eq 0 ]]; then
   echo "no classifier JARs found for version ${VERSION}" >&2
   exit 1
 fi
+
+# The publish tooling (rapidsai/shared-workflows/ci/maven-publish) requires an unclassified
+# "main" artifact at <artifactId>-<version>.jar, since 'mvn deploy-file' always takes one primary
+# file and attaches everything else as a classifier. cuOpt has no CUDA-version-agnostic build, so
+# there's nothing distinct to put there -- seed it from cuda12, matching cudf's
+# java/ci/assemble_maven_repo.sh, and for the same reason: broader compatibility. Consumers
+# depending on com.nvidia.cuopt:cuopt without a <classifier> get this cuda12 build.
+primary_source="${TARGET}/${ARTIFACT_ID}-${VERSION}-cuda12.jar"
+if [[ ! -f "${primary_source}" ]]; then
+  echo "no ${ARTIFACT_ID}-${VERSION}-cuda12.jar found; cannot seed the unclassified primary" >&2
+  exit 1
+fi
+cp "${primary_source}" "${TARGET}/${ARTIFACT_ID}-${VERSION}.jar"
+echo "  ${ARTIFACT_ID}-${VERSION}.jar (unclassified primary, copy of cuda12)"
 
 pom="$(find "${JARS_DIR}" -name "${ARTIFACT_ID}-${VERSION}.pom" -print -quit)"
 if [[ -z "${pom}" ]]; then
