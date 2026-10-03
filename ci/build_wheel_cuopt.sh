@@ -31,6 +31,15 @@ LIBCUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_
 
 echo "libcuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_WHEELHOUSE}/libcuopt_*.whl)" >> "${PIP_CONSTRAINT}"
 
+LIBCUOPT_CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_client cuopt)")
+echo "libcuopt-client @ file://$(echo ${LIBCUOPT_CLIENT_WHEELHOUSE}/libcuopt_client-*.whl)" >> "${PIP_CONSTRAINT}"
+
+LIBCUOPT_MATHOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_mathopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
+echo "libcuopt-mathopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_MATHOPT_WHEELHOUSE}/libcuopt_mathopt_*.whl)" >> "${PIP_CONSTRAINT}"
+
+LIBCUOPT_ROUTING_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_routing cuopt --cuda "$RAPIDS_CUDA_VERSION")")
+echo "libcuopt-routing-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_ROUTING_WHEELHOUSE}/libcuopt_routing_*.whl)" >> "${PIP_CONSTRAINT}"
+
 EXCLUDE_ARGS=(
   --exclude "libraft.so"
   --exclude "libcublas.so.*"

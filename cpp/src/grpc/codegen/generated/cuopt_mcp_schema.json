@@ -416,7 +416,7 @@
         },
         "related_vars_time_limit": {
           "type": "number",
-          "description": "Time in seconds allowed for building the related-variable structure. Default: 30.0.",
+          "description": "Time in seconds allowed for building the related-variable structure. Default: 2.0.",
           "x-parameter-name": "mip_hyper_heuristic_related_vars_time_limit"
         },
         "presolve_max_rounds": {

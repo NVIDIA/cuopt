@@ -467,6 +467,14 @@ chunked_result_header:
 pdlp_settings:
   cpp_type: "pdlp_solver_settings_t<i_t, f_t>"
   proto_type: "cuopt::remote::PDLPSolverSettings"
+  # parameter_map deprecates every typed field that set_parameter() accepts.
+  # Those fields stay on the wire for clients already published. New
+  # parameters are not added here: they travel in `parameters`, and the
+  # server applies them with set_parameter_from_string(), which wins over a
+  # deprecated field. Warm start is an embed and is not deprecated.
+  parameter_map:
+    name: parameters
+    field_num: 60
   # Submessages embedded as fields in PDLPSolverSettings. See lp_solution.embeds.
   embeds:
     - name: warm_start_data
@@ -823,6 +831,11 @@ pdlp_settings:
 mip_settings:
   cpp_type: "mip_solver_settings_t<i_t, f_t>"
   proto_type: "cuopt::remote::MIPSolverSettings"
+  # See pdlp_settings.parameter_map. presolve_absolute_tolerance is not a
+  # set_parameter() setting (param_name: null) and stays a typed field.
+  parameter_map:
+    name: parameters
+    field_num: 60
 
   fields:
     # Limits
@@ -1299,7 +1312,7 @@ mip_settings:
         param_name: mip_hyper_heuristic_related_vars_time_limit
         description: >-
           Time in seconds allowed for building the related-variable structure.
-        default: "30.0"
+        default: "2.0"
         field_num: 51
         optional: true
     - presolve_max_rounds:

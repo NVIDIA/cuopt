@@ -22,6 +22,9 @@ struct pdlp_solver_settings_t;
 template <typename i_t, typename f_t>
 struct mip_solver_settings_t;
 
+template <typename i_t, typename f_t>
+class solver_settings_t;
+
 /**
  * @brief Build a gRPC SubmitJobRequest for an LP problem.
  *
@@ -34,6 +37,16 @@ cuopt::remote::SubmitJobRequest build_lp_submit_request(
   const pdlp_solver_settings_t<i_t, f_t>& settings);
 
 /**
+ * @brief Same request as the nested overload, plus settings.parameters.
+ *
+ * Typed fields are still written. The map is filled from the parent
+ * solver_settings_t.
+ */
+template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_lp_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem, solver_settings_t<i_t, f_t>& settings);
+
+/**
  * @brief Build a gRPC SubmitJobRequest for a MIP problem.
  *
  * Creates a SubmitJobRequest containing the MIP problem and settings using
@@ -43,6 +56,16 @@ template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
   const mip_solver_settings_t<i_t, f_t>& settings,
+  bool enable_incumbents    = false,
+  bool enable_set_incumbent = false);
+
+/**
+ * @brief Same request as the nested overload, plus settings.parameters.
+ */
+template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_mip_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+  solver_settings_t<i_t, f_t>& settings,
   bool enable_incumbents    = false,
   bool enable_set_incumbent = false);
 

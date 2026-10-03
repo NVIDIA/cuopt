@@ -27,11 +27,12 @@ docker run -it --rm --gpus all -u root --volume $PWD:/repo -w /repo --entrypoint
 docker run -it --rm --gpus all -u root --volume $PWD:/repo -w /repo --entrypoint "/bin/bash" nvidia/cuopt:[TAG]-ubi10 ./ci/docker/test_image.sh
 ```
 
-### Startup smoke (REST + gRPC)
+### Startup smoke (proxy + gRPC, gRPC-only, legacy)
 
 `test_image.sh` runs pytest inside the image and does not launch the servers.
-To verify the published entrypoint starts both the default REST server and the
-gRPC server (`CUOPT_SERVER_TYPE=grpc`):
+To verify the published entrypoint starts the default HTTP proxy plus
+`cuopt_grpc_server` (`proxy`), gRPC-only (`grpc`), and the legacy REST
+server (`legacy`):
 
 ```bash
 ./ci/docker/smoke_image.sh nvidia/cuopt:[TAG]

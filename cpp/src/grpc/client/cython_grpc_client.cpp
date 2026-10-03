@@ -129,14 +129,14 @@ grpc_submit_result_t grpc_python_client_t::submit(
     cpu_problem.get_problem_category() == cuopt::mathematical_optimization::problem_category_t::IP;
 
   if (is_mip) {
-    auto sub = impl_->client.submit_mip(
-      cpu_problem, settings->get_mip_settings(), enable_incumbents, enable_set_incumbent);
+    auto sub =
+      impl_->client.submit_mip(cpu_problem, *settings, enable_incumbents, enable_set_incumbent);
     out.success       = sub.success;
     out.error_message = sub.error_message;
     out.job_id        = sub.job_id;
     out.is_mip        = true;
   } else {
-    auto sub          = impl_->client.submit_lp(cpu_problem, settings->get_pdlp_settings());
+    auto sub          = impl_->client.submit_lp(cpu_problem, *settings);
     out.success       = sub.success;
     out.error_message = sub.error_message;
     out.job_id        = sub.job_id;

@@ -267,7 +267,7 @@ TLS Options:
 
 ### NVIDIA cuOpt container image
 
-When you use the official NVIDIA cuOpt container **without** an explicit command, the entrypoint chooses between the Python REST server and `cuopt_grpc_server`. User-facing Docker and client configuration is documented in `docs/cuopt/source/cuopt-grpc/advanced.rst` in this repository (the published **Advanced configuration** page).
+`CUOPT_SERVER_TYPE` always takes precedence and selects the server: `proxy` (HTTP proxy and `cuopt_grpc_server`), `grpc`, or `legacy`. When it is unset, the container command `proxy` (also the default when no command is given), `grpc`, or `legacy` selects the same servers. User-facing Docker and client configuration is documented in `docs/cuopt/source/cuopt-grpc/advanced.rst` in this repository (the published **Advanced configuration** page).
 
 When **`CUOPT_SERVER_TYPE=grpc`**, the entrypoint maps:
 

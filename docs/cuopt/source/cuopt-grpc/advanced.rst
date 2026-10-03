@@ -39,10 +39,10 @@ Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable
          --tls-root PATH          Root CA certificate (for client verification)
          --require-client-cert    Require client certificate (mTLS)
 
-NVIDIA cuOpt Container (gRPC via Entrypoint)
---------------------------------------------
+NVIDIA cuOpt Container (Entrypoint)
+-----------------------------------
 
-These variables apply when the container **entrypoint** builds a ``cuopt_grpc_server`` command (see *Docker: gRPC server in container* under Usage). If you pass an explicit command after the image name, this table does not apply.
+``CUOPT_SERVER_TYPE`` always takes precedence and selects the server. ``proxy`` starts the HTTP proxy and ``cuopt_grpc_server``. ``grpc`` starts ``cuopt_grpc_server`` only. ``legacy`` starts the Python REST server. When the variable is unset, the container command ``proxy``, ``grpc``, or ``legacy`` selects the same servers, and any other command runs as given. ``CUOPT_GRPC_PORT``, ``CUOPT_GPU_COUNT``, and ``CUOPT_GRPC_ARGS`` apply when the entrypoint starts ``cuopt_grpc_server``.
 
 .. list-table::
    :header-rows: 1
@@ -53,18 +53,19 @@ These variables apply when the container **entrypoint** builds a ``cuopt_grpc_se
      - Description
    * - ``CUOPT_SERVER_TYPE``
      - *(unset)*
-     - Set to ``grpc`` for entrypoint-built gRPC. Unset with no explicit command: **Python REST** server.
+     - Selects the server and overrides the container command. Unset: command ``proxy`` or no command starts the HTTP proxy and ``cuopt_grpc_server``. ``grpc``: gRPC only. ``legacy``: Python REST server (``cuopt_server.cuopt_service``). ``proxy``: HTTP proxy and ``cuopt_grpc_server``.
    * - ``CUOPT_SERVER_PORT``
+     - ``5000`` (HTTP) / ``5001`` (``grpc``)
+     - Combined or ``legacy`` mode: HTTP listen port (same default as ``cuopt_service``). ``CUOPT_SERVER_TYPE=grpc``: passed as ``--port`` to ``cuopt_grpc_server`` (overridden by ``CUOPT_GRPC_PORT`` if set).
+   * - ``CUOPT_GRPC_PORT``
      - ``5001``
-     - Passed as ``--port`` to ``cuopt_grpc_server``.
+     - Combined mode: gRPC listen port and the port the proxy dials on ``127.0.0.1``. Also used as the gRPC port when ``CUOPT_SERVER_TYPE=grpc``.
    * - ``CUOPT_GPU_COUNT``
      - *(unset)*
      - When set, passed as ``--workers``. When unset, ``--workers`` is omitted (server default, typically 1).
    * - ``CUOPT_GRPC_ARGS``
      - *(empty)*
      - Extra flags split on **whitespace** and appended (TLS, ``--max-message-mb``, ``--log-to-console``, etc.). Paths with spaces: prefer mounts without spaces or run ``cuopt_grpc_server`` manually with proper quoting.
-
-The REST server path in the same image still uses ``CUOPT_SERVER_PORT`` for HTTP in other docs; that is separate from the gRPC defaults above.
 
 Integrated Remote Client (Python, C API, ``cuopt_cli``)
 -------------------------------------------------------
@@ -272,36 +273,51 @@ Repeat for each authorized client. Keep ``ca.key`` private; distribute ``ca.crt`
 
 **Revocation:** built-in gRPC TLS does **not** implement CRL or OCSP. To revoke a client, rotate the CA, stop issuing from a compromised CA, or terminate TLS at a reverse proxy (e.g., Envoy) that supports revocation.
 
-Docker: gRPC Server in Container
----------------------------------
+Docker: Servers in Container
+----------------------------
 
-The official NVIDIA cuOpt image includes the REST server and ``cuopt_grpc_server``. The entrypoint behaves as follows:
+The official NVIDIA cuOpt image includes the HTTP proxy, the legacy REST server, and ``cuopt_grpc_server``. ``CUOPT_SERVER_TYPE`` always takes precedence and selects the server, including over the container command:
 
-1. **Explicit command** after the image name (e.g. ``cuopt_grpc_server …``) runs as-is; env-based gRPC wiring is skipped.
-2. **`CUOPT_SERVER_TYPE=grpc`** builds a ``cuopt_grpc_server`` command from the **NVIDIA cuOpt container** table in *Configuration parameters*.
-3. **Default** — if ``CUOPT_SERVER_TYPE`` is unset and there is no explicit command, the Python **REST** server starts.
+* ``proxy`` — HTTP proxy on port **5000** plus ``cuopt_grpc_server`` on port **5001**. This is also the image default when the variable is unset.
+* ``grpc`` — ``cuopt_grpc_server`` only, using the container table above.
+* ``legacy`` — ``python -m cuopt_server.cuopt_service``.
+
+When ``CUOPT_SERVER_TYPE`` is unset, the command ``proxy``, ``grpc``, or ``legacy`` selects the same servers. No command means ``proxy``. Any other command runs as given.
 
 .. note::
 
    Examples use ``--gpus all``. That requires NVIDIA GPUs on the host and Docker with the `NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_ so devices are visible inside the container.
 
-Typical run:
+Typical run (publish only the HTTP proxy; gRPC stays un-published):
+
+.. code-block:: bash
+
+   docker run --gpus all -p 5000:5000 \
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12
+
+``cuopt_grpc_server`` listens on port 5001 inside the container so the proxy
+can reach it. Docker does not publish that port unless you add
+``-p 5001:5001``. In Kubernetes, expose only port 5000 through the Service.
+Use a NetworkPolicy that permits ingress only to port 5000 if other pods must
+also be prevented from connecting directly to the pod's gRPC port.
+
+gRPC only:
 
 .. code-block:: bash
 
    docker run --gpus all -p 5001:5001 \
-     -e CUOPT_SERVER_TYPE=grpc \
-     nvcr.io/nvidia/cuopt/cuopt:latest-cu12
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
+     grpc
 
 TLS example with a cert volume:
 
 .. code-block:: bash
 
    docker run --gpus all -p 5001:5001 \
-     -e CUOPT_SERVER_TYPE=grpc \
      -e CUOPT_GRPC_ARGS="--tls --tls-cert /certs/server.crt --tls-key /certs/server.key --log-to-console" \
      -v ./certs:/certs:ro \
-     nvcr.io/nvidia/cuopt/cuopt:latest-cu12
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
+     grpc
 
 Bypass the entrypoint:
 
