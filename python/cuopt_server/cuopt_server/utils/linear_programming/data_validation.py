@@ -13,7 +13,7 @@ def is_empty(value):
 
 
 def validate_csr_matrix(csr_data):
-    if np.min(csr_data.indices) < 0:
+    if len(csr_data.indices) > 0 and np.min(csr_data.indices) < 0:
         return (False, "indices values must be greater than or equal to 0")
 
     if np.min(csr_data.offsets) < 0:
