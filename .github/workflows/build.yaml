@@ -208,7 +208,8 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    needs: [build-details]
+    # Links against the client/mathopt/routing wheels' installed .so's instead of recompiling them.
+    needs: [build-details, wheel-build-libcuopt-client, wheel-build-libcuopt-mathopt, wheel-build-libcuopt-routing]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
     with:
@@ -291,7 +292,8 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    needs: [build-details]
+    # Links against the client wheel's installed libcuopt_client.so instead of recompiling it.
+    needs: [build-details, wheel-build-libcuopt-client]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
     with:
@@ -334,7 +336,8 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    needs: [build-details]
+    # Links against the client wheel's installed libcuopt_client.so instead of recompiling it.
+    needs: [build-details, wheel-build-libcuopt-client]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
     with:
@@ -371,7 +374,12 @@ jobs:
       package-type: cpp
       publish-wheel-search-key: cuopt_wheel_cpp_libcuopt_routing
   wheel-build-cuopt:
-    needs: [build-details, wheel-build-libcuopt]
+    needs:
+      - build-details
+      - wheel-build-libcuopt
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
     permissions:
       actions: read
       contents: read

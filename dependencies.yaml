@@ -136,9 +136,13 @@ files:
       key: requires
     includes:
       - build_common
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
+  # Thin metapackage: depends on the three component wheels instead of bundling them.
   py_run_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -148,8 +152,9 @@ files:
     extras:
       table: project
     includes:
-      - cuda_wheels
-      - depends_on_libraft_headers
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
       - depends_on_librmm
       - depends_on_rapids_logger
   # One set of keys per component wheel. The point of the split is in py_run_*:
@@ -204,6 +209,7 @@ files:
       key: requires
     includes:
       - build_common
+      - depends_on_libcuopt_client
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
@@ -239,6 +245,7 @@ files:
       key: requires
     includes:
       - build_common
+      - depends_on_libcuopt_client
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
@@ -276,6 +283,10 @@ files:
       - build_common
       - build_python_common
       - depends_on_libcuopt
+      # needed for find_package(cuopt) to resolve cuopt::client/mathopt/routing
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
       - depends_on_rapids_logger
       - depends_on_cupy
       - depends_on_pylibraft

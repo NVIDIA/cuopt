@@ -13,7 +13,9 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
+#include <cmath>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -21,6 +23,18 @@ namespace cuopt::mathematical_optimization {
 
 namespace {
 #include "generated_enum_converters_settings.inc"
+
+template <typename f_t>
+std::string format_parameter_float(f_t value)
+{
+  if (std::isnan(value)) { return "nan"; }
+  if (std::isinf(value)) { return std::signbit(value) ? "-inf" : "inf"; }
+  std::ostringstream os;
+  os.precision(std::numeric_limits<f_t>::max_digits10);
+  os << value;
+  return os.str();
+}
+
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -93,6 +107,27 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
 }
 
 template <typename i_t, typename f_t>
+void append_solver_parameters(const solver_settings_t<i_t, f_t>& settings,
+                              google::protobuf::Map<std::string, std::string>* out)
+{
+  // A protobuf map keeps one value per key. Walking in registration order
+  // means a shared name keeps the later registration. set_parameter() writes
+  // every registration of a name, so those values already agree.
+  for (const auto& p : settings.get_float_parameters()) {
+    (*out)[p.param_name] = format_parameter_float(*p.value_ptr);
+  }
+  for (const auto& p : settings.get_int_parameters()) {
+    (*out)[p.param_name] = std::to_string(*p.value_ptr);
+  }
+  for (const auto& p : settings.get_bool_parameters()) {
+    (*out)[p.param_name] = *p.value_ptr ? "true" : "false";
+  }
+  for (const auto& p : settings.get_string_parameters()) {
+    (*out)[p.param_name] = *p.value_ptr;
+  }
+}
+
+template <typename i_t, typename f_t>
 void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,
                                const google::protobuf::Map<std::string, std::string>& parameters)
 {
@@ -134,6 +169,9 @@ template CUOPT_EXPORT void map_proto_to_mip_settings(
 template CUOPT_EXPORT void apply_parameter_overrides(
   solver_settings_t<int32_t, float>& settings,
   const google::protobuf::Map<std::string, std::string>& parameters);
+template CUOPT_EXPORT void append_solver_parameters(
+  const solver_settings_t<int32_t, float>& settings,
+  google::protobuf::Map<std::string, std::string>* out);
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
@@ -152,6 +190,9 @@ template CUOPT_EXPORT void map_proto_to_mip_settings(
 template CUOPT_EXPORT void apply_parameter_overrides(
   solver_settings_t<int32_t, double>& settings,
   const google::protobuf::Map<std::string, std::string>& parameters);
+template CUOPT_EXPORT void append_solver_parameters(
+  const solver_settings_t<int32_t, double>& settings,
+  google::protobuf::Map<std::string, std::string>* out);
 #endif
 
 }  // namespace cuopt::mathematical_optimization

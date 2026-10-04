@@ -9,6 +9,17 @@ source rapids-init-pip
 package_name="libcuopt"
 package_dir="python/libcuopt"
 
+RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
+
+LIBCUOPT_CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_client cuopt)")
+echo "libcuopt-client @ file://$(echo ${LIBCUOPT_CLIENT_WHEELHOUSE}/libcuopt_client-*.whl)" >> "${PIP_CONSTRAINT}"
+
+LIBCUOPT_MATHOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_mathopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
+echo "libcuopt-mathopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_MATHOPT_WHEELHOUSE}/libcuopt_mathopt_*.whl)" >> "${PIP_CONSTRAINT}"
+
+LIBCUOPT_ROUTING_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_routing cuopt --cuda "$RAPIDS_CUDA_VERSION")")
+echo "libcuopt-routing-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_ROUTING_WHEELHOUSE}/libcuopt_routing_*.whl)" >> "${PIP_CONSTRAINT}"
+
 # Install rockylinux repo
 if command -v dnf &> /dev/null; then
     bash ci/utils/update_rockylinux_repo.sh
@@ -25,6 +36,8 @@ elif command -v apt-get &> /dev/null; then
     apt-get install -y uuid-dev
 fi
 
+source rapids-configure-sccache
+
 # Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
 bash ci/utils/install_protobuf_grpc.sh
 
@@ -37,7 +50,7 @@ python ci/utils/install_modern_libgomp.py "${MODERN_LIBGOMP_DIR}"
 # Also build our own cuDSS threading layer against this same libgomp (see cpp/CMakeLists.txt,
 # cpp/src/barrier/cudss_mtlayer_cuopt.cpp), instead of cuDSS's prebuilt one, so both actually
 # share one instance, not just the same flavor. Conda keeps cuDSS's default (#1219 discussion).
-export SKBUILD_CMAKE_ARGS="-DOpenMP_gomp_LIBRARY:FILEPATH=${MODERN_LIBGOMP_DIR}/libgomp.so.1.0.0;-DCUOPT_BUILD_CUSTOM_CUDSS_MTLAYER=ON"
+export SKBUILD_CMAKE_ARGS="-DOpenMP_gomp_LIBRARY:FILEPATH=${MODERN_LIBGOMP_DIR}/libgomp.so.1.0.0;-DCUOPT_BUILD_CUSTOM_CUDSS_MTLAYER=ON;-DCUOPT_FIND_CLIENT_EXTERNALLY=ON;-DCUOPT_FIND_MATHOPT_EXTERNALLY=ON;-DCUOPT_FIND_ROUTING_EXTERNALLY=ON"
 
 # auditwheel repair does its own dependency resolution separately from the compiler; without
 # this it can't see our fetched copy and silently vendors the old Rocky 8 system one instead.
@@ -99,6 +112,9 @@ EXCLUDE_ARGS=(
   --exclude "libcurand.so.*"
   --exclude "libcusolver.so.*"
   --exclude "libcusparse.so.*"
+  --exclude "libcuopt_client.so"
+  --exclude "libcuopt_mathopt.so"
+  --exclude "libcuopt_routing.so"
   --exclude "libnccl.so.*"
   --exclude "libnvJitLink.so*"
   --exclude "librapids_logger.so"

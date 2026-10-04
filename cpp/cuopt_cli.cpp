@@ -217,11 +217,9 @@ int run_single_file(const std::string& file_path,
       }
 #ifdef CUOPT_ENABLE_GRPC
       if (is_mip) {
-        auto& mip_settings = settings.get_mip_settings();
-        auto solution = cuopt::mathematical_optimization::solve_mip_remote(*cpu_prob, mip_settings);
+        auto solution = cuopt::mathematical_optimization::solve_mip_remote(*cpu_prob, settings);
       } else {
-        auto& lp_settings = settings.get_pdlp_settings();
-        auto solution = cuopt::mathematical_optimization::solve_lp_remote(*cpu_prob, lp_settings);
+        auto solution = cuopt::mathematical_optimization::solve_lp_remote(*cpu_prob, settings);
       }
 #else
       // solve_remote.cpp only builds when gRPC is enabled, so these entry points do not

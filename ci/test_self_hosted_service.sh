@@ -8,12 +8,23 @@ set -euo pipefail
 source rapids-init-pip
 
 # Download the cuopt built in the previous step
+RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
 LIBCUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt cuopt --stable --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_SERVER_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt-server cuopt --pure --arch any --cuda "$RAPIDS_CUDA_VERSION")")
 
+LIBCUOPT_CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_client cuopt)")
+LIBCUOPT_MATHOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_mathopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
+LIBCUOPT_ROUTING_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_routing cuopt --cuda "$RAPIDS_CUDA_VERSION")")
+
 # generate constraints (possibly pinning to oldest support versions of dependencies)
 rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
+
+cat >> "${PIP_CONSTRAINT}" <<EOF
+libcuopt-client @ file://$(echo "${LIBCUOPT_CLIENT_WHEELHOUSE}"/libcuopt_client-*.whl)
+libcuopt-mathopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo "${LIBCUOPT_MATHOPT_WHEELHOUSE}"/libcuopt_mathopt_*.whl)
+libcuopt-routing-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo "${LIBCUOPT_ROUTING_WHEELHOUSE}"/libcuopt_routing_*.whl)
+EOF
 
 # notes:
 #

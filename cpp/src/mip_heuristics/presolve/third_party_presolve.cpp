@@ -42,6 +42,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/bhw_coeff_reduce.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
+#include <mip_heuristics/presolve/indicator_strengthening.hpp>
 #include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <utilities/logger.hpp>
@@ -747,8 +748,8 @@ void set_presolve_methods(
 
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
-    maybe_add(uptr(new cuopt::mathematical_optimization::mip::GF2Presolve<f_t>()));
-    maybe_add(uptr(new cuopt::mathematical_optimization::mip::BHWCoeffReduce<f_t>()));
+    maybe_add(uptr(new GF2Presolve<f_t>()));
+    maybe_add(uptr(new BHWCoeffReduce<f_t>()));
   }
   // fast presolvers
   maybe_add(uptr(new papilo::SingletonCols<f_t>()));
@@ -927,14 +928,21 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
 
   // Capture original dimensions before papilo.apply() mutates papilo_problem
   // in place into its reduced form.
-  const i_t original_n_vars = static_cast<i_t>(papilo_problem.getNCols());
-  const i_t original_n_cons = static_cast<i_t>(papilo_problem.getNRows());
-  const i_t original_nnz    = static_cast<i_t>(papilo_problem.getConstraintMatrix().getNnz());
+  const i_t original_n_vars = papilo_problem.getNCols();
+  const i_t original_n_cons = papilo_problem.getNRows();
+  const i_t original_nnz    = papilo_problem.getConstraintMatrix().getNnz();
 
   CUOPT_LOG_DEBUG("Original problem: %d constraints, %d variables, %d nonzeros",
                   original_n_cons,
                   original_n_vars,
                   original_nnz);
+
+  if (category == problem_category_t::MIP && indicator_strengthening_ &&
+      (!reduction_allowlist_.has_value() ||
+       reduction_allowlist_->count("indicatorstrengthening") > 0)) {
+    strengthen_indicators<i_t, f_t>(papilo_problem);
+  }
+
   CUOPT_LOG_INFO("\nRunning Papilo presolve (git hash %s)", PAPILO_GITHASH);
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> papilo_presolver;

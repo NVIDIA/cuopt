@@ -637,7 +637,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
                                            ? std::numeric_limits<double>::infinity()
                                            : timer.remaining_time();
 
-      presolver   = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
+      presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
+      presolver->set_indicator_strengthening(settings.indicator_strengthening);
       auto result = presolver->apply_presolve_from_op_problem(
         op_problem,
         cuopt::mathematical_optimization::problem_category_t::MIP,

@@ -4,8 +4,13 @@
 
 set -euo pipefail
 
-HEADER=${1:?missing constants.h path}
-OUT_DIR=${2:?missing output directory}
+if [ "$#" -lt 2 ]; then
+  echo "usage: $0 <header.h> [header2.h ...] <output-dir>" >&2
+  exit 1
+fi
+
+OUT_DIR=${*: -1}
+HEADERS=("${@:1:$#-1}")
 PACKAGE_DIR="${OUT_DIR}/com/nvidia/cuopt/mathematicaloptimization"
 OUT_FILE="${PACKAGE_DIR}/CuOptConstants.java"
 
@@ -17,7 +22,8 @@ mkdir -p "${PACKAGE_DIR}"
   echo " * SPDX-License-Identifier: Apache-2.0"
   echo " *"
   echo " * AUTO-GENERATED FILE. DO NOT EDIT."
-  echo " * Generated from cpp/include/cuopt/mathematical_optimization/constants.h."
+  echo " * Generated from cpp/include/cuopt/mathematical_optimization/constants.h and"
+  echo " * cpp/include/cuopt/status_codes.h."
   echo " * Run 'mvn generate-sources' from java/cuopt to regenerate."
   echo " */"
   echo "package com.nvidia.cuopt.mathematicaloptimization;"
@@ -38,6 +44,6 @@ mkdir -p "${PACKAGE_DIR}"
         printf("  public static final String %s = %s;%s", name, value, "\n")
       }
     }
-  ' "${HEADER}"
+  ' "${HEADERS[@]}"
   echo "}"
 } > "${OUT_FILE}"

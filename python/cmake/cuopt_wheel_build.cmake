@@ -41,10 +41,12 @@ add_subdirectory(../../cpp cuopt-cpp)
 
 # cuopt is an INTERFACE target (libcuopt.so is a linker script) and compiles nothing,
 # so it has no use for argparse. cuopt_cli and cuopt_grpc_server, which do, already link
-# argparse::argparse in cpp/CMakeLists.txt.
-target_link_libraries(cuopt_cli PRIVATE
-    argparse
-)
+# argparse::argparse in cpp/CMakeLists.txt. cuopt_cli doesn't exist when SKIP_MATHOPT_BUILD=ON.
+if (TARGET cuopt_cli)
+    target_link_libraries(cuopt_cli PRIVATE
+        argparse
+    )
+endif ()
 
 set(rpaths
   "$ORIGIN/../lib64"
@@ -82,16 +84,15 @@ foreach(_target cuopt_routing cuopt_mathopt cuopt_client cuopt_cli cuopt_grpc_se
   endif()
 endforeach()
 
-# Executables also need the sibling component wheels. The libraries do not: load_library()
-# loads them in dependency order, so glibc satisfies each DT_NEEDED from an already-loaded
-# object. An executable has no Python in the process, so cuopt_cli shipped in
-# libcuopt-mathopt would not find libcuopt_client.so, which is never vendored.
+# cuopt_mathopt and cuopt_routing both have a real NEEDED on libcuopt_client.so, never
+# vendored into their own wheels, so they need their own rpath to it too -- not just
+# cuopt_cli/cuopt_grpc_server.
 set(component_rpaths
   "$ORIGIN/../../libcuopt_client/lib64"
   "$ORIGIN/../../libcuopt_mathopt/lib64"
   "$ORIGIN/../../libcuopt_routing/lib64"
 )
-foreach(_target cuopt_cli cuopt_grpc_server)
+foreach(_target cuopt_mathopt cuopt_routing cuopt_cli cuopt_grpc_server)
   if(TARGET ${_target})
     set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH ${component_rpaths})
   endif()

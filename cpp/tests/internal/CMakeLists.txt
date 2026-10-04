@@ -33,10 +33,13 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/mip/block_bve_test.cu
     ${CUOPT_TEST_DIR}/mip/bhw_coeff_reduce_test.cpp
     ${CUOPT_TEST_DIR}/mip/gf2_presolve_test.cpp
+    ${CUOPT_TEST_DIR}/mip/indicator_strengthening_test.cpp
     ${CUOPT_TEST_DIR}/mip/arc_flow_test.cu
     ${CUOPT_TEST_DIR}/mip/single_lock_dual_aggregation_test.cpp
     ${CUOPT_TEST_DIR}/mip/termination_test.cu
     ${CUOPT_TEST_DIR}/mip/determinism_test.cu
+    # qp
+    ${CUOPT_TEST_DIR}/qp/unit_tests/mps_ranged_rows_test.cu
     # socp
     ${CUOPT_TEST_DIR}/socp/second_order_cone_kernels.cu
     ${CUOPT_TEST_DIR}/socp/sparse_augmented_kkt_test.cu

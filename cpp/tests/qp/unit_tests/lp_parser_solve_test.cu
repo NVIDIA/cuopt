@@ -308,4 +308,21 @@ End
   EXPECT_NEAR(solution.get_additional_termination_information().l2_dual_residual, 0.0, 1e-4);
 }
 
+TEST(mps_parser_solve, qp_sense_rhs_only)
+{
+  auto problem = io::read_mps_from_string<int, double>(
+    "NAME QP\nROWS\n N OBJ\n G ROW\nCOLUMNS\n X OBJ -4 ROW 1\n"
+    "RHS\n RHS1 ROW 0\nBOUNDS\n FR BND1 X\nQUADOBJ\n X X 2\nENDATA\n");
+  problem.set_constraint_lower_bounds({});
+  problem.set_constraint_upper_bounds({});
+  raft::handle_t handle;
+  auto settings = pdlp_solver_settings_t<int, double>();
+  auto solution = solve_lp(&handle, problem, settings);
+  ASSERT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(solution.get_objective_value(), -4.0, 1e-6);
+  auto x = cuopt::host_copy(solution.get_primal_solution(), handle.get_stream());
+  ASSERT_EQ(x.size(), 1u);
+  EXPECT_NEAR(x[0], 2.0, 1e-6);
+}
+
 }  // namespace cuopt::mathematical_optimization
