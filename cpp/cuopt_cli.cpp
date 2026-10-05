@@ -143,13 +143,14 @@ int run_single_file(const std::string& file_path,
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
 
   problem_variant_t problem;
+  bool index_64bit = settings.get_parameter<bool>(CUOPT_MPS_INDEX_64BIT);
   bool parsing_failed = false;
   auto timer          = cuopt::timer_t(settings.get_parameter<double>(CUOPT_TIME_LIMIT));
   {
     CUOPT_LOG_INFO("Reading file %s", base_filename.c_str());
     try {
-      problem = read_problem(
-        file_path, mps_reader, settings.get_parameter<bool>(CUOPT_MPS_INDEX_64BIT));
+      problem =
+        read_problem(file_path, mps_reader, index_64bit);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("Parser exception: %s", e.what());
       parsing_failed = true;
@@ -195,20 +196,23 @@ int run_single_file(const std::string& file_path,
       CUOPT_LOG_ERROR("Initial solution file is not supported for distributed PDLP.");
       return -1;
     }
-    auto& mps_data_model =
-    std::get<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>>(problem);
-    auto solution = cuopt::mathematical_optimization::solve_lp(
-      handle_ptr.get(), mps_data_model, settings.get_pdlp_settings());
+    std::visit(
+      [&](auto const& mps) {
+        cuopt::mathematical_optimization::solve_lp(
+          handle_ptr.get(), mps, settings.get_pdlp_settings());
+      },
+      problem);
     return 0;
   }
   // Only the 32-bit model is wired into the solver; the 64-bit one stops here for now.
   if (std::holds_alternative<
-    cuopt::mathematical_optimization::io::mps_data_model_t<int64_t, double>>(problem)) {
-  CUOPT_LOG_ERROR("64-bit index is only supported for multi-GPU PDLP, set it using --num-gpus and --method 1.");
-  return -1;
+        cuopt::mathematical_optimization::io::mps_data_model_t<int64_t, double>>(problem)) {
+    CUOPT_LOG_ERROR(
+      "64-bit index is only supported for multi-GPU PDLP, set it using --num-gpus and --method 1.");
+    return -1;
   }
   auto& mps_data_model =
-  std::get<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>>(problem);
+    std::get<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>>(problem);
   cuopt::mathematical_optimization::adopt_from_mps_data_model(problem_interface.get(),
                                                               std::move(mps_data_model));
 

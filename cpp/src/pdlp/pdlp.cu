@@ -393,9 +393,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
 // builds internal attributes from the placeholder_problem
 // builds the engine from the mps_data_model
 template <typename i_t, typename f_t>
+template <typename index_t>
 pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   mip::problem_t<i_t, f_t>& placeholder_problem,
-  cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
+  cuopt::mathematical_optimization::io::mps_data_model_t<index_t, f_t> const& mps,
   pdlp_solver_settings_t<i_t, f_t> const& settings)
   // Makes all inner feilds of master 0 size
   : pdlp_solver_t(placeholder_problem, settings, /*is_legacy_batch_mode=*/false)
@@ -417,9 +418,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     return;
   }
   // ----- 1. Read problem shape and bulk data directly from mps (host) -----
-  const i_t n_vars = static_cast<i_t>(mps.get_objective_coefficients().size());
-  const i_t n_cstr = static_cast<i_t>(mps.get_constraint_lower_bounds().size());
-  const i_t nnz    = static_cast<i_t>(mps.get_constraint_matrix_values().size());
+  const i_t n_vars  = static_cast<i_t>(mps.get_objective_coefficients().size());
+  const i_t n_cstr  = static_cast<i_t>(mps.get_constraint_lower_bounds().size());
+  const index_t nnz = static_cast<index_t>(mps.get_constraint_matrix_values().size());
   cuopt_expects(n_vars > 0,
                 error_type_t::ValidationError,
                 "Distributed PDLP from mps requires a non-empty objective");
@@ -430,7 +431,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                 error_type_t::ValidationError,
                 "mps constraint_matrix_offsets size must equal n_constraints + 1");
   cuopt_expects(
-    static_cast<i_t>(mps.get_constraint_matrix_indices().size()) == nnz,
+    static_cast<index_t>(mps.get_constraint_matrix_indices().size()) == nnz,
     error_type_t::ValidationError,
     "mps constraint_matrix_indices size must equal nnz (constraint_matrix_values size)");
   cuopt_expects(static_cast<i_t>(mps.get_constraint_upper_bounds().size()) == n_cstr,
@@ -444,28 +445,28 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                 "mps variable_upper_bounds size must equal n_variables");
 
   // A (CSR) — mutable copies for the engine + partitioner consumers below.
-  std::vector<i_t> h_A_row_offsets = mps.get_constraint_matrix_offsets();
-  std::vector<i_t> h_A_col_indices = mps.get_constraint_matrix_indices();
-  std::vector<f_t> h_A_values      = mps.get_constraint_matrix_values();
+  std::vector<index_t> h_A_row_offsets = mps.get_constraint_matrix_offsets();
+  std::vector<index_t> h_A_col_indices     = mps.get_constraint_matrix_indices();
+  std::vector<f_t> h_A_values          = mps.get_constraint_matrix_values();
 
   // ----- 2. Transpose A -> A^T on the host (one-shot CSR transpose) -----
   // CSC(A) and CSR(A^T) share the same memory layout, so the CSC produced
   // by csr_matrix_t::to_compressed_col IS the CSR of A^T.
   // O(nnz + n_vars) counting sort, same as problem_t::compute_transpose.
   namespace ds = cuopt::mathematical_optimization;
-  ds::csr_matrix_t<i_t, f_t> A_csr(n_cstr, n_vars, nnz);
+  ds::csr_matrix_t<index_t, f_t> A_csr(n_cstr, n_vars, nnz);
   A_csr.row_start = h_A_row_offsets;
   A_csr.j         = h_A_col_indices;
   A_csr.x         = h_A_values;
-  ds::csc_matrix_t<i_t, f_t> AT_as_csc(n_vars, n_cstr, nnz);
+  ds::csc_matrix_t<index_t, f_t> AT_as_csc(n_vars, n_cstr, nnz);
   A_csr.to_compressed_col(AT_as_csc);
-  std::vector<i_t> h_A_t_row_offsets = std::move(AT_as_csc.col_start);
-  std::vector<i_t> h_A_t_col_indices = std::move(AT_as_csc.i);
+  std::vector<index_t> h_A_t_row_offsets = std::move(AT_as_csc.col_start);
+  std::vector<index_t> h_A_t_col_indices = std::move(AT_as_csc.i);
   std::vector<f_t> h_A_t_values      = std::move(AT_as_csc.x);
 
   // ----- 3. Partition -----
-  std::vector<i_t> parts;
-  partitioner_input_t<i_t, f_t> partition_input;
+  std::vector<int> parts;
+  partitioner_input_t<index_t, f_t> partition_input;
   partition_input.nb_cstr  = n_cstr;
   partition_input.nb_vars  = n_vars;
   partition_input.nb_parts = distributed_pdlp_num_gpus;
@@ -509,22 +510,23 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     (kind == partitioner_kind_t::RoundRobin) ? "round_robin"
     : (kind == partitioner_kind_t::KaMinPar) ? "kaminpar"
                                              : "unknown");
-  auto partitioner = make_partitioner<i_t, f_t>(kind);
+  auto partitioner = make_partitioner<index_t, f_t>(kind);
   parts            = partitioner->partition(partition_input);
 
   // ----- 4. Build per-rank data -----
-  std::vector<rank_data_t<i_t, f_t>> sub_pdlp_rank_data =
-    create_rank_data_from_parts<i_t, f_t>(parts,
-                                          h_A_row_offsets,
-                                          h_A_col_indices,
-                                          h_A_values,
-                                          h_A_t_row_offsets,
-                                          h_A_t_col_indices,
-                                          h_A_t_values,
-                                          settings.num_gpus,
-                                          n_cstr,
-                                          n_vars,
-                                          nnz);
+  // narrow_rank_data converts the index_t to i_t if necessary, no-op otherwise
+  std::vector<rank_data_t<i_t, f_t>> sub_pdlp_rank_data = narrow_rank_data<i_t, index_t, f_t>(
+    create_rank_data_from_parts<index_t, f_t>(parts,
+                                              h_A_row_offsets,
+                                              h_A_col_indices,
+                                              h_A_values,
+                                              h_A_t_row_offsets,
+                                              h_A_t_col_indices,
+                                              h_A_t_values,
+                                              settings.num_gpus,
+                                              n_cstr,
+                                              n_vars,
+                                              nnz));
 
   // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;

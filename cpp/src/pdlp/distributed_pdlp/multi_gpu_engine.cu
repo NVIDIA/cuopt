@@ -20,9 +20,10 @@
 namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
+template <typename index_t>
 multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
   std::vector<rank_data_t<i_t, f_t>>&& rank_data,
-  io::mps_data_model_t<i_t, f_t> const& mps,
+  io::mps_data_model_t<index_t, f_t> const& mps,
   pdlp_solver_settings_t<i_t, f_t> const& sub_solver_settings)
   : stream()
 {
@@ -452,6 +453,22 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_spmv_A(
 }
 
 template struct multi_gpu_engine_t<int, double>;
-template struct multi_gpu_engine_t<int, float>;
+
+template multi_gpu_engine_t<int, double>::multi_gpu_engine_t(
+  std::vector<rank_data_t<int, double>>&&,
+  io::mps_data_model_t<int, double> const&,
+  pdlp_solver_settings_t<int, double> const&);
+template multi_gpu_engine_t<int, double>::multi_gpu_engine_t(
+  std::vector<rank_data_t<int, double>>&&,
+  io::mps_data_model_t<int64_t, double> const&,
+  pdlp_solver_settings_t<int, double> const&);
+
+  #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
+  template struct multi_gpu_engine_t<int, float>;
+  template multi_gpu_engine_t<int, float>::multi_gpu_engine_t(
+    std::vector<rank_data_t<int, float>>&&,
+    io::mps_data_model_t<int, float> const&,
+    pdlp_solver_settings_t<int, float> const&);
+  #endif
 
 }  // namespace cuopt::mathematical_optimization::pdlp

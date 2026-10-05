@@ -29,7 +29,7 @@ namespace cuopt::mathematical_optimization::pdlp {
 constexpr double kaminpar_max_block_weight_imbalance = 0.03;
 
 template <typename i_t, typename f_t>
-std::vector<i_t> round_robin_partitioner_t<i_t, f_t>::partition(
+std::vector<int> round_robin_partitioner_t<i_t, f_t>::partition(
   partitioner_input_t<i_t, f_t> const& input) const
 {
   cuopt_expects(input.nb_parts > 0,
@@ -41,9 +41,9 @@ std::vector<i_t> round_robin_partitioner_t<i_t, f_t>::partition(
 
   const std::size_t nvtx =
     static_cast<std::size_t>(input.nb_cstr) + static_cast<std::size_t>(input.nb_vars);
-  std::vector<i_t> parts(nvtx);
+  std::vector<int> parts(nvtx);
   for (std::size_t i = 0; i < nvtx; ++i) {
-    parts[i] = static_cast<i_t>(i % static_cast<std::size_t>(input.nb_parts));
+    parts[i] = static_cast<int>(i % static_cast<std::size_t>(input.nb_parts));
   }
   validate_partition(parts,
                      static_cast<int>(input.nb_cstr),
@@ -59,7 +59,7 @@ std::vector<i_t> round_robin_partitioner_t<i_t, f_t>::partition(
 //   * nodes [nb_cstr, nb_cstr+nb_vars): variable nodes
 //   * each edge is a nnz between a constraint and a variable
 template <typename i_t, typename f_t>
-std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
+std::vector<int> kaminpar_partitioner_t<i_t, f_t>::partition(
   partitioner_input_t<i_t, f_t> const& input) const
 {
   cuopt_expects(input.nb_parts >= 1,
@@ -72,7 +72,7 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   // return trivial partition if only one part
   if (input.nb_parts == 1) {
     CUOPT_LOG_INFO("KaMinPar: nb_parts == 1, returning trivial single-block partition");
-    return std::vector<i_t>(static_cast<std::size_t>(input.nb_cstr + input.nb_vars), i_t{0});
+    return std::vector<int>(static_cast<std::size_t>(input.nb_cstr + input.nb_vars), 0);
   }
   cuopt_expects(!input.A.row_offsets.empty() && !input.A.col_indices.empty(),
                 error_type_t::ValidationError,
@@ -157,18 +157,18 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   const double dt = std::chrono::duration<double>(t1 - t0).count();
 
   CUOPT_LOG_TRACE(
-    "KaMinPar partitioned bipartite graph: nvtx=%d nnz=%d nb_parts=%d nthreads=%d edge_cut=%lld "
+    "KaMinPar partitioned bipartite graph: nvtx=%lld nnz=%lld nb_parts=%lld nthreads=%d edge_cut=%lld "
     "in %.3fs",
-    static_cast<int>(nvtx),
-    static_cast<int>(nnz),
-    static_cast<int>(input.nb_parts),
+    static_cast<long long>(nvtx),
+    static_cast<long long>(nnz),
+    static_cast<long long>(input.nb_parts),
     nthreads,
     static_cast<long long>(edge_cut),
     dt);
 
-  std::vector<i_t> parts(static_cast<std::size_t>(nvtx));
+  std::vector<int> parts(static_cast<std::size_t>(nvtx));
   for (i_t i = 0; i < nvtx; ++i) {
-    parts[i] = static_cast<i_t>(block_of[i]);
+    parts[i] = static_cast<int>(block_of[i]);
   }
 
   validate_partition(parts,

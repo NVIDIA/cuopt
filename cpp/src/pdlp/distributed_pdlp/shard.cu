@@ -23,10 +23,11 @@ template <typename i_t, typename f_t>
 pdlp_shard_t<i_t, f_t>::~pdlp_shard_t() = default;
 
 template <typename i_t, typename f_t>
+template <typename index_t>
 pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
                                      rank_data_t<i_t, f_t>&& rd,
                                      nccl_comm_unique_ptr_t&& comm,
-                                     io::mps_data_model_t<i_t, f_t> const& mps,
+                                     io::mps_data_model_t<index_t, f_t> const& mps,
                                      pdlp_solver_settings_t<i_t, f_t> const& settings)
   : device_id(device_id),
     stream(),
