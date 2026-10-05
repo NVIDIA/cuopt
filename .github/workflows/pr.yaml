@@ -595,7 +595,9 @@ jobs:
     permissions:
       actions: read
       contents: read
-    uses: rapidsai/shared-workflows/.github/workflows/maven-publish.yaml@release/26.10
+    # TEMPORARY (#1970): points at the fork branch backing shared-workflows#652 (adds
+    # --profile-id) instead of release/26.10, to test it end-to-end before it merges.
+    uses: ramakrishnap-nv/shared-workflows/.github/workflows/maven-publish.yaml@maven-central-profile-id
     secrets:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -604,6 +606,9 @@ jobs:
       publication-type: 'rc'
       artifact-name: cuopt_java_maven_repo
       source-git-sha: ${{ github.sha }}
+      # TEMPORARY (#1970): exercises the new --profile-id param against the verified
+      # com.nvidia parent namespace instead of the unverified com.nvidia.cuopt groupId.
+      profile-id: com.nvidia
       # false here (unlike the real job's true): a PR test run must never leave a real
       # bundle PENDING in the Sonatype Central Portal.
       stage-for-maven-central-publish: false
