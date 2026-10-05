@@ -100,7 +100,7 @@ i_t shift_from(const std::vector<f_t>& barrier_values,
                const std::vector<f_t>& crushed,
                std::vector<f_t>& shift)
 {
-  if (crushed.size() != barrier_values.size()) { return static_cast<i_t>(-1); }
+  if (crushed.size() != barrier_values.size()) { return -1; }
   shift.resize(barrier_values.size());
   for (std::size_t k = 0; k < shift.size(); ++k) {
     shift[k] = barrier_values[k] - crushed[k];

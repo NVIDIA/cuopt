@@ -24,8 +24,8 @@ using barrier_iteration_data_ptr =
   std::unique_ptr<barrier_iteration_data_t, void (*)(barrier_iteration_data_t*)>;
 
 static void require_cache(barrier_transform_t const* transform,
-                               barrier_iteration_data_t const* data,
-                               char const* api)
+                          barrier_iteration_data_t const* data,
+                          char const* api)
 {
   cuopt_expects(transform != nullptr,
                 error_type_t::ValidationError,
@@ -131,8 +131,7 @@ bool barrier_cache_t::rhs_infeasible() const { return impl_->rhs_infeasible; }
 
 void barrier_cache_t::update_linear_objective(double const* c, int n)
 {
-  require_cache(
-    impl_->transform.get(), impl_->iteration_data.get(), "update_linear_objective");
+  require_cache(impl_->transform.get(), impl_->iteration_data.get(), "update_linear_objective");
   // Cached Q and c are in minimization space.
   std::vector<double> user_objective;
   if (impl_->transform->maximize && c != nullptr && n > 0) {
@@ -191,10 +190,8 @@ void barrier_cache_t::update_rhs(double const* b, int m)
     impl_->rhs_dirty      = true;
     return;
   }
-  cuopt_expects(status == crush_rhs_status_t::success,
-                error_type_t::ValidationError,
-                "%s",
-                error.c_str());
+  cuopt_expects(
+    status == crush_rhs_status_t::success, error_type_t::ValidationError, "%s", error.c_str());
   impl_->rhs_infeasible = false;
   add_shift(crushed, impl_->transform->rhs_shift);
   // barrier_lp->rhs also seeds the next solve's Mehrotra start, so keep it and the cached

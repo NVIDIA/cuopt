@@ -121,11 +121,8 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
 enum class crush_rhs_status_t { success = 0, invalid = -1, infeasible = -2 };
 
 template <typename i_t, typename f_t>
-inline crush_rhs_status_t crush_user_rhs(barrier_transform_t const& xf,
-                                         f_t const* b,
-                                         i_t m,
-                                         std::vector<f_t>& crushed,
-                                         std::string& error)
+inline crush_rhs_status_t crush_user_rhs(
+  barrier_transform_t const& xf, f_t const* b, i_t m, std::vector<f_t>& crushed, std::string& error)
 {
   auto invalid = [&](char const* message) {
     error = message;
@@ -143,9 +140,7 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t const& xf,
   if (static_cast<i_t>(xf.row_sense.size()) != xf.user_num_rows) {
     return invalid("update_rhs: cached row-sense count does not match the user row count.");
   }
-  if (xf.barrier_lp == nullptr) {
-    return invalid("update_rhs: cached barrier LP is missing.");
-  }
+  if (xf.barrier_lp == nullptr) { return invalid("update_rhs: cached barrier LP is missing."); }
 
   // convert turns 'G' rows into 'L' rows by negating the row and its RHS.
   std::vector<f_t> original(static_cast<std::size_t>(xf.original_num_rows));

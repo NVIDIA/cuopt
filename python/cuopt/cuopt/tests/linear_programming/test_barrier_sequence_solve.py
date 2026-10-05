@@ -36,8 +36,9 @@ def _sequence_settings():
     return settings
 
 
-def _build(values, indices, offsets, rhs, senses, lower, upper,
-           objective=None):
+def _build(
+    values, indices, offsets, rhs, senses, lower, upper, objective=None
+):
     """A QP with quadratic term x^T x, so the model is barrier-eligible."""
     n = len(lower)
     model = data_model.DataModel()
@@ -49,7 +50,8 @@ def _build(values, indices, offsets, rhs, senses, lower, upper,
     model.set_constraint_bounds(np.asarray(rhs, dtype=np.float64))
     model.set_row_types(senses)
     model.set_objective_coefficients(
-        np.zeros(n) if objective is None
+        np.zeros(n)
+        if objective is None
         else np.asarray(objective, dtype=np.float64)
     )
     model.set_quadratic_objective_matrix(
@@ -284,9 +286,7 @@ def test_bounded_free_variables_block_reuse(
 
     _assert_matches_oracle(
         second,
-        _full_solve(
-            FREE_VARIABLE, FREE_VARIABLE_RHS, objective=new_objective
-        ),
+        _full_solve(FREE_VARIABLE, FREE_VARIABLE_RHS, objective=new_objective),
     )
 
 
