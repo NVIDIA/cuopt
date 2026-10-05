@@ -5039,11 +5039,10 @@ void apply_barrier_linear_objective(iteration_data_t<int, double>& data,
 
 void apply_barrier_rhs(iteration_data_t<int, double>& data, double const* barrier_b, int m)
 {
-  cuopt_expects(
-    barrier_b != nullptr && static_cast<int>(data.b.size()) == m &&
-      static_cast<int>(data.d_b_.size()) == m,
-    error_type_t::ValidationError,
-    "update_rhs: barrier RHS size does not match cached iteration_data_t.");
+  cuopt_expects(barrier_b != nullptr && static_cast<int>(data.b.size()) == m &&
+                  static_cast<int>(data.d_b_.size()) == m,
+                error_type_t::ValidationError,
+                "update_rhs: barrier RHS size does not match cached iteration_data_t.");
   std::copy(barrier_b, barrier_b + m, data.b.data());
   raft::copy(
     data.d_b_.data(), data.b.data(), static_cast<std::size_t>(m), data.handle_ptr->get_stream());

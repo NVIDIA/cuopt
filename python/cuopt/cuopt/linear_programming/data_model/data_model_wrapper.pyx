@@ -173,9 +173,9 @@ cdef class DataModel:
 
         Always writes the DataModel objective. If this model owns a solver
         cache from a prior Barrier solve, also crushes ``coefficients`` into
-        the cached ``iteration_data_t`` and sets ``c_dirty`` so a later reuse
-        can skip convert/presolve. Crush runs first so a length error
-        leaves the DataModel coefficients unchanged.
+        the cached ``iteration_data_t`` and sets ``linear_objective_dirty``
+        so a later reuse can skip convert/presolve. Crush runs first so a
+        length error leaves the DataModel coefficients unchanged.
         """
         cdef barrier_cache_t* cache
         cdef double[::1] c_view

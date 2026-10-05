@@ -359,39 +359,39 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
   return presolved;
 }
 
-// Distinct from the invalid_argument cases so the caller can report INFEASIBLE rather than a
-// validation failure.
-struct update_rhs_infeasible_error : std::runtime_error {
-  explicit update_rhs_infeasible_error(std::string const& message) : std::runtime_error(message) {}
-};
+// success: crushed is written. invalid: error is set and the caller reports a validation
+// failure. infeasible: a presolve-dropped empty row cannot hold the new RHS; the caller records
+// that for the next Solve instead of treating it as a validation failure.
+enum class crush_rhs_status_t { success = 0, invalid = -1, infeasible = -2 };
 
-inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double const* b, int m)
+template <typename i_t, typename f_t>
+inline crush_rhs_status_t crush_user_rhs(
+  barrier_transform_t const& xf, f_t const* b, i_t m, std::vector<f_t>& crushed, std::string& error)
 {
-  if (b == nullptr || m != model_num_rows(xf)) {
-    throw std::invalid_argument("update_rhs: RHS length must match the cached model row count.");
+  auto invalid = [&](char const* message) {
+    error = message;
+    return crush_rhs_status_t::invalid;
+  };
+  if (b == nullptr || static_cast<int>(m) != model_num_rows(xf)) {
+    return invalid("update_rhs: RHS length must match the cached model row count.");
   }
   if (!xf.rhs_update_supported) {
-    throw std::invalid_argument(
-      "update_rhs: cached convert used range rows or folding; run a full Solve.");
+    return invalid("update_rhs: cached convert used range rows or folding; run a full Solve.");
   }
   if (xf.original_num_rows != xf.user_num_rows) {
-    throw std::invalid_argument(
-      "update_rhs: cached original row count does not match the user row count.");
+    return invalid("update_rhs: cached original row count does not match the user row count.");
   }
   if (static_cast<int>(xf.row_sense.size()) != xf.user_num_rows) {
-    throw std::invalid_argument(
-      "update_rhs: cached row-sense count does not match the user row count.");
+    return invalid("update_rhs: cached row-sense count does not match the user row count.");
   }
-  if (xf.barrier_lp == nullptr) {
-    throw std::invalid_argument("update_rhs: cached barrier LP is missing.");
-  }
+  if (xf.barrier_lp == nullptr) { return invalid("update_rhs: cached barrier LP is missing."); }
 
   // The quadratic constraints fix the RHS of the appended rows, so an update overwrites the
   // model's own rows and keeps the cached tail. The tail is empty without an expansion.
-  std::vector<double> expanded(b, b + m);
+  std::vector<double> expanded(b, b + static_cast<int>(m));
   expanded.insert(expanded.end(), xf.cone_row_rhs.begin(), xf.cone_row_rhs.end());
   if (static_cast<int>(expanded.size()) != xf.user_num_rows) {
-    throw std::invalid_argument("update_rhs: cached cone-row RHS does not span the expanded rows.");
+    return invalid("update_rhs: cached cone-row RHS does not span the expanded rows.");
   }
 
   // The expansion proved these heads nonnegative from the old RHS. A full solve rejects the
@@ -402,9 +402,9 @@ inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double 
       implied = std::max(implied, expanded[static_cast<std::size_t>(row)] / coefficient);
     }
     if (!(implied >= 0.0)) {
-      throw std::invalid_argument(
-        "update_rhs: new RHS no longer implies second-order cone head variable " +
-        std::to_string(bound.head_col) + " is nonnegative.");
+      error = "update_rhs: new RHS no longer implies second-order cone head variable " +
+              std::to_string(bound.head_col) + " is nonnegative.";
+      return crush_rhs_status_t::invalid;
     }
   }
 
@@ -412,23 +412,21 @@ inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double 
   std::vector<double> original(static_cast<std::size_t>(xf.original_num_rows));
   for (int i = 0; i < xf.user_num_rows; ++i) {
     original[static_cast<std::size_t>(i)] =
-      xf.row_sense[static_cast<std::size_t>(i)] == 'G' ? -expanded[i] : expanded[i];
+      xf.row_sense[static_cast<std::size_t>(i)] == 'G' ? -expanded[static_cast<std::size_t>(i)]
+                                                       : expanded[static_cast<std::size_t>(i)];
   }
 
   // Dropped rows were empty, so the new RHS never reaches the barrier: 'E' needs 0 == b_i and
   // the rest need 0 <= b_i.
   for (int i : xf.presolve_info.removed_constraints) {
     if (i < 0 || i >= xf.user_num_rows) {
-      throw std::invalid_argument("update_rhs: removed constraint index is out of range.");
+      return invalid("update_rhs: removed constraint index is out of range.");
     }
     double const converted_rhs = original[static_cast<std::size_t>(i)];
     bool const infeasible      = xf.row_sense[static_cast<std::size_t>(i)] == 'E'
                                    ? std::abs(converted_rhs) > xf.primal_tol
                                    : converted_rhs < -xf.primal_tol;
-    if (infeasible) {
-      throw update_rhs_infeasible_error("update_rhs: empty constraint row " + std::to_string(i) +
-                                        " is infeasible with the new RHS.");
-    }
+    if (infeasible) { return crush_rhs_status_t::infeasible; }
   }
 
   // Empty remaining_constraints means either no empty-row pass ran, or every row was dropped
@@ -447,13 +445,13 @@ inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double 
 
   if (static_cast<int>(presolved.size()) != xf.barrier_lp->num_rows ||
       xf.row_scales.size() != presolved.size()) {
-    throw std::invalid_argument(
-      "update_rhs: crushed RHS size does not match barrier rows / row_scales.");
+    return invalid("update_rhs: crushed RHS size does not match barrier rows / row_scales.");
   }
   for (std::size_t i = 0; i < presolved.size(); ++i) {
     presolved[i] /= xf.row_scales[i];
   }
-  return presolved;
+  crushed.assign(presolved.begin(), presolved.end());
+  return crush_rhs_status_t::success;
 }
 
 }  // namespace cuopt::mathematical_optimization
