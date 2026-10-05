@@ -145,15 +145,20 @@ jobs:
           if-no-files-found: error
 
   # Release path only (vYY.MM.PP tags); does not publish nightlies. Matches cudf's
-  # release/26.10 java-publish job. TODO: add nightly Sonatype snapshot publishing
-  # once cuopt main goes back to tracking shared-workflows main.
+  # release/26.10 java-publish job, but calls a vendored copy of the workflow
+  # (./.github/workflows/maven-publish.yaml) instead of rapidsai/shared-workflows
+  # directly -- a 26.10 release build must not depend on a non-release branch of an
+  # external repo. TODO: once rapidsai/shared-workflows#652 merges to main and ships
+  # in a shared-workflows release branch cuOpt tracks, drop the vendored copy and
+  # java/cuopt/ci/maven-publish/, and call rapidsai/shared-workflows directly again
+  # (also add nightly Sonatype snapshot publishing once that happens).
   java-maven-publish:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [java-static-gather]
     permissions:
       actions: read
       contents: read
-    uses: rapidsai/shared-workflows/.github/workflows/maven-publish.yaml@release/26.10
+    uses: ./.github/workflows/maven-publish.yaml
     secrets:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -162,6 +167,9 @@ jobs:
       publication-type: 'rc'
       artifact-name: cuopt_java_maven_repo
       source-git-sha: ${{ inputs.sha }}
+      # com.nvidia.cuopt is a verified namespace under com.nvidia on Sonatype, not a
+      # separately-verified namespace of its own -- see rapidsai/shared-workflows#652.
+      profile-id: com.nvidia
       # false = validate + drop (safe). true = stage PENDING for manual publish.
       stage-for-maven-central-publish: true
 

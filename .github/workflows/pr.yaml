@@ -595,9 +595,9 @@ jobs:
     permissions:
       actions: read
       contents: read
-    # TEMPORARY (#1970): points at the fork branch backing shared-workflows#652 (adds
-    # --profile-id) instead of release/26.10, to test it end-to-end before it merges.
-    uses: ramakrishnap-nv/shared-workflows/.github/workflows/maven-publish.yaml@maven-central-profile-id
+    # TEMPORARY (#1970): exercises the vendored workflow (java/cuopt/ci/maven-publish/,
+    # ./.github/workflows/maven-publish.yaml) that build.yaml's real job now also calls.
+    uses: ./.github/workflows/maven-publish.yaml
     secrets:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

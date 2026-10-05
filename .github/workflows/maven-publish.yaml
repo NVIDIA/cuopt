@@ -1,0 +1,131 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Publishes a bundle of release-candidate Maven artifacts (jars, POMs,
+# sources, javadoc) to Maven Central via the Sonatype Central Publisher
+# Portal. Every file is GPG-signed before the repository is uploaded through
+# Sonatype's OSSRH staging compatibility API for validation and human-gated
+# publication.
+#
+# Vendored from rapidsai/shared-workflows (.github/workflows/maven-publish.yaml)
+# for 26.10 release stability, so cuOpt's release path does not pin to a
+# non-release branch of an external repo. TODO: once rapidsai/shared-workflows#652
+# merges to main and ships in a shared-workflows release branch cuOpt tracks,
+# drop this file and java/cuopt/ci/maven-publish/ and go back to calling
+# rapidsai/shared-workflows/.github/workflows/maven-publish.yaml directly.
+name: Java Maven publish (vendored)
+
+on:
+  workflow_call:
+    inputs:
+      publication-type:
+        description: |
+          Only "rc" (release candidate) is currently supported.
+        required: true
+        type: string
+      artifact-name:
+        description: |
+          Name of the GitHub Actions artifact (uploaded by the caller job via
+          actions/upload-artifact) to download and publish. Contents must be
+          a Maven repository directory.
+        required: true
+        type: string
+      stage-for-maven-central-publish:
+        description: |
+          When true, leave the bundle PENDING in the Sonatype Central
+          Publisher Portal for a human to release via the Portal UI
+          (https://central.sonatype.com). When false (default), validate then
+          drop the bundle.
+        required: false
+        type: boolean
+        default: false
+      source-git-sha:
+        description: |
+          Git SHA to include in the retained bundle name for provenance.
+        required: false
+        type: string
+        default: ''
+      profile-id:
+        description: |
+          Sonatype staging profile to search, if different from the Maven groupId read from
+          the POM (e.g. a verified parent namespace like com.nvidia for a com.nvidia.cuopt
+          groupId). Defaults to the groupId when not set.
+        required: false
+        type: string
+        default: ''
+    secrets:
+      GPG_PRIVATE_KEY:
+        description: Armored GPG private key used to sign every artifact at upload.
+        required: true
+      GPG_PASSPHRASE:
+        description: Passphrase for GPG_PRIVATE_KEY.
+        required: true
+      MAVEN_DEPLOY_TOKEN:
+        description: Auth token paired with vars.MAVEN_DEPLOY_USERNAME.
+        required: true
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  maven-publish:
+    name: maven publish (${{ inputs.publication-type }})
+    runs-on: linux-amd64-cpu4
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Download Maven repository artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: maven-repo
+
+      - name: Prepare signed Maven bundle
+        id: prepare
+        run: |
+          java/cuopt/ci/maven-publish/prepare_maven_bundle.sh \
+            --input maven-repo \
+            --output signed-maven-repo \
+            --publication-type "${PUBLICATION_TYPE}"
+        env:
+          PUBLICATION_TYPE: ${{ inputs.publication-type }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Upload to Maven Central
+        id: publish
+        run: |
+          java/cuopt/ci/maven-publish/maven_central_publish.sh \
+            --input signed-maven-repo \
+            --group-id "${GROUP_ID}" \
+            --profile-id "${PROFILE_ID:-$GROUP_ID}" \
+            --artifact-id "${ARTIFACT_ID}" \
+            --version "${VERSION}" \
+            --output-bundle central-bundle.zip \
+            --auto-drop "${AUTO_DROP}"
+        env:
+          GROUP_ID: ${{ steps.prepare.outputs.GROUP_ID }}
+          PROFILE_ID: ${{ inputs.profile-id }}
+          ARTIFACT_ID: ${{ steps.prepare.outputs.ARTIFACT_ID }}
+          VERSION: ${{ steps.prepare.outputs.VERSION }}
+          # Invert: stage-for-...=true means don't auto-drop.
+          AUTO_DROP: ${{ !inputs.stage-for-maven-central-publish }}
+          MAVEN_DEPLOY_USERNAME: ${{ vars.MAVEN_DEPLOY_USERNAME }}
+          MAVEN_DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
+
+      - name: Retain signed Maven Central bundle
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: maven-central-bundle-${{ steps.prepare.outputs.ARTIFACT_ID }}-${{ steps.prepare.outputs.VERSION }}-${{ inputs.source-git-sha }}
+          path: central-bundle.zip
+          if-no-files-found: ignore
+          retention-days: 90
