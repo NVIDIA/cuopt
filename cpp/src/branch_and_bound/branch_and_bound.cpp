@@ -1646,7 +1646,9 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
         std::vector<i_t> fractional;
         i_t num_fractional =
           fractional_variables(settings_, worker->leaf_solution.x, worker->var_types, fractional);
-        if (settings_.dual_degenerate_pivots != 0) {
+        if (settings_.dual_degenerate_pivots == 2 ||
+            (settings_.dual_degenerate_pivots == 1 &&
+             worker->search_strategy != search_strategy_t::BEST_FIRST)) {
           auto pivot_settings          = settings_;
           pivot_settings.log           = lp_settings.log;
           pivot_settings.inside_mip    = lp_settings.inside_mip;

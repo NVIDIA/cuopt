@@ -228,7 +228,7 @@ struct simplex_solver_settings_t {
                                          // strengthening
   i_t dual_degenerate_feasibility_pump;  // 0 to disable, 1 to enable
   i_t primal_degenerate_pivots;          // 0 to disable, 1 to enable
-  i_t dual_degenerate_pivots;            // 0 to disable, 1 to enable
+  i_t dual_degenerate_pivots;            // 0 = off, 1 = root/dives, 2 = everywhere
   f_t cut_change_threshold;              // threshold for cut change
   f_t cut_min_orthogonality;             // minimum orthogonality for cuts
   i_t
