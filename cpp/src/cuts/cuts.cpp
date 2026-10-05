@@ -2906,8 +2906,7 @@ void knapsack_generation_t<i_t, f_t>::minimal_cover_and_partition(
     }
   }
 
-  cuopt_assert(cover_sum >= beta + 1.0 - 1e-6,
-               "minimal cover reduction dropped an item the cover needed");
+  cuopt_assert(cover_sum > beta, "minimal cover reduction dropped an item the cover needed");
 
   // Go through and correct cover_indicies and cover_coefficients
   for (i_t k = 0; k < cover_coefficients.size();) {
