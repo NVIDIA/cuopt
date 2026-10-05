@@ -346,7 +346,7 @@ cdef class DataModel:
         cdef uintptr_t c_A_offsets = (
             get_data_ptr(self.get_constraint_matrix_offsets())
         )
-        if self.get_constraint_matrix_values().shape[0] != 0 and self.get_constraint_matrix_indices().shape[0] != 0 and self.get_constraint_matrix_offsets().shape[0] != 0: # noqa
+        if self.get_constraint_matrix_offsets().shape[0] != 0:
             c_data_model_view.set_csr_constraint_matrix(
                 <const double *> c_A_values,
                 self.get_constraint_matrix_values().shape[0],

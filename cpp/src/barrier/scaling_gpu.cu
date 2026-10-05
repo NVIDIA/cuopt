@@ -21,7 +21,7 @@
 
 #include <raft/util/cuda_utils.cuh>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_segmented_reduce.cuh>
 
 #include <thrust/fill.h>
 #include <thrust/for_each.h>

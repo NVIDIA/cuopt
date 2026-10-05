@@ -19,6 +19,7 @@
 
 #include <thrust/fill.h>
 #include <thrust/gather.h>
+#include <cub/device/device_transform.cuh>
 
 #include <cmath>
 #include <vector>
