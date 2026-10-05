@@ -529,15 +529,15 @@ lp_status_t solve_linear_program_with_barrier(
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
 
   auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
-  const bool reuse_cached_data =
-    xf != nullptr && xf->barrier_lp != nullptr && !user_problem.Q_values.empty() &&
-    user_problem.second_order_cone_dims.empty() && xf->second_order_cone_dims.empty() &&
-    xf->barrier_lp->second_order_cone_dims.empty() &&
-    // run_barrier already resolved -1 to 0. The second check covers caches built by an earlier
-    // solve that did bound free variables, whose presolve state the reuse path cannot replay.
-    settings.barrier_presolve_bound_free_variables == 0 &&
-    xf->presolve_info.bounded_free_variables.empty() &&
-    user_problem.num_cols == xf->user_num_cols && user_problem.num_rows == xf->user_num_rows;
+  // Same predicate as the outer QCQP gate. bound_free_variables is already resolved (-1 -> 0)
+  // by run_barrier when sequence_solve is on.
+  const bool reuse_cached_data = cuopt::mathematical_optimization::can_reuse_barrier_cache(
+    xf,
+    settings.barrier_presolve_bound_free_variables,
+    user_problem.num_cols,
+    user_problem.num_rows,
+    !user_problem.Q_values.empty(),
+    !user_problem.second_order_cone_dims.empty());
 
   if (reuse_cached_data) {
     if (cache->rhs_infeasible()) {

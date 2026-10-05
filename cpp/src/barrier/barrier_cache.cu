@@ -40,7 +40,9 @@ static void require_cache(barrier_transform_t const* transform,
 // Re-adds the first solve's barrier-minus-crush shift so the update lands in the presolved model.
 static void add_shift(std::vector<double>& crushed, std::vector<double> const& shift)
 {
-  if (shift.size() != crushed.size()) { return; }
+  cuopt_expects(shift.size() == crushed.size(),
+                error_type_t::ValidationError,
+                "barrier cache shift length does not match the crushed vector.");
   for (std::size_t i = 0; i < crushed.size(); ++i) {
     crushed[i] += shift[i];
   }

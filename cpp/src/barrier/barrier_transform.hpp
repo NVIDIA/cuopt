@@ -10,7 +10,6 @@
 #include <dual_simplex/presolve.hpp>
 #include <linear_algebra/sparse_matrix.hpp>
 
-#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -54,6 +53,23 @@ struct barrier_transform_t {
   // barrier_lp->Q.
   std::unique_ptr<csc_matrix_t<int, double>> barrier_Q;
 };
+
+// Shared by the outer QCQP entry (which may swap in a slim fabricated user_problem) and the
+// inner barrier path (which skips convert/presolve/scaling). Both must agree, or the slim
+// problem is fed to a full convert/presolve.
+inline bool can_reuse_barrier_cache(barrier_transform_t const* xf,
+                                    int bound_free_variables,
+                                    int num_cols,
+                                    int num_rows,
+                                    bool has_quadratic_objective,
+                                    bool user_has_soc)
+{
+  return xf != nullptr && xf->barrier_lp != nullptr && has_quadratic_objective && !user_has_soc &&
+         xf->second_order_cone_dims.empty() && xf->barrier_lp->second_order_cone_dims.empty() &&
+         bound_free_variables == 0 && xf->presolve_info.bounded_free_variables.empty() &&
+         static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
+         num_cols == xf->user_num_cols && num_rows == xf->user_num_rows;
+}
 
 inline std::vector<double> crush_user_linear_objective(barrier_transform_t const& xf,
                                                        double const* c,
@@ -149,19 +165,12 @@ inline crush_rhs_status_t crush_user_rhs(
       xf.row_sense[static_cast<std::size_t>(i)] == 'G' ? -b[i] : b[i];
   }
 
-  // Dropped rows were empty, so the new RHS never reaches the barrier: 'E' needs 0 == b_i and
-  // the rest need 0 <= b_i. This is a structural zero test, not the solver's primal feasibility
-  // tolerance, so it stays local and tighter than settings.primal_tol.
-  f_t const empty_row_tol = 1e-12;
+  // Presolve drops only empty equalities, and only when the RHS is exactly 0.
   for (i_t i : xf.presolve_info.removed_constraints) {
     if (i < 0 || i >= m) {
       return invalid("update_rhs: removed constraint index is out of range.");
     }
-    f_t const converted_rhs = original[static_cast<std::size_t>(i)];
-    bool const infeasible   = xf.row_sense[static_cast<std::size_t>(i)] == 'E'
-                                ? std::abs(converted_rhs) > empty_row_tol
-                                : converted_rhs < -empty_row_tol;
-    if (infeasible) { return crush_rhs_status_t::infeasible; }
+    if (original[i] != f_t(0)) { return crush_rhs_status_t::infeasible; }
   }
 
   // Empty remaining_constraints means either no empty-row pass ran, or every row was dropped

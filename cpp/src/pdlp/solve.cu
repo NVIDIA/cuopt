@@ -555,7 +555,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.barrier_dual_initial_point = settings.barrier_dual_initial_point;
   barrier_settings.postsolve_info             = settings.postsolve_info;
   barrier_settings.barrier_presolve_bound_free_variables =
-    settings.barrier_presolve_bound_free_variables;
+    effective_bound_free_variables(settings);
   barrier_settings.barrier_initial_point_safeguard = settings.barrier_initial_point_safeguard;
   barrier_settings.barrier                         = true;
   barrier_settings.barrier_presolve                = true;
@@ -1994,17 +1994,17 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 
     auto* cache    = settings.barrier_cache;
     auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
-    // Must stay in lockstep with the gate in solve_linear_program_with_barrier: this path swaps
-    // in the slim user_problem_from_transform, so disagreement runs presolve on a fabricated
-    // problem.
+    // MPS dump and QC->SOC conversion are outer-only; the rest is can_reuse_barrier_cache,
+    // shared with solve_linear_program_with_barrier so this path never builds the slim
+    // user_problem_from_transform unless the inner gate will accept it.
     const bool reuse_from_cache =
-      settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
-      effective_bound_free_variables(settings) == 0 &&
-      xf->presolve_info.bounded_free_variables.empty() && op_problem.has_quadratic_objective() &&
-      !op_problem.has_quadratic_constraints() && xf->second_order_cone_dims.empty() &&
-      static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
-      op_problem.get_n_variables() == xf->user_num_cols &&
-      op_problem.get_n_constraints() == xf->user_num_rows;
+      settings.user_problem_file.empty() && !op_problem.has_quadratic_constraints() &&
+      can_reuse_barrier_cache(xf,
+                              effective_bound_free_variables(settings),
+                              op_problem.get_n_variables(),
+                              op_problem.get_n_constraints(),
+                              op_problem.has_quadratic_objective(),
+                              false);
 
     if (problem_checking && !reuse_from_cache) {
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
