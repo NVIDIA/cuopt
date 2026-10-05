@@ -94,18 +94,18 @@ void unscale_uncrush_barrier_to_user(const user_problem_t<i_t, f_t>& user_proble
 
 // Presolve and scaling offset the data by a constant the maps alone cannot recover, so record
 // what the barrier values are worth beyond crush(user values); updates re-add it.
-template <typename f_t>
-std::vector<double> shift_from(const std::vector<f_t>& barrier_values,
-                               const std::vector<double>& crushed)
+// Returns 0 and writes shift, or -1 when the lengths disagree.
+template <typename i_t, typename f_t>
+i_t shift_from(const std::vector<f_t>& barrier_values,
+               const std::vector<f_t>& crushed,
+               std::vector<f_t>& shift)
 {
-  if (crushed.size() != barrier_values.size()) {
-    throw std::runtime_error("crushed length disagrees with the cached barrier LP");
-  }
-  std::vector<double> shift(barrier_values.size());
+  if (crushed.size() != barrier_values.size()) { return static_cast<i_t>(-1); }
+  shift.resize(barrier_values.size());
   for (std::size_t k = 0; k < shift.size(); ++k) {
-    shift[k] = static_cast<double>(barrier_values[k]) - crushed[k];
+    shift[k] = barrier_values[k] - crushed[k];
   }
-  return shift;
+  return 0;
 }
 
 template <typename i_t, typename f_t>
@@ -644,20 +644,28 @@ lp_status_t solve_linear_program_with_barrier(
       auto* xf = cache->transform();
       // Crushing this solve's own data also checks the maps still describe it: presolve may
       // have dualized an LP, in which case the crush throws.
+      bool objective_shift_ok = false;
       try {
         auto const crushed = cuopt::mathematical_optimization::crush_user_linear_objective(
           *xf, user_problem.objective.data(), user_problem.num_cols);
-        xf->linear_obj_shift = shift_from(solver_lp->objective, crushed);
+        objective_shift_ok =
+          shift_from<i_t, f_t>(solver_lp->objective, crushed, xf->linear_obj_shift) == 0;
       } catch (std::exception const&) {
+        objective_shift_ok = false;
+      }
+      if (!objective_shift_ok) {
         // A zero shift still lets an update run; it just contributes nothing.
         xf->linear_obj_shift.assign(solver_lp->objective.size(), 0.0);
       }
       if (xf->rhs_update_supported) {
-        try {
-          auto const crushed = cuopt::mathematical_optimization::crush_user_rhs(
-            *xf, user_problem.rhs.data(), user_problem.num_rows);
-          xf->rhs_shift = shift_from(solver_lp->rhs, crushed);
-        } catch (std::exception const&) {
+        std::vector<f_t> crushed;
+        std::string error;
+        bool const rhs_shift_ok =
+          cuopt::mathematical_optimization::crush_user_rhs(
+            *xf, user_problem.rhs.data(), user_problem.num_rows, crushed, error) ==
+            cuopt::mathematical_optimization::crush_rhs_status_t::success &&
+          shift_from<i_t, f_t>(solver_lp->rhs, crushed, xf->rhs_shift) == 0;
+        if (!rhs_shift_ok) {
           // Maps cannot reproduce this RHS, so refuse later updates.
           xf->rhs_update_supported = false;
           xf->rhs_shift.clear();

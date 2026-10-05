@@ -236,7 +236,7 @@ class DataModel(data_model_wrapper.DataModel):
 
         Update the linear objective coefficients for a sequence re-solve.
         Writes ``coefficients`` onto this DataModel. If a barrier cache is
-        present, also maps them into the cached barrier workspace and marks
+        present, also maps them into the presolved space and marks
         it dirty (quadratic ``Q``, ``A``, and bounds must stay unchanged).
 
         Parameters
@@ -250,10 +250,10 @@ class DataModel(data_model_wrapper.DataModel):
     @catch_cuopt_exception
     def update_rhs(self, b: ArrayLike) -> None:
         """
-        Update the constraint right-hand sides (b) for a sequence re-solve.
+        Update the linear-equality constraint right-hand side (b) for a sequence re-solve.
 
         Writes ``b`` onto this DataModel. If a barrier cache is present, also
-        maps ``b`` into the cached barrier workspace and marks it dirty
+        maps ``b`` into the presolved space and marks it dirty
         (quadratic ``Q``, ``A``, row senses, and bounds must stay unchanged).
         Cache reuse is QP-only: quadratic constraints take a full solve.
 
@@ -265,7 +265,7 @@ class DataModel(data_model_wrapper.DataModel):
         Parameters
         ----------
         b : array-like of float64
-            Constraint right-hand sides, length equal to the number of
+            Linear equality constraint right-hand sides, length equal to the number of
             constraints on the first ``sequence_solve``.
 
         Returns
