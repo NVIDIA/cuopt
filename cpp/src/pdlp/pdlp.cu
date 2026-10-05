@@ -2605,6 +2605,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   std::cout << "Starting PDLP loop:" << std::endl;
 #endif
 
+  using f_t2 = typename type_2<f_t>::type;
+
   // The four setup calls (compute_initial_step_size, compute_initial_primal_weight,
   // scale_problem, create_spmv_op_plans) run unconditionally here.  Each of them
   // branches on is_distributed_master() at entry.
@@ -2777,7 +2779,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   // Project initial primal solution
   if (settings_.hyper_params.project_initial_primal) {
-    using f_t2 = typename type_2<f_t>::type;
     if (batch_mode_) {
       // In batch mode variable_bounds are shared and only the bound rescaling is per climber.
       // Apply it here too so the initial point is projected into the correct scaled space.
