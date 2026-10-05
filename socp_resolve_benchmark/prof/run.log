@@ -1,0 +1,35 @@
+WARNING: Device-side CUDA Event completion trace is currently enabled.
+         This may increase runtime overhead and the likelihood of false
+         dependencies across CUDA Streams. If you wish to avoid this, please
+         disable the feature with --cuda-event-trace=false.
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=2  tol=1e-08 IR=2 augmented=1 pool=1.0 GiB
+
+=== default ===
+  cold vs cold: objectives differ by up to 7.85e-14, control iterations by up to 0; 10x optimality tol is 9.86e-09
+     |                  --- COLD ---                   |              --- WARM (reuse) ---               |
+   t |  it  barr_ms         outcome          objective |  it  barr_ms         outcome          objective |      delta
+---------------------------------------------------------------------------------------------------------------------
+  0* |  23    609.0         optimal    -0.098563710903 |  23    452.0         optimal    -0.098563710903 |  +1.82e-15
+  1  |  21    391.0         optimal    -0.098508018210 |  21    116.0         optimal    -0.098508018210 |  -9.39e-14
+  objectives, reuse vs cold: OK  9.39e-14 against a cold-vs-cold band of 9.86e-09
+  iterations, reuse vs control: OK  worst step off by 0 against a band of 1 (exact on 1/1)
+  cache reused on every warm solve: OK  (1/1)
+  all solves Optimal: OK
+
+=== reuse improvement (mean over 1 warm solves) ===
+config    cold_wall  warm_wall      save   save%   cold_barr  warm_barr   cold_it  warm_it  ctl_it    obj_dev  obj_band
+-----------------------------------------------------------------------------------------------------------------------
+default       405.2      122.7    +282.5   69.7%       391.0      116.0      21.0     21.0    21.0    9.4e-14   9.9e-09
+
+wall = Solve() wall clock, the honest reuse metric: convert/presolve/scaling
+are what reuse skips and they sit outside the barrier timer.
+barr = barrier's own timer.  ctl_it = cold solve pinned to the initial
+point reuse uses.  obj_dev = worst reuse-vs-cold objective gap,
+obj_band = worst cold-vs-cold gap, the noise it has to beat.
+
+RESULT: PASS
+Collecting data...
+Generating '/tmp/nsys-report-38c6.qdstrm'
+[1/1] [0%                          ] warm.nsys-rep[1/1] [0%                          ] warm.nsys-rep[1/1] [10%                         ] warm.nsys-rep[1/1] [11%                         ] warm.nsys-rep[1/1] [9%                          ] warm.nsys-rep[1/1] [=17%                        ] warm.nsys-rep[1/1] [=15%                        ] warm.nsys-rep[1/1] [13%                         ] warm.nsys-rep[1/1] [11%                         ] warm.nsys-rep[1/1] [10%                         ] warm.nsys-rep[1/1] [12%                         ] warm.nsys-rep[1/1] [=15%                        ] warm.nsys-rep[1/1] [13%                         ] warm.nsys-rep[1/1] [12%                         ] warm.nsys-rep[1/1] [11%                         ] warm.nsys-rep[1/1] [10%                         ] warm.nsys-rep[1/1] [13%                         ] warm.nsys-rep[1/1] [=16%                        ] warm.nsys-rep[1/1] [==20%                       ] warm.nsys-rep[1/1] [==21%                       ] warm.nsys-rep[1/1] [===23%                      ] warm.nsys-rep[1/1] [===24%                      ] warm.nsys-rep[1/1] [=====29%                    ] warm.nsys-rep[1/1] [======35%                   ] warm.nsys-rep[1/1] [========40%                 ] warm.nsys-rep[1/1] [=========46%                ] warm.nsys-rep[1/1] [===========51%              ] warm.nsys-rep[1/1] [============56%             ] warm.nsys-rep[1/1] [==============62%           ] warm.nsys-rep[1/1] [===============67%          ] warm.nsys-rep[1/1] [=================72%        ] warm.nsys-rep[1/1] [==================77%       ] warm.nsys-rep[1/1] [========================100%] warm.nsys-rep[1/1] [========================100%] warm.nsys-rep
+Generated:
+	/home/nfs/iroy/NvidiaCuopt/socp_resolve_benchmark/prof/warm.nsys-rep

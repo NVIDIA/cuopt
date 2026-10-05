@@ -1,0 +1,29 @@
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=1 augmented=1 pool=1.0 GiB
+Traceback (most recent call last):
+  File "/raid/iroy/miniforge3/envs/cuopt129/lib/python3.14/site-packages/cuopt/linear_programming/data_model/utilities/exception_handler.py", line 24, in func
+    return f(*args, **kwargs)
+  File "/raid/iroy/miniforge3/envs/cuopt129/lib/python3.14/site-packages/cuopt/linear_programming/data_model/data_model.py", line 247, in update_linear_objective
+    super().update_linear_objective(coefficients)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "cuopt/linear_programming/data_model/data_model_wrapper.pyx", line 196, in cuopt.linear_programming.data_model.data_model_wrapper.DataModel.update_linear_objective
+    cache.update_linear_objective(&c_view[0], <int>c_view.shape[0])
+    
+RuntimeError: {"CUOPT_ERROR_TYPE": "ValidationError", "msg": "update_linear_objective: no barrier transform; Solve with CUOPT_SEQUENCE_SOLVE enabled first."}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/nfs/iroy/NvidiaCuopt/socp_resolve_benchmark/cuopt_socp_resolve_cache.py", line 446, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/home/nfs/iroy/NvidiaCuopt/socp_resolve_benchmark/cuopt_socp_resolve_cache.py", line 438, in main
+    rows = [summarize(c, tuned=(c == "tuned")) for c in ("default", "tuned") if c in wanted]
+            ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nfs/iroy/NvidiaCuopt/socp_resolve_benchmark/cuopt_socp_resolve_cache.py", line 308, in summarize
+    cache = run_cache(tuned, tag=f"{config}/warm")
+  File "/home/nfs/iroy/NvidiaCuopt/socp_resolve_benchmark/cuopt_socp_resolve_cache.py", line 272, in run_cache
+    dm.update_linear_objective(cof(SEQ[t]))
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/raid/iroy/miniforge3/envs/cuopt129/lib/python3.14/site-packages/cuopt/linear_programming/data_model/utilities/exception_handler.py", line 30, in func
+    raise InputValidationError(err["msg"])
+cuopt.linear_programming.data_model.utilities.exception_handler.InputValidationError: update_linear_objective: no barrier transform; Solve with CUOPT_SEQUENCE_SOLVE enabled first.

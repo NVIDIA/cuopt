@@ -1,0 +1,48 @@
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=6  tol=1e-08 IR=0 augmented=1 pool=1.0 GiB
+
+=== default ===
+  cold vs cold: objectives differ by up to nan, control iterations by up to nan; 10x optimality tol is 9.86e-09
+     |                  --- COLD ---                   |              --- WARM (reuse) ---               |
+   t |  it  barr_ms         outcome          objective |  it  barr_ms         outcome          objective |      delta
+---------------------------------------------------------------------------------------------------------------------
+  0* |   -        - numerical_error    -0.098563706249 |   -        - numerical_error    -0.098563619302 |  +8.69e-08
+  1  |   -        - numerical_error    -0.098507806064 |   -        - numerical_error    -0.098507806063 |  +8.25e-13
+  2  |   -        - numerical_error    -0.098667862716 |   -        - numerical_error    -0.098668201378 |  -3.39e-07
+  3  |   -        - numerical_error    -0.098823632895 |   -        - numerical_error    -0.098823483162 |  +1.50e-07
+  4  |   -        - numerical_error    -0.098492810627 |   -        - numerical_error    -0.098492810627 |  -2.52e-13
+  5  |   -        - numerical_error    -0.098754301172 |   -        - numerical_error    -0.098754301172 |  -4.21e-13
+  objectives, reuse vs cold: FAIL  3.39e-07 against a cold-vs-cold band of 9.86e-09
+  iterations, reuse vs control: FAIL  worst step off by nan against a band of 1 (exact on 0/5)
+  cache reused on every warm solve: OK  (5/5)
+  all solves Optimal: FAIL
+    baseline t=0: Optimal
+    baseline t=1: Optimal
+    baseline t=2: Optimal
+    baseline t=3: Optimal
+    baseline t=4: Optimal
+    baseline t=5: Optimal
+    baseline2 t=0: NumericalError
+    baseline2 t=1: Optimal
+    baseline2 t=2: Optimal
+    baseline2 t=3: Optimal
+    baseline2 t=4: Optimal
+    baseline2 t=5: Optimal
+    cache t=0: Optimal
+    cache t=1: Optimal
+    cache t=2: Optimal
+    cache t=3: Optimal
+    cache t=4: Optimal
+    cache t=5: Optimal
+
+=== reuse improvement (mean over 5 warm solves) ===
+config    cold_wall  warm_wall      save   save%   cold_barr  warm_barr   cold_it  warm_it  ctl_it    obj_dev  obj_band
+-----------------------------------------------------------------------------------------------------------------------
+default       191.8       83.8    +108.0   56.3%         nan        nan       nan      nan     nan    3.4e-07   9.9e-09
+
+wall = Solve() wall clock, the honest reuse metric: convert/presolve/scaling
+are what reuse skips and they sit outside the barrier timer.
+barr = barrier's own timer.  ctl_it = cold solve pinned to the initial
+point reuse uses.  obj_dev = worst reuse-vs-cold objective gap,
+obj_band = worst cold-vs-cold gap, the noise it has to beat.
+
+RESULT: FAIL

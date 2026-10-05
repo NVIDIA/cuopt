@@ -1,0 +1,20 @@
+/raid/iroy/miniforge3/envs/cuopt129/bin/python /home/nfs/iroy/NvidiaCuopt/socp_resolve_benchmark/cuopt_socp_resolve_cache.py --configs default --repeat 10 --repeat-step 1 --initial-point 2 --bound-free-vars 0 --cudss-deterministic 0 --csr-ir-matvec 1 --save-logs logs/repeat10_strategy_det_csrir/ip2-SedumiMu_det0
+
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=1 augmented=1 pool=1.0 GiB
+
+=== default: 10 cold solves of SEQ[1] ===
+ run |  it  barr_ms  mode |              objective | d_it      d_obj
+--------------------------------------------------------------------
+   0 |  24    214.0    ok |  -0.098508015994265091 |   +0  +0.00e+00
+   1 |  24    212.0    ok |  -0.098508015994103859 |   +0  +1.61e-13
+   2 |  24    214.0    ok |   -0.09850801599413192 |   +0  +1.33e-13
+   3 |  24    216.0    ok |  -0.098508015994271975 |   +0  -6.88e-15
+   4 |  24    227.0    ok |   -0.09850801599421348 |   +0  +5.16e-14
+   5 |  24    211.0    ok |  -0.098508015994298287 |   +0  -3.32e-14
+   6 |  29    232.0    ok |  -0.098508019056076215 |   +5  -3.06e-09
+   7 |  30    230.0  soft |  -0.098507869614217231 |   +6  +1.46e-07
+   8 |  24    213.0    ok |  -0.098508015994162687 |   +0  +1.02e-13
+   9 |  24    302.0    ok |  -0.098508015994282883 |   +0  -1.78e-14
+  iterations: 3 distinct value(s) [24, 29, 30]
+  objectives: 10 distinct value(s), spread 1.49e-07 (NOT identical)
+  outcomes: 9 optimal, 1 soft, 0 hard

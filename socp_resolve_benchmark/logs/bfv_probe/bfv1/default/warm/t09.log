@@ -1,0 +1,67 @@
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 27.79/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Bounded 50 free variables in presolve
+26 variables with no lower bound
+Transforming 50 nonzero lower bound
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.032 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.056s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.117 seconds
+Elapsed time           : 0.117 seconds
+Barrier setup complete at 0.117 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -1.025786844491e+03 -1.027881501917e+03 1.34e+03 5.28e+00 3.29e-02 0.118
+  1   -7.986344635374e+02 -1.216784979608e+03 1.04e+03 3.89e+00 1.06e-01 0.123
+  2   -9.726907015962e+00 -2.000122487983e+03 1.25e+01 3.59e+00 1.83e+00 0.129
+  3   -3.487097231083e-01 -2.778753103985e+02 3.75e-01 1.26e-01 4.42e-01 0.134
+  4   -5.473988144215e-02 -6.338341133632e+00 3.76e-03 1.28e-03 5.68e-03 0.139
+  5   -5.228061204055e-02 -1.991285700093e-01 8.20e-05 2.78e-05 1.24e-04 0.145
+  6   -6.547630098897e-02 -1.303740415360e-01 3.22e-05 1.09e-05 4.88e-05 0.151
+  7   -6.638831710528e-02 -1.311155702225e-01 3.15e-05 1.07e-05 4.78e-05 0.156
+  8   -6.659495373998e-02 -1.312821497683e-01 3.12e-05 1.06e-05 4.74e-05 0.161
+  9   -6.951133495326e-02 -1.315478469931e-01 2.85e-05 9.66e-06 5.22e-05 0.166
+ 10   -6.970802673411e-02 -1.316621505936e-01 2.78e-05 9.42e-06 9.83e-05 0.171
+ 11   -7.132438225507e-02 -1.318655532032e-01 2.55e-05 8.64e-06 2.76e-04 0.176
+ 12   -7.661321087803e-02 -1.288955640623e-01 1.92e-05 6.53e-06 2.59e-04 0.181
+ 13   -8.733910010844e-02 -1.194884174237e-01 5.33e-06 1.81e-06 1.08e-04 0.186
+ 14   -8.896087894413e-02 -1.156215692141e-01 3.62e-06 1.23e-06 1.41e-04 0.192
+ 15   -9.398342928888e-02 -1.056893824665e-01 1.30e-06 4.42e-07 1.27e-04 0.198
+ 16   -9.672440202696e-02 -1.011784735417e-01 3.89e-07 1.32e-07 1.99e-05 0.203
+ 17   -9.731635063084e-02 -9.987309471410e-02 1.35e-07 4.57e-08 3.61e-05 0.208
+ 18   -9.815400734394e-02 -9.871252937107e-02 2.18e-08 7.40e-09 5.53e-06 0.213
+ 19   -9.833185301237e-02 -9.846410795287e-02 4.53e-09 1.53e-09 2.13e-06 0.218
+ 20   -9.838746660537e-02 -9.839069389000e-02 1.09e-10 4.14e-11 3.51e-08 0.223
+ 21   -9.838875488445e-02 -9.838897713926e-02 7.42e-12 4.21e-12 1.57e-09 0.228
+ 22   -9.838883831210e-02 -9.838886491326e-02 8.63e-13 2.42e-10 1.42e-10 0.233
+ 23   -9.838884873383e-02 -9.838885131472e-02 6.53e-14 5.52e-08 1.03e-11 0.238
+ 24   -9.838884977744e-02 -9.838884997339e-02 4.31e-15 3.62e-09 1.16e-12 0.243
+
+
+Optimal solution found in 24 iterations and 0.243s
+Objective -9.83888498e-02
+Primal infeasibility (abs/rel): 6.62e-14/4.31e-15
+Dual infeasibility   (abs/rel): 3.99e-09/3.62e-09
+Complementarity gap  (abs/rel): 1.27e-12/1.16e-12
+
+
+Barrier finished in 0.25 seconds
+Dual variables for problems with quadratic constraints not returned.

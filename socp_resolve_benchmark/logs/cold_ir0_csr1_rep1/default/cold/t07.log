@@ -1,0 +1,67 @@
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 27.45/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.026 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.056s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.112 seconds
+Elapsed time           : 0.112 seconds
+Barrier setup complete at 0.112 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.704340093575e+02 -3.710959393425e+02 3.71e+03 1.91e+00 1.19e-02 0.113
+  1   -3.743763586523e+01 -3.496609895273e+02 3.74e+02 7.84e-02 1.66e-02 0.116
+  2   -3.890628866675e+00 -2.097811374309e+02 3.80e+01 4.70e-02 1.33e-02 0.119
+  3   -4.432462278816e-01 -3.238991854684e+01 3.86e+00 5.32e-03 4.56e-03 0.121
+  4   -9.292768446711e-02 -4.512426126987e+00 4.09e-01 5.69e-04 6.47e-04 0.124
+  5   -5.630707224362e-02 -7.109235171425e-01 4.09e-02 5.69e-05 8.81e-05 0.127
+  6   -5.680194927979e-02 -2.023098114137e-01 9.00e-03 1.25e-05 1.78e-05 0.130
+  7   -6.898517615419e-02 -1.400411212604e-01 3.96e-03 5.51e-06 7.56e-06 0.132
+  8   -7.329874494646e-02 -1.381748635459e-01 3.30e-03 4.60e-06 1.91e-05 0.135
+  9   -7.581246307557e-02 -1.362790215155e-01 2.85e-03 3.99e-06 3.78e-05 0.138
+ 10   -8.015304582568e-02 -1.311148274053e-01 2.17e-03 3.05e-06 7.10e-05 0.140
+ 11   -8.113158294792e-02 -1.301326545349e-01 1.83e-03 2.60e-06 8.07e-05 0.143
+ 12   -8.444883482261e-02 -1.250428389662e-01 1.26e-03 1.80e-06 8.07e-05 0.146
+ 13   -8.640650744441e-02 -1.208270897187e-01 9.05e-04 1.30e-06 1.14e-04 0.148
+ 14   -9.203112027476e-02 -1.101678196628e-01 4.10e-04 5.95e-07 6.80e-05 0.151
+ 15   -9.482979416317e-02 -1.051563263406e-01 2.02e-04 2.95e-07 2.86e-05 0.154
+ 16   -9.648807562223e-02 -1.022014066209e-01 1.01e-04 1.48e-07 1.31e-05 0.157
+ 17   -9.718060294815e-02 -1.006707311809e-01 4.36e-05 7.42e-08 1.98e-05 0.159
+ 18   -9.812728609466e-02 -9.919332302463e-02 1.08e-05 1.23e-08 4.52e-06 0.162
+ 19   -9.841174888894e-02 -9.876005800461e-02 3.19e-06 3.45e-09 1.44e-06 0.165
+ 20   -9.852524117244e-02 -9.859321387378e-02 5.78e-07 1.95e-09 2.27e-07 0.167
+ 21   -9.854922743912e-02 -9.855913310785e-02 8.39e-08 2.85e-09 3.09e-08 0.170
+ 22   -9.855277685315e-02 -9.855410655957e-02 1.13e-08 1.16e-08 3.78e-09 0.173
+ 23   -9.855325654447e-02 -9.855342715773e-02 1.44e-09 3.53e-08 4.33e-10 0.175
+ 24   -9.855331806743e-02 -9.855333992719e-02 1.85e-10 7.78e-07 4.80e-11 0.178
+ 25   -9.855332595060e-02 -9.855332873670e-02 2.36e-11 1.95e-06 5.50e-12 0.181
+ 26   -9.855332697004e-02 -9.855332728506e-02 2.68e-12 2.22e-05 6.04e-13 0.184
+ 27   -9.855332708611e-02 -9.855332711877e-02 2.76e-13 4.90e-05 6.23e-14 0.186
+ 28   -9.855332709816e-02 -9.855332710154e-02 2.75e-14 2.61e-05 6.19e-15 0.189
+ 29   -9.855332709942e-02 -9.855332709981e-02 3.11e-15 1.68e-03 1.22e-15 0.192
+ 30   -9.855332709953e-02 -9.855332709968e-02 1.44e-15 3.56e-02 3.49e-16 0.194
+Numerical error in objective
+Primal residual -nan dual residual -nan complementarity residual -nan
+Search direction computation failed
+Barrier finished in 0.20 seconds
+Barrier Solve status A numerical error was encountered.
+Dual variables for problems with quadratic constraints not returned.

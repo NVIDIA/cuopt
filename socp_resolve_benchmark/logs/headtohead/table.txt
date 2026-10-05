@@ -1,0 +1,64 @@
+
+Per-step re-solve, cuOpt series = warm. ms is each solver's own timer:
+Clarabel reports total solve time, cuOpt reports barrier time (both exclude setup).
+
+  t |           Clarabel |          cuOpt default |            cuOpt tuned |     cuOpt tuned +csrIR | obj spread
+----------------------------------------------------------------------------------------------------------------
+  0 |   22     51.9      |       32    270.0 soft |       20    230.0 soft |       14    182.0      |   1.47e-09
+  1 |   22     51.6      |       31    160.0 soft |       26    140.0 soft |       21     96.0      |   8.47e-10
+  2 |   20     47.7      |       30    150.0 soft |       21    109.0      |       21     93.0      |   7.42e-12
+  3 |   20     47.9      |       24    124.0      |       22    120.0      |       22    101.0      |   3.45e-09
+  4 |   19     45.6      |       31    150.0 soft |       26    142.0      |       26    119.0      |   1.73e-10
+  5 |   20     53.5      |       25    130.0      |       27    147.0      |       26    120.0      |   2.70e-09
+  6 |   17     41.6      |       30    150.0 soft |       22    120.0      |       22    101.0      |   7.26e-10
+  7 |   18     46.0      |       25    131.0      |       21    114.0      |       21     96.0      |   1.24e-09
+  8 |   19     45.6      |       30    154.0      |       27    149.0      |       27    124.0      |   5.00e-10
+  9 |   21     49.8      |       25    129.0      |       21    114.0      |       21     94.0      |   1.42e-09
+ 10 |   17     41.8      |       25    129.0      |       25    140.0      |       25    114.0      |   1.77e-09
+ 11 |   17     41.8      |       30    150.0 soft |       26    145.0      |       26    122.0      |   2.11e-09
+ 12 |   19     45.6      |       25    128.0      |       24    130.0      |       24    109.0      |   2.20e-09
+ 13 |   17     44.3      |       25    134.0      |       25    134.0      |       23    109.0      |   3.48e-09
+ 14 |   15     38.0      |       25    131.0      |       24    131.0      |       24    110.0      |   2.81e-09
+ 15 |   16     42.0      |       26    133.0      |       26    145.0      |       26    121.0      |   4.57e-09
+ 16 |   19     45.7      |       31    160.0 soft |       24    131.0      |       24    110.0      |   4.67e-09
+ 17 |   15     40.0      |       25    128.0      |       24    130.0      |       24    108.0      |   3.11e-09
+ 18 |   15     40.1      |       32    160.0 soft |       23    127.0      |       23    106.0      |   2.59e-10
+ 19 |   14     35.6      |       25    129.0      |       25    138.0      |       25    115.0      |   1.76e-09
+----------------------------------------------------------------------------------------------------------------
+mean | 18.1     44.8      | 27.6    146.5      | 23.9    136.8      | 23.2    112.5      |
+
+outcomes over the 20 re-solves:
+                Clarabel: 20/20 solved
+           cuOpt default: 12/20 optimal, 8 soft, 0 hard
+             cuOpt tuned: 18/20 optimal, 2 soft, 0 hard
+      cuOpt tuned +csrIR: 20/20 optimal, 0 soft, 0 hard
+
+objective agreement (max spread across all solvers, per step):
+  median 1.77e-09   worst 4.67e-09
+
+Notes on reading this table.
+
+Both solvers re-solve the same instance after only the linear objective changes, and
+both reuse setup plus symbolic factorization while restarting the interior-point iterate
+from a standard starting point. Clarabel does not warm-start the iterate despite
+warm_start_enable=True, which was verified from its per-iteration logs: every re-solve
+begins at pres~1.0, dres~1.0, mu~1.0. So the two series measure the same thing.
+
+cuOpt's t=0 is the solve that *stores* the barrier cache, so it is a full solve rather
+than a reuse; t=1..19 are the reuses. Means over the 19 matching steps:
+
+                        ms    iters   outcomes
+  Clarabel            44.4     17.9   20/20 solved
+  cuOpt tuned +csrIR  103.8    23.7   20/20 optimal   (109.6 ms wall)
+
+cuOpt's ms is its barrier timer, which excludes the convert/presolve/scaling that still
+run inside Solve(); its wall clock is 109.6 ms, so the gap is marginally wider
+end-to-end. Clarabel's ms is its full solve time.
+
+So Clarabel is about 2.3x faster per re-solve. Roughly half of that is iteration count
+(17.9 vs 23.7, about 24% fewer) and half is cost per iteration (2.48 vs 4.38 ms).
+
+Configurations: default = solver defaults, step scale 0.9. tuned = DualLeastSquares
+initial point, step scale 0.99 (though reuse overrides the initial point with SedumiMu on
+a cone model, so the tuned column's warm series differs from its cold series by design).
++csrIR additionally sets barrier_csr_ir_matvec=1 from the unmerged draft PR #1739.

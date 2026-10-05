@@ -1,0 +1,32 @@
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=8  tol=1e-06 IR=2 augmented=1 pool=1.0 GiB
+
+=== default ===
+  cold vs cold: objectives differ by up to 4.90e-14, control iterations by up to 0; 10x optimality tol is 9.86e-07
+     |                  --- COLD ---                   |              --- WARM (reuse) ---               |
+   t |  it  barr_ms         outcome          objective |  it  barr_ms         outcome          objective |      delta
+---------------------------------------------------------------------------------------------------------------------
+  0* |  21    252.0         optimal    -0.098563610452 |  21    205.0         optimal    -0.098563610452 |  -6.79e-15
+  1  |  18    290.0         optimal    -0.098507809237 |  18     77.0         optimal    -0.098507809237 |  +3.42e-14
+  2  |  16    190.0         optimal    -0.098667852527 |  16     70.0         optimal    -0.098667852527 |  +6.08e-14
+  3  |  20    196.0         optimal    -0.098823475105 |  20     88.0         optimal    -0.098823475105 |  -7.08e-16
+  4  |  23    237.0         optimal    -0.098492805723 |  23    101.0         optimal    -0.098492805723 |  -8.23e-15
+  5  |  24    304.0         optimal    -0.098754284812 |  24    106.0         optimal    -0.098754284812 |  +9.90e-14
+  6  |  19    314.0         optimal    -0.098474051613 |  19     82.0         optimal    -0.098474051613 |  +1.73e-15
+  7  |  19    281.0         optimal    -0.098553237373 |  19     83.0         optimal    -0.098553237373 |  +6.35e-14
+  objectives, reuse vs cold: OK  9.90e-14 against a cold-vs-cold band of 9.86e-07
+  iterations, reuse vs control: OK  worst step off by 0 against a band of 1 (exact on 7/7)
+  cache reused on every warm solve: OK  (7/7)
+  all solves Optimal: OK
+
+=== reuse improvement (mean over 7 warm solves) ===
+config    cold_wall  warm_wall      save   save%   cold_barr  warm_barr   cold_it  warm_it  ctl_it    obj_dev  obj_band
+-----------------------------------------------------------------------------------------------------------------------
+default       267.5       92.6    +175.0   65.4%       258.9       86.7      19.9     19.9    19.9    9.9e-14   9.9e-07
+
+wall = Solve() wall clock, the honest reuse metric: convert/presolve/scaling
+are what reuse skips and they sit outside the barrier timer.
+barr = barrier's own timer.  ctl_it = cold solve pinned to the initial
+point reuse uses.  obj_dev = worst reuse-vs-cold objective gap,
+obj_band = worst cold-vs-cold gap, the noise it has to beat.
+
+RESULT: PASS

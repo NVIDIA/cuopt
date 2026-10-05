@@ -1,0 +1,46 @@
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=1 augmented=1 pool=1.0 GiB
+
+=== default ===
+  cold vs cold: objectives differ by up to 4.92e-10, control iterations by up to 2; 10x optimality tol is 9.86e-09
+     |                  --- COLD ---                   |              --- WARM (reuse) ---               |
+   t |  it  barr_ms         outcome          objective |  it  barr_ms         outcome          objective |      delta
+---------------------------------------------------------------------------------------------------------------------
+  0* |  16    206.0         optimal    -0.098563710055 |  16    283.0         optimal    -0.098563710056 |  -9.47e-13
+  1  |  16    203.0         optimal    -0.098508018746 |  21    105.0         optimal    -0.098508018210 |  +5.36e-10
+  2  |  14    190.0         optimal    -0.098668249361 |  22    108.0         optimal    -0.098668251832 |  -2.47e-09
+  3  |  16    287.0         optimal    -0.098823646615 |  22    111.0         optimal    -0.098823646439 |  +1.76e-10
+  4  |  15    202.0         optimal    -0.098492895249 |  25    128.0         optimal    -0.098492897197 |  -1.95e-09
+  5  |  16    200.0         optimal    -0.098754448414 |  26    131.0         optimal    -0.098754448112 |  +3.02e-10
+  6  |  15    198.0         optimal    -0.098474174313 |  22    111.0         optimal    -0.098474175608 |  -1.29e-09
+  7  |  16    202.0         optimal    -0.098553326964 |  21    105.0         optimal    -0.098553325910 |  +1.05e-09
+  8  |  15    197.0         optimal    -0.098707700612 |  27    138.0         optimal    -0.098707701691 |  -1.08e-09
+  9  |  15    199.0         optimal    -0.098388847733 |  21    105.0         optimal    -0.098388849793 |  -2.06e-09
+ 10  |  14    196.0         optimal    -0.098566860025 |  26    131.0         optimal    -0.098566863105 |  -3.08e-09
+ 11  |  15    293.0         optimal    -0.098488444076 |  26    136.0         optimal    -0.098488442637 |  +1.44e-09
+ 12  |  15    213.0         optimal    -0.098505705983 |  24    120.0         optimal    -0.098505706764 |  -7.81e-10
+ 13  |  16    202.0         optimal    -0.098419536645 |  23    117.0         optimal    -0.098419536919 |  -2.75e-10
+ 14  |  16    202.0         optimal    -0.098597565404 |  24    120.0         optimal    -0.098597564106 |  +1.30e-09
+ 15  |  17    210.0         optimal    -0.098633143727 |  26    133.0         optimal    -0.098633139329 |  +4.40e-09
+ 16  |  15    199.0         optimal    -0.098596167184 |  24    126.0         optimal    -0.098596166440 |  +7.44e-10
+ 17  |  14    191.0         optimal    -0.098524048628 |  24    121.0         optimal    -0.098524048208 |  +4.20e-10
+ 18  |  18    207.0         optimal    -0.098379007721 |  23    117.0         optimal    -0.098379007547 |  +1.73e-10
+ 19  |  16    201.0         optimal    -0.098662545988 |  25    127.0         optimal    -0.098662545960 |  +2.77e-11
+  objectives, reuse vs cold: OK  4.40e-09 against a cold-vs-cold band of 9.86e-09
+  iterations, reuse vs control: OK  worst step off by 2 against a band of 2 (exact on 14/19)
+  cache reused on every warm solve: OK  (19/19)
+  all solves Optimal: FAIL
+    control t=6: Optimal
+  reuse overrode the requested initial point with SedumiMu, so warm iterations track the control (23.9) rather than baseline (15.5).
+
+=== reuse improvement (mean over 19 warm solves) ===
+config    cold_wall  warm_wall      save   save%   cold_barr  warm_barr   cold_it  warm_it  ctl_it    obj_dev  obj_band
+-----------------------------------------------------------------------------------------------------------------------
+default       218.1      126.2     +91.9   42.2%       210.1      120.5      15.5     23.8    23.9    4.4e-09   9.9e-09
+
+wall = Solve() wall clock, the honest reuse metric: convert/presolve/scaling
+are what reuse skips and they sit outside the barrier timer.
+barr = barrier's own timer.  ctl_it = cold solve pinned to the initial
+point reuse uses.  obj_dev = worst reuse-vs-cold objective gap,
+obj_band = worst cold-vs-cold gap, the noise it has to beat.
+
+RESULT: FAIL

@@ -1,0 +1,66 @@
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 39.97/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.024 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.100s
+Symbolic factorization time : 0.026s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.157 seconds
+Elapsed time           : 0.157 seconds
+Barrier setup complete at 0.157 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702964190560e+02 -3.711235215740e+02 3.71e+03 1.91e+00 1.19e-02 0.157
+  1   -3.742349300526e+01 -3.496884758358e+02 3.74e+02 7.84e-02 1.66e-02 0.160
+  2   -3.889054535598e+00 -2.098042040194e+02 3.80e+01 4.70e-02 1.33e-02 0.163
+  3   -4.430325563647e-01 -3.239324784515e+01 3.86e+00 5.32e-03 4.56e-03 0.166
+  4   -9.287131858780e-02 -4.512039335448e+00 4.09e-01 5.68e-04 6.47e-04 0.168
+  5   -5.627559449152e-02 -7.108197095113e-01 4.09e-02 5.69e-05 8.80e-05 0.171
+  6   -5.676127111838e-02 -2.028283541264e-01 9.03e-03 1.26e-05 1.79e-05 0.174
+  7   -6.872055431741e-02 -1.408420570516e-01 4.01e-03 5.59e-06 7.67e-06 0.176
+  8   -7.259020285917e-02 -1.392586933152e-01 3.40e-03 4.74e-06 2.05e-05 0.179
+  9   -7.571314920358e-02 -1.366608719820e-01 2.87e-03 4.02e-06 4.96e-05 0.182
+ 10   -7.917049539066e-02 -1.330912171655e-01 2.23e-03 3.15e-06 8.05e-05 0.184
+ 11   -8.266994421800e-02 -1.284131101706e-01 1.57e-03 2.24e-06 8.79e-05 0.187
+ 12   -8.365645062521e-02 -1.266279739398e-01 1.28e-03 1.84e-06 8.45e-05 0.190
+ 13   -8.597865253545e-02 -1.221399749991e-01 9.32e-04 1.35e-06 7.35e-05 0.192
+ 14   -8.797480514521e-02 -1.173909115307e-01 6.31e-04 9.30e-07 1.66e-04 0.195
+ 15   -9.395519389689e-02 -1.062147831303e-01 2.12e-04 3.17e-07 6.86e-05 0.198
+ 16   -9.601673731601e-02 -1.024255987698e-01 8.72e-05 1.31e-07 2.31e-05 0.201
+ 17   -9.729813424661e-02 -1.002281526437e-01 3.73e-05 5.45e-08 7.97e-06 0.203
+ 18   -9.782907420066e-02 -9.921417784636e-02 1.31e-05 2.37e-08 6.47e-06 0.206
+ 19   -9.819970870998e-02 -9.862574770102e-02 2.56e-06 2.83e-09 1.40e-06 0.209
+ 20   -9.833918159033e-02 -9.843270506047e-02 5.21e-07 1.99e-09 2.66e-07 0.211
+ 21   -9.837236281540e-02 -9.838791732003e-02 8.49e-08 2.06e-09 3.81e-08 0.214
+ 22   -9.837804369758e-02 -9.838030148535e-02 1.23e-08 1.57e-09 4.88e-09 0.217
+ 23   -9.837887941387e-02 -9.837918038872e-02 1.64e-09 1.91e-08 5.77e-10 0.219
+ 24   -9.837899243036e-02 -9.837902836852e-02 1.96e-10 2.07e-06 6.36e-11 0.222
+ 25   -9.837900615259e-02 -9.837900984567e-02 2.02e-11 4.12e-06 6.57e-12 0.225
+ 26   -9.837900756335e-02 -9.837900793454e-02 2.03e-12 6.18e-06 6.65e-13 0.227
+ 27   -9.837900770496e-02 -9.837900774231e-02 2.04e-13 2.24e-05 6.75e-14 0.230
+ 28   -9.837900771910e-02 -9.837900772318e-02 2.21e-14 8.28e-05 7.03e-15 0.233
+ 29   -9.837900772067e-02 -9.837900772110e-02 2.66e-15 5.41e-04 1.91e-15 0.235
+Numerical error in objective
+Primal residual -nan dual residual -nan complementarity residual -nan
+Search direction computation failed
+Barrier finished in 0.24 seconds
+Barrier Solve status A numerical error was encountered.
+Dual variables for problems with quadratic constraints not returned.

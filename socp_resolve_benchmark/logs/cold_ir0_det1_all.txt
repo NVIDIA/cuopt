@@ -1,0 +1,150 @@
+########## replicate 1 (IR=0, cudss_det=1) ##########
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=0 augmented=1 pool=1.0 GiB
+=== default (cold only) ===
+   t |  it  barr_ms  mode         outcome          objective
+------------------------------------------------------------
+   0 |  30   1400.0  soft numerical_error    -0.098563260045
+   1 |  30   1450.0  soft numerical_error    -0.098507871039
+   2 |  30   1420.0  soft numerical_error    -0.098668134456
+   3 |  30   1400.0  soft numerical_error    -0.098823388524
+   4 |  30   1390.0  soft numerical_error    -0.098492443737
+   5 |  32   1470.0  soft numerical_error    -0.098754342253
+   6 |  30   1400.0  soft numerical_error    -0.098473845443
+   7 |  30   1390.0  soft numerical_error    -0.098553256544
+   8 |  31   1430.0  soft numerical_error    -0.098707409820
+   9 |  31   1430.0  soft numerical_error    -0.098388794141
+  10 |  31   1540.0  soft numerical_error    -0.098566804297
+  11 |  31   1460.0  soft numerical_error    -0.098488236411
+  12 |  31   1440.0  soft numerical_error    -0.098505323526
+  13 |   -        -  hard         unknown                nan
+  14 |  31   1560.0  soft numerical_error    -0.098597500124
+  15 |  30   1400.0  soft numerical_error    -0.098632899010
+  16 |  31   1460.0  soft numerical_error    -0.098595762637
+  17 |   -        -  hard         unknown                nan
+  18 |  32   1490.0  soft numerical_error    -0.098378879414
+  19 |  31   1470.0  soft numerical_error    -0.098662139534
+  0/20 optimal, 18 soft, 2 hard
+=== tuned (cold only) ===
+   t |  it  barr_ms  mode         outcome          objective
+------------------------------------------------------------
+   0 |  18    920.0  soft numerical_error    -0.098563659107
+   1 |  21   1050.0  soft numerical_error    -0.098507757491
+   2 |  18    930.0  soft numerical_error    -0.098668120625
+   3 |  20   1010.0  soft numerical_error    -0.098823404210
+   4 |  20   1020.0  soft numerical_error    -0.098492798957
+   5 |  20   1010.0  soft numerical_error    -0.098754275785
+   6 |  15    795.0    ok         optimal    -0.098474175349
+   7 |  19   1020.0  soft numerical_error    -0.098553218857
+   8 |  19    960.0  soft numerical_error    -0.098707616828
+   9 |  20   1090.0  soft numerical_error    -0.098388815962
+  10 |  19   1030.0  soft numerical_error    -0.098566564975
+  11 |  19   1040.0  soft numerical_error    -0.098488304508
+  12 |   -        -  hard         unknown                nan
+  13 |  21   1050.0  soft numerical_error    -0.098419445458
+  14 |  19    980.0  soft numerical_error    -0.098597477824
+  15 |   -        -  hard         unknown                nan
+  16 |  19   1040.0  soft numerical_error    -0.098595939317
+  17 |  19    960.0  soft numerical_error    -0.098523995652
+  18 |   -        -  hard         unknown                nan
+  19 |  19    970.0  soft numerical_error    -0.098662181989
+  1/20 optimal, 16 soft, 3 hard
+########## replicate 2 (IR=0, cudss_det=1) ##########
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=0 augmented=1 pool=1.0 GiB
+=== default (cold only) ===
+   t |  it  barr_ms  mode         outcome          objective
+------------------------------------------------------------
+   0 |  30   1480.0  soft numerical_error    -0.098563260045
+   1 |  30   1400.0  soft numerical_error    -0.098507871039
+   2 |  30   1510.0  soft numerical_error    -0.098668134456
+   3 |  30   1480.0  soft numerical_error    -0.098823388524
+   4 |  30   1470.0  soft numerical_error    -0.098492443737
+   5 |  32   1530.0  soft numerical_error    -0.098754342253
+   6 |  30   1400.0  soft numerical_error    -0.098473845443
+   7 |  30   1390.0  soft numerical_error    -0.098553256544
+   8 |  31   1480.0  soft numerical_error    -0.098707409820
+   9 |  31   1440.0  soft numerical_error    -0.098388794141
+  10 |  31   1430.0  soft numerical_error    -0.098566804297
+  11 |  31   1440.0  soft numerical_error    -0.098488236411
+  12 |  31   1440.0  soft numerical_error    -0.098505323526
+  13 |   -        -  hard         unknown                nan
+  14 |  31   1430.0  soft numerical_error    -0.098597500124
+  15 |  30   1390.0  soft numerical_error    -0.098632899010
+  16 |  31   1510.0  soft numerical_error    -0.098595762637
+  17 |   -        -  hard         unknown                nan
+  18 |  32   1470.0  soft numerical_error    -0.098378879414
+  19 |  31   1430.0  soft numerical_error    -0.098662139534
+  0/20 optimal, 18 soft, 2 hard
+=== tuned (cold only) ===
+   t |  it  barr_ms  mode         outcome          objective
+------------------------------------------------------------
+   0 |  18    920.0  soft numerical_error    -0.098563659107
+   1 |  21   1050.0  soft numerical_error    -0.098507757491
+   2 |  18   1010.0  soft numerical_error    -0.098668120625
+   3 |  20   1090.0  soft numerical_error    -0.098823404210
+   4 |  20   1090.0  soft numerical_error    -0.098492798957
+   5 |  20   1010.0  soft numerical_error    -0.098754275785
+   6 |  15    836.0    ok         optimal    -0.098474175349
+   7 |  19    960.0  soft numerical_error    -0.098553218857
+   8 |  19    960.0  soft numerical_error    -0.098707616828
+   9 |  20   1000.0  soft numerical_error    -0.098388815962
+  10 |  19    960.0  soft numerical_error    -0.098566564975
+  11 |  19    970.0  soft numerical_error    -0.098488304508
+  12 |   -        -  hard         unknown                nan
+  13 |  21   1050.0  soft numerical_error    -0.098419445458
+  14 |  19    970.0  soft numerical_error    -0.098597477824
+  15 |   -        -  hard         unknown                nan
+  16 |  19    960.0  soft numerical_error    -0.098595939317
+  17 |  19    960.0  soft numerical_error    -0.098523995652
+  18 |   -        -  hard         unknown                nan
+  19 |  19    960.0  soft numerical_error    -0.098662181989
+  1/20 optimal, 16 soft, 3 hard
+########## replicate 3 (IR=0, cudss_det=1) ##########
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=0 augmented=1 pool=1.0 GiB
+=== default (cold only) ===
+   t |  it  barr_ms  mode         outcome          objective
+------------------------------------------------------------
+   0 |  30   1400.0  soft numerical_error    -0.098563260045
+   1 |  30   1390.0  soft numerical_error    -0.098507871039
+   2 |  30   1410.0  soft numerical_error    -0.098668134456
+   3 |  30   1520.0  soft numerical_error    -0.098823388524
+   4 |  30   1470.0  soft numerical_error    -0.098492443737
+   5 |  32   1580.0  soft numerical_error    -0.098754342253
+   6 |  30   1460.0  soft numerical_error    -0.098473845443
+   7 |  30   1500.0  soft numerical_error    -0.098553256544
+   8 |  31   1440.0  soft numerical_error    -0.098707409820
+   9 |  31   1430.0  soft numerical_error    -0.098388794141
+  10 |  31   1440.0  soft numerical_error    -0.098566804297
+  11 |  31   1430.0  soft numerical_error    -0.098488236411
+  12 |  31   1450.0  soft numerical_error    -0.098505323526
+  13 |   -        -  hard         unknown                nan
+  14 |  31   1510.0  soft numerical_error    -0.098597500124
+  15 |  30   1390.0  soft numerical_error    -0.098632899010
+  16 |  31   1430.0  soft numerical_error    -0.098595762637
+  17 |   -        -  hard         unknown                nan
+  18 |  32   1500.0  soft numerical_error    -0.098378879414
+  19 |  31   1440.0  soft numerical_error    -0.098662139534
+  0/20 optimal, 18 soft, 2 hard
+=== tuned (cold only) ===
+   t |  it  barr_ms  mode         outcome          objective
+------------------------------------------------------------
+   0 |  18    920.0  soft numerical_error    -0.098563659107
+   1 |  21   1050.0  soft numerical_error    -0.098507757491
+   2 |  18    920.0  soft numerical_error    -0.098668120625
+   3 |  20   1000.0  soft numerical_error    -0.098823404210
+   4 |  20   1030.0  soft numerical_error    -0.098492798957
+   5 |  20   1010.0  soft numerical_error    -0.098754275785
+   6 |  15    793.0    ok         optimal    -0.098474175349
+   7 |  19    960.0  soft numerical_error    -0.098553218857
+   8 |  19    960.0  soft numerical_error    -0.098707616828
+   9 |  20   1000.0  soft numerical_error    -0.098388815962
+  10 |  19   1070.0  soft numerical_error    -0.098566564975
+  11 |  19   1000.0  soft numerical_error    -0.098488304508
+  12 |   -        -  hard         unknown                nan
+  13 |  21   1050.0  soft numerical_error    -0.098419445458
+  14 |  19    960.0  soft numerical_error    -0.098597477824
+  15 |   -        -  hard         unknown                nan
+  16 |  19   1040.0  soft numerical_error    -0.098595939317
+  17 |  19   1020.0  soft numerical_error    -0.098523995652
+  18 |   -        -  hard         unknown                nan
+  19 |  19    990.0  soft numerical_error    -0.098662181989
+  1/20 optimal, 16 soft, 3 hard

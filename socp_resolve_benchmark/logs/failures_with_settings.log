@@ -1,0 +1,2589 @@
+cuOpt SOCP numerical-breakdown logs from seven named benchmarks, with settings
+collected by collect_failures_settings.py
+30 failing solves across 7 benchmarks
+
+    1 failure (1 soft, 0 hard)  final_bfv0_ir2
+    1 failure (1 soft, 0 hard)  pr1732_sedumi099_nondet
+    2 failures (2 soft, 0 hard)  cudss_deterministic
+    3 failures (3 soft, 0 hard)  pr1856_alg2_nondet
+    3 failures (3 soft, 0 hard)  default_strategy_nondeterminism
+   18 failures (17 soft, 1 hard)  pr1721_ir0
+    2 failures (2 soft, 0 hard)  sedumi099_repeat
+
+======================================================================================================================
+SETTINGS PER BENCHMARK
+======================================================================================================================
+
+----------------------------------------------------------------------------------------------------------------------
+final_bfv0_ir2   (1 failing solve)
+----------------------------------------------------------------------------------------------------------------------
+  purpose   : the locked configuration: SedumiMu start, step 0.99, fixed-point refinement
+  code      : branch add_socp_support_update_apis with PR #1732 and PR #1721 merged
+  [harness] : --configs default --initial-point 2 --step-scale 0.99 --ir 2 --bound-free-vars 0 --cudss-deterministic 0 --K 20
+  [summary] : cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=2 augmented=1 pool=1.0 GiB
+              (from final_bfv0_ir2/summary.txt)
+  [log]     : what the solver printed, from the first failing solve here
+                - barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+                - cudss_deterministic = false (log prints no deterministic solve mode)
+                - barrier_augmented_system = 1 (log: linear system augmented)
+                - barrier_adaptive_regularization = on (log)
+                - Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+                - full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+                - build marker: 'started at 0.027 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+
+----------------------------------------------------------------------------------------------------------------------
+pr1732_sedumi099_nondet   (1 failing solve)
+----------------------------------------------------------------------------------------------------------------------
+  purpose   : re-run of the cold-vs-warm comparison right after merging PR #1732
+  code      : branch add_socp_support_update_apis with PR #1732 merged, before PR #1721
+  [harness] : --configs default --initial-point 2 --step-scale 0.99 --cudss-deterministic 0 --K 20
+  [summary] : cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=1 augmented=1 pool=1.0 GiB
+              (from pr1732_sedumi099_nondet/summary.txt)
+  [log]     : what the solver printed, from the first failing solve here
+                - barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+                - cudss_deterministic = false (log prints no deterministic solve mode)
+                - barrier_augmented_system = 1 (log: linear system augmented)
+                - barrier_adaptive_regularization = on (log)
+                - Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+                - full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+                - build marker: 'started at 0.027 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+
+----------------------------------------------------------------------------------------------------------------------
+cudss_deterministic   (2 failing solves)
+----------------------------------------------------------------------------------------------------------------------
+  purpose   : does CUDSS_CONFIG_DETERMINISTIC_MODE make the solve reproducible (it does not)
+  code      : branch add_socp_support_update_apis, before PR #1732 and PR #1721
+  [harness] : 8 identical cold solves of SEQ[1], cudss_deterministic=true
+  [summary] : no summary.txt; this predates the harness writing one
+  unrecorded: step scale and initial point are the stock defaults (0.9, Automatic), per the note at the top of all_runs_combined.log
+  [log]     : what the solver printed, from the first failing solve here
+                - barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+                - cudss_deterministic = true (log: cuDSS solve mode deterministic)
+                - barrier_augmented_system = 1 (log: linear system augmented)
+                - barrier_adaptive_regularization = on (log)
+                - Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+                - full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+                - build marker: 'started at 0.06 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+
+----------------------------------------------------------------------------------------------------------------------
+pr1856_alg2_nondet   (3 failing solves)
+----------------------------------------------------------------------------------------------------------------------
+  purpose   : same nondeterminism probe re-run on the PR #1856 ALG2 SpMV port
+  code      : branch add_socp_support_update_apis with the PR #1856 cusparse_view ALG2 port
+  [harness] : 8 identical cold solves of SEQ[1], default step scale and automatic initial point
+  [summary] : no summary.txt; this predates the harness writing one
+  unrecorded: step scale and initial point are not recorded for this run. The 26-30 iteration spread matches the default 0.9 (step 0.99 solves SEQ[1] in 21), and the objective -9.85078696e-02 matches default_strategy_nondeterminism, so it is the same probe.
+  [log]     : what the solver printed, from the first failing solve here
+                - barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+                - cudss_deterministic = false (log prints no deterministic solve mode)
+                - barrier_augmented_system = 1 (log: linear system augmented)
+                - barrier_adaptive_regularization = on (log)
+                - Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+                - full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+                - build marker: 'started at 0.03 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+
+----------------------------------------------------------------------------------------------------------------------
+default_strategy_nondeterminism   (3 failing solves)
+----------------------------------------------------------------------------------------------------------------------
+  purpose   : baseline nondeterminism probe: identical cold solves diverge by 1-2 ULP
+  code      : branch add_socp_support_update_apis, before PR #1732 and PR #1721
+  [harness] : 8 identical cold solves of SEQ[1], stock settings
+  [summary] : no summary.txt; this predates the harness writing one
+  unrecorded: step scale 0.9 and initial point Automatic (which resolves to SedumiMu on a cone model), per the note at the top of all_runs_combined.log
+  [log]     : what the solver printed, from the first failing solve here
+                - barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+                - cudss_deterministic = false (log prints no deterministic solve mode)
+                - barrier_augmented_system = 1 (log: linear system augmented)
+                - barrier_adaptive_regularization = on (log)
+                - Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+                - full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+                - build marker: 'started at 0.04 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+
+----------------------------------------------------------------------------------------------------------------------
+pr1721_ir0   (18 failing solves)
+----------------------------------------------------------------------------------------------------------------------
+  purpose   : validating barrier_iterative_refinement=Off after merging PR #1721; it breaks the model
+  code      : branch add_socp_support_update_apis with PR #1732 and PR #1721 merged
+  [harness] : --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+  [summary] : cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=6  tol=1e-08 IR=0 augmented=1 pool=1.0 GiB
+              (from pr1721_ir0/summary.txt)
+  [log]     : what the solver printed, from the first failing solve here
+                - barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+                - cudss_deterministic = false (log prints no deterministic solve mode)
+                - barrier_augmented_system = 1 (log: linear system augmented)
+                - barrier_adaptive_regularization = on (log)
+                - Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+                - full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+                - build marker: 'started at 0.024 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+
+----------------------------------------------------------------------------------------------------------------------
+sedumi099_repeat   (2 failing solves)
+----------------------------------------------------------------------------------------------------------------------
+  purpose   : repeat of the SedumiMu step-0.99 run to test whether the failures reproduce
+  code      : branch add_socp_support_update_apis, before PR #1732 and PR #1721
+  [harness] : --configs default --initial-point 2 --step-scale 0.99 --cudss-deterministic 0 --K 20
+  [summary] : cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=1 augmented=1 pool=1.0 GiB
+              (from sedumi099_repeat/run1/summary.txt)
+  [log]     : what the solver printed, from the first failing solve here
+                - barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+                - cudss_deterministic = false (log prints no deterministic solve mode)
+                - barrier_augmented_system = 1 (log: linear system augmented)
+                - barrier_adaptive_regularization = on (log)
+                - Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+                - full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+                - build marker: 'started at 0.03 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+
+
+======================================================================================================================
+INDEX OF FAILING SOLVES
+======================================================================================================================
+   # mode  it    sec        objective   dual_rel  dual_peak       series  path
+----------------------------------------------------------------------------------------------------------------------
+   1 soft  23   0.21  -9.86678525e-02   1.15e-11   1.10e-05         cold  final_bfv0_ir2/default/cold/t02.log
+   2 soft  22   0.30  -9.86678525e-02   1.68e-11   3.31e-07  cold_repeat  pr1732_sedumi099_nondet/default/cold_repeat/t02.log
+   3 soft  31  10.42  -9.85078696e-02   8.77e-12   1.02e-05   standalone  cudss_deterministic/run0_31it_suboptimal.log
+   4 soft  31  10.56  -9.85078696e-02   7.83e-12   8.64e-06   standalone  cudss_deterministic/run7_31it_suboptimal.log
+   5 soft  30   0.33  -9.85078696e-02   6.56e-12   1.86e-06   standalone  pr1856_alg2_nondet/run0_30it_suboptimal.log
+   6 soft  30   0.25  -9.85078696e-02   1.56e-11   2.43e-06   standalone  pr1856_alg2_nondet/run3_30it_suboptimal.log
+   7 soft  30   0.25  -9.85078696e-02   8.36e-12   3.91e-07   standalone  pr1856_alg2_nondet/run4_30it_suboptimal.log
+   8 soft  30   4.11  -9.85078696e-02   8.15e-12   9.09e-07   standalone  default_strategy_nondeterminism/run4_30it_suboptimal.log
+   9 soft  31   4.26  -9.85078696e-02   5.09e-12   2.80e-06   standalone  default_strategy_nondeterminism/run5_31it_suboptimal.log
+  10 soft  30   4.02  -9.85078696e-02   3.39e-12   8.85e-07   standalone  default_strategy_nondeterminism/run6_30it_suboptimal.log
+  11 soft  27   0.19  -9.85637062e-02   5.28e-09   1.03e-03         cold  pr1721_ir0/default/cold/t00.log
+  12 soft  27   0.18  -9.85078061e-02   1.25e-09   7.47e-02         cold  pr1721_ir0/default/cold/t01.log
+  13 soft  22   0.17  -9.86678627e-02   6.97e-09   2.37e-03         cold  pr1721_ir0/default/cold/t02.log
+  14 soft  26   0.18  -9.88236329e-02   4.13e-09   5.04e-03         cold  pr1721_ir0/default/cold/t03.log
+  15 soft  29   0.19  -9.84928106e-02   7.36e-09   4.73e-02         cold  pr1721_ir0/default/cold/t04.log
+  16 soft  31   0.20  -9.87543012e-02   4.41e-09   5.41e-03         cold  pr1721_ir0/default/cold/t05.log
+  17 hard   0   0.00                               4.06e-03  cold_repeat  pr1721_ir0/default/cold_repeat/t00.log
+  18 soft  26   0.18  -9.85078061e-02   1.51e-10   3.58e-03  cold_repeat  pr1721_ir0/default/cold_repeat/t01.log
+  19 soft  22   0.17  -9.86678627e-02   7.17e-09   2.56e-03  cold_repeat  pr1721_ir0/default/cold_repeat/t02.log
+  20 soft  27   0.18  -9.88234832e-02   4.22e-10   1.18e-02  cold_repeat  pr1721_ir0/default/cold_repeat/t03.log
+  21 soft  29   0.19  -9.84928106e-02   4.64e-09   2.27e-02  cold_repeat  pr1721_ir0/default/cold_repeat/t04.log
+  22 soft  30   0.21  -9.87543012e-02   6.95e-09   1.23e-03  cold_repeat  pr1721_ir0/default/cold_repeat/t05.log
+  23 soft  27   0.18  -9.85636193e-02   7.41e-09   1.31e-03         warm  pr1721_ir0/default/warm/t00.log
+  24 soft  27   0.08  -9.85078061e-02   5.93e-09   2.52e-02         warm  pr1721_ir0/default/warm/t01.log
+  25 soft  23   0.06  -9.86682014e-02   3.15e-09   6.80e-03         warm  pr1721_ir0/default/warm/t02.log
+  26 soft  26   0.07  -9.88234832e-02   4.98e-10   4.92e-03         warm  pr1721_ir0/default/warm/t03.log
+  27 soft  29   0.08  -9.84928106e-02   9.82e-10   3.05e-02         warm  pr1721_ir0/default/warm/t04.log
+  28 soft  31   0.08  -9.87543012e-02   2.47e-09   5.26e-03         warm  pr1721_ir0/default/warm/t05.log
+  29 soft  22   0.21  -9.86678525e-02   1.68e-11   3.11e-07         cold  sedumi099_repeat/run1/default/cold/t02.log
+  30 soft  22   0.21  -9.86678525e-02   1.69e-11   3.73e-07  cold_repeat  sedumi099_repeat/run1/default/cold_repeat/t02.log
+
+
+======================================================================================================================
+=== [1/30] final_bfv0_ir2/default/cold/t02.log
+=== soft failure, 23 iters, series=cold, peak dual infeasibility over the last 6 iters 1.10e-05
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 2 --bound-free-vars 0 --cudss-deterministic 0 --K 20
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.027 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 37.36/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.027 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.054s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.111 seconds
+Elapsed time           : 0.111 seconds
+Barrier setup complete at 0.111 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702509737108e+02 -3.710937010099e+02 3.71e+03 1.91e+00 1.19e-02 0.111
+  1   -4.136273551275e+00 -3.475151614423e+02 4.01e+01 2.77e-01 6.50e-02 0.115
+  2   -1.039317309374e-01 -2.487809478481e+01 4.69e-01 7.85e-03 4.78e-03 0.119
+  3   -5.492858368113e-02 -6.426990422251e-01 4.69e-03 7.91e-05 1.48e-04 0.123
+  4   -5.851315182353e-02 -1.366086835744e-01 6.22e-04 1.05e-05 1.74e-05 0.128
+  5   -6.838223229978e-02 -1.390882897041e-01 4.75e-04 8.01e-06 3.90e-05 0.132
+  6   -6.889375944990e-02 -1.392058504758e-01 4.61e-04 7.77e-06 4.13e-05 0.136
+  7   -7.975791831939e-02 -1.309113998038e-01 2.43e-04 4.10e-06 1.01e-04 0.140
+  8   -7.980229726696e-02 -1.306485102209e-01 2.26e-04 3.81e-06 2.65e-04 0.144
+  9   -8.971816229133e-02 -1.146065054572e-01 6.32e-05 1.07e-06 2.28e-04 0.149
+ 10   -9.597467615438e-02 -1.029561655808e-01 1.59e-05 2.68e-07 4.93e-05 0.154
+ 11   -9.743912257027e-02 -1.006252772743e-01 6.14e-06 1.03e-07 1.11e-05 0.159
+ 12   -9.773434128898e-02 -9.994009810792e-02 2.94e-06 4.96e-08 2.50e-05 0.163
+ 13   -9.823232361728e-02 -9.925642937426e-02 9.33e-07 1.57e-08 9.49e-06 0.167
+ 14   -9.847052977406e-02 -9.892513135717e-02 3.52e-07 5.93e-09 8.06e-06 0.172
+ 15   -9.865602249677e-02 -9.868376464825e-02 2.08e-08 3.51e-10 3.92e-07 0.177
+ 16   -9.866785252717e-02 -9.866876999969e-02 6.85e-10 1.15e-11 6.06e-09 0.181
+ 17   -9.866820080769e-02 -9.866831873335e-02 8.61e-11 3.78e-09 6.55e-10 0.184
+ 18   -9.866824347302e-02 -9.866826218432e-02 1.12e-11 4.92e-10 6.03e-11 0.188
+ 19   -9.866825144547e-02 -9.866825230553e-02 4.69e-13 9.83e-08 6.39e-12 0.191
+ 20   -9.866825181718e-02 -9.866825184968e-02 3.95e-14 2.33e-07 2.46e-13 0.195
+ 21   -9.866825183144e-02 -9.866825183299e-02 1.92e-15 1.07e-08 1.16e-14 0.199
+ 22   -9.866825183211e-02 -9.866825183217e-02 1.17e-15 1.10e-05 3.40e-16 0.202
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 23 iterations and 0.21 seconds
+Objective -9.86678525e-02
+Primal infeasibility (abs/rel): 1.37e-09/6.85e-10
+Dual infeasibility   (abs/rel): 1.27e-11/1.15e-11
+Complementarity gap  (abs/rel): 6.66e-09/6.06e-09
+
+
+Barrier finished in 0.21 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [2/30] pr1732_sedumi099_nondet/default/cold_repeat/t02.log
+=== soft failure, 22 iters, series=cold_repeat, peak dual infeasibility over the last 6 iters 3.31e-07
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --cudss-deterministic 0 --K 20
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.027 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 14.10/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.027 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.140s
+Symbolic factorization time : 0.024s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.197 seconds
+Elapsed time           : 0.197 seconds
+Barrier setup complete at 0.197 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702509737108e+02 -3.710937010099e+02 3.71e+03 1.91e+00 1.19e-02 0.198
+  1   -4.136273551275e+00 -3.475151614423e+02 4.01e+01 2.77e-01 6.50e-02 0.203
+  2   -1.039317309374e-01 -2.487809478481e+01 4.69e-01 7.85e-03 4.78e-03 0.208
+  3   -5.492858368113e-02 -6.426990422293e-01 4.69e-03 7.91e-05 1.48e-04 0.213
+  4   -5.851315182356e-02 -1.366086835713e-01 6.22e-04 1.05e-05 1.74e-05 0.217
+  5   -6.838223231583e-02 -1.390882897067e-01 4.75e-04 8.01e-06 3.90e-05 0.222
+  6   -6.889375945968e-02 -1.392058504776e-01 4.61e-04 7.77e-06 4.13e-05 0.227
+  7   -7.975791834275e-02 -1.309113998325e-01 2.43e-04 4.10e-06 1.01e-04 0.232
+  8   -7.980229728681e-02 -1.306485102465e-01 2.26e-04 3.81e-06 2.65e-04 0.237
+  9   -8.971816234681e-02 -1.146065053329e-01 6.32e-05 1.07e-06 2.28e-04 0.242
+ 10   -9.597467619434e-02 -1.029561655380e-01 1.59e-05 2.68e-07 4.93e-05 0.247
+ 11   -9.743912260305e-02 -1.006252772178e-01 6.14e-06 1.03e-07 1.11e-05 0.252
+ 12   -9.773434130242e-02 -9.994009809298e-02 2.94e-06 4.96e-08 2.50e-05 0.257
+ 13   -9.823232358801e-02 -9.925642941368e-02 9.33e-07 1.57e-08 9.49e-06 0.261
+ 14   -9.847052975289e-02 -9.892513138421e-02 3.52e-07 5.90e-09 8.06e-06 0.266
+ 15   -9.865602249703e-02 -9.868376464841e-02 2.08e-08 3.54e-10 3.92e-07 0.271
+ 16   -9.866785252584e-02 -9.866876999966e-02 6.85e-10 1.68e-11 6.06e-09 0.276
+ 17   -9.866820080747e-02 -9.866831873327e-02 8.61e-11 2.55e-09 6.55e-10 0.280
+ 18   -9.866824347278e-02 -9.866826218423e-02 1.12e-11 3.55e-10 6.03e-11 0.285
+ 19   -9.866825144546e-02 -9.866825230552e-02 4.71e-13 7.61e-08 6.39e-12 0.289
+ 20   -9.866825181724e-02 -9.866825184960e-02 3.95e-14 3.31e-07 2.46e-13 0.293
+ 21   -9.866825183150e-02 -9.866825183292e-02 1.78e-15 1.40e-08 9.72e-15 0.297
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 22 iterations and 0.30 seconds
+Objective -9.86678525e-02
+Primal infeasibility (abs/rel): 1.37e-09/6.85e-10
+Dual infeasibility   (abs/rel): 1.85e-11/1.68e-11
+Complementarity gap  (abs/rel): 6.66e-09/6.06e-09
+
+
+Barrier finished in 0.30 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [3/30] cudss_deterministic/run0_31it_suboptimal.log
+=== soft failure, 31 iters, series=standalone, peak dual infeasibility over the last 6 iters 1.02e-05
+=== [harness] 8 identical cold solves of SEQ[1], cudss_deterministic=true
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = true (log: cuDSS solve mode deterministic)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.06 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 88.57/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.06 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+cuDSS solve mode            : deterministic
+Reordering time             : 0.26s
+Symbolic factorization time : 0.10s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.51 seconds
+Elapsed time                : 0.51s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.5
+  1   -3.741054718367e+01 -3.495882842978e+02 3.74e+02 7.84e-02 1.66e-02 1.0
+  2   -3.887937386173e+00 -2.097219586674e+02 3.80e+01 4.70e-02 1.33e-02 1.3
+  3   -4.429600696008e-01 -3.237980282684e+01 3.86e+00 5.32e-03 4.56e-03 1.6
+  4   -9.287886877923e-02 -4.511798773553e+00 4.09e-01 5.69e-04 6.47e-04 2.0
+  5   -5.627296339391e-02 -7.108185482734e-01 4.09e-02 5.69e-05 8.81e-05 2.3
+  6   -5.675916009227e-02 -2.026239748053e-01 9.03e-03 1.26e-05 1.79e-05 2.6
+  7   -6.888235758129e-02 -1.400988447280e-01 3.96e-03 5.52e-06 7.57e-06 2.9
+  8   -7.287761734227e-02 -1.383138551266e-01 3.34e-03 4.66e-06 1.84e-05 3.3
+  9   -7.610760678150e-02 -1.355476031756e-01 2.79e-03 3.89e-06 3.64e-05 3.6
+ 10   -8.087140956332e-02 -1.298420127120e-01 2.02e-03 2.81e-06 5.26e-05 3.9
+ 11   -8.196508394841e-02 -1.284914195678e-01 1.67e-03 2.32e-06 5.28e-05 4.3
+ 12   -8.703874020759e-02 -1.201278568996e-01 9.98e-04 1.39e-06 5.44e-05 4.6
+ 13   -8.777481577022e-02 -1.172977814563e-01 7.19e-04 1.00e-06 1.85e-04 5.0
+ 14   -9.271058813644e-02 -1.085907416329e-01 3.18e-04 4.42e-07 1.14e-04 5.3
+ 15   -9.553683448438e-02 -1.034406543433e-01 1.33e-04 1.85e-07 5.56e-05 5.7
+ 16   -9.738496867150e-02 -1.003410956078e-01 4.04e-05 5.63e-08 1.24e-05 6.0
+ 17   -9.798780247898e-02 -9.931162491238e-02 1.49e-05 2.08e-08 5.32e-06 6.3
+ 18   -9.829688174823e-02 -9.880470684681e-02 4.39e-06 6.10e-09 2.57e-06 6.6
+ 19   -9.847161777645e-02 -9.855905565321e-02 7.36e-07 1.03e-09 3.80e-07 7.0
+ 20   -9.850140458735e-02 -9.851729136802e-02 1.33e-07 1.89e-10 6.11e-08 7.3
+ 21   -9.850694295664e-02 -9.850952425158e-02 2.15e-08 3.39e-11 8.79e-09 7.6
+ 22   -9.850786961389e-02 -9.850822746508e-02 2.97e-09 8.77e-12 1.04e-09 8.0
+ 23   -9.850799832831e-02 -9.850804789615e-02 4.11e-10 8.11e-11 1.30e-10 8.3
+ 24   -9.850801599569e-02 -9.850802330790e-02 6.06e-11 1.01e-08 1.69e-11 8.5
+ 25   -9.850801860855e-02 -9.850801967831e-02 8.86e-12 7.65e-08 2.19e-12 8.8
+ 26   -9.850801899147e-02 -9.850801914689e-02 1.29e-12 2.35e-07 2.57e-13 9.1
+ 27   -9.850801904491e-02 -9.850801907261e-02 2.31e-13 1.68e-06 4.83e-14 9.3
+ 28   -9.850801905428e-02 -9.850801905931e-02 4.18e-14 3.04e-07 1.04e-14 9.6
+ 29   -9.850801905611e-02 -9.850801905672e-02 4.96e-15 3.65e-08 1.36e-15 10.0
+ 30   -9.850801905629e-02 -9.850801905647e-02 1.45e-15 1.02e-05 4.07e-16 10.2
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 31 iterations and 10.42 seconds
+Objective -9.85078696e-02
+Primal infeasibility (abs/rel): 5.94e-09/2.97e-09
+Dual infeasibility   (abs/rel): 9.66e-12/8.77e-12
+Complementarity gap  (abs/rel): 1.14e-09/1.04e-09
+
+
+Barrier finished in 10.42 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [4/30] cudss_deterministic/run7_31it_suboptimal.log
+=== soft failure, 31 iters, series=standalone, peak dual infeasibility over the last 6 iters 8.64e-06
+=== [harness] 8 identical cold solves of SEQ[1], cudss_deterministic=true
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = true (log: cuDSS solve mode deterministic)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.04 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 88.76/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.04 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+cuDSS solve mode            : deterministic
+Reordering time             : 0.20s
+Symbolic factorization time : 0.09s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.40 seconds
+Elapsed time                : 0.40s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.4
+  1   -3.741054718367e+01 -3.495882842978e+02 3.74e+02 7.84e-02 1.66e-02 0.8
+  2   -3.887937386173e+00 -2.097219586674e+02 3.80e+01 4.70e-02 1.33e-02 1.1
+  3   -4.429600696008e-01 -3.237980282684e+01 3.86e+00 5.32e-03 4.56e-03 1.5
+  4   -9.287886877923e-02 -4.511798773553e+00 4.09e-01 5.69e-04 6.47e-04 1.8
+  5   -5.627296339391e-02 -7.108185482735e-01 4.09e-02 5.69e-05 8.81e-05 2.2
+  6   -5.675916009226e-02 -2.026239748053e-01 9.03e-03 1.26e-05 1.79e-05 2.5
+  7   -6.888235758130e-02 -1.400988447280e-01 3.96e-03 5.52e-06 7.57e-06 2.9
+  8   -7.287761734222e-02 -1.383138551266e-01 3.34e-03 4.66e-06 1.84e-05 3.2
+  9   -7.610760678138e-02 -1.355476031757e-01 2.79e-03 3.89e-06 3.64e-05 3.6
+ 10   -8.087140956320e-02 -1.298420127122e-01 2.02e-03 2.81e-06 5.26e-05 3.9
+ 11   -8.196508394831e-02 -1.284914195680e-01 1.67e-03 2.32e-06 5.28e-05 4.2
+ 12   -8.703874020754e-02 -1.201278568997e-01 9.98e-04 1.39e-06 5.44e-05 4.5
+ 13   -8.777481577016e-02 -1.172977814564e-01 7.19e-04 1.00e-06 1.85e-04 4.9
+ 14   -9.271058813630e-02 -1.085907416331e-01 3.18e-04 4.42e-07 1.14e-04 5.3
+ 15   -9.553683448434e-02 -1.034406543433e-01 1.33e-04 1.85e-07 5.56e-05 5.6
+ 16   -9.738496867149e-02 -1.003410956078e-01 4.04e-05 5.63e-08 1.24e-05 6.0
+ 17   -9.798780247899e-02 -9.931162491236e-02 1.49e-05 2.08e-08 5.32e-06 6.3
+ 18   -9.829688174823e-02 -9.880470684682e-02 4.39e-06 6.10e-09 2.57e-06 6.7
+ 19   -9.847161777658e-02 -9.855905565302e-02 7.36e-07 1.03e-09 3.80e-07 7.0
+ 20   -9.850140458737e-02 -9.851729136800e-02 1.33e-07 1.89e-10 6.11e-08 7.4
+ 21   -9.850694295654e-02 -9.850952425172e-02 2.15e-08 3.39e-11 8.79e-09 7.7
+ 22   -9.850786961379e-02 -9.850822746522e-02 2.97e-09 7.83e-12 1.04e-09 8.1
+ 23   -9.850799832846e-02 -9.850804789595e-02 4.11e-10 7.20e-11 1.30e-10 8.4
+ 24   -9.850801599547e-02 -9.850802330822e-02 6.06e-11 1.23e-08 1.69e-11 8.6
+ 25   -9.850801860868e-02 -9.850801967814e-02 8.86e-12 1.27e-07 2.19e-12 8.9
+ 26   -9.850801899148e-02 -9.850801914688e-02 1.29e-12 2.62e-07 2.58e-13 9.1
+ 27   -9.850801904497e-02 -9.850801907225e-02 2.26e-13 4.59e-08 4.77e-14 9.5
+ 28   -9.850801905438e-02 -9.850801905926e-02 4.06e-14 8.64e-06 1.03e-14 9.7
+ 29   -9.850801905590e-02 -9.850801905704e-02 9.50e-15 2.01e-06 2.35e-15 10.0
+ 30   -9.850801905616e-02 -9.850801905666e-02 3.92e-15 8.48e-07 9.77e-16 10.4
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 31 iterations and 10.56 seconds
+Objective -9.85078696e-02
+Primal infeasibility (abs/rel): 5.94e-09/2.97e-09
+Dual infeasibility   (abs/rel): 8.62e-12/7.83e-12
+Complementarity gap  (abs/rel): 1.14e-09/1.04e-09
+
+
+Barrier finished in 10.56 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [5/30] pr1856_alg2_nondet/run0_30it_suboptimal.log
+=== soft failure, 30 iters, series=standalone, peak dual infeasibility over the last 6 iters 1.86e-06
+=== [harness] 8 identical cold solves of SEQ[1], default step scale and automatic initial point
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.03 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.48/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.03 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.06s
+Symbolic factorization time : 0.02s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.16 seconds
+Elapsed time                : 0.16s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.2
+  1   -3.741054718367e+01 -3.495882842978e+02 3.74e+02 7.84e-02 1.66e-02 0.2
+  2   -3.887937386173e+00 -2.097219586674e+02 3.80e+01 4.70e-02 1.33e-02 0.2
+  3   -4.429600696008e-01 -3.237980282684e+01 3.86e+00 5.32e-03 4.56e-03 0.2
+  4   -9.287886877923e-02 -4.511798773553e+00 4.09e-01 5.69e-04 6.47e-04 0.2
+  5   -5.627296339391e-02 -7.108185482735e-01 4.09e-02 5.69e-05 8.81e-05 0.2
+  6   -5.675916009226e-02 -2.026239748050e-01 9.03e-03 1.26e-05 1.79e-05 0.2
+  7   -6.888235758132e-02 -1.400988447279e-01 3.96e-03 5.52e-06 7.57e-06 0.2
+  8   -7.287761734202e-02 -1.383138551266e-01 3.34e-03 4.66e-06 1.84e-05 0.2
+  9   -7.610760678105e-02 -1.355476031760e-01 2.79e-03 3.89e-06 3.64e-05 0.2
+ 10   -8.087140956278e-02 -1.298420127128e-01 2.02e-03 2.81e-06 5.26e-05 0.2
+ 11   -8.196508394788e-02 -1.284914195687e-01 1.67e-03 2.32e-06 5.28e-05 0.2
+ 12   -8.703874020736e-02 -1.201278569000e-01 9.98e-04 1.39e-06 5.44e-05 0.2
+ 13   -8.777481577007e-02 -1.172977814564e-01 7.19e-04 1.00e-06 1.85e-04 0.3
+ 14   -9.271058813656e-02 -1.085907416327e-01 3.18e-04 4.42e-07 1.14e-04 0.3
+ 15   -9.553683448486e-02 -1.034406543425e-01 1.33e-04 1.85e-07 5.56e-05 0.3
+ 16   -9.738496867185e-02 -1.003410956072e-01 4.04e-05 5.63e-08 1.24e-05 0.3
+ 17   -9.798780247911e-02 -9.931162491223e-02 1.49e-05 2.08e-08 5.32e-06 0.3
+ 18   -9.829688174835e-02 -9.880470684664e-02 4.39e-06 6.10e-09 2.57e-06 0.3
+ 19   -9.847161777658e-02 -9.855905565302e-02 7.36e-07 1.03e-09 3.80e-07 0.3
+ 20   -9.850140458732e-02 -9.851729136808e-02 1.33e-07 1.89e-10 6.11e-08 0.3
+ 21   -9.850694295661e-02 -9.850952425163e-02 2.15e-08 3.21e-11 8.79e-09 0.3
+ 22   -9.850786961412e-02 -9.850822746477e-02 2.97e-09 6.56e-12 1.04e-09 0.3
+ 23   -9.850799832847e-02 -9.850804789596e-02 4.11e-10 2.13e-11 1.30e-10 0.3
+ 24   -9.850801599572e-02 -9.850802330789e-02 6.06e-11 1.53e-07 1.69e-11 0.3
+ 25   -9.850801860866e-02 -9.850801967817e-02 8.86e-12 1.49e-07 2.19e-12 0.3
+ 26   -9.850801899330e-02 -9.850801914714e-02 1.30e-12 1.86e-06 2.58e-13 0.3
+ 27   -9.850801904524e-02 -9.850801907236e-02 2.28e-13 3.27e-07 4.79e-14 0.3
+ 28   -9.850801905400e-02 -9.850801905975e-02 4.79e-14 6.86e-08 1.13e-14 0.3
+ 29   -9.850801905594e-02 -9.850801905697e-02 8.44e-15 1.20e-08 2.11e-15 0.3
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 30 iterations and 0.33 seconds
+Objective -9.85078696e-02
+Primal infeasibility (abs/rel): 5.94e-09/2.97e-09
+Dual infeasibility   (abs/rel): 7.23e-12/6.56e-12
+Complementarity gap  (abs/rel): 1.14e-09/1.04e-09
+
+
+Barrier finished in 0.33 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [6/30] pr1856_alg2_nondet/run3_30it_suboptimal.log
+=== soft failure, 30 iters, series=standalone, peak dual infeasibility over the last 6 iters 2.43e-06
+=== [harness] 8 identical cold solves of SEQ[1], default step scale and automatic initial point
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.02 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.64/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.02 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.06s
+Symbolic factorization time : 0.02s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.11 seconds
+Elapsed time                : 0.11s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.1
+  1   -3.741054718367e+01 -3.495882842978e+02 3.74e+02 7.84e-02 1.66e-02 0.1
+  2   -3.887937386173e+00 -2.097219586674e+02 3.80e+01 4.70e-02 1.33e-02 0.1
+  3   -4.429600696008e-01 -3.237980282684e+01 3.86e+00 5.32e-03 4.56e-03 0.1
+  4   -9.287886877923e-02 -4.511798773553e+00 4.09e-01 5.69e-04 6.47e-04 0.1
+  5   -5.627296339391e-02 -7.108185482735e-01 4.09e-02 5.69e-05 8.81e-05 0.1
+  6   -5.675916009226e-02 -2.026239748050e-01 9.03e-03 1.26e-05 1.79e-05 0.1
+  7   -6.888235758132e-02 -1.400988447279e-01 3.96e-03 5.52e-06 7.57e-06 0.1
+  8   -7.287761734199e-02 -1.383138551266e-01 3.34e-03 4.66e-06 1.84e-05 0.1
+  9   -7.610760678098e-02 -1.355476031760e-01 2.79e-03 3.89e-06 3.64e-05 0.2
+ 10   -8.087140956267e-02 -1.298420127129e-01 2.02e-03 2.81e-06 5.26e-05 0.2
+ 11   -8.196508394780e-02 -1.284914195688e-01 1.67e-03 2.32e-06 5.28e-05 0.2
+ 12   -8.703874020741e-02 -1.201278568999e-01 9.98e-04 1.39e-06 5.44e-05 0.2
+ 13   -8.777481577011e-02 -1.172977814563e-01 7.19e-04 1.00e-06 1.85e-04 0.2
+ 14   -9.271058813647e-02 -1.085907416329e-01 3.18e-04 4.42e-07 1.14e-04 0.2
+ 15   -9.553683448486e-02 -1.034406543425e-01 1.33e-04 1.85e-07 5.56e-05 0.2
+ 16   -9.738496867188e-02 -1.003410956071e-01 4.04e-05 5.63e-08 1.24e-05 0.2
+ 17   -9.798780247914e-02 -9.931162491219e-02 1.49e-05 2.08e-08 5.32e-06 0.2
+ 18   -9.829688174843e-02 -9.880470684650e-02 4.39e-06 6.10e-09 2.57e-06 0.2
+ 19   -9.847161777654e-02 -9.855905565307e-02 7.36e-07 1.03e-09 3.80e-07 0.2
+ 20   -9.850140458739e-02 -9.851729136798e-02 1.33e-07 1.89e-10 6.11e-08 0.2
+ 21   -9.850694295655e-02 -9.850952425171e-02 2.15e-08 3.31e-11 8.79e-09 0.2
+ 22   -9.850786961390e-02 -9.850822746507e-02 2.97e-09 1.56e-11 1.04e-09 0.2
+ 23   -9.850799832846e-02 -9.850804789597e-02 4.11e-10 1.28e-10 1.30e-10 0.2
+ 24   -9.850801599558e-02 -9.850802330808e-02 6.06e-11 1.24e-07 1.69e-11 0.2
+ 25   -9.850801860863e-02 -9.850801967820e-02 8.86e-12 1.08e-08 2.19e-12 0.2
+ 26   -9.850801899171e-02 -9.850801914657e-02 1.28e-12 7.56e-07 2.58e-13 0.2
+ 27   -9.850801904509e-02 -9.850801907236e-02 2.27e-13 2.43e-06 4.79e-14 0.2
+ 28   -9.850801905408e-02 -9.850801905959e-02 4.56e-14 4.87e-07 1.10e-14 0.2
+ 29   -9.850801905600e-02 -9.850801905688e-02 7.22e-15 7.74e-08 1.82e-15 0.2
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 30 iterations and 0.25 seconds
+Objective -9.85078696e-02
+Primal infeasibility (abs/rel): 5.94e-09/2.97e-09
+Dual infeasibility   (abs/rel): 1.72e-11/1.56e-11
+Complementarity gap  (abs/rel): 1.14e-09/1.04e-09
+
+
+Barrier finished in 0.25 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [7/30] pr1856_alg2_nondet/run4_30it_suboptimal.log
+=== soft failure, 30 iters, series=standalone, peak dual infeasibility over the last 6 iters 3.91e-07
+=== [harness] 8 identical cold solves of SEQ[1], default step scale and automatic initial point
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.02 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.64/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.02 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.05s
+Symbolic factorization time : 0.02s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.11 seconds
+Elapsed time                : 0.11s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.1
+  1   -3.741054718367e+01 -3.495882842978e+02 3.74e+02 7.84e-02 1.66e-02 0.1
+  2   -3.887937386173e+00 -2.097219586674e+02 3.80e+01 4.70e-02 1.33e-02 0.1
+  3   -4.429600696008e-01 -3.237980282684e+01 3.86e+00 5.32e-03 4.56e-03 0.1
+  4   -9.287886877923e-02 -4.511798773553e+00 4.09e-01 5.69e-04 6.47e-04 0.1
+  5   -5.627296339391e-02 -7.108185482735e-01 4.09e-02 5.69e-05 8.81e-05 0.1
+  6   -5.675916009226e-02 -2.026239748050e-01 9.03e-03 1.26e-05 1.79e-05 0.1
+  7   -6.888235758132e-02 -1.400988447279e-01 3.96e-03 5.52e-06 7.57e-06 0.1
+  8   -7.287761734202e-02 -1.383138551266e-01 3.34e-03 4.66e-06 1.84e-05 0.1
+  9   -7.610760678102e-02 -1.355476031760e-01 2.79e-03 3.89e-06 3.64e-05 0.1
+ 10   -8.087140956280e-02 -1.298420127127e-01 2.02e-03 2.81e-06 5.26e-05 0.2
+ 11   -8.196508394791e-02 -1.284914195686e-01 1.67e-03 2.32e-06 5.28e-05 0.2
+ 12   -8.703874020732e-02 -1.201278569001e-01 9.98e-04 1.39e-06 5.44e-05 0.2
+ 13   -8.777481577002e-02 -1.172977814566e-01 7.19e-04 1.00e-06 1.85e-04 0.2
+ 14   -9.271058813651e-02 -1.085907416328e-01 3.18e-04 4.42e-07 1.14e-04 0.2
+ 15   -9.553683448479e-02 -1.034406543426e-01 1.33e-04 1.85e-07 5.56e-05 0.2
+ 16   -9.738496867183e-02 -1.003410956072e-01 4.04e-05 5.63e-08 1.24e-05 0.2
+ 17   -9.798780247911e-02 -9.931162491223e-02 1.49e-05 2.08e-08 5.32e-06 0.2
+ 18   -9.829688174832e-02 -9.880470684669e-02 4.39e-06 6.10e-09 2.57e-06 0.2
+ 19   -9.847161777652e-02 -9.855905565310e-02 7.36e-07 1.03e-09 3.80e-07 0.2
+ 20   -9.850140458730e-02 -9.851729136810e-02 1.33e-07 1.89e-10 6.11e-08 0.2
+ 21   -9.850694295676e-02 -9.850952425141e-02 2.15e-08 3.24e-11 8.79e-09 0.2
+ 22   -9.850786961399e-02 -9.850822746495e-02 2.97e-09 8.36e-12 1.04e-09 0.2
+ 23   -9.850799832844e-02 -9.850804789599e-02 4.11e-10 7.70e-11 1.30e-10 0.2
+ 24   -9.850801599569e-02 -9.850802330793e-02 6.06e-11 1.42e-07 1.69e-11 0.2
+ 25   -9.850801860863e-02 -9.850801967821e-02 8.86e-12 1.73e-07 2.19e-12 0.2
+ 26   -9.850801899172e-02 -9.850801914655e-02 1.28e-12 3.29e-07 2.57e-13 0.2
+ 27   -9.850801904499e-02 -9.850801907222e-02 2.25e-13 5.77e-08 4.76e-14 0.2
+ 28   -9.850801905429e-02 -9.850801905938e-02 4.26e-14 3.91e-07 1.05e-14 0.2
+ 29   -9.850801905561e-02 -9.850801905745e-02 1.49e-14 1.37e-07 3.58e-15 0.2
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 30 iterations and 0.25 seconds
+Objective -9.85078696e-02
+Primal infeasibility (abs/rel): 5.94e-09/2.97e-09
+Dual infeasibility   (abs/rel): 9.21e-12/8.36e-12
+Complementarity gap  (abs/rel): 1.14e-09/1.04e-09
+
+
+Barrier finished in 0.25 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [8/30] default_strategy_nondeterminism/run4_30it_suboptimal.log
+=== soft failure, 30 iters, series=standalone, peak dual infeasibility over the last 6 iters 9.09e-07
+=== [harness] 8 identical cold solves of SEQ[1], stock settings
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.04 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 88.34/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.04 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.20s
+Symbolic factorization time : 0.06s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.36 seconds
+Elapsed time                : 0.36s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.4
+  1   -3.741054718367e+01 -3.495882842978e+02 3.74e+02 7.84e-02 1.66e-02 0.6
+  2   -3.887937386173e+00 -2.097219586674e+02 3.80e+01 4.70e-02 1.33e-02 0.7
+  3   -4.429600696008e-01 -3.237980282684e+01 3.86e+00 5.32e-03 4.56e-03 0.8
+  4   -9.287886877923e-02 -4.511798773553e+00 4.09e-01 5.69e-04 6.47e-04 0.9
+  5   -5.627296339391e-02 -7.108185482734e-01 4.09e-02 5.69e-05 8.81e-05 1.1
+  6   -5.675916009227e-02 -2.026239748050e-01 9.03e-03 1.26e-05 1.79e-05 1.2
+  7   -6.888235758132e-02 -1.400988447279e-01 3.96e-03 5.52e-06 7.57e-06 1.3
+  8   -7.287761734198e-02 -1.383138551267e-01 3.34e-03 4.66e-06 1.84e-05 1.5
+  9   -7.610760678098e-02 -1.355476031761e-01 2.79e-03 3.89e-06 3.64e-05 1.6
+ 10   -8.087140956268e-02 -1.298420127129e-01 2.02e-03 2.81e-06 5.26e-05 1.7
+ 11   -8.196508394781e-02 -1.284914195688e-01 1.67e-03 2.32e-06 5.28e-05 1.9
+ 12   -8.703874020738e-02 -1.201278569000e-01 9.98e-04 1.39e-06 5.44e-05 2.0
+ 13   -8.777481577007e-02 -1.172977814564e-01 7.19e-04 1.00e-06 1.85e-04 2.1
+ 14   -9.271058813651e-02 -1.085907416328e-01 3.18e-04 4.42e-07 1.14e-04 2.3
+ 15   -9.553683448488e-02 -1.034406543424e-01 1.33e-04 1.85e-07 5.56e-05 2.4
+ 16   -9.738496867186e-02 -1.003410956071e-01 4.04e-05 5.63e-08 1.24e-05 2.5
+ 17   -9.798780247907e-02 -9.931162491232e-02 1.49e-05 2.08e-08 5.32e-06 2.6
+ 18   -9.829688174831e-02 -9.880470684668e-02 4.39e-06 6.10e-09 2.57e-06 2.8
+ 19   -9.847161777657e-02 -9.855905565303e-02 7.36e-07 1.03e-09 3.80e-07 2.9
+ 20   -9.850140458731e-02 -9.851729136809e-02 1.33e-07 1.89e-10 6.11e-08 3.0
+ 21   -9.850694295669e-02 -9.850952425151e-02 2.15e-08 3.23e-11 8.79e-09 3.1
+ 22   -9.850786961398e-02 -9.850822746496e-02 2.97e-09 8.15e-12 1.04e-09 3.3
+ 23   -9.850799832841e-02 -9.850804789604e-02 4.11e-10 1.39e-10 1.30e-10 3.4
+ 24   -9.850801599559e-02 -9.850802330807e-02 6.06e-11 1.07e-07 1.69e-11 3.5
+ 25   -9.850801860864e-02 -9.850801967819e-02 8.86e-12 1.72e-07 2.19e-12 3.6
+ 26   -9.850801899142e-02 -9.850801914697e-02 1.29e-12 8.35e-07 2.58e-13 3.7
+ 27   -9.850801904470e-02 -9.850801907290e-02 2.35e-13 9.09e-07 4.87e-14 3.8
+ 28   -9.850801905444e-02 -9.850801905907e-02 3.84e-14 1.48e-07 9.87e-15 3.9
+ 29   -9.850801905603e-02 -9.850801905683e-02 6.62e-15 2.57e-08 1.66e-15 4.0
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 30 iterations and 4.11 seconds
+Objective -9.85078696e-02
+Primal infeasibility (abs/rel): 5.94e-09/2.97e-09
+Dual infeasibility   (abs/rel): 8.98e-12/8.15e-12
+Complementarity gap  (abs/rel): 1.14e-09/1.04e-09
+
+
+Barrier finished in 4.12 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [9/30] default_strategy_nondeterminism/run5_31it_suboptimal.log
+=== soft failure, 31 iters, series=standalone, peak dual infeasibility over the last 6 iters 2.80e-06
+=== [harness] 8 identical cold solves of SEQ[1], stock settings
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.04 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 88.21/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.04 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.26s
+Symbolic factorization time : 0.09s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.48 seconds
+Elapsed time                : 0.48s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.5
+  1   -3.741054718367e+01 -3.495882842978e+02 3.74e+02 7.84e-02 1.66e-02 0.6
+  2   -3.887937386173e+00 -2.097219586674e+02 3.80e+01 4.70e-02 1.33e-02 0.8
+  3   -4.429600696008e-01 -3.237980282684e+01 3.86e+00 5.32e-03 4.56e-03 0.9
+  4   -9.287886877923e-02 -4.511798773553e+00 4.09e-01 5.69e-04 6.47e-04 1.0
+  5   -5.627296339391e-02 -7.108185482735e-01 4.09e-02 5.69e-05 8.81e-05 1.2
+  6   -5.675916009226e-02 -2.026239748050e-01 9.03e-03 1.26e-05 1.79e-05 1.3
+  7   -6.888235758132e-02 -1.400988447279e-01 3.96e-03 5.52e-06 7.57e-06 1.4
+  8   -7.287761734200e-02 -1.383138551266e-01 3.34e-03 4.66e-06 1.84e-05 1.6
+  9   -7.610760678103e-02 -1.355476031760e-01 2.79e-03 3.89e-06 3.64e-05 1.7
+ 10   -8.087140956275e-02 -1.298420127129e-01 2.02e-03 2.81e-06 5.26e-05 1.8
+ 11   -8.196508394782e-02 -1.284914195688e-01 1.67e-03 2.32e-06 5.28e-05 1.9
+ 12   -8.703874020731e-02 -1.201278569002e-01 9.98e-04 1.39e-06 5.44e-05 2.0
+ 13   -8.777481577001e-02 -1.172977814566e-01 7.19e-04 1.00e-06 1.85e-04 2.2
+ 14   -9.271058813640e-02 -1.085907416330e-01 3.18e-04 4.42e-07 1.14e-04 2.3
+ 15   -9.553683448477e-02 -1.034406543426e-01 1.33e-04 1.85e-07 5.56e-05 2.4
+ 16   -9.738496867178e-02 -1.003410956073e-01 4.04e-05 5.63e-08 1.24e-05 2.5
+ 17   -9.798780247908e-02 -9.931162491229e-02 1.49e-05 2.08e-08 5.32e-06 2.7
+ 18   -9.829688174831e-02 -9.880470684670e-02 4.39e-06 6.10e-09 2.57e-06 2.8
+ 19   -9.847161777653e-02 -9.855905565309e-02 7.36e-07 1.03e-09 3.80e-07 2.9
+ 20   -9.850140458730e-02 -9.851729136810e-02 1.33e-07 1.89e-10 6.11e-08 3.1
+ 21   -9.850694295666e-02 -9.850952425155e-02 2.15e-08 3.16e-11 8.79e-09 3.2
+ 22   -9.850786961398e-02 -9.850822746495e-02 2.97e-09 5.09e-12 1.04e-09 3.3
+ 23   -9.850799832841e-02 -9.850804789604e-02 4.11e-10 1.70e-11 1.30e-10 3.4
+ 24   -9.850801599572e-02 -9.850802330789e-02 6.06e-11 1.59e-07 1.69e-11 3.5
+ 25   -9.850801860866e-02 -9.850801967817e-02 8.86e-12 7.18e-08 2.19e-12 3.6
+ 26   -9.850801899129e-02 -9.850801914715e-02 1.29e-12 1.05e-06 2.57e-13 3.7
+ 27   -9.850801904500e-02 -9.850801907249e-02 2.30e-13 2.80e-06 4.81e-14 3.8
+ 28   -9.850801905387e-02 -9.850801905989e-02 4.99e-14 6.07e-07 1.16e-14 3.9
+ 29   -9.850801905561e-02 -9.850801905742e-02 1.45e-14 1.78e-07 3.35e-15 4.1
+ 30   -9.850801905626e-02 -9.850801905651e-02 2.04e-15 2.44e-08 7.99e-16 4.2
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 31 iterations and 4.26 seconds
+Objective -9.85078696e-02
+Primal infeasibility (abs/rel): 5.94e-09/2.97e-09
+Dual infeasibility   (abs/rel): 5.60e-12/5.09e-12
+Complementarity gap  (abs/rel): 1.14e-09/1.04e-09
+
+
+Barrier finished in 4.26 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [10/30] default_strategy_nondeterminism/run6_30it_suboptimal.log
+=== soft failure, 30 iters, series=standalone, peak dual infeasibility over the last 6 iters 8.85e-07
+=== [harness] 8 identical cold solves of SEQ[1], stock settings
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.03 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 88.37/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.03 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.20s
+Symbolic factorization time : 0.07s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.37 seconds
+Elapsed time                : 0.37s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.4
+  1   -3.741054718367e+01 -3.495882842978e+02 3.74e+02 7.84e-02 1.66e-02 0.5
+  2   -3.887937386173e+00 -2.097219586674e+02 3.80e+01 4.70e-02 1.33e-02 0.6
+  3   -4.429600696008e-01 -3.237980282684e+01 3.86e+00 5.32e-03 4.56e-03 0.8
+  4   -9.287886877923e-02 -4.511798773553e+00 4.09e-01 5.69e-04 6.47e-04 0.9
+  5   -5.627296339391e-02 -7.108185482735e-01 4.09e-02 5.69e-05 8.81e-05 1.0
+  6   -5.675916009226e-02 -2.026239748050e-01 9.03e-03 1.26e-05 1.79e-05 1.1
+  7   -6.888235758132e-02 -1.400988447279e-01 3.96e-03 5.52e-06 7.57e-06 1.3
+  8   -7.287761734202e-02 -1.383138551266e-01 3.34e-03 4.66e-06 1.84e-05 1.4
+  9   -7.610760678104e-02 -1.355476031760e-01 2.79e-03 3.89e-06 3.64e-05 1.5
+ 10   -8.087140956276e-02 -1.298420127128e-01 2.02e-03 2.81e-06 5.26e-05 1.6
+ 11   -8.196508394787e-02 -1.284914195687e-01 1.67e-03 2.32e-06 5.28e-05 1.8
+ 12   -8.703874020740e-02 -1.201278569000e-01 9.98e-04 1.39e-06 5.44e-05 1.9
+ 13   -8.777481577012e-02 -1.172977814563e-01 7.19e-04 1.00e-06 1.85e-04 2.0
+ 14   -9.271058813658e-02 -1.085907416327e-01 3.18e-04 4.42e-07 1.14e-04 2.2
+ 15   -9.553683448489e-02 -1.034406543424e-01 1.33e-04 1.85e-07 5.56e-05 2.3
+ 16   -9.738496867189e-02 -1.003410956071e-01 4.04e-05 5.63e-08 1.24e-05 2.4
+ 17   -9.798780247910e-02 -9.931162491225e-02 1.49e-05 2.08e-08 5.32e-06 2.5
+ 18   -9.829688174832e-02 -9.880470684667e-02 4.39e-06 6.10e-09 2.57e-06 2.7
+ 19   -9.847161777655e-02 -9.855905565306e-02 7.36e-07 1.03e-09 3.80e-07 2.8
+ 20   -9.850140458730e-02 -9.851729136810e-02 1.33e-07 1.89e-10 6.11e-08 2.9
+ 21   -9.850694295670e-02 -9.850952425149e-02 2.15e-08 3.21e-11 8.79e-09 3.0
+ 22   -9.850786961412e-02 -9.850822746476e-02 2.97e-09 3.39e-12 1.04e-09 3.2
+ 23   -9.850799832844e-02 -9.850804789599e-02 4.11e-10 1.57e-11 1.30e-10 3.3
+ 24   -9.850801599554e-02 -9.850802330814e-02 6.06e-11 1.35e-07 1.69e-11 3.4
+ 25   -9.850801860857e-02 -9.850801967829e-02 8.86e-12 1.64e-07 2.19e-12 3.5
+ 26   -9.850801899125e-02 -9.850801914675e-02 1.29e-12 2.38e-08 2.58e-13 3.6
+ 27   -9.850801904511e-02 -9.850801907226e-02 2.26e-13 8.85e-07 4.77e-14 3.7
+ 28   -9.850801905430e-02 -9.850801905926e-02 4.10e-14 1.61e-07 1.03e-14 3.8
+ 29   -9.850801905589e-02 -9.850801905702e-02 9.27e-15 3.62e-08 2.31e-15 3.9
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 30 iterations and 4.02 seconds
+Objective -9.85078696e-02
+Primal infeasibility (abs/rel): 5.94e-09/2.97e-09
+Dual infeasibility   (abs/rel): 3.73e-12/3.39e-12
+Complementarity gap  (abs/rel): 1.14e-09/1.04e-09
+
+
+Barrier finished in 4.02 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [11/30] pr1721_ir0/default/cold/t00.log
+=== soft failure, 27 iters, series=cold, peak dual infeasibility over the last 6 iters 1.03e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.024 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 29.99/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.024 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.058s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.112 seconds
+Elapsed time           : 0.112 seconds
+Barrier setup complete at 0.112 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.703274138474e+02 -3.710708058040e+02 3.71e+03 1.91e+00 1.19e-02 0.113
+  1   -4.137052078981e+00 -3.474922988751e+02 4.01e+01 2.77e-01 6.50e-02 0.116
+  2   -1.039665873048e-01 -2.487351063511e+01 4.69e-01 7.85e-03 4.78e-03 0.118
+  3   -5.494861952208e-02 -6.426107938343e-01 4.69e-03 7.91e-05 1.47e-04 0.121
+  4   -5.854386015942e-02 -1.360801899376e-01 6.18e-04 1.04e-05 1.73e-05 0.124
+  5   -6.651980194063e-02 -1.382165324832e-01 5.03e-04 8.47e-06 2.56e-05 0.127
+  6   -6.787741974242e-02 -1.385553869388e-01 4.69e-04 7.93e-06 3.65e-05 0.129
+  7   -8.000815284344e-02 -1.263543937214e-01 2.70e-04 4.55e-06 7.62e-05 0.132
+  8   -8.013336192434e-02 -1.261894563639e-01 2.54e-04 4.30e-06 9.32e-05 0.135
+  9   -8.275751235085e-02 -1.243059765168e-01 1.86e-04 3.19e-06 2.72e-04 0.137
+ 10   -8.324125423605e-02 -1.222972934254e-01 1.45e-04 2.50e-06 5.49e-04 0.140
+ 11   -9.290516422266e-02 -1.080072671118e-01 4.82e-05 8.13e-07 1.53e-04 0.143
+ 12   -9.345899245371e-02 -1.064560124753e-01 3.41e-05 5.87e-07 1.79e-04 0.145
+ 13   -9.680796884020e-02 -1.013510888597e-01 1.07e-05 1.65e-07 6.48e-05 0.148
+ 14   -9.715836505111e-02 -1.005134347355e-01 6.02e-06 1.02e-07 6.33e-05 0.151
+ 15   -9.801444178849e-02 -9.937491711520e-02 2.30e-06 2.88e-08 2.29e-05 0.153
+ 16   -9.823847250309e-02 -9.899448991525e-02 9.26e-07 1.79e-08 1.48e-05 0.156
+ 17   -9.846873772340e-02 -9.869334435651e-02 2.51e-07 1.22e-08 4.44e-06 0.159
+ 18   -9.853074554628e-02 -9.860434134669e-02 5.45e-08 1.73e-09 1.30e-06 0.161
+ 19   -9.855685060541e-02 -9.857248102706e-02 1.11e-08 8.96e-09 2.82e-07 0.164
+ 20   -9.856287210028e-02 -9.856470331463e-02 7.04e-10 5.24e-10 2.23e-08 0.167
+ 21   -9.856361930252e-02 -9.856382012896e-02 7.68e-11 5.73e-09 2.50e-09 0.170
+ 22   -9.856370624861e-02 -9.856371664130e-02 1.65e-11 5.28e-09 1.24e-10 0.172
+ 23   -9.856371080987e-02 -9.856371151072e-02 5.26e-12 1.45e-06 7.03e-12 0.175
+ 24   -9.856371116087e-02 -9.856371122700e-02 7.51e-13 7.51e-05 5.80e-13 0.178
+ 25   -9.856371119956e-02 -9.856371120308e-02 3.73e-14 4.48e-04 1.25e-14 0.180
+ 26   -9.856371120146e-02 -9.856371120172e-02 9.66e-15 1.03e-03 6.75e-17 0.183
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 27 iterations and 0.19 seconds
+Objective -9.85637062e-02
+Primal infeasibility (abs/rel): 3.30e-11/1.65e-11
+Dual infeasibility   (abs/rel): 5.82e-09/5.28e-09
+Complementarity gap  (abs/rel): 1.36e-10/1.24e-10
+
+
+Barrier finished in 0.19 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [12/30] pr1721_ir0/default/cold/t01.log
+=== soft failure, 27 iters, series=cold, peak dual infeasibility over the last 6 iters 7.47e-02
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.028 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.17/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.028 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.052s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.110 seconds
+Elapsed time           : 0.110 seconds
+Barrier setup complete at 0.110 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.111
+  1   -4.135546087478e+00 -3.474447710371e+02 4.01e+01 2.77e-01 6.50e-02 0.114
+  2   -1.039314352769e-01 -2.487032509614e+01 4.69e-01 7.85e-03 4.78e-03 0.116
+  3   -5.492443558249e-02 -6.426586228603e-01 4.69e-03 7.91e-05 1.48e-04 0.119
+  4   -5.851219332481e-02 -1.359803436357e-01 6.17e-04 1.04e-05 1.73e-05 0.122
+  5   -6.701659638588e-02 -1.381479767451e-01 4.94e-04 8.32e-06 2.86e-05 0.125
+  6   -6.855040209384e-02 -1.384591756315e-01 4.55e-04 7.69e-06 3.48e-05 0.127
+  7   -8.223256480347e-02 -1.232136188568e-01 2.32e-04 3.90e-06 6.24e-05 0.130
+  8   -8.247964320507e-02 -1.229729170530e-01 2.12e-04 3.59e-06 7.15e-05 0.133
+  9   -8.394120147476e-02 -1.220003082881e-01 1.71e-04 2.93e-06 1.85e-04 0.135
+ 10   -8.656829503658e-02 -1.187840448315e-01 8.89e-05 1.53e-06 1.36e-04 0.138
+ 11   -8.752242452684e-02 -1.157196081713e-01 5.91e-05 1.05e-06 3.80e-04 0.141
+ 12   -9.537761188000e-02 -1.035726319384e-01 1.38e-05 2.03e-07 9.04e-05 0.143
+ 13   -9.692696410655e-02 -1.009873882375e-01 5.49e-06 8.09e-08 3.36e-05 0.146
+ 14   -9.752957280075e-02 -9.982937278668e-02 2.09e-06 4.49e-08 3.58e-05 0.149
+ 15   -9.826347968001e-02 -9.884574831008e-02 4.45e-07 1.81e-08 7.54e-06 0.151
+ 16   -9.843074925549e-02 -9.861044745621e-02 1.19e-07 1.42e-09 3.55e-06 0.154
+ 17   -9.850552964533e-02 -9.851129320041e-02 3.66e-09 4.71e-09 6.01e-08 0.157
+ 18   -9.850780606390e-02 -9.850830551534e-02 3.13e-10 1.25e-09 3.01e-09 0.160
+ 19   -9.850798129293e-02 -9.850806928929e-02 7.53e-11 1.66e-07 3.59e-10 0.162
+ 20   -9.850801442016e-02 -9.850802497921e-02 6.31e-12 4.77e-07 3.17e-11 0.165
+ 21   -9.850801828701e-02 -9.850802001109e-02 1.16e-12 1.73e-05 3.59e-12 0.168
+ 22   -9.850801893350e-02 -9.850801920983e-02 3.01e-13 3.78e-04 6.45e-13 0.170
+ 23   -9.850801902366e-02 -9.850801910114e-02 2.57e-13 3.36e-04 1.67e-13 0.173
+ 24   -9.850801904820e-02 -9.850801906689e-02 4.78e-14 6.77e-04 2.50e-14 0.176
+ 25   -9.850801905397e-02 -9.850801906011e-02 4.03e-14 6.11e-03 7.07e-15 0.178
+ 26   -9.850801905614e-02 -9.850801905667e-02 2.08e-15 7.47e-02 7.13e-16 0.181
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 27 iterations and 0.18 seconds
+Objective -9.85078061e-02
+Primal infeasibility (abs/rel): 6.26e-10/3.13e-10
+Dual infeasibility   (abs/rel): 1.38e-09/1.25e-09
+Complementarity gap  (abs/rel): 3.30e-09/3.01e-09
+
+
+Barrier finished in 0.19 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [13/30] pr1721_ir0/default/cold/t02.log
+=== soft failure, 22 iters, series=cold, peak dual infeasibility over the last 6 iters 2.37e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.027 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 29.93/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.027 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.054s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.111 seconds
+Elapsed time           : 0.111 seconds
+Barrier setup complete at 0.111 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702509737108e+02 -3.710937010099e+02 3.71e+03 1.91e+00 1.19e-02 0.112
+  1   -4.136273724063e+00 -3.475151614491e+02 4.01e+01 2.77e-01 6.50e-02 0.114
+  2   -1.039317309812e-01 -2.487809570049e+01 4.69e-01 7.85e-03 4.78e-03 0.117
+  3   -5.492858363896e-02 -6.426989431231e-01 4.69e-03 7.91e-05 1.48e-04 0.120
+  4   -5.851315192340e-02 -1.366087248902e-01 6.22e-04 1.05e-05 1.74e-05 0.123
+  5   -6.838203681519e-02 -1.390882580419e-01 4.75e-04 8.01e-06 3.90e-05 0.125
+  6   -6.889364215489e-02 -1.392058276186e-01 4.61e-04 7.79e-06 4.13e-05 0.128
+  7   -7.975773877314e-02 -1.309110462332e-01 2.43e-04 4.26e-06 1.01e-04 0.131
+  8   -7.980215685358e-02 -1.306481769923e-01 2.26e-04 3.97e-06 2.65e-04 0.133
+  9   -8.971763595368e-02 -1.146079648340e-01 6.32e-05 1.14e-06 2.28e-04 0.136
+ 10   -9.597459714328e-02 -1.029565243254e-01 1.59e-05 2.86e-07 4.93e-05 0.139
+ 11   -9.743913001411e-02 -1.006255762117e-01 6.14e-06 1.11e-07 1.11e-05 0.141
+ 12   -9.773461917466e-02 -9.993998515904e-02 2.94e-06 7.40e-08 2.50e-05 0.144
+ 13   -9.823248597743e-02 -9.925628820275e-02 9.33e-07 9.52e-09 9.49e-06 0.147
+ 14   -9.847078351509e-02 -9.892487557623e-02 3.51e-07 1.10e-08 8.04e-06 0.149
+ 15   -9.865614959643e-02 -9.868363610709e-02 2.06e-08 3.17e-09 3.88e-07 0.152
+ 16   -9.866786271600e-02 -9.866876061553e-02 6.72e-10 6.97e-09 5.80e-09 0.155
+ 17   -9.866820137793e-02 -9.866831864921e-02 8.58e-11 1.03e-08 6.40e-10 0.158
+ 18   -9.866824337519e-02 -9.866826249967e-02 1.15e-11 3.09e-07 6.13e-11 0.160
+ 19   -9.866825143079e-02 -9.866825234088e-02 5.18e-13 3.71e-06 6.81e-12 0.163
+ 20   -9.866825181505e-02 -9.866825185138e-02 6.98e-14 1.40e-04 2.66e-13 0.166
+ 21   -9.866825183017e-02 -9.866825183302e-02 5.11e-14 2.37e-03 1.27e-14 0.168
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 22 iterations and 0.17 seconds
+Objective -9.86678627e-02
+Primal infeasibility (abs/rel): 1.34e-09/6.72e-10
+Dual infeasibility   (abs/rel): 7.68e-09/6.97e-09
+Complementarity gap  (abs/rel): 6.37e-09/5.80e-09
+
+
+Barrier finished in 0.17 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [14/30] pr1721_ir0/default/cold/t03.log
+=== soft failure, 26 iters, series=cold, peak dual infeasibility over the last 6 iters 5.04e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.026 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 29.95/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.026 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.055s
+Symbolic factorization time : 0.024s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.111 seconds
+Elapsed time           : 0.111 seconds
+Barrier setup complete at 0.111 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.704296579021e+02 -3.711143874095e+02 3.71e+03 1.91e+00 1.19e-02 0.112
+  1   -4.138892597113e+00 -3.475359915806e+02 4.01e+01 2.77e-01 6.50e-02 0.115
+  2   -1.039998754011e-01 -2.488607306478e+01 4.69e-01 7.85e-03 4.78e-03 0.117
+  3   -5.495597871542e-02 -6.429557193043e-01 4.69e-03 7.91e-05 1.48e-04 0.120
+  4   -5.854647566325e-02 -1.362808542414e-01 6.19e-04 1.04e-05 1.74e-05 0.123
+  5   -6.679122785036e-02 -1.385928703196e-01 5.02e-04 8.46e-06 2.70e-05 0.125
+  6   -6.794018451993e-02 -1.389116857585e-01 4.73e-04 7.99e-06 3.50e-05 0.128
+  7   -8.102191186458e-02 -1.263516748121e-01 2.52e-04 4.26e-06 8.00e-05 0.131
+  8   -8.117543044129e-02 -1.261418680943e-01 2.34e-04 3.97e-06 1.12e-04 0.133
+  9   -8.463905496019e-02 -1.227993152813e-01 1.51e-04 2.59e-06 2.91e-04 0.136
+ 10   -8.541153414030e-02 -1.201688850610e-01 1.11e-04 1.93e-06 4.87e-04 0.139
+ 11   -9.365531285559e-02 -1.075906887943e-01 3.94e-05 6.62e-07 1.40e-04 0.142
+ 12   -9.411674697302e-02 -1.061255163147e-01 2.78e-05 4.80e-07 1.95e-04 0.144
+ 13   -9.711524581950e-02 -1.015162099985e-01 9.14e-06 1.39e-07 7.17e-05 0.147
+ 14   -9.773258774409e-02 -1.003075143660e-01 3.86e-06 6.56e-08 4.82e-05 0.150
+ 15   -9.846080236132e-02 -9.934074762542e-02 1.18e-06 1.49e-08 1.40e-05 0.152
+ 16   -9.865821708725e-02 -9.903490362304e-02 3.55e-07 7.62e-09 7.37e-06 0.155
+ 17   -9.878552972605e-02 -9.887465595087e-02 8.09e-08 1.40e-08 1.76e-06 0.158
+ 18   -9.881255841304e-02 -9.883682846740e-02 1.23e-08 1.19e-10 3.34e-07 0.160
+ 19   -9.882185217970e-02 -9.882585712211e-02 2.00e-09 9.34e-09 5.60e-08 0.163
+ 20   -9.882348316166e-02 -9.882383833556e-02 1.45e-10 8.82e-09 2.89e-09 0.166
+ 21   -9.882363289468e-02 -9.882366358819e-02 7.35e-12 4.13e-09 2.55e-10 0.169
+ 22   -9.882364634152e-02 -9.882364794876e-02 4.38e-12 9.12e-08 1.24e-11 0.171
+ 23   -9.882364709730e-02 -9.882364716453e-02 1.38e-12 1.50e-05 2.51e-13 0.174
+ 24   -9.882364713921e-02 -9.882364715071e-02 2.56e-13 5.04e-03 3.81e-14 0.177
+ 25   -9.882364714513e-02 -9.882364714919e-02 8.31e-14 3.17e-03 9.70e-15 0.179
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 26 iterations and 0.18 seconds
+Objective -9.88236329e-02
+Primal infeasibility (abs/rel): 1.47e-11/7.35e-12
+Dual infeasibility   (abs/rel): 4.56e-09/4.13e-09
+Complementarity gap  (abs/rel): 2.81e-10/2.55e-10
+
+
+Barrier finished in 0.18 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [15/30] pr1721_ir0/default/cold/t04.log
+=== soft failure, 29 iters, series=cold, peak dual infeasibility over the last 6 iters 4.73e-02
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.025 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.14/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.025 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.053s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.108 seconds
+Elapsed time           : 0.108 seconds
+Barrier setup complete at 0.108 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702624119443e+02 -3.710387458059e+02 3.71e+03 1.91e+00 1.19e-02 0.108
+  1   -4.136636657805e+00 -3.474601645315e+02 4.01e+01 2.77e-01 6.50e-02 0.111
+  2   -1.039518364613e-01 -2.487140771266e+01 4.69e-01 7.85e-03 4.78e-03 0.114
+  3   -5.493965877215e-02 -6.425638218834e-01 4.69e-03 7.91e-05 1.48e-04 0.117
+  4   -5.853205541675e-02 -1.359055666667e-01 6.17e-04 1.04e-05 1.72e-05 0.119
+  5   -6.752248937350e-02 -1.382889310515e-01 4.87e-04 8.20e-06 3.00e-05 0.122
+  6   -6.909314628218e-02 -1.385283023321e-01 4.47e-04 7.55e-06 4.23e-05 0.125
+  7   -8.140912154072e-02 -1.243463716173e-01 2.48e-04 4.16e-06 7.51e-05 0.127
+  8   -8.155817919423e-02 -1.241862766708e-01 2.32e-04 3.92e-06 7.37e-05 0.130
+  9   -8.323131639237e-02 -1.230409646082e-01 1.85e-04 3.17e-06 2.17e-04 0.133
+ 10   -8.338516500755e-02 -1.218659124811e-01 1.59e-04 2.73e-06 3.59e-04 0.135
+ 11   -9.171588344946e-02 -1.095592651168e-01 6.76e-05 1.15e-06 1.14e-04 0.138
+ 12   -9.235092451295e-02 -1.081506319616e-01 5.22e-05 8.97e-07 1.34e-04 0.141
+ 13   -9.592641862283e-02 -1.025471257827e-01 1.90e-05 3.11e-07 6.40e-05 0.143
+ 14   -9.614659424579e-02 -1.018800521527e-01 1.36e-05 2.34e-07 7.68e-05 0.146
+ 15   -9.734043161928e-02 -1.002233148698e-01 6.12e-06 9.87e-08 3.38e-05 0.149
+ 16   -9.760704763352e-02 -9.972869282175e-02 3.62e-06 6.75e-08 3.20e-05 0.151
+ 17   -9.812314795751e-02 -9.901136547646e-02 1.30e-06 1.53e-08 1.27e-05 0.154
+ 18   -9.827025317955e-02 -9.878292306453e-02 5.73e-07 1.32e-08 8.07e-06 0.157
+ 19   -9.842443047901e-02 -9.858261364796e-02 1.52e-07 7.41e-09 2.44e-06 0.159
+ 20   -9.847431759901e-02 -9.851574221260e-02 2.85e-08 1.89e-09 6.52e-07 0.162
+ 21   -9.848874278612e-02 -9.849813612796e-02 6.12e-09 7.99e-09 1.48e-07 0.165
+ 22   -9.849234180903e-02 -9.849355091179e-02 5.31e-10 5.74e-09 1.45e-08 0.167
+ 23   -9.849281062650e-02 -9.849299989873e-02 8.32e-11 7.36e-09 2.36e-09 0.170
+ 24   -9.849289201685e-02 -9.849290368423e-02 5.12e-12 1.02e-07 1.45e-10 0.173
+ 25   -9.849289722036e-02 -9.849289747526e-02 3.28e-13 7.37e-07 3.19e-12 0.176
+ 26   -9.849289732688e-02 -9.849289734134e-02 6.20e-14 7.82e-05 1.92e-13 0.178
+ 27   -9.849289733267e-02 -9.849289733302e-02 7.38e-15 1.50e-02 5.87e-15 0.181
+ 28   -9.849289733283e-02 -9.849289733277e-02 5.63e-15 4.73e-02 5.94e-16 0.184
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 29 iterations and 0.19 seconds
+Objective -9.84928106e-02
+Primal infeasibility (abs/rel): 1.66e-10/8.32e-11
+Dual infeasibility   (abs/rel): 8.11e-09/7.36e-09
+Complementarity gap  (abs/rel): 2.59e-09/2.36e-09
+
+
+Barrier finished in 0.19 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [16/30] pr1721_ir0/default/cold/t05.log
+=== soft failure, 31 iters, series=cold, peak dual infeasibility over the last 6 iters 5.41e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.027 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 29.80/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.027 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.053s
+Symbolic factorization time : 0.024s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.111 seconds
+Elapsed time           : 0.111 seconds
+Barrier setup complete at 0.111 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.704291987375e+02 -3.711395609108e+02 3.71e+03 1.91e+00 1.19e-02 0.112
+  1   -4.138240293831e+00 -3.475611537576e+02 4.01e+01 2.77e-01 6.50e-02 0.114
+  2   -1.039773673754e-01 -2.488455939751e+01 4.69e-01 7.85e-03 4.78e-03 0.117
+  3   -5.495207885896e-02 -6.428340798332e-01 4.69e-03 7.91e-05 1.47e-04 0.120
+  4   -5.854039337954e-02 -1.366926284036e-01 6.23e-04 1.05e-05 1.75e-05 0.122
+  5   -6.604975119624e-02 -1.385362712212e-01 5.11e-04 8.60e-06 2.69e-05 0.125
+  6   -6.790336037052e-02 -1.389601525724e-01 4.66e-04 7.88e-06 2.96e-05 0.128
+  7   -8.303222728420e-02 -1.229859618720e-01 2.19e-04 3.68e-06 5.72e-05 0.131
+  8   -8.344792201320e-02 -1.225109087188e-01 1.93e-04 3.26e-06 6.87e-05 0.133
+  9   -8.415588696653e-02 -1.222342282604e-01 1.72e-04 2.92e-06 1.24e-04 0.136
+ 10   -8.638216663477e-02 -1.192142869043e-01 1.32e-04 2.25e-06 9.51e-05 0.139
+ 11   -8.613030699679e-02 -1.187880985742e-01 1.26e-04 2.17e-06 1.56e-04 0.141
+ 12   -9.211841827307e-02 -1.096247508198e-01 6.17e-05 1.05e-06 6.89e-05 0.144
+ 13   -9.284620881719e-02 -1.081501260191e-01 4.70e-05 8.12e-07 9.81e-05 0.147
+ 14   -9.588078140001e-02 -1.034063540757e-01 2.05e-05 3.41e-07 5.26e-05 0.149
+ 15   -9.595697446058e-02 -1.029398680352e-01 1.65e-05 2.87e-07 7.06e-05 0.152
+ 16   -9.732850045728e-02 -1.009836186335e-01 7.97e-06 1.32e-07 3.47e-05 0.155
+ 17   -9.755025951367e-02 -1.005059340996e-01 5.33e-06 9.95e-08 4.06e-05 0.157
+ 18   -9.817927043744e-02 -9.960258867408e-02 2.25e-06 3.36e-08 1.83e-05 0.160
+ 19   -9.831983014126e-02 -9.934568865422e-02 1.26e-06 2.70e-08 1.49e-05 0.163
+ 20   -9.860387487771e-02 -9.895714691533e-02 3.50e-07 6.81e-09 5.15e-06 0.166
+ 21   -9.870464601886e-02 -9.881647077506e-02 8.01e-08 3.68e-09 1.85e-06 0.168
+ 22   -9.874401711920e-02 -9.876792931163e-02 1.65e-08 9.96e-09 4.03e-07 0.171
+ 23   -9.875302977528e-02 -9.875609875043e-02 1.14e-09 8.26e-10 3.76e-08 0.174
+ 24   -9.875430117206e-02 -9.875462821978e-02 1.21e-10 4.41e-09 4.05e-09 0.176
+ 25   -9.875443707320e-02 -9.875446443862e-02 3.62e-11 8.41e-08 2.65e-10 0.179
+ 26   -9.875444840611e-02 -9.875445004213e-02 2.29e-12 1.02e-06 1.35e-11 0.182
+ 27   -9.875444902869e-02 -9.875444925792e-02 2.34e-13 2.03e-05 1.87e-12 0.184
+ 28   -9.875444912506e-02 -9.875444913786e-02 3.44e-14 5.22e-05 7.62e-14 0.187
+ 29   -9.875444913027e-02 -9.875444913184e-02 3.16e-14 8.21e-04 4.69e-15 0.190
+ 30   -9.875444913116e-02 -9.875444913148e-02 1.07e-14 5.41e-03 2.38e-17 0.192
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 31 iterations and 0.20 seconds
+Objective -9.87543012e-02
+Primal infeasibility (abs/rel): 2.43e-10/1.21e-10
+Dual infeasibility   (abs/rel): 4.86e-09/4.41e-09
+Complementarity gap  (abs/rel): 4.45e-09/4.05e-09
+
+
+Barrier finished in 0.20 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [17/30] pr1721_ir0/default/cold_repeat/t00.log
+=== hard failure, None iters, series=cold_repeat, peak dual infeasibility over the last 6 iters 4.06e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.027 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 29.97/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.027 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.054s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.110 seconds
+Elapsed time           : 0.110 seconds
+Barrier setup complete at 0.110 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.703274138474e+02 -3.710708058040e+02 3.71e+03 1.91e+00 1.19e-02 0.111
+  1   -4.137052078975e+00 -3.474922988751e+02 4.01e+01 2.77e-01 6.50e-02 0.114
+  2   -1.039665873293e-01 -2.487351063721e+01 4.69e-01 7.85e-03 4.78e-03 0.116
+  3   -5.494861952078e-02 -6.426107942279e-01 4.69e-03 7.91e-05 1.47e-04 0.119
+  4   -5.854386015664e-02 -1.360801897425e-01 6.18e-04 1.04e-05 1.73e-05 0.122
+  5   -6.651980193798e-02 -1.382165323324e-01 5.03e-04 8.47e-06 2.56e-05 0.125
+  6   -6.787741978327e-02 -1.385553867515e-01 4.69e-04 7.93e-06 3.65e-05 0.127
+  7   -8.000815339282e-02 -1.263543937387e-01 2.70e-04 4.55e-06 7.62e-05 0.130
+  8   -8.013336243546e-02 -1.261894563261e-01 2.54e-04 4.30e-06 9.32e-05 0.133
+  9   -8.275751354352e-02 -1.243059754735e-01 1.86e-04 3.19e-06 2.72e-04 0.135
+ 10   -8.324125597047e-02 -1.222972911668e-01 1.45e-04 2.50e-06 5.49e-04 0.138
+ 11   -9.290516545266e-02 -1.080072652898e-01 4.82e-05 8.13e-07 1.53e-04 0.141
+ 12   -9.345899359460e-02 -1.064560106086e-01 3.41e-05 5.87e-07 1.79e-04 0.143
+ 13   -9.680796930028e-02 -1.013510881054e-01 1.07e-05 1.65e-07 6.48e-05 0.146
+ 14   -9.715836587281e-02 -1.005134334948e-01 6.02e-06 1.02e-07 6.33e-05 0.149
+ 15   -9.801444227010e-02 -9.937491635163e-02 2.30e-06 2.88e-08 2.29e-05 0.151
+ 16   -9.823847294336e-02 -9.899448930042e-02 9.26e-07 1.80e-08 1.48e-05 0.154
+ 17   -9.846873790113e-02 -9.869334410880e-02 2.51e-07 1.22e-08 4.44e-06 0.157
+ 18   -9.853074563426e-02 -9.860434123517e-02 5.45e-08 1.50e-09 1.30e-06 0.159
+ 19   -9.855685062775e-02 -9.857248099800e-02 1.11e-08 8.75e-09 2.82e-07 0.162
+ 20   -9.856287210430e-02 -9.856470330978e-02 7.04e-10 2.69e-09 2.23e-08 0.165
+ 21   -9.856361930303e-02 -9.856382012835e-02 7.68e-11 1.55e-08 2.50e-09 0.167
+ 22   -9.856370624854e-02 -9.856371664139e-02 1.65e-11 6.47e-08 1.24e-10 0.170
+ 23   -9.856371080986e-02 -9.856371151074e-02 5.26e-12 8.41e-07 7.03e-12 0.173
+ 24   -9.856371116086e-02 -9.856371122701e-02 7.52e-13 8.39e-05 5.80e-13 0.175
+ 25   -9.856371119956e-02 -9.856371120308e-02 3.71e-14 7.49e-04 1.28e-14 0.178
+ 26   -9.856371120144e-02 -9.856371120173e-02 9.94e-15 4.06e-03 1.05e-15 0.181
+Numerical error in objective
+Primal residual -nan dual residual -nan complementarity residual -nan
+Search direction computation failed
+Barrier finished in 0.18 seconds
+Barrier Solve status A numerical error was encountered.
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [18/30] pr1721_ir0/default/cold_repeat/t01.log
+=== soft failure, 26 iters, series=cold_repeat, peak dual infeasibility over the last 6 iters 3.58e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.027 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.18/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.027 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.053s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.110 seconds
+Elapsed time           : 0.110 seconds
+Barrier setup complete at 0.110 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.110
+  1   -4.135546087595e+00 -3.474447710371e+02 4.01e+01 2.77e-01 6.50e-02 0.113
+  2   -1.039314353000e-01 -2.487032509872e+01 4.69e-01 7.85e-03 4.78e-03 0.116
+  3   -5.492443558385e-02 -6.426586224594e-01 4.69e-03 7.91e-05 1.48e-04 0.118
+  4   -5.851219332654e-02 -1.359803435935e-01 6.17e-04 1.04e-05 1.73e-05 0.121
+  5   -6.701659617321e-02 -1.381479766562e-01 4.94e-04 8.32e-06 2.86e-05 0.124
+  6   -6.855040191119e-02 -1.384591756086e-01 4.55e-04 7.69e-06 3.48e-05 0.126
+  7   -8.223256382594e-02 -1.232136194269e-01 2.32e-04 3.90e-06 6.24e-05 0.129
+  8   -8.247964229307e-02 -1.229729176965e-01 2.12e-04 3.59e-06 7.15e-05 0.132
+  9   -8.394120061885e-02 -1.220003090121e-01 1.71e-04 2.93e-06 1.85e-04 0.134
+ 10   -8.656829349857e-02 -1.187840468761e-01 8.89e-05 1.53e-06 1.36e-04 0.137
+ 11   -8.752242482530e-02 -1.157196070260e-01 5.91e-05 1.05e-06 3.80e-04 0.140
+ 12   -9.537761354565e-02 -1.035726294259e-01 1.38e-05 2.03e-07 9.04e-05 0.143
+ 13   -9.692696648204e-02 -1.009873846712e-01 5.49e-06 8.09e-08 3.36e-05 0.146
+ 14   -9.752957457647e-02 -9.982937033544e-02 2.09e-06 4.50e-08 3.58e-05 0.149
+ 15   -9.826348011032e-02 -9.884574770222e-02 4.45e-07 1.81e-08 7.54e-06 0.151
+ 16   -9.843074948938e-02 -9.861044713878e-02 1.19e-07 1.45e-09 3.55e-06 0.154
+ 17   -9.850552965420e-02 -9.851129318861e-02 3.66e-09 4.68e-09 6.01e-08 0.157
+ 18   -9.850780606446e-02 -9.850830551464e-02 3.13e-10 1.51e-10 3.01e-09 0.160
+ 19   -9.850798129321e-02 -9.850806928892e-02 7.53e-11 1.21e-07 3.59e-10 0.162
+ 20   -9.850801442005e-02 -9.850802497936e-02 6.31e-12 3.20e-07 3.17e-11 0.165
+ 21   -9.850801828708e-02 -9.850802001101e-02 1.16e-12 1.85e-05 3.59e-12 0.168
+ 22   -9.850801893358e-02 -9.850801920970e-02 3.00e-13 4.20e-04 6.44e-13 0.170
+ 23   -9.850801902388e-02 -9.850801910090e-02 2.56e-13 5.80e-04 1.67e-13 0.173
+ 24   -9.850801904880e-02 -9.850801906616e-02 4.53e-14 1.57e-03 2.35e-14 0.176
+ 25   -9.850801905464e-02 -9.850801905938e-02 4.14e-14 3.58e-03 5.72e-15 0.178
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 26 iterations and 0.18 seconds
+Objective -9.85078061e-02
+Primal infeasibility (abs/rel): 6.26e-10/3.13e-10
+Dual infeasibility   (abs/rel): 1.66e-10/1.51e-10
+Complementarity gap  (abs/rel): 3.30e-09/3.01e-09
+
+
+Barrier finished in 0.18 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [19/30] pr1721_ir0/default/cold_repeat/t02.log
+=== soft failure, 22 iters, series=cold_repeat, peak dual infeasibility over the last 6 iters 2.56e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.025 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 29.86/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.025 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.054s
+Symbolic factorization time : 0.024s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.109 seconds
+Elapsed time           : 0.109 seconds
+Barrier setup complete at 0.109 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702509737108e+02 -3.710937010099e+02 3.71e+03 1.91e+00 1.19e-02 0.110
+  1   -4.136273724066e+00 -3.475151614491e+02 4.01e+01 2.77e-01 6.50e-02 0.113
+  2   -1.039317309914e-01 -2.487809570122e+01 4.69e-01 7.85e-03 4.78e-03 0.115
+  3   -5.492858363959e-02 -6.426989428659e-01 4.69e-03 7.91e-05 1.48e-04 0.118
+  4   -5.851315192417e-02 -1.366087249037e-01 6.22e-04 1.05e-05 1.74e-05 0.121
+  5   -6.838203673126e-02 -1.390882580303e-01 4.75e-04 8.01e-06 3.90e-05 0.123
+  6   -6.889364208531e-02 -1.392058276232e-01 4.61e-04 7.79e-06 4.13e-05 0.126
+  7   -7.975773882734e-02 -1.309110456509e-01 2.43e-04 4.26e-06 1.01e-04 0.129
+  8   -7.980215692359e-02 -1.306481764198e-01 2.26e-04 3.97e-06 2.65e-04 0.131
+  9   -8.971763586857e-02 -1.146079651783e-01 6.32e-05 1.14e-06 2.28e-04 0.134
+ 10   -9.597459692516e-02 -1.029565244896e-01 1.59e-05 2.86e-07 4.93e-05 0.137
+ 11   -9.743912980271e-02 -1.006255765941e-01 6.14e-06 1.11e-07 1.11e-05 0.139
+ 12   -9.773461911040e-02 -9.993998520143e-02 2.94e-06 7.38e-08 2.50e-05 0.142
+ 13   -9.823248627605e-02 -9.925628777965e-02 9.33e-07 9.57e-09 9.49e-06 0.145
+ 14   -9.847078376208e-02 -9.892487525313e-02 3.51e-07 1.07e-08 8.04e-06 0.148
+ 15   -9.865614960082e-02 -9.868363610262e-02 2.06e-08 3.17e-09 3.88e-07 0.151
+ 16   -9.866786271580e-02 -9.866876061573e-02 6.72e-10 7.17e-09 5.80e-09 0.153
+ 17   -9.866820137816e-02 -9.866831864891e-02 8.58e-11 1.62e-08 6.40e-10 0.156
+ 18   -9.866824337516e-02 -9.866826249971e-02 1.15e-11 1.93e-08 6.14e-11 0.159
+ 19   -9.866825143076e-02 -9.866825234092e-02 5.20e-13 3.50e-06 6.81e-12 0.161
+ 20   -9.866825181521e-02 -9.866825185118e-02 6.99e-14 1.13e-04 2.66e-13 0.164
+ 21   -9.866825183018e-02 -9.866825183301e-02 5.10e-14 2.56e-03 1.16e-14 0.167
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 22 iterations and 0.17 seconds
+Objective -9.86678627e-02
+Primal infeasibility (abs/rel): 1.34e-09/6.72e-10
+Dual infeasibility   (abs/rel): 7.90e-09/7.17e-09
+Complementarity gap  (abs/rel): 6.37e-09/5.80e-09
+
+
+Barrier finished in 0.17 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [20/30] pr1721_ir0/default/cold_repeat/t03.log
+=== soft failure, 27 iters, series=cold_repeat, peak dual infeasibility over the last 6 iters 1.18e-02
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.025 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.00/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.025 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.053s
+Symbolic factorization time : 0.023s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.109 seconds
+Elapsed time           : 0.109 seconds
+Barrier setup complete at 0.109 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.704296579021e+02 -3.711143874095e+02 3.71e+03 1.91e+00 1.19e-02 0.109
+  1   -4.138892597316e+00 -3.475359915807e+02 4.01e+01 2.77e-01 6.50e-02 0.112
+  2   -1.039998754482e-01 -2.488607306979e+01 4.69e-01 7.85e-03 4.78e-03 0.115
+  3   -5.495597871418e-02 -6.429557204304e-01 4.69e-03 7.91e-05 1.48e-04 0.117
+  4   -5.854647565559e-02 -1.362808542356e-01 6.19e-04 1.04e-05 1.74e-05 0.120
+  5   -6.679122818591e-02 -1.385928704152e-01 5.02e-04 8.46e-06 2.70e-05 0.123
+  6   -6.794018492486e-02 -1.389116857447e-01 4.73e-04 7.99e-06 3.50e-05 0.125
+  7   -8.102191466027e-02 -1.263516736605e-01 2.52e-04 4.26e-06 8.00e-05 0.128
+  8   -8.117543304377e-02 -1.261418667324e-01 2.34e-04 3.97e-06 1.12e-04 0.131
+  9   -8.463905906728e-02 -1.227993104787e-01 1.51e-04 2.59e-06 2.91e-04 0.133
+ 10   -8.541153990922e-02 -1.201688764881e-01 1.11e-04 1.93e-06 4.87e-04 0.136
+ 11   -9.365531575309e-02 -1.075906843382e-01 3.94e-05 6.62e-07 1.40e-04 0.139
+ 12   -9.411674935278e-02 -1.061255121893e-01 2.78e-05 4.80e-07 1.95e-04 0.141
+ 13   -9.711524715335e-02 -1.015162078865e-01 9.14e-06 1.39e-07 7.17e-05 0.144
+ 14   -9.773258794231e-02 -1.003075141620e-01 3.86e-06 6.56e-08 4.82e-05 0.147
+ 15   -9.846080262967e-02 -9.934074733950e-02 1.18e-06 1.49e-08 1.40e-05 0.149
+ 16   -9.865821727265e-02 -9.903490341280e-02 3.55e-07 7.62e-09 7.37e-06 0.152
+ 17   -9.878552977172e-02 -9.887465589685e-02 8.09e-08 1.40e-08 1.76e-06 0.155
+ 18   -9.881255843810e-02 -9.883682843807e-02 1.23e-08 1.43e-10 3.34e-07 0.157
+ 19   -9.882185218510e-02 -9.882585711560e-02 2.00e-09 8.24e-09 5.60e-08 0.160
+ 20   -9.882348316215e-02 -9.882383833502e-02 1.45e-10 4.22e-10 2.89e-09 0.163
+ 21   -9.882363289471e-02 -9.882366358816e-02 7.35e-12 3.63e-08 2.55e-10 0.166
+ 22   -9.882364634151e-02 -9.882364794877e-02 4.38e-12 2.78e-07 1.24e-11 0.168
+ 23   -9.882364709729e-02 -9.882364716454e-02 1.38e-12 1.08e-05 2.52e-13 0.171
+ 24   -9.882364713913e-02 -9.882364715074e-02 2.58e-13 5.16e-03 3.86e-14 0.174
+ 25   -9.882364714804e-02 -9.882364714824e-02 5.36e-15 1.62e-03 4.69e-15 0.176
+ 26   -9.882364714813e-02 -9.882364714821e-02 3.05e-15 1.18e-02 1.09e-15 0.179
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 27 iterations and 0.18 seconds
+Objective -9.88234832e-02
+Primal infeasibility (abs/rel): 2.90e-10/1.45e-10
+Dual infeasibility   (abs/rel): 4.65e-10/4.22e-10
+Complementarity gap  (abs/rel): 3.17e-09/2.89e-09
+
+
+Barrier finished in 0.18 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [21/30] pr1721_ir0/default/cold_repeat/t04.log
+=== soft failure, 29 iters, series=cold_repeat, peak dual infeasibility over the last 6 iters 2.27e-02
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.028 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.12/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.028 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.054s
+Symbolic factorization time : 0.024s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.112 seconds
+Elapsed time           : 0.112 seconds
+Barrier setup complete at 0.112 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702624119443e+02 -3.710387458059e+02 3.71e+03 1.91e+00 1.19e-02 0.112
+  1   -4.136636657709e+00 -3.474601645315e+02 4.01e+01 2.77e-01 6.50e-02 0.115
+  2   -1.039518364442e-01 -2.487140771075e+01 4.69e-01 7.85e-03 4.78e-03 0.118
+  3   -5.493965877086e-02 -6.425638223700e-01 4.69e-03 7.91e-05 1.48e-04 0.121
+  4   -5.853205541400e-02 -1.359055667297e-01 6.17e-04 1.04e-05 1.72e-05 0.123
+  5   -6.752248987247e-02 -1.382889312400e-01 4.87e-04 8.20e-06 3.00e-05 0.126
+  6   -6.909314681955e-02 -1.385283023703e-01 4.47e-04 7.55e-06 4.23e-05 0.129
+  7   -8.140912283518e-02 -1.243463699851e-01 2.48e-04 4.16e-06 7.51e-05 0.131
+  8   -8.155818040231e-02 -1.241862749936e-01 2.32e-04 3.92e-06 7.37e-05 0.134
+  9   -8.323131756571e-02 -1.230409629477e-01 1.85e-04 3.17e-06 2.17e-04 0.137
+ 10   -8.338516592507e-02 -1.218659107392e-01 1.59e-04 2.73e-06 3.59e-04 0.139
+ 11   -9.171588490766e-02 -1.095592627336e-01 6.76e-05 1.15e-06 1.14e-04 0.142
+ 12   -9.235092607397e-02 -1.081506293374e-01 5.22e-05 8.97e-07 1.34e-04 0.145
+ 13   -9.592641964886e-02 -1.025471240994e-01 1.90e-05 3.11e-07 6.40e-05 0.147
+ 14   -9.614659540564e-02 -1.018800503211e-01 1.36e-05 2.34e-07 7.68e-05 0.150
+ 15   -9.734043216393e-02 -1.002233139313e-01 6.12e-06 9.87e-08 3.38e-05 0.153
+ 16   -9.760704825622e-02 -9.972869187922e-02 3.62e-06 6.75e-08 3.20e-05 0.155
+ 17   -9.812314830343e-02 -9.901136496137e-02 1.30e-06 1.54e-08 1.27e-05 0.158
+ 18   -9.827025346307e-02 -9.878292267600e-02 5.73e-07 1.36e-08 8.07e-06 0.161
+ 19   -9.842443058382e-02 -9.858261350754e-02 1.52e-07 7.36e-09 2.44e-06 0.163
+ 20   -9.847431764403e-02 -9.851574215616e-02 2.85e-08 1.72e-09 6.52e-07 0.166
+ 21   -9.848874279790e-02 -9.849813611291e-02 6.12e-09 7.65e-09 1.48e-07 0.169
+ 22   -9.849234181105e-02 -9.849355090935e-02 5.31e-10 5.70e-09 1.45e-08 0.171
+ 23   -9.849281062684e-02 -9.849299989831e-02 8.32e-11 4.64e-09 2.36e-09 0.174
+ 24   -9.849289201689e-02 -9.849290368419e-02 5.12e-12 9.69e-08 1.45e-10 0.177
+ 25   -9.849289722036e-02 -9.849289747526e-02 3.28e-13 7.49e-07 3.19e-12 0.180
+ 26   -9.849289732688e-02 -9.849289734134e-02 6.20e-14 5.77e-05 1.93e-13 0.182
+ 27   -9.849289733268e-02 -9.849289733300e-02 7.38e-15 1.43e-02 5.03e-15 0.185
+ 28   -9.849289733280e-02 -9.849289733282e-02 6.05e-15 2.27e-02 2.18e-15 0.190
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 29 iterations and 0.19 seconds
+Objective -9.84928106e-02
+Primal infeasibility (abs/rel): 1.66e-10/8.32e-11
+Dual infeasibility   (abs/rel): 5.11e-09/4.64e-09
+Complementarity gap  (abs/rel): 2.59e-09/2.36e-09
+
+
+Barrier finished in 0.19 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [22/30] pr1721_ir0/default/cold_repeat/t05.log
+=== soft failure, 30 iters, series=cold_repeat, peak dual infeasibility over the last 6 iters 1.23e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.028 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 29.94/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.028 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.065s
+Symbolic factorization time : 0.024s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.124 seconds
+Elapsed time           : 0.124 seconds
+Barrier setup complete at 0.124 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.704291987375e+02 -3.711395609108e+02 3.71e+03 1.91e+00 1.19e-02 0.124
+  1   -4.138240293852e+00 -3.475611537576e+02 4.01e+01 2.77e-01 6.50e-02 0.127
+  2   -1.039773673851e-01 -2.488455939838e+01 4.69e-01 7.85e-03 4.78e-03 0.130
+  3   -5.495207885899e-02 -6.428340799583e-01 4.69e-03 7.91e-05 1.47e-04 0.133
+  4   -5.854039337828e-02 -1.366926284583e-01 6.23e-04 1.05e-05 1.75e-05 0.135
+  5   -6.604975123178e-02 -1.385362712705e-01 5.11e-04 8.60e-06 2.69e-05 0.138
+  6   -6.790336046736e-02 -1.389601525999e-01 4.66e-04 7.88e-06 2.96e-05 0.141
+  7   -8.303222706572e-02 -1.229859620903e-01 2.19e-04 3.68e-06 5.72e-05 0.144
+  8   -8.344792180474e-02 -1.225109089574e-01 1.93e-04 3.26e-06 6.87e-05 0.146
+  9   -8.415588690275e-02 -1.222342283151e-01 1.72e-04 2.92e-06 1.24e-04 0.149
+ 10   -8.638216660578e-02 -1.192142869171e-01 1.32e-04 2.25e-06 9.51e-05 0.152
+ 11   -8.613030697518e-02 -1.187880985954e-01 1.26e-04 2.17e-06 1.56e-04 0.155
+ 12   -9.211841826203e-02 -1.096247508330e-01 6.17e-05 1.05e-06 6.89e-05 0.157
+ 13   -9.284620867621e-02 -1.081501262412e-01 4.70e-05 8.12e-07 9.81e-05 0.160
+ 14   -9.588078132860e-02 -1.034063541816e-01 2.05e-05 3.41e-07 5.26e-05 0.163
+ 15   -9.595697437291e-02 -1.029398681633e-01 1.65e-05 2.87e-07 7.06e-05 0.166
+ 16   -9.732850039254e-02 -1.009836187357e-01 7.97e-06 1.32e-07 3.47e-05 0.168
+ 17   -9.755025943914e-02 -1.005059342110e-01 5.33e-06 9.94e-08 4.06e-05 0.171
+ 18   -9.817927039468e-02 -9.960258873846e-02 2.25e-06 3.36e-08 1.83e-05 0.174
+ 19   -9.831983010245e-02 -9.934568870915e-02 1.26e-06 2.67e-08 1.49e-05 0.178
+ 20   -9.860387485958e-02 -9.895714693988e-02 3.50e-07 6.87e-09 5.15e-06 0.181
+ 21   -9.870464601649e-02 -9.881647077777e-02 8.01e-08 3.51e-09 1.85e-06 0.184
+ 22   -9.874401712008e-02 -9.876792931051e-02 1.65e-08 9.89e-09 4.03e-07 0.187
+ 23   -9.875302977536e-02 -9.875609875034e-02 1.14e-09 9.30e-10 3.76e-08 0.189
+ 24   -9.875430117207e-02 -9.875462821976e-02 1.21e-10 6.95e-09 4.05e-09 0.192
+ 25   -9.875443707320e-02 -9.875446443861e-02 3.62e-11 7.05e-08 2.65e-10 0.195
+ 26   -9.875444840610e-02 -9.875445004213e-02 2.29e-12 6.60e-07 1.35e-11 0.198
+ 27   -9.875444902869e-02 -9.875444925792e-02 2.34e-13 2.44e-05 1.87e-12 0.200
+ 28   -9.875444912506e-02 -9.875444913785e-02 3.44e-14 5.81e-05 7.63e-14 0.203
+ 29   -9.875444913018e-02 -9.875444913194e-02 3.18e-14 1.23e-03 5.09e-15 0.206
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 30 iterations and 0.21 seconds
+Objective -9.87543012e-02
+Primal infeasibility (abs/rel): 2.43e-10/1.21e-10
+Dual infeasibility   (abs/rel): 7.66e-09/6.95e-09
+Complementarity gap  (abs/rel): 4.45e-09/4.05e-09
+
+
+Barrier finished in 0.21 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [23/30] pr1721_ir0/default/warm/t00.log
+=== soft failure, 27 iters, series=warm, peak dual infeasibility over the last 6 iters 1.31e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.028 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.02/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.028 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.053s
+Symbolic factorization time : 0.024s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.112 seconds
+Elapsed time           : 0.112 seconds
+Barrier setup complete at 0.112 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.703274138474e+02 -3.710708058040e+02 3.71e+03 1.91e+00 1.19e-02 0.112
+  1   -4.137052079144e+00 -3.474922988751e+02 4.01e+01 2.77e-01 6.50e-02 0.115
+  2   -1.039665872922e-01 -2.487351063529e+01 4.69e-01 7.85e-03 4.78e-03 0.118
+  3   -5.494861952081e-02 -6.426107942510e-01 4.69e-03 7.91e-05 1.47e-04 0.120
+  4   -5.854386015787e-02 -1.360801898714e-01 6.18e-04 1.04e-05 1.73e-05 0.123
+  5   -6.651980201018e-02 -1.382165324562e-01 5.03e-04 8.47e-06 2.56e-05 0.126
+  6   -6.787741984136e-02 -1.385553868743e-01 4.69e-04 7.93e-06 3.65e-05 0.128
+  7   -8.000815321355e-02 -1.263543937159e-01 2.70e-04 4.55e-06 7.62e-05 0.131
+  8   -8.013336227096e-02 -1.261894563207e-01 2.54e-04 4.30e-06 9.32e-05 0.134
+  9   -8.275751305196e-02 -1.243059759116e-01 1.86e-04 3.19e-06 2.72e-04 0.136
+ 10   -8.324125523432e-02 -1.222972921790e-01 1.45e-04 2.50e-06 5.49e-04 0.139
+ 11   -9.290516486162e-02 -1.080072661737e-01 4.82e-05 8.13e-07 1.53e-04 0.142
+ 12   -9.345899298338e-02 -1.064560116284e-01 3.41e-05 5.87e-07 1.79e-04 0.144
+ 13   -9.680796914984e-02 -1.013510883952e-01 1.07e-05 1.65e-07 6.48e-05 0.147
+ 14   -9.715836503101e-02 -1.005134348456e-01 6.02e-06 1.02e-07 6.33e-05 0.150
+ 15   -9.801444161347e-02 -9.937491738537e-02 2.30e-06 2.88e-08 2.29e-05 0.152
+ 16   -9.823847235583e-02 -9.899449013005e-02 9.26e-07 1.79e-08 1.48e-05 0.155
+ 17   -9.846873765548e-02 -9.869334445124e-02 2.51e-07 1.22e-08 4.44e-06 0.158
+ 18   -9.853074551860e-02 -9.860434138222e-02 5.45e-08 1.54e-09 1.30e-06 0.160
+ 19   -9.855685059801e-02 -9.857248103682e-02 1.11e-08 9.00e-09 2.82e-07 0.163
+ 20   -9.856287209871e-02 -9.856470331658e-02 7.04e-10 1.44e-09 2.23e-08 0.166
+ 21   -9.856361930227e-02 -9.856382012927e-02 7.68e-11 7.41e-09 2.50e-09 0.168
+ 22   -9.856370624859e-02 -9.856371664134e-02 1.65e-11 4.86e-08 1.24e-10 0.171
+ 23   -9.856371080986e-02 -9.856371151073e-02 5.26e-12 1.75e-06 7.03e-12 0.174
+ 24   -9.856371116090e-02 -9.856371122697e-02 7.51e-13 8.32e-05 5.81e-13 0.176
+ 25   -9.856371119953e-02 -9.856371120311e-02 3.75e-14 5.27e-04 1.27e-14 0.179
+ 26   -9.856371120136e-02 -9.856371120179e-02 1.11e-14 1.31e-03 6.69e-17 0.182
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 27 iterations and 0.18 seconds
+Objective -9.85636193e-02
+Primal infeasibility (abs/rel): 1.54e-10/7.68e-11
+Dual infeasibility   (abs/rel): 8.16e-09/7.41e-09
+Complementarity gap  (abs/rel): 2.74e-09/2.50e-09
+
+
+Barrier finished in 0.18 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [24/30] pr1721_ir0/default/warm/t01.log
+=== soft failure, 27 iters, series=warm, peak dual infeasibility over the last 6 iters 2.52e-02
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] sequence_solve = 1, cache was reused for this solve (log)
+=== [log] build marker: 'started at 0.000 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.08/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Barrier: reusing cache (skip convert/presolve/scaling)
+Barrier solver started at 0.000 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+Barrier setup complete at 0.000 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.701605598740e+02 -3.710234169387e+02 3.71e+03 1.91e+00 1.19e-02 0.001
+  1   -4.135546087424e+00 -3.474447710371e+02 4.01e+01 2.77e-01 6.50e-02 0.004
+  2   -1.039314352918e-01 -2.487032509696e+01 4.69e-01 7.85e-03 4.78e-03 0.007
+  3   -5.492443558286e-02 -6.426586227717e-01 4.69e-03 7.91e-05 1.48e-04 0.009
+  4   -5.851219332469e-02 -1.359803436176e-01 6.17e-04 1.04e-05 1.73e-05 0.012
+  5   -6.701659625037e-02 -1.381479766982e-01 4.94e-04 8.32e-06 2.86e-05 0.015
+  6   -6.855040195069e-02 -1.384591756223e-01 4.55e-04 7.69e-06 3.48e-05 0.017
+  7   -8.223256436443e-02 -1.232136191623e-01 2.32e-04 3.90e-06 6.24e-05 0.020
+  8   -8.247964280314e-02 -1.229729173815e-01 2.12e-04 3.59e-06 7.15e-05 0.023
+  9   -8.394120095389e-02 -1.220003087858e-01 1.71e-04 2.93e-06 1.85e-04 0.025
+ 10   -8.656829539208e-02 -1.187840444914e-01 8.89e-05 1.53e-06 1.36e-04 0.028
+ 11   -8.752242376309e-02 -1.157196097222e-01 5.91e-05 1.05e-06 3.80e-04 0.031
+ 12   -9.537761149715e-02 -1.035726325801e-01 1.38e-05 2.03e-07 9.04e-05 0.033
+ 13   -9.692696323883e-02 -1.009873894329e-01 5.49e-06 8.09e-08 3.36e-05 0.036
+ 14   -9.752957247598e-02 -9.982937325289e-02 2.09e-06 4.50e-08 3.58e-05 0.039
+ 15   -9.826347954370e-02 -9.884574849715e-02 4.45e-07 1.81e-08 7.54e-06 0.041
+ 16   -9.843074916658e-02 -9.861044757502e-02 1.19e-07 1.32e-09 3.55e-06 0.044
+ 17   -9.850552964226e-02 -9.851129320416e-02 3.66e-09 4.68e-09 6.01e-08 0.047
+ 18   -9.850780606307e-02 -9.850830551643e-02 3.13e-10 5.93e-09 3.01e-09 0.050
+ 19   -9.850798129280e-02 -9.850806928945e-02 7.53e-11 1.37e-07 3.59e-10 0.052
+ 20   -9.850801442005e-02 -9.850802497934e-02 6.31e-12 6.00e-07 3.17e-11 0.055
+ 21   -9.850801828708e-02 -9.850802001099e-02 1.16e-12 1.48e-05 3.59e-12 0.058
+ 22   -9.850801893340e-02 -9.850801920993e-02 3.00e-13 4.29e-04 6.44e-13 0.060
+ 23   -9.850801902358e-02 -9.850801910122e-02 2.56e-13 3.48e-04 1.67e-13 0.063
+ 24   -9.850801904851e-02 -9.850801906652e-02 4.70e-14 7.66e-05 2.43e-14 0.066
+ 25   -9.850801905439e-02 -9.850801905980e-02 4.58e-14 2.52e-02 7.17e-15 0.068
+ 26   -9.850801905585e-02 -9.850801905693e-02 1.11e-16 1.58e-02 1.37e-15 0.080
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 27 iterations and 0.08 seconds
+Objective -9.85078061e-02
+Primal infeasibility (abs/rel): 6.26e-10/3.13e-10
+Dual infeasibility   (abs/rel): 6.53e-09/5.93e-09
+Complementarity gap  (abs/rel): 3.30e-09/3.01e-09
+
+
+Barrier finished in 0.08 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [25/30] pr1721_ir0/default/warm/t02.log
+=== soft failure, 23 iters, series=warm, peak dual infeasibility over the last 6 iters 6.80e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] sequence_solve = 1, cache was reused for this solve (log)
+=== [log] build marker: 'started at 0.000 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 29.93/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Barrier: reusing cache (skip convert/presolve/scaling)
+Barrier solver started at 0.000 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+Barrier setup complete at 0.000 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702509737108e+02 -3.710937010099e+02 3.71e+03 1.91e+00 1.19e-02 0.001
+  1   -4.136273724080e+00 -3.475151614491e+02 4.01e+01 2.77e-01 6.50e-02 0.004
+  2   -1.039317309521e-01 -2.487809569840e+01 4.69e-01 7.85e-03 4.78e-03 0.007
+  3   -5.492858363946e-02 -6.426989425550e-01 4.69e-03 7.91e-05 1.48e-04 0.010
+  4   -5.851315192754e-02 -1.366087248675e-01 6.22e-04 1.05e-05 1.74e-05 0.013
+  5   -6.838203658344e-02 -1.390882579727e-01 4.75e-04 8.01e-06 3.90e-05 0.015
+  6   -6.889364198850e-02 -1.392058275864e-01 4.61e-04 7.79e-06 4.13e-05 0.018
+  7   -7.975773864367e-02 -1.309110449393e-01 2.43e-04 4.26e-06 1.01e-04 0.021
+  8   -7.980215677289e-02 -1.306481757480e-01 2.26e-04 3.97e-06 2.65e-04 0.023
+  9   -8.971763529922e-02 -1.146079665051e-01 6.32e-05 1.14e-06 2.28e-04 0.026
+ 10   -9.597459645549e-02 -1.029565249455e-01 1.59e-05 2.86e-07 4.93e-05 0.029
+ 11   -9.743912938933e-02 -1.006255773171e-01 6.14e-06 1.11e-07 1.11e-05 0.031
+ 12   -9.773461891953e-02 -9.993998540003e-02 2.94e-06 7.39e-08 2.50e-05 0.034
+ 13   -9.823248665987e-02 -9.925628723512e-02 9.33e-07 9.52e-09 9.49e-06 0.037
+ 14   -9.847078408541e-02 -9.892487483086e-02 3.51e-07 1.09e-08 8.04e-06 0.039
+ 15   -9.865614960536e-02 -9.868363609840e-02 2.06e-08 3.17e-09 3.88e-07 0.042
+ 16   -9.866786271543e-02 -9.866876061615e-02 6.72e-10 6.67e-09 5.80e-09 0.045
+ 17   -9.866820137835e-02 -9.866831864868e-02 8.58e-11 3.15e-09 6.40e-10 0.048
+ 18   -9.866824337530e-02 -9.866826249952e-02 1.15e-11 2.75e-07 6.13e-11 0.050
+ 19   -9.866825143081e-02 -9.866825234087e-02 5.18e-13 4.63e-06 6.81e-12 0.053
+ 20   -9.866825181507e-02 -9.866825185135e-02 6.98e-14 1.42e-04 2.66e-13 0.056
+ 21   -9.866825183030e-02 -9.866825183286e-02 5.10e-14 2.54e-03 1.06e-14 0.058
+ 22   -9.866825183186e-02 -9.866825183222e-02 9.60e-15 6.80e-03 1.81e-15 0.061
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 23 iterations and 0.06 seconds
+Objective -9.86682014e-02
+Primal infeasibility (abs/rel): 1.72e-10/8.58e-11
+Dual infeasibility   (abs/rel): 3.47e-09/3.15e-09
+Complementarity gap  (abs/rel): 7.03e-10/6.40e-10
+
+
+Barrier finished in 0.06 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [26/30] pr1721_ir0/default/warm/t03.log
+=== soft failure, 26 iters, series=warm, peak dual infeasibility over the last 6 iters 4.92e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] sequence_solve = 1, cache was reused for this solve (log)
+=== [log] build marker: 'started at 0.000 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 29.95/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Barrier: reusing cache (skip convert/presolve/scaling)
+Barrier solver started at 0.000 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+Barrier setup complete at 0.000 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.704296579021e+02 -3.711143874095e+02 3.71e+03 1.91e+00 1.19e-02 0.001
+  1   -4.138892597376e+00 -3.475359915807e+02 4.01e+01 2.77e-01 6.50e-02 0.003
+  2   -1.039998754328e-01 -2.488607306883e+01 4.69e-01 7.85e-03 4.78e-03 0.006
+  3   -5.495597871463e-02 -6.429557202306e-01 4.69e-03 7.91e-05 1.48e-04 0.009
+  4   -5.854647565743e-02 -1.362808542771e-01 6.19e-04 1.04e-05 1.74e-05 0.012
+  5   -6.679122821423e-02 -1.385928704529e-01 5.02e-04 8.46e-06 2.70e-05 0.015
+  6   -6.794018493243e-02 -1.389116857887e-01 4.73e-04 7.99e-06 3.50e-05 0.017
+  7   -8.102191447830e-02 -1.263516736391e-01 2.52e-04 4.26e-06 8.00e-05 0.020
+  8   -8.117543287936e-02 -1.261418667271e-01 2.34e-04 3.97e-06 1.12e-04 0.023
+  9   -8.463905863229e-02 -1.227993109549e-01 1.51e-04 2.59e-06 2.91e-04 0.025
+ 10   -8.541153931077e-02 -1.201688773104e-01 1.11e-04 1.93e-06 4.87e-04 0.028
+ 11   -9.365531556310e-02 -1.075906846070e-01 3.94e-05 6.62e-07 1.40e-04 0.031
+ 12   -9.411674923323e-02 -1.061255123907e-01 2.78e-05 4.80e-07 1.95e-04 0.033
+ 13   -9.711524705967e-02 -1.015162080219e-01 9.14e-06 1.39e-07 7.17e-05 0.036
+ 14   -9.773258792959e-02 -1.003075141718e-01 3.86e-06 6.56e-08 4.82e-05 0.039
+ 15   -9.846080261709e-02 -9.934074735122e-02 1.18e-06 1.48e-08 1.40e-05 0.045
+ 16   -9.865821726592e-02 -9.903490341977e-02 3.55e-07 7.48e-09 7.37e-06 0.047
+ 17   -9.878552977022e-02 -9.887465589848e-02 8.09e-08 1.40e-08 1.76e-06 0.050
+ 18   -9.881255843712e-02 -9.883682843920e-02 1.23e-08 6.56e-10 3.34e-07 0.053
+ 19   -9.882185218494e-02 -9.882585711579e-02 2.00e-09 7.72e-09 5.60e-08 0.055
+ 20   -9.882348316216e-02 -9.882383833502e-02 1.45e-10 4.98e-10 2.89e-09 0.058
+ 21   -9.882363289470e-02 -9.882366358817e-02 7.35e-12 9.79e-09 2.55e-10 0.061
+ 22   -9.882364634147e-02 -9.882364794883e-02 4.38e-12 1.48e-07 1.24e-11 0.063
+ 23   -9.882364709726e-02 -9.882364716457e-02 1.38e-12 3.72e-06 2.52e-13 0.066
+ 24   -9.882364713938e-02 -9.882364715066e-02 2.51e-13 4.92e-03 3.68e-14 0.069
+ 25   -9.882364714740e-02 -9.882364714843e-02 2.33e-14 1.20e-03 8.27e-16 0.071
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 26 iterations and 0.07 seconds
+Objective -9.88234832e-02
+Primal infeasibility (abs/rel): 2.90e-10/1.45e-10
+Dual infeasibility   (abs/rel): 5.48e-10/4.98e-10
+Complementarity gap  (abs/rel): 3.17e-09/2.89e-09
+
+
+Barrier finished in 0.07 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [27/30] pr1721_ir0/default/warm/t04.log
+=== soft failure, 29 iters, series=warm, peak dual infeasibility over the last 6 iters 3.05e-02
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] sequence_solve = 1, cache was reused for this solve (log)
+=== [log] build marker: 'started at 0.000 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.07/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Barrier: reusing cache (skip convert/presolve/scaling)
+Barrier solver started at 0.000 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+Barrier setup complete at 0.000 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702624119443e+02 -3.710387458059e+02 3.71e+03 1.91e+00 1.19e-02 0.001
+  1   -4.136636657611e+00 -3.474601645315e+02 4.01e+01 2.77e-01 6.50e-02 0.003
+  2   -1.039518364658e-01 -2.487140771177e+01 4.69e-01 7.85e-03 4.78e-03 0.006
+  3   -5.493965877149e-02 -6.425638222724e-01 4.69e-03 7.91e-05 1.48e-04 0.009
+  4   -5.853205541475e-02 -1.359055666001e-01 6.17e-04 1.04e-05 1.72e-05 0.012
+  5   -6.752248970629e-02 -1.382889312300e-01 4.87e-04 8.20e-06 3.00e-05 0.015
+  6   -6.909314671318e-02 -1.385283023765e-01 4.47e-04 7.55e-06 4.23e-05 0.017
+  7   -8.140912256300e-02 -1.243463703014e-01 2.48e-04 4.16e-06 7.51e-05 0.020
+  8   -8.155818014139e-02 -1.241862753238e-01 2.32e-04 3.92e-06 7.37e-05 0.023
+  9   -8.323131738826e-02 -1.230409631786e-01 1.85e-04 3.17e-06 2.17e-04 0.025
+ 10   -8.338516592064e-02 -1.218659108569e-01 1.59e-04 2.73e-06 3.59e-04 0.028
+ 11   -9.171588459646e-02 -1.095592632235e-01 6.76e-05 1.15e-06 1.14e-04 0.031
+ 12   -9.235092576425e-02 -1.081506298649e-01 5.22e-05 8.97e-07 1.34e-04 0.033
+ 13   -9.592641943717e-02 -1.025471244513e-01 1.90e-05 3.11e-07 6.40e-05 0.036
+ 14   -9.614659514862e-02 -1.018800507330e-01 1.36e-05 2.34e-07 7.68e-05 0.039
+ 15   -9.734043202748e-02 -1.002233141612e-01 6.12e-06 9.87e-08 3.38e-05 0.041
+ 16   -9.760704810158e-02 -9.972869211247e-02 3.62e-06 6.74e-08 3.20e-05 0.044
+ 17   -9.812314821668e-02 -9.901136508929e-02 1.30e-06 1.53e-08 1.27e-05 0.047
+ 18   -9.827025339189e-02 -9.878292277313e-02 5.73e-07 1.33e-08 8.07e-06 0.049
+ 19   -9.842443055742e-02 -9.858261354274e-02 1.52e-07 7.41e-09 2.44e-06 0.052
+ 20   -9.847431763265e-02 -9.851574217043e-02 2.85e-08 1.31e-09 6.52e-07 0.055
+ 21   -9.848874279496e-02 -9.849813611667e-02 6.12e-09 7.93e-09 1.48e-07 0.057
+ 22   -9.849234181056e-02 -9.849355090995e-02 5.31e-10 4.15e-09 1.45e-08 0.060
+ 23   -9.849281062675e-02 -9.849299989842e-02 8.32e-11 9.82e-10 2.36e-09 0.063
+ 24   -9.849289201688e-02 -9.849290368420e-02 5.12e-12 7.84e-08 1.45e-10 0.065
+ 25   -9.849289722036e-02 -9.849289747526e-02 3.28e-13 5.46e-07 3.19e-12 0.068
+ 26   -9.849289732690e-02 -9.849289734132e-02 6.20e-14 4.04e-05 1.92e-13 0.071
+ 27   -9.849289733268e-02 -9.849289733300e-02 7.33e-15 1.66e-02 5.97e-15 0.073
+ 28   -9.849289733279e-02 -9.849289733283e-02 6.02e-15 3.05e-02 1.78e-15 0.076
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 29 iterations and 0.08 seconds
+Objective -9.84928106e-02
+Primal infeasibility (abs/rel): 1.66e-10/8.32e-11
+Dual infeasibility   (abs/rel): 1.08e-09/9.82e-10
+Complementarity gap  (abs/rel): 2.59e-09/2.36e-09
+
+
+Barrier finished in 0.08 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [28/30] pr1721_ir0/default/warm/t05.log
+=== soft failure, 31 iters, series=warm, peak dual infeasibility over the last 6 iters 5.26e-03
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --ir 0 --cudss-deterministic 0 --K 6
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] sequence_solve = 1, cache was reused for this solve (log)
+=== [log] build marker: 'started at 0.000 seconds' -> 3-decimal, so the %.3f phase-timing change is in
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 30.04/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Barrier: reusing cache (skip convert/presolve/scaling)
+Barrier solver started at 0.000 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+Barrier setup complete at 0.000 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.704291987375e+02 -3.711395609108e+02 3.71e+03 1.91e+00 1.19e-02 0.001
+  1   -4.138240293833e+00 -3.475611537576e+02 4.01e+01 2.77e-01 6.50e-02 0.004
+  2   -1.039773673663e-01 -2.488455939686e+01 4.69e-01 7.85e-03 4.78e-03 0.006
+  3   -5.495207885732e-02 -6.428340804215e-01 4.69e-03 7.91e-05 1.47e-04 0.009
+  4   -5.854039337602e-02 -1.366926284841e-01 6.23e-04 1.05e-05 1.75e-05 0.012
+  5   -6.604975145127e-02 -1.385362713445e-01 5.11e-04 8.60e-06 2.69e-05 0.015
+  6   -6.790336073679e-02 -1.389601525881e-01 4.66e-04 7.88e-06 2.96e-05 0.018
+  7   -8.303222836681e-02 -1.229859613733e-01 2.19e-04 3.68e-06 5.72e-05 0.020
+  8   -8.344792298770e-02 -1.225109081264e-01 1.93e-04 3.26e-06 6.87e-05 0.023
+  9   -8.415588812901e-02 -1.222342273426e-01 1.72e-04 2.92e-06 1.24e-04 0.026
+ 10   -8.638216763577e-02 -1.192142859051e-01 1.32e-04 2.25e-06 9.51e-05 0.028
+ 11   -8.613030793222e-02 -1.187880975057e-01 1.26e-04 2.17e-06 1.56e-04 0.031
+ 12   -9.211841902150e-02 -1.096247497607e-01 6.17e-05 1.05e-06 6.89e-05 0.034
+ 13   -9.284620955332e-02 -1.081501249697e-01 4.70e-05 8.12e-07 9.81e-05 0.036
+ 14   -9.588078187166e-02 -1.034063533708e-01 2.05e-05 3.41e-07 5.26e-05 0.039
+ 15   -9.595697491900e-02 -1.029398673541e-01 1.65e-05 2.87e-07 7.06e-05 0.042
+ 16   -9.732850069734e-02 -1.009836182530e-01 7.97e-06 1.32e-07 3.47e-05 0.044
+ 17   -9.755025979099e-02 -1.005059336897e-01 5.33e-06 9.95e-08 4.06e-05 0.047
+ 18   -9.817927058718e-02 -9.960258844517e-02 2.25e-06 3.36e-08 1.83e-05 0.050
+ 19   -9.831983028412e-02 -9.934568845167e-02 1.26e-06 2.72e-08 1.49e-05 0.052
+ 20   -9.860387493547e-02 -9.895714683606e-02 3.50e-07 6.75e-09 5.15e-06 0.055
+ 21   -9.870464606831e-02 -9.881647071170e-02 8.01e-08 3.81e-09 1.85e-06 0.058
+ 22   -9.874401713574e-02 -9.876792929017e-02 1.65e-08 9.77e-09 4.03e-07 0.060
+ 23   -9.875302977825e-02 -9.875609874690e-02 1.14e-09 1.16e-09 3.76e-08 0.063
+ 24   -9.875430117248e-02 -9.875462821926e-02 1.21e-10 2.47e-09 4.05e-09 0.066
+ 25   -9.875443707324e-02 -9.875446443856e-02 3.62e-11 1.60e-07 2.65e-10 0.069
+ 26   -9.875444840611e-02 -9.875445004213e-02 2.29e-12 1.22e-06 1.35e-11 0.071
+ 27   -9.875444902867e-02 -9.875444925794e-02 2.34e-13 1.95e-05 1.87e-12 0.074
+ 28   -9.875444912506e-02 -9.875444913786e-02 3.44e-14 6.38e-05 7.53e-14 0.077
+ 29   -9.875444913014e-02 -9.875444913199e-02 3.17e-14 4.84e-04 7.04e-15 0.079
+ 30   -9.875444913113e-02 -9.875444913149e-02 1.17e-14 5.26e-03 1.47e-16 0.082
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 31 iterations and 0.08 seconds
+Objective -9.87543012e-02
+Primal infeasibility (abs/rel): 2.43e-10/1.21e-10
+Dual infeasibility   (abs/rel): 2.72e-09/2.47e-09
+Complementarity gap  (abs/rel): 4.45e-09/4.05e-09
+
+
+Barrier finished in 0.08 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [29/30] sedumi099_repeat/run1/default/cold/t02.log
+=== soft failure, 22 iters, series=cold, peak dual infeasibility over the last 6 iters 3.11e-07
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --cudss-deterministic 0 --K 20
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.03 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 14.95/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.03 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.05s
+Symbolic factorization time : 0.02s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.11 seconds
+Elapsed time                : 0.11s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702509737108e+02 -3.710937010099e+02 3.71e+03 1.91e+00 1.19e-02 0.1
+  1   -4.136273551275e+00 -3.475151614423e+02 4.01e+01 2.77e-01 6.50e-02 0.1
+  2   -1.039317309374e-01 -2.487809478481e+01 4.69e-01 7.85e-03 4.78e-03 0.1
+  3   -5.492858368113e-02 -6.426990422293e-01 4.69e-03 7.91e-05 1.48e-04 0.1
+  4   -5.851315182356e-02 -1.366086835713e-01 6.22e-04 1.05e-05 1.74e-05 0.1
+  5   -6.838223231582e-02 -1.390882897067e-01 4.75e-04 8.01e-06 3.90e-05 0.1
+  6   -6.889375945968e-02 -1.392058504776e-01 4.61e-04 7.77e-06 4.13e-05 0.1
+  7   -7.975791834275e-02 -1.309113998324e-01 2.43e-04 4.10e-06 1.01e-04 0.1
+  8   -7.980229728680e-02 -1.306485102464e-01 2.26e-04 3.81e-06 2.65e-04 0.2
+  9   -8.971816234682e-02 -1.146065053329e-01 6.32e-05 1.07e-06 2.28e-04 0.2
+ 10   -9.597467619433e-02 -1.029561655380e-01 1.59e-05 2.68e-07 4.93e-05 0.2
+ 11   -9.743912260306e-02 -1.006252772178e-01 6.14e-06 1.03e-07 1.11e-05 0.2
+ 12   -9.773434130248e-02 -9.994009809283e-02 2.94e-06 4.96e-08 2.50e-05 0.2
+ 13   -9.823232358827e-02 -9.925642941338e-02 9.33e-07 1.57e-08 9.49e-06 0.2
+ 14   -9.847052975288e-02 -9.892513138424e-02 3.52e-07 5.90e-09 8.06e-06 0.2
+ 15   -9.865602249699e-02 -9.868376464846e-02 2.08e-08 3.54e-10 3.92e-07 0.2
+ 16   -9.866785252591e-02 -9.866876999958e-02 6.85e-10 1.68e-11 6.06e-09 0.2
+ 17   -9.866820080751e-02 -9.866831873321e-02 8.61e-11 4.07e-09 6.55e-10 0.2
+ 18   -9.866824347280e-02 -9.866826218422e-02 1.12e-11 7.15e-10 6.03e-11 0.2
+ 19   -9.866825144543e-02 -9.866825230556e-02 4.69e-13 1.50e-07 6.39e-12 0.2
+ 20   -9.866825181716e-02 -9.866825184969e-02 3.95e-14 3.11e-07 2.45e-13 0.2
+ 21   -9.866825183143e-02 -9.866825183299e-02 1.94e-15 1.44e-08 1.10e-14 0.2
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 22 iterations and 0.21 seconds
+Objective -9.86678525e-02
+Primal infeasibility (abs/rel): 1.37e-09/6.85e-10
+Dual infeasibility   (abs/rel): 1.85e-11/1.68e-11
+Complementarity gap  (abs/rel): 6.66e-09/6.06e-09
+
+
+Barrier finished in 0.22 seconds
+Dual variables for problems with quadratic constraints not returned.
+
+
+======================================================================================================================
+=== [30/30] sedumi099_repeat/run1/default/cold_repeat/t02.log
+=== soft failure, 22 iters, series=cold_repeat, peak dual infeasibility over the last 6 iters 3.73e-07
+=== [harness] --configs default --initial-point 2 --step-scale 0.99 --cudss-deterministic 0 --K 20
+=== [log] barrier_presolve_bound_free_variables = 0 (log: free variables handled directly)
+=== [log] cudss_deterministic = false (log prints no deterministic solve mode)
+=== [log] barrier_augmented_system = 1 (log: linear system augmented)
+=== [log] barrier_adaptive_regularization = on (log)
+=== [log] Ruiz equilibration skipped by the solver's own norm-ratio test (log)
+=== [log] full setup: reordering and symbolic factorization ran, so no cache reuse (log)
+=== [log] build marker: 'started at 0.03 seconds' -> 2-decimal, so it predates the %.3f phase-timing change
+======================================================================================================================
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 14.95/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.03 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.05s
+Symbolic factorization time : 0.02s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.11 seconds
+Elapsed time                : 0.11s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.702509737108e+02 -3.710937010099e+02 3.71e+03 1.91e+00 1.19e-02 0.1
+  1   -4.136273551275e+00 -3.475151614423e+02 4.01e+01 2.77e-01 6.50e-02 0.1
+  2   -1.039317309374e-01 -2.487809478481e+01 4.69e-01 7.85e-03 4.78e-03 0.1
+  3   -5.492858368113e-02 -6.426990422293e-01 4.69e-03 7.91e-05 1.48e-04 0.1
+  4   -5.851315182356e-02 -1.366086835713e-01 6.22e-04 1.05e-05 1.74e-05 0.1
+  5   -6.838223231583e-02 -1.390882897067e-01 4.75e-04 8.01e-06 3.90e-05 0.1
+  6   -6.889375945968e-02 -1.392058504776e-01 4.61e-04 7.77e-06 4.13e-05 0.1
+  7   -7.975791834276e-02 -1.309113998325e-01 2.43e-04 4.10e-06 1.01e-04 0.1
+  8   -7.980229728685e-02 -1.306485102465e-01 2.26e-04 3.81e-06 2.65e-04 0.1
+  9   -8.971816234675e-02 -1.146065053330e-01 6.32e-05 1.07e-06 2.28e-04 0.2
+ 10   -9.597467619431e-02 -1.029561655380e-01 1.59e-05 2.68e-07 4.93e-05 0.2
+ 11   -9.743912260307e-02 -1.006252772177e-01 6.14e-06 1.03e-07 1.11e-05 0.2
+ 12   -9.773434130256e-02 -9.994009809270e-02 2.94e-06 4.96e-08 2.50e-05 0.2
+ 13   -9.823232358798e-02 -9.925642941364e-02 9.33e-07 1.57e-08 9.49e-06 0.2
+ 14   -9.847052975276e-02 -9.892513138436e-02 3.52e-07 5.90e-09 8.06e-06 0.2
+ 15   -9.865602249699e-02 -9.868376464846e-02 2.08e-08 3.54e-10 3.92e-07 0.2
+ 16   -9.866785252594e-02 -9.866876999953e-02 6.85e-10 1.69e-11 6.06e-09 0.2
+ 17   -9.866820080743e-02 -9.866831873331e-02 8.61e-11 5.01e-09 6.55e-10 0.2
+ 18   -9.866824347276e-02 -9.866826218426e-02 1.12e-11 2.56e-10 6.03e-11 0.2
+ 19   -9.866825145267e-02 -9.866825230553e-02 4.85e-13 1.94e-07 6.39e-12 0.2
+ 20   -9.866825181745e-02 -9.866825184967e-02 2.90e-14 3.73e-07 2.45e-13 0.2
+ 21   -9.866825183136e-02 -9.866825183310e-02 1.61e-15 1.94e-08 1.32e-14 0.2
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 22 iterations and 0.21 seconds
+Objective -9.86678525e-02
+Primal infeasibility (abs/rel): 1.37e-09/6.85e-10
+Dual infeasibility   (abs/rel): 1.87e-11/1.69e-11
+Complementarity gap  (abs/rel): 6.66e-09/6.06e-09
+
+
+Barrier finished in 0.21 seconds
+Dual variables for problems with quadratic constraints not returned.

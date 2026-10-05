@@ -1,0 +1,63 @@
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=1 augmented=1 pool=1.0 GiB
+
+=== default ===
+  cold vs cold: objectives differ by up to 0.00e+00, control iterations by up to 0; 10x optimality tol is 9.86e-09
+   t  cold_it  warm_it  ctl_it           cold_obj           warm_obj       delta
+  0*       25       25      25    -0.098563710449    -0.098563710449   +0.00e+00
+  1        29       29      29    -0.098508019056    -0.098508019056   +0.00e+00
+  2        24       24      24    -0.098668250267    -0.098668250267   +0.00e+00
+  3        24       24      24    -0.098823643727    -0.098823643727   +0.00e+00
+  4         -        -       -    -0.098492443729    -0.098492443729   +0.00e+00
+  5         -        -       -    -0.098754341540    -0.098754341540   +0.00e+00
+  6        26       26      26    -0.098474175534    -0.098474175534   +0.00e+00
+  7         -        -       -    -0.098553256025    -0.098553256025   +0.00e+00
+  8        29       29      29    -0.098707701734    -0.098707701734   +0.00e+00
+  9        27       27      27    -0.098388849855    -0.098388849855   +0.00e+00
+ 10         -        -       -    -0.098566803932    -0.098566803932   +0.00e+00
+ 11         -        -       -    -0.098488234983    -0.098488234983   +0.00e+00
+ 12         -        -       -    -0.098505656680    -0.098505656680   +0.00e+00
+ 13         -        -       -    -0.098419428631    -0.098419428631   +0.00e+00
+ 14        25       25      25    -0.098597564752    -0.098597564752   +0.00e+00
+ 15        24       24      24    -0.098633140518    -0.098633140518   +0.00e+00
+ 16        25       25      25    -0.098596170272    -0.098596170272   +0.00e+00
+ 17        24       24      24    -0.098524046603    -0.098524046603   +0.00e+00
+ 18        25       25      25    -0.098379006128    -0.098379006128   +0.00e+00
+ 19        27       27      27    -0.098662546886    -0.098662546886   +0.00e+00
+  objectives, reuse vs cold: OK  0.00e+00 against a cold-vs-cold band of 9.86e-09
+  iterations, reuse vs control: OK  worst step off by 0 against a band of 1 (exact on 12/19)
+  cache reused on every warm solve: OK  (19/19)
+  all solves Optimal: FAIL
+    baseline t=4: Optimal
+    baseline t=5: Optimal
+    baseline t=7: Optimal
+    baseline t=10: Optimal
+    baseline t=11: Optimal
+    baseline t=12: Optimal
+    baseline t=13: Optimal
+    baseline2 t=4: Optimal
+    baseline2 t=5: Optimal
+    baseline2 t=7: Optimal
+    baseline2 t=10: Optimal
+    baseline2 t=11: Optimal
+    baseline2 t=12: Optimal
+    baseline2 t=13: Optimal
+    cache t=4: Optimal
+    cache t=5: Optimal
+    cache t=7: Optimal
+    cache t=10: Optimal
+    cache t=11: Optimal
+    cache t=12: Optimal
+    cache t=13: Optimal
+
+=== reuse improvement (mean over 19 warm solves) ===
+config    cold_wall  warm_wall      save   save%   cold_barr  warm_barr   cold_it  warm_it  ctl_it    obj_dev  obj_band
+-----------------------------------------------------------------------------------------------------------------------
+default      2273.6     2069.0    +204.6    9.0%      2153.4     1951.6      25.8     25.8    25.8    0.0e+00   9.9e-09
+
+wall = Solve() wall clock, the honest reuse metric: convert/presolve/scaling
+are what reuse skips and they sit outside the barrier timer.
+barr = barrier's own timer.  ctl_it = cold solve pinned to the initial
+point reuse uses.  obj_dev = worst reuse-vs-cold objective gap,
+obj_band = worst cold-vs-cold gap, the noise it has to beat.
+
+RESULT: FAIL

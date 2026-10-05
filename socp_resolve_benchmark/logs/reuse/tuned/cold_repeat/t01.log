@@ -1,0 +1,71 @@
+cuOpt version: 26.10.0, git hash: 80c103c1, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 31.30/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Eliminated 50 free variables by equality substitution (0 skipped by pivot threshold) in 0.00s
+Presolve eliminated 50 constraints
+Presolve eliminated 50 variables
+Presolved problem: 5053 constraints 10052 variables 265052 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.03 seconds
+Barrier solver: 5053 constraints, 10052 variables, 265052 nonzeros
+
+
+Second-order cones          : 1
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.06s
+Symbolic factorization time : 0.02s
+Symbolic nonzeros in factor : 2.79e+05
+Barrier setup complete at 0.12 seconds
+Elapsed time                : 0.12s
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -2.494447614845e+03 -2.506472794723e+03 2.50e+04 1.01e+01 4.66e-02 0.1
+  1   -6.486129688264e+01 -8.087770057976e+01 6.49e+02 1.66e+00 1.11e-01 0.1
+  2   -4.849740211737e+00 -4.503643550881e+01 4.78e+01 7.73e-01 4.49e-02 0.1
+  3   -8.664885742338e-01 -1.057656631136e+02 8.18e+00 1.34e-01 6.96e-02 0.1
+  4   -3.557693759599e-01 -5.120961087012e+01 3.06e+00 5.04e-02 3.13e-02 0.2
+  5   -5.312266806674e-02 -8.197938340558e+00 3.06e-02 5.05e-04 2.51e-03 0.2
+  6   -5.030931669204e-02 -1.866167905130e-01 4.17e-04 6.88e-06 6.80e-05 0.2
+  7   -5.953899001979e-02 -1.065523741213e-01 1.35e-04 2.22e-06 1.94e-05 0.2
+  8   -6.282685189145e-02 -1.093360762530e-01 1.26e-04 2.08e-06 4.32e-05 0.2
+  9   -6.328175268973e-02 -1.097172180471e-01 1.24e-04 2.05e-06 4.36e-05 0.2
+ 10   -6.955340902197e-02 -1.114509818660e-01 1.04e-04 1.72e-06 8.70e-05 0.2
+ 11   -7.031110438220e-02 -1.120027377814e-01 9.97e-05 1.65e-06 8.74e-05 0.2
+ 12   -8.180963623569e-02 -1.102782671017e-01 5.93e-05 9.79e-07 1.04e-04 0.2
+ 13   -8.216851187764e-02 -1.102663905768e-01 5.45e-05 9.00e-07 1.51e-04 0.2
+ 14   -8.345040342732e-02 -1.108987403942e-01 4.78e-05 7.88e-07 2.62e-04 0.2
+ 15   -8.461132327250e-02 -1.102496843899e-01 3.88e-05 6.40e-07 3.91e-04 0.2
+ 16   -9.335562208136e-02 -1.034854279646e-01 1.37e-05 2.26e-07 1.13e-04 0.2
+ 17   -9.389658038868e-02 -1.029832078831e-01 1.05e-05 1.74e-07 1.20e-04 0.2
+ 18   -9.661512008450e-02 -1.005408620494e-01 4.17e-06 6.88e-08 4.23e-05 0.2
+ 19   -9.682112444535e-02 -1.002639615800e-01 2.97e-06 4.90e-08 4.85e-05 0.2
+ 20   -9.779826191021e-02 -9.929200886392e-02 1.22e-06 2.01e-08 1.91e-05 0.2
+ 21   -9.800651593460e-02 -9.905153830173e-02 6.72e-07 1.11e-08 1.58e-05 0.2
+ 22   -9.833122042773e-02 -9.870676359981e-02 2.13e-07 3.51e-09 5.49e-06 0.2
+ 23   -9.841880425725e-02 -9.860578002549e-02 7.77e-08 1.26e-09 2.81e-06 0.3
+ 24   -9.848243404570e-02 -9.853689069554e-02 2.06e-08 3.36e-10 7.95e-07 0.3
+ 25   -9.850245092792e-02 -9.851412982485e-02 2.83e-09 5.15e-11 1.50e-07 0.3
+ 26   -9.850691503455e-02 -9.850926390130e-02 5.48e-10 1.31e-11 3.01e-08 0.3
+ 27   -9.850791123530e-02 -9.850813734181e-02 3.17e-11 5.18e-12 1.86e-09 0.3
+
+
+Optimal solution found in 27 iterations and 0.269s
+Objective -9.85079112e-02
+Primal infeasibility (abs/rel): 6.35e-11/3.17e-11
+Dual infeasibility   (abs/rel): 5.70e-12/5.18e-12
+Complementarity gap  (abs/rel): 2.04e-09/1.86e-09
+Objective gap        (abs/rel): 2.26e-07/2.06e-07
+
+
+Barrier finished in 0.27 seconds
+Dual variables for problems with quadratic constraints not returned.

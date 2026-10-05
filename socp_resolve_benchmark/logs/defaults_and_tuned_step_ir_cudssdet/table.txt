@@ -1,0 +1,19 @@
+
+cold solves only, K=20, bound_free_vars=0, initial point Automatic (SedumiMu on cones),
+tol=1e-8, augmented=1, everything else default.  iters and barrier_ms average every solve,
+taking the count a soft failure reports; hard failures report neither and are excluded.
+
+ step          ir cudss_det | solves optimal  soft  hard |  iters  it_range  barrier_ms
+---------------------------------------------------------------------------------------
+  0.9       0=off       off |     20       1    16     3 |   30.2     25-32       196.1
+  0.9       0=off        on |     20       0    18     2 |   30.7     30-32      1463.3
+  0.9     1=gmres       off |     20      11     9     0 |   27.9     24-33       266.6
+  0.9     1=gmres        on |     20      13     7     0 |   27.4     24-32      2188.8
+  0.9     2=fixed       off |     20      13     7     0 |   26.9     24-31       271.5
+  0.9     2=fixed        on |     20      12     8     0 |   27.3     24-31      2367.7
+ 0.99       0=off       off |     20       2    16     2 |   27.7     22-31       223.7
+ 0.99       0=off        on |     20       0    18     2 |   27.6     23-30      1324.4
+ 0.99     1=gmres       off |     20      20     0     0 |   24.0     21-27       241.2
+ 0.99     1=gmres        on |     20      20     0     0 |   23.6     19-26      2074.7
+ 0.99     2=fixed       off |     20      20     0     0 |   23.8     21-27       218.7
+ 0.99     2=fixed        on |     20      18     2     0 |   24.1     21-26      2281.5

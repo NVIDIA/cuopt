@@ -1,0 +1,35 @@
+SedumiMu (initial point 2) + cudss_deterministic=1 + bound_free_vars=0, cold solves,
+IR=1 (GMRES, default), augmented=1, tol=1e-8. Step scale 0.9 (default) vs 0.99.
+
+"Stable" is measured two ways, because they answer different questions.
+
+1. Reproducible: solve the SAME instance (SEQ[1]) 10 times cold and ask whether
+   every run agrees. Logs under sedumi_det1_step{0.9,0.99}/repeat/.
+
+   step_scale | reproducible | iterations | distinct obj | spread   | barrier_ms
+   -----------------------------------------------------------------------------
+          0.9 |          YES | 29 (all 10)|            1 | 0.00e+00 | 2395-2661
+         0.99 |          YES | 21 (all 10)|            1 | 0.00e+00 | 1850-1976
+
+   Both bit-identical. 0.9 settles on -0.098508019055644866 every run,
+   0.99 on -0.098508018209586642 every run. 10/10 optimal in both.
+
+2. Failure-free: solve all 20 mu steps cold and ask whether any break down.
+   Logs under sedumi_det1_step{0.9,0.99}/cold_sweep/.
+
+   step_scale | solves | optimal | soft | hard | iters | it_range | barrier_ms
+   ----------------------------------------------------------------------------
+          0.9 |     20 |      13 |    7 |    0 |  27.7 |    24-32 |       2245
+         0.99 |     20 |      20 |    0 |    0 |  23.6 |    19-26 |       2072
+
+   Step 0.9 soft-fails on t = 4, 5, 7, 10, 11, 12, 13. Step 0.99 is clean.
+
+The soft failures cost real accuracy, they are not just a noisy warning. Taking the
+failure-free 0.99 run as reference, the step-0.9 objective error is:
+
+   soft-failure steps  n= 7  median 1.07e-07  worst 4.53e-07
+   clean steps         n=13  median 9.26e-10  worst 3.83e-09
+
+so the 7 soft steps land 2 to 3 digits short of the requested 1e-8 tolerance while
+the other 13 steps hit it. Reproducibility and correctness are independent here:
+determinism makes step 0.9 reproduce its own wrong answer exactly.

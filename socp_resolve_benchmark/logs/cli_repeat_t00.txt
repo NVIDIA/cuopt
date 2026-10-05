@@ -1,0 +1,24 @@
+cuopt_cli x 10 on portfolio_socp_n5000_k50_mu_t00.mps
+tol=1e-08, IR=1, step scale 0.9, augmented=1, bound_free_vars=0.
+
+csr_ir_matvec=0 (matrix-free, the default)
+          initial point cudss_det | reproducible traces distinct_it             iterations obj_spread | opt soft hard barrier_ms
+             2=SedumiMu       off |           no     10           3             27, 30, 31   8.48e-12 |   1    9    0        392
+             2=SedumiMu        on |          YES      1           1                     25   0.00e+00 |  10    0    0       2140
+  0=LustigMarstenShanno       off |           no     10           3             22, 25, 26   9.00e-13 |   7    3    0        370
+  0=LustigMarstenShanno        on |           no     10           1                     19   2.93e-12 |  10    0    0       2241
+     1=DualLeastSquares       off |           no     10           1                     18   1.50e-12 |  10    0    0        338
+     1=DualLeastSquares        on |           no     10           1                     18   1.58e-12 |  10    0    0       1961
+
+csr_ir_matvec=1 (single SpMV over the augmented CSR)
+          initial point cudss_det | reproducible traces distinct_it             iterations obj_spread | opt soft hard barrier_ms
+             2=SedumiMu       off |           no     10           2                 30, 31   1.70e-13 |   0   10    0        378
+             2=SedumiMu        on |          YES      1           1                     26   0.00e+00 |  10    0    0       2163
+  0=LustigMarstenShanno       off |           no     10           1                     20   9.00e-14 |  10    0    0        344
+  0=LustigMarstenShanno        on |          YES      1           1                     20   0.00e+00 |  10    0    0       2074
+     1=DualLeastSquares       off |           no     10           3             20, 24, 25   2.10e-11 |   1    9    0        325
+     1=DualLeastSquares        on |          YES      1           1                     18   0.00e+00 |  10    0    0       1638
+
+reproducible/traces are over the per-iteration trace with the elapsed column removed.
+obj_spread is max-min of the last iteration line's primal objective, so its floor is
+about 1e-14 at this magnitude. barrier_ms averages only the solves that reported a time.

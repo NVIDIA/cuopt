@@ -206,6 +206,85 @@ std::vector<cone_head_bound_t> record_cone_head_bounds(
   return bounds;
 }
 
+// Equality substitution is the last presolve step and is not represented by remaining_variables
+// or free_variable_pairs. It drops zero-cost free columns (and their pivot rows). Indices in the
+// elimination records are into the vector produced by the earlier presolve maps.
+inline void drop_substituted_free_variables(barrier_transform_t const& xf,
+                                            std::vector<double>& values,
+                                            char const* what)
+{
+  auto const& eliminations = xf.presolve_info.free_variable_eliminations;
+  if (eliminations.empty()) { return; }
+  auto const& keep = xf.presolve_info.free_elimination_remaining_variables;
+  for (auto const& elimination : eliminations) {
+    if (elimination.variable < 0 ||
+        static_cast<std::size_t>(elimination.variable) >= values.size()) {
+      throw std::invalid_argument(std::string(what) +
+                                  ": eliminated free variable index is out of range.");
+    }
+    // Substitution is valid only while this coefficient stays zero. A nonzero cost would have
+    // kept the column, so the cached factorization cannot be reused.
+    if (values[static_cast<std::size_t>(elimination.variable)] != 0.0) {
+      throw std::invalid_argument(
+        std::string(what) +
+        ": a free variable removed by equality substitution has a nonzero objective "
+        "coefficient; run a full Solve.");
+    }
+  }
+  std::vector<double> reduced(keep.size());
+  for (std::size_t k = 0; k < keep.size(); ++k) {
+    int const column = keep[k];
+    if (column < 0 || static_cast<std::size_t>(column) >= values.size()) {
+      throw std::invalid_argument(std::string(what) +
+                                  ": free-elimination column index is out of range.");
+    }
+    reduced[k] = values[static_cast<std::size_t>(column)];
+  }
+  values = std::move(reduced);
+}
+
+// Replay rhs[row] -= factor * rhs[pivot] in elimination order, then drop the pivot rows.
+// Factors come from the matrix and do not depend on the right-hand side.
+inline void substitute_free_variable_rows(barrier_transform_t const& xf,
+                                          std::vector<double>& values,
+                                          char const* what)
+{
+  auto const& eliminations = xf.presolve_info.free_variable_eliminations;
+  if (eliminations.empty()) { return; }
+  for (auto const& elimination : eliminations) {
+    if (elimination.pivot_row < 0 ||
+        static_cast<std::size_t>(elimination.pivot_row) >= values.size()) {
+      throw std::invalid_argument(std::string(what) +
+                                  ": free-elimination pivot row is out of range.");
+    }
+    if (elimination.affected_rows.size() != elimination.factors.size()) {
+      throw std::invalid_argument(std::string(what) +
+                                  ": free-elimination factors do not match affected rows.");
+    }
+    double const pivot_rhs = values[static_cast<std::size_t>(elimination.pivot_row)];
+    for (std::size_t k = 0; k < elimination.affected_rows.size(); ++k) {
+      int const row = elimination.affected_rows[k];
+      if (row < 0 || static_cast<std::size_t>(row) >= values.size()) {
+        throw std::invalid_argument(std::string(what) +
+                                    ": free-elimination affected row is out of range.");
+      }
+      values[static_cast<std::size_t>(row)] -=
+        static_cast<double>(elimination.factors[k]) * pivot_rhs;
+    }
+  }
+  auto const& keep = xf.presolve_info.free_elimination_remaining_constraints;
+  std::vector<double> reduced(keep.size());
+  for (std::size_t k = 0; k < keep.size(); ++k) {
+    int const row = keep[k];
+    if (row < 0 || static_cast<std::size_t>(row) >= values.size()) {
+      throw std::invalid_argument(std::string(what) +
+                                  ": free-elimination row index is out of range.");
+    }
+    reduced[k] = values[static_cast<std::size_t>(row)];
+  }
+  values = std::move(reduced);
+}
+
 inline std::vector<double> crush_user_linear_objective(barrier_transform_t const& xf,
                                                        double const* c,
                                                        int n)
@@ -265,6 +344,8 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
       presolved[static_cast<std::size_t>(v)] = -presolved[static_cast<std::size_t>(u)];
     }
   }
+
+  drop_substituted_free_variables(xf, presolved, "update_linear_objective");
 
   if (static_cast<int>(presolved.size()) != xf.barrier_lp->num_cols ||
       xf.column_scales.size() != presolved.size()) {
@@ -361,6 +442,8 @@ inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double 
   } else if (xf.presolve_info.removed_constraints.empty()) {
     presolved = std::move(original);
   }
+
+  substitute_free_variable_rows(xf, presolved, "update_rhs");
 
   if (static_cast<int>(presolved.size()) != xf.barrier_lp->num_rows ||
       xf.row_scales.size() != presolved.size()) {

@@ -1,0 +1,71 @@
+cuOpt version: 26.10.0, git hash: 648f805d, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads: 5C/5T, RAM usage: 43.78/503.74GiB
+CPU SIMD target: AVX2
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: 68df5cf5-71f9-6a93-b428-460c080ffb10
+Problem has 1 quadratic constraints. Converting to second-order cones and solving with barrier.
+Handling 50 free variables directly in augmented system
+Presolved problem: 5103 constraints 10102 variables 265152 nonzeros
+Skipping Ruiz equilibration (row norm ratio 1.4, column norm ratio 1.4 < 5e4, Q coeff ratio 1.0 < 100)
+Barrier solver started at 0.027 seconds
+Barrier solver: 5103 constraints, 10102 variables, 265152 nonzeros
+
+
+Second-order cones          : 1
+Free variables              : 50
+Upper bounds                : 5000
+Linear system               : augmented
+cuDSS Version               : 0.7.1
+cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0
+Reordering time             : 0.054s
+Symbolic factorization time : 0.024s
+Symbolic nonzeros in factor : 2.79e+05
+Elapsed time for augmented  : 0.111 seconds
+Elapsed time           : 0.111 seconds
+Barrier setup complete at 0.111 seconds
+Adaptive regularization enabled
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -3.703532868363e+02 -3.711197926069e+02 3.71e+03 1.91e+00 1.19e-02 0.112
+  1   -4.137900874588e+00 -3.475413679313e+02 4.01e+01 2.77e-01 6.50e-02 0.115
+  2   -1.039745619570e-01 -2.488596528319e+01 4.69e-01 7.85e-03 4.78e-03 0.117
+  3   -5.494370609681e-02 -6.429524629909e-01 4.69e-03 7.91e-05 1.48e-04 0.120
+  4   -5.852900857221e-02 -1.369057061426e-01 6.24e-04 1.05e-05 1.75e-05 0.123
+  5   -6.642458740288e-02 -1.389496388870e-01 5.07e-04 8.54e-06 2.84e-05 0.126
+  6   -6.769405527550e-02 -1.393008277324e-01 4.75e-04 8.02e-06 3.77e-05 0.128
+  7   -7.916848897782e-02 -1.276638439798e-01 2.84e-04 4.78e-06 8.13e-05 0.131
+  8   -7.928839382580e-02 -1.275288753543e-01 2.70e-04 4.56e-06 9.31e-05 0.134
+  9   -8.201677291323e-02 -1.255775100306e-01 2.00e-04 3.42e-06 2.72e-04 0.136
+ 10   -8.282375156807e-02 -1.232664693301e-01 1.54e-04 2.67e-06 5.05e-04 0.139
+ 11   -9.170384546955e-02 -1.098319052374e-01 6.34e-05 1.08e-06 1.60e-04 0.142
+ 12   -9.213634696665e-02 -1.084542797796e-01 4.87e-05 8.38e-07 1.96e-04 0.144
+ 13   -9.606865864407e-02 -1.022461193104e-01 1.66e-05 2.66e-07 8.00e-05 0.147
+ 14   -9.652989146534e-02 -1.010797798755e-01 9.03e-06 1.55e-07 8.30e-05 0.150
+ 15   -9.766905146759e-02 -9.953259703204e-02 3.31e-06 4.51e-08 2.80e-05 0.152
+ 16   -9.794008956526e-02 -9.906015163540e-02 1.46e-06 2.69e-08 2.02e-05 0.155
+ 17   -9.827164422677e-02 -9.862396359617e-02 4.28e-07 1.32e-08 6.22e-06 0.158
+ 18   -9.835571882275e-02 -9.849952022321e-02 1.18e-07 2.80e-09 2.30e-06 0.160
+ 19   -9.840497107118e-02 -9.843834838059e-02 2.59e-08 9.40e-09 5.43e-07 0.163
+ 20   -9.841741864792e-02 -9.842206126676e-02 1.92e-09 1.89e-10 5.48e-08 0.166
+ 21   -9.841927458010e-02 -9.841986280115e-02 2.39e-10 9.20e-10 7.01e-09 0.168
+ 22   -9.841951799469e-02 -9.841956440928e-02 5.97e-11 1.55e-08 3.75e-10 0.171
+ 23   -9.841953715247e-02 -9.841954385104e-02 7.77e-12 1.43e-07 5.59e-11 0.174
+ 24   -9.841954021003e-02 -9.841954054749e-02 2.12e-13 3.94e-06 2.70e-12 0.176
+ 25   -9.841954036365e-02 -9.841954037741e-02 2.22e-14 1.26e-03 1.09e-13 0.179
+ 26   -9.841954036970e-02 -9.841954036991e-02 5.16e-15 2.63e-03 3.84e-15 0.182
+ 27   -9.841954036973e-02 -9.841954036983e-02 3.83e-15 3.09e-03 9.10e-16 0.184
+Numerical error in objective
+Restoring previous solution
+
+
+Suboptimal solution found in 28 iterations and 0.19 seconds
+Objective -9.84192746e-02
+Primal infeasibility (abs/rel): 4.79e-10/2.39e-10
+Dual infeasibility   (abs/rel): 1.01e-09/9.20e-10
+Complementarity gap  (abs/rel): 7.70e-09/7.01e-09
+
+
+Barrier finished in 0.19 seconds
+Dual variables for problems with quadratic constraints not returned.

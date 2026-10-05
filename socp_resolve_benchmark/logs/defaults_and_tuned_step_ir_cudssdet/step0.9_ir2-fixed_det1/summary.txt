@@ -1,0 +1,28 @@
+/raid/iroy/miniforge3/envs/cuopt129/bin/python /home/nfs/iroy/NvidiaCuopt/socp_resolve_benchmark/cuopt_socp_resolve_cache.py --configs default --cold-only --K 20 --step-scale 0.9 --ir 2 --bound-free-vars 0 --cudss-deterministic 1 --save-logs /home/nfs/iroy/NvidiaCuopt/socp_resolve_benchmark/logs/defaults_and_tuned_step_ir_cudssdet/step0.9_ir2-fixed_det1
+
+cuOpt SOCP cache reuse  n=5000 k=50 sigma^2=1.000764e-04  K=20  tol=1e-08 IR=2 augmented=1 pool=1.0 GiB
+
+=== default (cold only) ===
+   t |  it  barr_ms  mode         outcome          objective
+------------------------------------------------------------
+   0 |  25   2274.0    ok         optimal    -0.098563710449
+   1 |  24   2184.0    ok         optimal    -0.098508015996
+   2 |  24   2159.0    ok         optimal    -0.098668250267
+   3 |  24   2173.0    ok         optimal    -0.098823643727
+   4 |  30   2450.0  soft numerical_error    -0.098492846274
+   5 |  31   2670.0  soft numerical_error    -0.098754341541
+   6 |  26   2260.0    ok         optimal    -0.098474175534
+   7 |  30   2490.0  soft numerical_error    -0.098553256026
+   8 |  29   2491.0    ok         optimal    -0.098707701733
+   9 |  25   2329.0    ok         optimal    -0.098388849066
+  10 |  25   2240.0    ok         optimal    -0.098566862361
+  11 |  30   2470.0  soft numerical_error    -0.098488413254
+  12 |  31   2640.0  soft numerical_error    -0.098505656681
+  13 |  31   2640.0  soft numerical_error    -0.098419428632
+  14 |  31   2590.0  soft numerical_error    -0.098597082141
+  15 |  24   2118.0    ok         optimal    -0.098633140518
+  16 |  25   2149.0    ok         optimal    -0.098596170272
+  17 |  24   2142.0    ok         optimal    -0.098524046603
+  18 |  26   2275.0    ok         optimal    -0.098379007560
+  19 |  31   2610.0  soft numerical_error    -0.098662137913
+  12/20 optimal, 8 soft, 0 hard
