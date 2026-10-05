@@ -2575,6 +2575,23 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
 }
 
 template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
+{
+  using f_t2 = typename type_2<f_t>::type;
+  if (is_distributed_master()) {
+    multi_gpu_engine->for_each_shard(
+      [](auto& shard) { shard.sub_pdlp->project_initial_primal_transform(); });
+  } else {
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
+                            problem_wrap_container(op_problem_scaled_.variable_bounds)),
+      pdhg_solver_.get_primal_solution().data(),
+      pdhg_solver_.get_primal_solution().size(),
+      clamp<f_t, f_t2>(),
+      stream_view_.get());
+  }
+}
+template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(const timer_t& timer)
 {
   bool verbose;
@@ -2744,52 +2761,45 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           restart_strategy_.last_restart_duality_gap_.dual_solution_);
 #endif
 
-    // Project initial primal solution
-    if (settings_.hyper_params.project_initial_primal) {
-      using f_t2 = typename type_2<f_t>::type;
-      if (batch_mode_) {
-        // In batch mode variable_bounds are shared and only the bound rescaling is per climber.
-        // Apply it here too so the initial point is projected into the correct scaled space.
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(
-            pdhg_solver_.get_primal_solution().data(),
-            thrust::make_transform_iterator(
-              thrust::make_zip_iterator(
-                problem_wrap_container(op_problem_scaled_.variable_bounds),
-                batch_wrapped_container(initial_scaling_strategy_.get_bound_rescaling_vector(),
-                                        primal_size_h_)),
-              scale_bounds_by_scalar_op<f_t>{})),
-          pdhg_solver_.get_primal_solution().data(),
-          pdhg_solver_.get_primal_solution().size(),
-          clamp<f_t, f_t2>(),
-          stream_view_.get());
-      } else {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
-                                problem_wrap_container(op_problem_scaled_.variable_bounds)),
-          pdhg_solver_.get_primal_solution().data(),
-          pdhg_solver_.get_primal_solution().size(),
-          clamp<f_t, f_t2>(),
-          stream_view_.get());
-      }
+    if (!settings_.hyper_params.never_restart_to_average) {
+      cuopt_expects(!batch_mode_,
+                    cuopt::error_type_t::ValidationError,
+                    "Restart to average not supported in batch mode");
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(unscaled_primal_avg_solution_.data(),
+                              op_problem_scaled_.variable_bounds.data()),
+        unscaled_primal_avg_solution_.data(),
+        primal_size_h_,
+        clamp<f_t, f_t2>(),
+        stream_view_.get());
+    }
+  }
 
-      pdhg_solver_.refine_initial_primal_projection(
-        initial_scaling_strategy_.get_bound_rescaling_vector());
-
-      if (!settings_.hyper_params.never_restart_to_average) {
-        cuopt_expects(!batch_mode_,
-                      cuopt::error_type_t::ValidationError,
-                      "Restart to average not supported in batch mode");
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(unscaled_primal_avg_solution_.data(),
-                                op_problem_scaled_.variable_bounds.data()),
-          unscaled_primal_avg_solution_.data(),
-          primal_size_h_,
-          clamp<f_t, f_t2>(),
-          stream_view_.get());
-      }
+  // Project initial primal solution
+  if (settings_.hyper_params.project_initial_primal) {
+    using f_t2 = typename type_2<f_t>::type;
+    if (batch_mode_) {
+      // In batch mode variable_bounds are shared and only the bound rescaling is per climber.
+      // Apply it here too so the initial point is projected into the correct scaled space.
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(
+          pdhg_solver_.get_primal_solution().data(),
+          thrust::make_transform_iterator(
+            thrust::make_zip_iterator(
+              problem_wrap_container(op_problem_scaled_.variable_bounds),
+              batch_wrapped_container(initial_scaling_strategy_.get_bound_rescaling_vector(),
+                                      primal_size_h_)),
+            scale_bounds_by_scalar_op<f_t>{})),
+        pdhg_solver_.get_primal_solution().data(),
+        pdhg_solver_.get_primal_solution().size(),
+        clamp<f_t, f_t2>(),
+        stream_view_.get());
+    } else {
+      project_initial_primal_transform();
     }
 
+    pdhg_solver_.refine_initial_primal_projection(
+      initial_scaling_strategy_.get_bound_rescaling_vector());
 #ifdef CUPDLP_DEBUG_MODE
     std::cout << "Solution after projection" << std::endl;
     print("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
