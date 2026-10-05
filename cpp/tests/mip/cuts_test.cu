@@ -8,11 +8,13 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <branch_and_bound/pseudo_costs.hpp>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuts/cuts.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
@@ -981,8 +983,179 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut8.rhs = 7.0;
   cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
 
-  cut_pool.check_for_duplicate_cuts();
+  EXPECT_TRUE(cut_pool.check_for_duplicate_cuts(tic()));
   EXPECT_EQ(cut_pool.pool_size(), 5);
+}
+
+TEST(cuts, mir_candidate_search_stops_inside_dense_row)
+{
+  // Every scaling and complement produces an integral RHS, so no candidate cuts off xstar.
+  // Without an inner deadline, 4096 complements x 4097 scales each copy this dense row.
+  constexpr int n = 4096;
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.inside_submip = true;
+  simplex::lp_problem_t<int, double> lp(nullptr, 0, n, 0);
+  lp.lower.assign(n, 0.0);
+  lp.upper.assign(n, 1.0);
+  std::vector<simplex::variable_type_t> types(n, simplex::variable_type_t::INTEGER);
+  std::vector<int> slacks;
+  csr_matrix_t<int, double> rows(0, n, 0);
+  mip::variable_bounds_t<int, double> bounds(lp, settings, types, rows, slacks);
+  mip::complemented_mixed_integer_rounding_cut_t<int, double> mir(lp, settings, slacks);
+  std::vector<double> xstar(n, 0.5), transformed_xstar;
+  mir.bound_substitution(lp, bounds, types, xstar, transformed_xstar);
+  mip::inequality_t<int, double> inequality, cut;
+  for (int j = 0; j < n; ++j) {
+    inequality.push_back(j, 1.0);
+  }
+  inequality.rhs     = n / 2.0;
+  double work        = 0.0;
+  const double start = tic();
+  EXPECT_FALSE(
+    mir.cut_generation_heuristic(inequality, types, transformed_xstar, cut, work, start, 0.001));
+  EXPECT_LT(toc(start), 1.0);
+}
+
+TEST(cuts, mir_candidate_search_preserves_live_cut)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.inside_submip = true;
+  simplex::lp_problem_t<int, double> lp(nullptr, 0, 1, 0);
+  lp.lower = {0.0};
+  lp.upper = {1.0};
+  std::vector<simplex::variable_type_t> types{simplex::variable_type_t::INTEGER};
+  std::vector<int> slacks;
+  csr_matrix_t<int, double> rows(0, 1, 0);
+  mip::variable_bounds_t<int, double> bounds(lp, settings, types, rows, slacks);
+  mip::complemented_mixed_integer_rounding_cut_t<int, double> mir(lp, settings, slacks);
+  std::vector<double> xstar{0.0}, transformed_xstar;
+  mir.bound_substitution(lp, bounds, types, xstar, transformed_xstar);
+  mip::inequality_t<int, double> inequality, cut;
+  inequality.push_back(0, 1.0);
+  inequality.rhs = 0.5;
+  double work    = 0.0;
+  EXPECT_FALSE(
+    mir.cut_generation_heuristic(inequality, types, transformed_xstar, cut, work, tic(), 0.0));
+  EXPECT_TRUE(mir.cut_generation_heuristic(inequality,
+                                           types,
+                                           transformed_xstar,
+                                           cut,
+                                           work,
+                                           tic(),
+                                           std::numeric_limits<double>::infinity()));
+  EXPECT_GT(mir.compute_violation(cut, transformed_xstar), 0.0);
+  EXPECT_GE(cut.vector.dot(std::vector<double>{1.0}), cut.rhs);
+}
+
+TEST(cuts, expired_root_pseudocost_budget_preserves_estimates)
+{
+  const raft::handle_t handle{};
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.time_limit = 0.0;
+  mip::pseudo_costs_t<int, double> pseudocosts(2, settings);
+
+  // The fractional basic solution to x0 + x1 = 0.5, min x1, with identity basis.
+  simplex::lp_problem_t<int, double> lp(&handle, 1, 2, 2);
+  lp.A.col_start = {0, 1, 2};
+  lp.A.i         = {0, 0};
+  lp.A.x         = {1.0, 1.0};
+  lp.rhs         = {0.5};
+  lp.lower       = {0.0, 0.0};
+  lp.upper       = {1.0, 1.0};
+  lp.objective   = {0.0, 1.0};
+  lp.A.to_compressed_row(pseudocosts.Arow);
+  simplex::lp_solution_t<int, double> solution(1, 2);
+  solution.x = {0.5, 0.0};
+  solution.y = {0.0};
+  solution.z = {0.0, 1.0};
+  std::vector<simplex::variable_status_t> vstatus{simplex::variable_status_t::BASIC,
+                                                  simplex::variable_status_t::NONBASIC_LOWER};
+  std::vector<int> fractional{0};
+  std::vector<int> basic{0};
+  std::vector<int> nonbasic{1};
+  csc_matrix_t<int, double> identity(1, 1, 1);
+  identity.col_start = {0, 1};
+  identity.i         = {0};
+  identity.x         = {1.0};
+  simplex::basis_update_mpf_t<int, double> basis(
+    identity, identity, basic, settings.refactor_frequency);
+
+  pseudocosts.initialize_with_estimate(
+    lp, vstatus, fractional, solution, basic, nonbasic, basis, tic());
+  EXPECT_EQ(pseudocosts.get_pseudocost_down(0, -1.0), -1.0);
+  EXPECT_EQ(pseudocosts.get_pseudocost_up(0, -1.0), -1.0);
+
+  pseudocosts.settings.time_limit = std::numeric_limits<double>::infinity();
+  pseudocosts.initialize_with_estimate(
+    lp, vstatus, fractional, solution, basic, nonbasic, basis, tic());
+  EXPECT_GE(pseudocosts.get_pseudocost_down(0, -1.0), 0.0);
+  EXPECT_GE(pseudocosts.get_pseudocost_up(0, -1.0), 0.0);
+}
+
+TEST(cuts, expired_duplicate_budget_preserves_pool)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  mip::cut_pool_t<int, double> pool(1, settings);
+  mip::inequality_t<int, double> cut;
+  cut.push_back(0, 1.0);
+  cut.rhs = 1.0;
+  pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut);
+  pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut);
+
+  settings.time_limit = 0.0;
+  EXPECT_FALSE(pool.check_for_duplicate_cuts(tic()));
+  EXPECT_EQ(pool.pool_size(), 2);
+
+  settings.time_limit = std::numeric_limits<double>::infinity();
+  EXPECT_TRUE(pool.check_for_duplicate_cuts(tic()));
+  EXPECT_EQ(pool.pool_size(), 1);
+}
+
+TEST(cuts, expired_scoring_budget_clears_previous_selection)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  mip::cut_pool_t<int, double> pool(1, settings);
+  mip::inequality_t<int, double> cut;
+  cut.push_back(0, 1.0);
+  cut.rhs = 1.0;
+  pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut);
+  std::vector<double> relaxation{0.0};
+  ASSERT_TRUE(pool.score_cuts(relaxation, tic()));
+
+  settings.time_limit = 0.0;
+  EXPECT_FALSE(pool.score_cuts(relaxation, tic()));
+  settings.time_limit = std::numeric_limits<double>::infinity();
+  csr_matrix_t<int, double> selected(0, 1, 0);
+  std::vector<double> rhs;
+  std::vector<mip::cut_type_t> types;
+  EXPECT_EQ(pool.get_best_cuts(selected, rhs, types, tic()), 0);
+  EXPECT_EQ(pool.pool_size(), 1);
+
+  ASSERT_TRUE(pool.score_cuts(relaxation, tic()));
+  EXPECT_EQ(pool.get_best_cuts(selected, rhs, types, tic()), 1);
+  EXPECT_EQ(rhs, std::vector<double>{-1.0});
+}
+
+TEST(cuts, expired_selection_budget_does_not_copy_cuts)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  mip::cut_pool_t<int, double> pool(1, settings);
+  mip::inequality_t<int, double> cut;
+  cut.push_back(0, 1.0);
+  cut.rhs = 1.0;
+  pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut);
+  std::vector<double> relaxation{0.0};
+  ASSERT_TRUE(pool.score_cuts(relaxation, tic()));
+
+  settings.time_limit = 0.0;
+  csr_matrix_t<int, double> selected(0, 1, 0);
+  std::vector<double> rhs;
+  std::vector<mip::cut_type_t> types;
+  EXPECT_EQ(pool.get_best_cuts(selected, rhs, types, tic()), 0);
+  EXPECT_EQ(selected.m, 0);
+  EXPECT_TRUE(rhs.empty());
+  EXPECT_TRUE(types.empty());
+  EXPECT_EQ(pool.pool_size(), 1);
 }
 
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)

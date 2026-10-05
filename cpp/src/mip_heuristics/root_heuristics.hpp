@@ -133,10 +133,11 @@ struct cut_pass_heuristics_t {
                              const simplex::lp_solution_t<i_t, f_t>& lp_solution,
                              const std::vector<i_t>& basic_list,
                              const std::vector<i_t>& nonbasic_list,
-                             simplex::basis_update_mpf_t<i_t, f_t>& basis_factors)
+                             simplex::basis_update_mpf_t<i_t, f_t>& basis_factors,
+                             f_t start_time)
   {
     pseudo_costs_.initialize_with_estimate(
-      lp, vstatus, fractional, lp_solution, basic_list, nonbasic_list, basis_factors);
+      lp, vstatus, fractional, lp_solution, basic_list, nonbasic_list, basis_factors, start_time);
   }
 
   diving_worker_t<i_t, f_t>* create_diving_worker(

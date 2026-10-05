@@ -1702,6 +1702,10 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     if (feasible) {
       i_t node_iter     = 0;
       f_t lp_start_time = tic();
+      // Bounds and symmetry preparation consume the parent solve's remaining time.
+      lp_settings.time_limit =
+        settings_.time_limit - (lp_start_time - exploration_stats_.start_time);
+      if (lp_settings.time_limit <= 0.0) { return dual_status_t::TIME_LIMIT; }
 
       lp_status = dual_phase2_with_advanced_basis(2,
                                                   0,
@@ -2478,8 +2482,13 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                submip_problem.num_cols,
                submip_problem.A.nnz());
 
+  // Rebase after conversion and presolve, using the same timestamp for the budget and origin.
+  const f_t submip_start_time = tic();
+  submip_settings.time_limit =
+    settings_.time_limit - (submip_start_time - exploration_stats_.start_time);
+  if (submip_settings.time_limit <= 0.0) { return; }
   probing_implied_bound_t<i_t, f_t> empty_probing(submip_problem.num_cols);
-  branch_and_bound_t submip_bnb(submip_problem, submip_settings, tic(), empty_probing);
+  branch_and_bound_t submip_bnb(submip_problem, submip_settings, submip_start_time, empty_probing);
   mip_solution_t<i_t, f_t> submip_solution(submip_problem.num_cols);
 
   std::vector<f_t> presolved_incumbent;
@@ -3235,6 +3244,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 {
   if (settings_.deterministic) return;
   if (settings_.num_threads < 2) return;
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) return;
 
   // Using shared_ptr here, so the lifetime of the object is tied to the related task. This allows
   // the solver to send the stop signal and immediately continue the execution.
@@ -3242,8 +3252,15 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     Arow_, var_types_, lp_solution.x, edge_norms_, settings_);
   auto worker_count = root_heuristics.worker_count_;
 
-  current_heuristic->initialize_pseudocost(
-    lp, root_vstatus_, fractional, lp_solution, basic_list, nonbasic_list, basis_factor);
+  current_heuristic->initialize_pseudocost(lp,
+                                           root_vstatus_,
+                                           fractional,
+                                           lp_solution,
+                                           basic_list,
+                                           nonbasic_list,
+                                           basis_factor,
+                                           exploration_stats_.start_time);
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) { return; }
 
   const bool is_cpufj_enabled = omp_in_parallel();
   if (is_cpufj_enabled) {
@@ -3595,6 +3612,11 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   i_t& cut_pool_size,
   [[maybe_unused]] const std::vector<f_t>& saved_solution) -> cut_pass_action_t
 {
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return cut_pass_action_t::RETURN;
+  }
 #ifdef PRINT_FRACTIONAL_INFO
   settings_.log.printf("Found %d fractional variables on cut pass %d\n", num_fractional, cut_pass);
   for (i_t j : fractional) {
@@ -3639,14 +3661,24 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   // Score the cuts
   f_t score_start_time = tic();
-  cut_pool.score_cuts(root_relax_soln_.x);
+  if (!cut_pool.score_cuts(root_relax_soln_.x, exploration_stats_.start_time)) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return cut_pass_action_t::RETURN;
+  }
   f_t score_time = toc(score_start_time);
   if (score_time > 1.0) { settings_.log.debug("Cut scoring time %.2f seconds\n", score_time); }
   // Get the best cuts from the cut pool
   csr_matrix_t<i_t, f_t> cuts_to_add(0, original_lp_.num_cols, 0);
   std::vector<f_t> cut_rhs;
   std::vector<cut_type_t> cut_types;
-  i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
+  i_t num_cuts =
+    cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types, exploration_stats_.start_time);
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return cut_pass_action_t::RETURN;
+  }
   if (num_cuts == 0) { return cut_pass_action_t::BREAK; }
   cut_info.record_cut_types(cut_types);
 #ifdef PRINT_CUT_POOL_TYPES
@@ -3975,10 +4007,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *clique_signal) \
   firstprivate(tolerances_for_clique, initial_clique_table)
     {
-      user_problem_t<i_t, f_t> problem_copy = original_problem_;
-      timer_t timer(std::numeric_limits<double>::infinity());
-      mip::find_initial_cliques(
-        problem_copy, tolerances_for_clique, *initial_clique_table, timer, clique_signal);
+      timer_t timer(std::max<f_t>(0, settings_.time_limit - toc(exploration_stats_.start_time)));
+      if (!timer.check_time_limit()) {
+        user_problem_t<i_t, f_t> problem_copy = original_problem_;
+        if (!timer.check_time_limit()) {
+          mip::find_initial_cliques(
+            problem_copy, tolerances_for_clique, *initial_clique_table, timer, clique_signal);
+        }
+      }
     }
   }
 

@@ -423,12 +423,14 @@ class cut_pool_t {
   // We expect that the cut is violated by the current relaxation xstar.
   void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
-  void score_cuts(std::vector<f_t>& x_relax);
+  // False means the global deadline interrupted scoring; do not consume the selection.
+  bool score_cuts(std::vector<f_t>& x_relax, f_t start_time);
 
   // We return the cuts in the form best_cuts*x <= best_rhs
   i_t get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
                     std::vector<f_t>& best_rhs,
-                    std::vector<cut_type_t>& best_cut_types);
+                    std::vector<cut_type_t>& best_cut_types,
+                    f_t start_time);
 
   void age_cuts();
 
@@ -438,7 +440,7 @@ class cut_pool_t {
 
   void print_cutpool_types() { print_cut_types("In cut pool", cut_type_, settings_); }
 
-  void check_for_duplicate_cuts();
+  bool check_for_duplicate_cuts(f_t start_time);
 
  private:
   f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
@@ -1183,7 +1185,9 @@ class complemented_mixed_integer_rounding_cut_t {
                                 const std::vector<simplex::variable_type_t>& var_types,
                                 const std::vector<f_t>& transformed_xstar,
                                 inequality_t<i_t, f_t>& transformed_cut,
-                                f_t& work_estimate);
+                                f_t& work_estimate,
+                                f_t start_time,
+                                f_t time_limit);
 
   bool scale_uncomplement_and_generate_cut(const std::vector<simplex::variable_type_t>& var_types,
                                            const std::vector<f_t>& transformed_xstar,

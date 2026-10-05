@@ -1377,8 +1377,10 @@ void pseudo_costs_t<i_t, f_t>::initialize_with_estimate(
   const lp_solution_t<i_t, f_t>& lp_solution,
   const std::vector<i_t>& basic_list,
   const std::vector<i_t>& nonbasic_list,
-  basis_update_mpf_t<i_t, f_t>& basis_factors)
+  basis_update_mpf_t<i_t, f_t>& basis_factors,
+  f_t start_time)
 {
+  if (toc(start_time) >= settings.time_limit) { return; }
   i_t m = lp.num_rows;
   i_t n = lp.num_cols;
 
@@ -1399,6 +1401,7 @@ void pseudo_costs_t<i_t, f_t>::initialize_with_estimate(
   compute_initial_nonbasic_end(basic_map, local_Arow, nonbasic_end);
 
   for (i_t k = 0; k < fractional.size(); k++) {
+    if (toc(start_time) >= settings.time_limit) { return; }
     const i_t j = fractional[k];
     assert(j >= 0);
 

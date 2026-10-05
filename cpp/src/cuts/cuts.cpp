@@ -1227,8 +1227,9 @@ f_t cut_pool_t<i_t, f_t>::cut_orthogonality(i_t i, i_t j)
 }
 
 template <typename i_t, typename f_t>
-void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
+bool cut_pool_t<i_t, f_t>::check_for_duplicate_cuts(f_t start_time)
 {
+  if (toc(start_time) >= settings_.time_limit) { return false; }
   const i_t m = cut_storage_.m;
 
   constexpr f_t duplicate_tolerance = 1e-10;
@@ -1250,6 +1251,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
   i_t remaining_potential_duplicates = m;
   compressed_set_groups_t<i_t> set_groups;
   for (i_t j = 0; j < n; j++) {
+    if (toc(start_time) >= settings_.time_limit) { return false; }
     i_t r0        = -1;
     i_t new_rows  = 0;
     i_t new_set_0 = new_set;
@@ -1309,6 +1311,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
   std::vector<i_t> cuts_to_remove(m, 0);
   i_t num_cuts_to_remove = 0;
   for (i_t r = 0; r < m; r++) {
+    if (toc(start_time) >= settings_.time_limit) { return false; }
     const i_t set_r = sets[r];
     if (set_r <= 0 || set_r >= sentinel || cuts_to_remove[r] != 0) { continue; }
     // This cut has a duplicate. The set members are in row order, preserving the legacy
@@ -1347,6 +1350,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     }
   }
 
+  if (toc(start_time) >= settings_.time_limit) { return false; }
   if (num_cuts_to_remove > 0) {
     settings_.log.debug("Removing %d duplicate cuts\n", num_cuts_to_remove);
     csr_matrix_t<i_t, f_t> new_cut_storage(0, 0, 0);
@@ -1365,17 +1369,23 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     cut_type_.resize(write);
     cut_age_.resize(write);
   }
+  return true;
 }
 
 template <typename i_t, typename f_t>
-void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
+bool cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax, f_t start_time)
 {
-  check_for_duplicate_cuts();
+  best_cuts_.clear();
+  scored_cuts_ = 0;
+  if (!check_for_duplicate_cuts(start_time) || toc(start_time) >= settings_.time_limit) {
+    return false;
+  }
   cut_distances_.resize(cut_storage_.m, 0.0);
   cut_norms_.resize(cut_storage_.m, 0.0);
 
   const bool verbose = false;
   for (i_t i = 0; i < cut_storage_.m; i++) {
+    if (toc(start_time) >= settings_.time_limit) { return false; }
     f_t violation;
     f_t cut_dist      = cut_distance(i, x_relax, violation, cut_norms_[i]);
     cut_distances_[i] = cut_dist <= min_cut_distance_ ? 0.0 : cut_dist;
@@ -1395,8 +1405,6 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
   const i_t max_cuts          = 2000;
   const f_t min_orthogonality = settings_.cut_min_orthogonality;
   best_cuts_.reserve(std::min(max_cuts, cut_storage_.m));
-  best_cuts_.clear();
-  scored_cuts_ = 0;
 
   if (!sorted_indices.empty()) {
     const i_t i = sorted_indices.back();
@@ -1406,6 +1414,7 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
   }
 
   while (scored_cuts_ < max_cuts && !sorted_indices.empty()) {
+    if (toc(start_time) >= settings_.time_limit) { return false; }
     const i_t i = sorted_indices.back();
     sorted_indices.pop_back();
 
@@ -1422,12 +1431,14 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
       scored_cuts_++;
     }
   }
+  return toc(start_time) < settings_.time_limit;
 }
 
 template <typename i_t, typename f_t>
 i_t cut_pool_t<i_t, f_t>::get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
                                         std::vector<f_t>& best_rhs,
-                                        std::vector<cut_type_t>& best_cut_types)
+                                        std::vector<cut_type_t>& best_cut_types,
+                                        f_t start_time)
 {
   best_cuts.m = 0;
   best_cuts.n = original_vars_;
@@ -1442,6 +1453,7 @@ i_t cut_pool_t<i_t, f_t>::get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
   best_cut_types.reserve(scored_cuts_);
 
   for (i_t i : best_cuts_) {
+    if (toc(start_time) >= settings_.time_limit) { return static_cast<i_t>(best_rhs.size()); }
     if (cut_distances_[i] <= min_cut_distance_) { continue; }
     sparse_vector_t<i_t, f_t> cut(cut_storage_, i);
     cut.negate();
@@ -4456,6 +4468,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     work_estimate += lp.num_cols;
 
     while (!add_cut && num_aggregated < max_aggregated) {
+      if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> transformed_inequality;
       inequality.squeeze(transformed_inequality);
       work_estimate += transformed_inequality.size();
@@ -4464,8 +4477,14 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       work_estimate += transformed_inequality.size();
 
       inequality_t<i_t, f_t> cut;
-      bool cut_found = complemented_mir.cut_generation_heuristic(
-        transformed_inequality, var_types, transformed_xstar, cut, work_estimate);
+      bool cut_found = complemented_mir.cut_generation_heuristic(transformed_inequality,
+                                                                 var_types,
+                                                                 transformed_xstar,
+                                                                 cut,
+                                                                 work_estimate,
+                                                                 start_time,
+                                                                 settings.time_limit);
+      if (toc(start_time) >= settings.time_limit) { return; }
       // Note cut is in the transformed variables
 
       if (cut_found) {
@@ -5311,8 +5330,11 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& transformed_xstar,
   inequality_t<i_t, f_t>& transformed_cut,
-  f_t& work_estimate)
+  f_t& work_estimate,
+  f_t start_time,
+  f_t time_limit)
 {
+  if (toc(start_time) >= time_limit) { return false; }
   std::vector<f_t> deltas_to_try;
   deltas_to_try.reserve(transformed_inequality.size());
   deltas_to_try.push_back(1.0);
@@ -5372,6 +5394,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
 
   // First try without any complementation
   for (const f_t tmp_delta : deltas_to_try) {
+    if (toc(start_time) >= time_limit) { return false; }
     bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
                                                       transformed_xstar,
                                                       complemented_indices,
@@ -5393,6 +5416,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   if (!cut_found) {
     // Complement an integer variable
     for (const i_t idx : perm) {
+      if (toc(start_time) >= time_limit) { return false; }
       const i_t l = integer_indices[idx];
       const i_t j = complemented_inequality.index(l);
       // We have an integer variable x_j <= b_j
@@ -5413,6 +5437,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
       complemented_indices.push_back(l);
 
       for (const f_t tmp_delta : deltas_to_try) {
+        if (toc(start_time) >= time_limit) { return false; }
         bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
                                                           transformed_xstar,
                                                           complemented_indices,
@@ -5439,6 +5464,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   // We have found a cut. Now try to improve the violation by scaling the cut by 1/2, 1/4, 1/8, etc.
   std::vector<f_t> scaled_deltas_to_try = {delta / 2.0, delta / 4.0, delta / 8.0};
   for (const f_t tmp_delta : scaled_deltas_to_try) {
+    if (toc(start_time) >= time_limit) { return false; }
     inequality_t<i_t, f_t> tmp_cut_delta;
     bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
                                                       transformed_xstar,
@@ -5467,6 +5493,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   work_estimate += 4 * transformed_inequality.size();
   complemented_indices.clear();
   for (const i_t idx : perm) {
+    if (toc(start_time) >= time_limit) { return false; }
     const i_t l = integer_indices[idx];
     const i_t j = complemented_inequality.index(l);
     // We have an integer variable x_j <= b_j
