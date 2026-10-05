@@ -153,10 +153,11 @@ COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
 
 COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
-# Entrypoint supports server selection:
-#   Default:                  Python REST server
-#   CUOPT_SERVER_TYPE=grpc:   gRPC server (uses CUOPT_SERVER_PORT, CUOPT_GPU_COUNT)
-#   Explicit command:         docker run <image> cuopt_grpc_server [args...]
+# CUOPT_SERVER_TYPE (proxy, grpc, or legacy) overrides the command.
+#   proxy (default):            HTTP proxy + cuopt_grpc_server
+#   grpc:                       gRPC server only
+#   legacy:                     Python REST server (cuopt_service)
+#   Any other command:          docker run <image> cuopt_grpc_server [args...]
 COPY ./entrypoint.sh /opt/cuopt/entrypoint.sh
 ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
-CMD ["python", "-m", "cuopt_server.cuopt_service"]
+CMD ["proxy"]

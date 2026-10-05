@@ -115,6 +115,8 @@ class third_party_presolve_t {
     reduction_allowlist_ = std::move(allowlist);
   }
 
+  void set_indicator_strengthening(bool enabled) { indicator_strengthening_ = enabled; }
+
   // Apply the presolve on an simplex::user_problem in-place. Used in sub MIP and (in the future)
   // restarts.
   third_party_presolve_status_t apply_to_subproblem(
@@ -225,6 +227,7 @@ class third_party_presolve_t {
   f_t original_objective_scaling_factor_{1};
 
   std::optional<std::unordered_set<std::string>> reduction_allowlist_{};
+  bool indicator_strengthening_{true};
 };
 
 // Just for testing the conversion: user_problem -> Papilo problem -> user_problem.

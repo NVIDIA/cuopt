@@ -391,8 +391,7 @@ Unique to settings:
 | Key | Description |
 |---|---|
 | `fields:` | List of settings fields. Supports nested sub-structs (see below). Used instead of `scalars:` because settings need to express the C++ struct's nesting hierarchy. |
-| `deprecate_parameters:` | When true, every settings field that `set_parameter()` accepts is emitted with `[deprecated = true]`. A field with `param_name: null` is not a string parameter and stays a normal field. Warm start stays an embed, not a deprecated field. |
-| `parameter_map:` | `{name, field_num}` for the `map<string, string>` that carries `set_parameter()` bindings. The server applies it with `set_parameter_from_string()` after the deprecated typed fields, so a key in the map wins. An empty map leaves the typed fields unchanged. New parameters are registered on `solver_settings_t` only — not as proto fields. |
+| `parameter_map:` | `{name, field_num}` for the `map<string, string>` that carries `set_parameter()` bindings. Its presence deprecates every typed field that `set_parameter()` accepts. A field with `param_name: null` is not a string parameter and stays a normal field. Warm start stays an embed, not a deprecated field. The server applies the map with `set_parameter_from_string()` after the deprecated typed fields, so a key in the map wins. An empty map leaves the typed fields unchanged. New parameters are registered on `solver_settings_t` only — not as proto fields. |
 
 #### Nested sub-structs
 

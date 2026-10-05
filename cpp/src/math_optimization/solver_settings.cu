@@ -198,6 +198,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_MIP_RINS, &mip_settings.submip_params.rins, -1, 1, -1},
     {CUOPT_MIP_RENS, &mip_settings.submip_params.rens, -1, 1, -1},
+    {CUOPT_MIP_MUTATION, &mip_settings.submip_params.mutation, -1, 1, -1},
     {CUOPT_MIP_OBJECTIVE_STEP, &mip_settings.objective_step, 0, 1, 1},
     {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, -1, 72, 1},
     {CUOPT_NUM_GPUS, &mip_settings.num_gpus, -1, 72, 1},
@@ -240,6 +241,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_BARRIER_ADAPTIVE_REGULARIZATION, &pdlp_settings.barrier_adaptive_regularization, -1, 1, -1, "Adaptive regularization for barrier method: -1 automatic (default behavior), 0 disabled, 1 enabled"},
     // QCQP (barrier) scaling hyper-parameter
     {CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION, &pdlp_settings.qcqp_ruiz_equilibration, -1, 1, -1, "Ruiz equilibration for QCQP barrier scaling: -1 automatic (row/column imbalance heuristic), 0 disabled, 1 enabled"},
+    {CUOPT_BARRIER_HYPER_GPU_RUIZ_NNZ_THRESHOLD, &pdlp_settings.gpu_ruiz_nnz_threshold, 0, std::numeric_limits<i_t>::max(), 500000, "nnz(A)+nnz(Q) at or above which barrier Ruiz equilibration runs on GPU instead of CPU"},
   };
 
     // Bool parameters
@@ -264,6 +266,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ, &mip_settings.submip_params.enable_cpufj, true, "run CPU FJ over the sub-MIP"},
     {CUOPT_MIP_HYPER_BLOCK_BVE, &mip_settings.block_bve, true, "eliminate blocks of binaries in cuOpt's MIP presolve (needs " CUOPT_MIP_PROBING ")"},
+    {CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING, &mip_settings.indicator_strengthening, true, "append implied indicator rows and lift capacity rows before Papilo presolve"},
     // PDLP scaling hyper-parameter (hidden from default --help: name contains "hyper_")
     {CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, &pdlp_settings.hyper_params.do_curtis_reid_scaling, true, "Curtis-Reid prescaling, run before Ruiz/Pock-Chambolle scaling"},
   };
