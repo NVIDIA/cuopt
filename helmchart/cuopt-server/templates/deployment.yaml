@@ -1,3 +1,4 @@
+{{- include "cuopt-server.validate" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,9 +43,25 @@ spec:
             {{- toYaml .Values.args | nindent 12 }}
           {{- end }}
           ports:
-            - name: http
-              containerPort: {{ .Values.service.targetPort }}
+            - name: {{ include "cuopt-server.portName" . }}
+              containerPort: {{ include "cuopt-server.listenPort" . }}
               protocol: TCP
+          {{- if eq (.Values.serverType | default "") "grpc" }}
+          livenessProbe:
+            grpc:
+              port: {{ .Values.grpc.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            grpc:
+              port: {{ .Values.grpc.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- else }}
           livenessProbe:
             httpGet:
               path: /v2/health/live
@@ -61,11 +78,24 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- with .Values.env }}
+          {{- if or .Values.serverType .Values.env }}
           env:
-            {{- toYaml . | nindent 12 }}
+            {{- if .Values.serverType }}
+            - name: CUOPT_SERVER_TYPE
+              value: {{ .Values.serverType | quote }}
+            {{- if eq .Values.serverType "grpc" }}
+            - name: CUOPT_GRPC_PORT
+              value: {{ .Values.grpc.port | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range .Values.env }}
+            {{- if and (ne .name "CUOPT_SERVER_TYPE") (ne .name "CUOPT_GRPC_PORT") }}
+            {{- toYaml (list .) | nindent 12 }}
+            {{- end }}
+            {{- end }}
           {{- end }}
           {{- if .Values.persistence.enabled }}
           volumeMounts:

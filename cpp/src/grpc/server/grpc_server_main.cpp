@@ -22,6 +22,8 @@
 #include <argparse/argparse.hpp>
 #include <cuopt/version_config.hpp>
 
+#include <grpcpp/health_check_service_interface.h>
+
 #include <pthread.h>
 
 // Defined in grpc_service_impl.cpp
@@ -330,6 +332,11 @@ int main(int argc, char** argv)
 
   auto service = create_cuopt_grpc_service();
 
+  // Standard grpc.health.v1.Health. Kubelet grpc probes call Check with an
+  // empty service name, so that name has to be registered explicitly.
+  // EnableDefaultHealthCheckService applies to ServerBuilders created after
+  // this call. Workers are already forked, so they do not build a server.
+  grpc::EnableDefaultHealthCheckService(true);
   ServerBuilder builder;
   builder.AddListeningPort(server_address, creds);
   builder.RegisterService(service.get());
@@ -354,6 +361,8 @@ int main(int argc, char** argv)
     shutdown_all();
     return 1;
   }
+
+  if (auto* health = server->GetHealthCheckService()) { health->SetServingStatus("", true); }
 
   SERVER_LOG_INFO("[gRPC Server] Listening on %s", server_address);
   SERVER_LOG_INFO("[gRPC Server] Workers: %d", config.num_workers);
@@ -409,6 +418,7 @@ int main(int argc, char** argv)
     // be in write_to_pipe/read_from_pipe. They abort via shutdown_requested;
     // shutdown_all() closes FDs after those threads join.
     if (server) {
+      if (auto* health = server->GetHealthCheckService()) { health->SetServingStatus("", false); }
       auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(1);
       server->Shutdown(deadline);
     }

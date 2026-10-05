@@ -30,5 +30,5 @@
 4. Important Notes:
    - This deployment requires GPU nodes in your cluster
    - Make sure your cluster has the NVIDIA device plugin installed
-   - The chart does not select a server. The image entrypoint does. Override that with CUOPT_SERVER_TYPE set to proxy or legacy. Do not put mode names in command
-   - Port 5000 is exposed for the HTTP API. Probes call /v2/health/live and /v2/health/ready on that port. CUOPT_SERVER_TYPE=grpc does not serve them, so this chart cannot run gRPC-only
+   - The chart does not select a server unless serverType is set. Leave it empty to use the image entrypoint. proxy and legacy keep HTTP probes on port 5000. grpc publishes grpc.port and uses plaintext gRPC health probes. Do not put mode names in command
+   - Port 5000 is the HTTP API. serverType grpc uses port 5001 by default and cannot enable ingress

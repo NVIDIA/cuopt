@@ -87,15 +87,20 @@ command: []
 # replace the entrypoint. Do not put a mode name here.
 args: []
 
-# Extra environment variables. The chart does not set a server mode; the
-# image entrypoint does. The Service and the probes are HTTP on port 5000
-# (/v2/health/live and /v2/health/ready). That matches the image default and
-# CUOPT_SERVER_TYPE=proxy or legacy. Do not set grpc: a gRPC-only server
-# does not serve those probes, so the Pod stays unready and liveness
-# restarts it.
-# env:
-#   - name: CUOPT_SERVER_TYPE
-#     value: legacy   # or proxy
+# "" leaves CUOPT_SERVER_TYPE unset so the image entrypoint decides, and
+# the chart keeps HTTP probes on port 5000. proxy and legacy do the same.
+# grpc sets CUOPT_SERVER_TYPE and CUOPT_GRPC_PORT, publishes grpc.port, and
+# probes grpc.health.v1.Health. Those probes are plaintext, so do not combine
+# serverType grpc with TLS. Do not set CUOPT_SERVER_TYPE in env; a raw grpc
+# value would not switch the probes. Ingress is HTTP-only and is rejected
+# when serverType is grpc.
+serverType: ""
+
+grpc:
+  port: 5001
+
+# Extra environment variables. CUOPT_SERVER_TYPE and CUOPT_GRPC_PORT set
+# here are dropped; use serverType and grpc.port.
 env: []
 
 # Persistent storage (if needed)

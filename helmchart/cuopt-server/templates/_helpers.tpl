@@ -60,3 +60,41 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+serverType "" leaves the image entrypoint in charge and uses HTTP probes.
+proxy and legacy also use HTTP. grpc uses the standard gRPC health probe.
+*/}}
+{{- define "cuopt-server.validate" -}}
+{{- $serverType := .Values.serverType | default "" -}}
+{{- if and $serverType (not (has $serverType (list "proxy" "grpc" "legacy"))) -}}
+{{- fail (printf "serverType must be empty, proxy, grpc, or legacy, got %q" $serverType) -}}
+{{- end -}}
+{{- if and (eq $serverType "grpc") .Values.ingress.enabled -}}
+{{- fail "ingress is HTTP-only; set ingress.enabled to false when serverType is grpc" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "cuopt-server.listenPort" -}}
+{{- if eq (.Values.serverType | default "") "grpc" -}}
+{{- .Values.grpc.port -}}
+{{- else -}}
+{{- .Values.service.targetPort -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "cuopt-server.servicePort" -}}
+{{- if eq (.Values.serverType | default "") "grpc" -}}
+{{- .Values.grpc.port -}}
+{{- else -}}
+{{- .Values.service.port -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "cuopt-server.portName" -}}
+{{- if eq (.Values.serverType | default "") "grpc" -}}
+grpc
+{{- else -}}
+http
+{{- end -}}
+{{- end -}}
