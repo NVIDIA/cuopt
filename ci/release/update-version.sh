@@ -103,6 +103,9 @@ DEPENDENCIES=(
   cuopt-server
   cuopt-sh-client
   libcuopt
+  libcuopt-client
+  libcuopt-mathopt
+  libcuopt-routing
   libcuopt-tests
   libraft-headers
   librmm

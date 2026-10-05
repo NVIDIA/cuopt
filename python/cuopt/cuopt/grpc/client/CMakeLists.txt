@@ -18,3 +18,10 @@ rapids_cython_create_modules(
   MODULE_PREFIX grpc_client_
   ASSOCIATED_TARGETS cuopt
 )
+
+# grpc_client.cxx cimports routing and mathopt headers; both are now separate wheels,
+# so add their include dirs without linking the libraries.
+target_include_directories(grpc_client_grpc_client PRIVATE
+    $<TARGET_PROPERTY:cuopt::routing,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:cuopt::mathopt,INTERFACE_INCLUDE_DIRECTORIES>
+)

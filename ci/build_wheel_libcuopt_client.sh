@@ -29,6 +29,8 @@ elif command -v apt-get &> /dev/null; then
     apt-get install -y uuid-dev
 fi
 
+source rapids-configure-sccache
+
 # Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
 bash ci/utils/install_protobuf_grpc.sh
 

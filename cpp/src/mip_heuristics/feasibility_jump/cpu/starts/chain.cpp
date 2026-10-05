@@ -113,7 +113,6 @@ void apply_precedence_completion_start(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 #if MIP_INSTANTIATE_FLOAT
 template void apply_precedence_completion_start<int, float>(fj_cpu_climber_t<int, float>&);
 #endif
-
 #if MIP_INSTANTIATE_DOUBLE
 template void apply_precedence_completion_start<int, double>(fj_cpu_climber_t<int, double>&);
 #endif

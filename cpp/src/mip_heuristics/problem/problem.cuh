@@ -122,7 +122,7 @@ class problem_t {
     return presolve_data.get_papilo_original_num_variables();
   }
   void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
-                                 rmm::cuda_stream_view stream) const;
+                                 cuda::stream_ref stream) const;
   void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const
   {
     papilo_uncrush_assignment(assignment, handle_ptr->get_stream());
@@ -356,7 +356,7 @@ class problem_t {
   bool cutting_plane_added{false};
   std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
   bool expensive_to_fix_vars{false};
-  double related_vars_time_limit{30.};
+  double related_vars_time_limit{2.};
   std::vector<i_t> Q_offsets;
   std::vector<i_t> Q_indices;
   std::vector<f_t> Q_values;

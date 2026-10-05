@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cub/cub.cuh>
+#include <cub/device/device_reduce.cuh>
 
 #include <cuda/stream>
 #include <raft/core/copy.hpp>

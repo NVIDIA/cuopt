@@ -32,6 +32,7 @@ classifiers = [
 dependencies = [
     "cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*",
     "libcuopt-client==26.10.*,>=0.0.0a0",
+    "libraft==26.10.*,>=0.0.0a0",
     "librmm==26.10.*,>=0.0.0a0",
     "nvidia-cudss-cu13>=0.7,<0.8",
     "nvidia-nccl-cu13>=2.19",
@@ -80,6 +81,8 @@ dependencies-file = "../../dependencies.yaml"
 matrix-entry = "cuda_suffixed=true;use_cuda_wheels=true"
 requires = [
     "cmake>=4.0",
+    "libcuopt-client==26.10.*,>=0.0.0a0",
+    "libraft==26.10.*,>=0.0.0a0",
     "librmm==26.10.*,>=0.0.0a0",
     "ninja",
     "rapids-logger==0.3.*",

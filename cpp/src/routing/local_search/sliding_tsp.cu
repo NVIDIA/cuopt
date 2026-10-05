@@ -11,7 +11,7 @@
 #include "local_search.cuh"
 
 #include <thrust/pair.h>
-#include <cub/cub.cuh>
+#include <cub/device/device_scan.cuh>
 
 namespace cuopt {
 namespace routing {

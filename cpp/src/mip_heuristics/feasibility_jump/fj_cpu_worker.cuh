@@ -25,6 +25,13 @@ template <typename i_t, typename f_t>
 struct fj_cpu_climber_t;
 
 template <typename i_t, typename f_t>
+struct fj_cpu_shared_incumbent_t;
+
+// Defined in cpu/portfolio.cpp, where the type is complete.
+template <typename i_t, typename f_t>
+std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> make_fj_cpu_shared_incumbent();
+
+template <typename i_t, typename f_t>
 struct fj_cpu_worker_t {
   // Custom deleter to avoid pulling the entire fj_cpu_climber_t class here.
   struct fj_cpu_deleter_t {
@@ -35,6 +42,8 @@ struct fj_cpu_worker_t {
   std::atomic<bool> preemption_flag{false};
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>, fj_cpu_deleter_t> fj_cpu;
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback;
+  // Set before create_worker to join a portfolio; left null when the climber runs alone.
+  std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent;
 
   ~fj_cpu_worker_t() { stop(); }
 
@@ -44,6 +53,7 @@ struct fj_cpu_worker_t {
   // or -1 to draw from the global cuopt::seed_generator (the historical behavior).
   // In deterministic mode the caller MUST pass an explicit seed, otherwise the underlying
   // seed_generator::get_seed() racing with concurrent callers breaks reproducibility.
+  // `lane` >= 0 applies that lane's persona from the portfolio diversification ladder.
   void create_worker(const simplex::lp_problem_t<i_t, f_t>& problem,
                      const std::vector<simplex::variable_type_t>& variable_types,
                      i_t n_structural,

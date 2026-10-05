@@ -15,9 +15,11 @@ project(
   LANGUAGES CXX CUDA
 )
 
-# Already installed: nothing to build, the wheel just stages the component.
+# Already installed: nothing to build, the wheel just stages the component. Checking
+# cuopt::routing specifically, not cuopt_FOUND, matters now that this build installs the
+# client sibling wheel as a dependency -- that alone resolves cuopt_FOUND but not routing.
 find_package(cuopt "${RAPIDS_VERSION}")
-if(cuopt_FOUND)
+if(TARGET cuopt::routing)
   return()
 endif()
 unset(cuopt_FOUND)

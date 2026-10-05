@@ -36,7 +36,8 @@ enum class search_strategy_t : int {
   FARKAS_DIVING        = 5,  // Farkas Diving (see [2])
   VECTOR_LENGTH_DIVING = 6,  // Vector Length Diving [1, Section 9.2.6]
   RINS                 = 7,  // RINS (see [3])
-  RENS                 = 8   // RENS (see [1, Section 9.1.1], [4])
+  RENS                 = 8,  // RENS (see [1, Section 9.1.1], [4])
+  MUTATION             = 9
 };
 
 enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
@@ -44,15 +45,16 @@ enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
 inline const char* search_strategy_to_string(search_strategy_t search_strategy)
 {
   switch (search_strategy) {
-    case search_strategy_t::BEST_FIRST: return "BEST_FIRST";
-    case search_strategy_t::PSEUDOCOST_DIVING: return "PSEUDOCOST_DIVING";
-    case search_strategy_t::LINE_SEARCH_DIVING: return "LINE_SEARCH_DIVING";
-    case search_strategy_t::GUIDED_DIVING: return "GUIDED_DIVING";
-    case search_strategy_t::COEFFICIENT_DIVING: return "COEFFICIENT_DIVING";
-    case search_strategy_t::FARKAS_DIVING: return "FARKAS_DIVING";
-    case search_strategy_t::VECTOR_LENGTH_DIVING: return "VECTOR_LENGTH_DIVING";
+    case search_strategy_t::BEST_FIRST: return "BEST FIRST";
+    case search_strategy_t::PSEUDOCOST_DIVING: return "PSEUDOCOST DIVING";
+    case search_strategy_t::LINE_SEARCH_DIVING: return "LINE SEARCH DIVING";
+    case search_strategy_t::GUIDED_DIVING: return "GUIDED DIVING";
+    case search_strategy_t::COEFFICIENT_DIVING: return "COEFFICIENT DIVING";
+    case search_strategy_t::FARKAS_DIVING: return "FARKAS DIVING";
+    case search_strategy_t::VECTOR_LENGTH_DIVING: return "VECTOR LENGTH DIVING";
     case search_strategy_t::RINS: return "RINS";
     case search_strategy_t::RENS: return "RENS";
+    case search_strategy_t::MUTATION: return "MUTATION";
   }
 
   return "UNKNOWN";

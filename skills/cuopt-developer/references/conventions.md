@@ -55,6 +55,13 @@ This applies to all comment types: inline comments, block comments, suppression 
 
 ## C++ Implementation Style
 
+- Use existing compensated accumulation routines, including `compensated_dot2`,
+  `compensated_dot2_csr`, and `fj_kahan_babushka_neumaier_sum`, for numerically sensitive sums and
+  dot products in `f_t`.
+- Use `_Float128` only when analysis demonstrates that compensated `f_t` is insufficient.
+- Never use `long double`. Its representation includes slow x87 extended precision on x86-64,
+  binary128 on Linux AArch64, and binary64 on other ARM64 targets, making its precision and
+  performance architecture-dependent.
 - **Never write large lambdas inside a function body.** If a lambda is more than a short
   predicate/comparator (roughly more than ~3–5 lines, or it has nested lambdas, local state,
   or non-trivial control flow), extract it as a named free function, file-local helper in an
@@ -196,6 +203,24 @@ rmm::device_uvector<int> data(100, stream);
 - Stream references are non-owning
 
 Read existing code in `cpp/src/` for real examples of RMM allocation, stream-ordering, RAFT utilities, and kernel launch patterns.
+
+### Bypassing `ins_vector`: credit the bytes back to the wrapper
+
+The instrumented accessors record a load per element read, and the counter lives in the
+wrapper while the data lives in the vector's buffer. The compiler cannot prove those do not
+alias, so the counter round-trips through memory every iteration and serializes the loop.
+That cost is measurable in the innermost scoring loops.
+
+Two instrumentation-free paths to the same buffers already exist: `data()` on the wrapper
+returns the raw pointer without recording, and the spans published on `fj_cpu.view` alias the
+same allocations.
+
+When you take either path, add the skipped bytes back into the wrapper you bypassed —
+`byte_loads` and `byte_stores` are public `mutable size_t` on
+`memory_instrumentation_base_t`, so one `+= n * sizeof(element)` above the loop replaces N
+per-element records. Do not route them into a separate counter: the byte totals feed the
+deterministic work-unit proxy, and crediting the wrapper keeps both `collect()` and
+`collect_per_wrapper()` correct and leaves the work-unit calibration untouched.
 
 ## Test Impact Check
 

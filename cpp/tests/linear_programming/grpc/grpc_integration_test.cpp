@@ -12,7 +12,7 @@
  *
  * Fixture layout:
  *   NoServerTests          - Tests that don't need a server
- *   DefaultServerTests     - Shared server with default config (~21 tests)
+ *   DefaultServerTests     - Shared server with default config (~22 tests)
  *   ChunkedUploadTests     - Shared server with --max-message-mb 256 (4 tests)
  *   PathSelectionTests     - Shared server with --max-message-bytes 4096 --verbose (4 tests)
  *   ErrorRecoveryTests     - Per-test server lifecycle (4 tests)
@@ -43,6 +43,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
 #include <cuopt/routing/cpu_routing_problem.hpp>
 #include <cuopt/routing/solver_settings.hpp>
@@ -90,7 +91,7 @@ namespace {
 
 class ServerProcess {
  public:
-  ServerProcess() : pid_(-1), pgid_(-1), port_(0) {}
+  ServerProcess() : pid_(-1), pgid_(-1), port_(0), exit_code_(-1) {}
   ServerProcess(const ServerProcess&)            = delete;
   ServerProcess& operator=(const ServerProcess&) = delete;
   ~ServerProcess()
@@ -107,7 +108,9 @@ class ServerProcess {
     tls_client_key_  = client_key;
   }
 
-  bool start(int port, const std::vector<std::string>& extra_args = {})
+  bool start(int port,
+             const std::vector<std::string>& extra_args                                = {},
+             const std::vector<std::pair<std::string, std::string>>& extra_environment = {})
   {
     if (pid_ > 0) {
       std::cerr << "Cannot reuse a ServerProcess while it still owns a process lifecycle\n";
@@ -124,8 +127,9 @@ class ServerProcess {
     // onto this test process so stop() can reap it without relying on init.
     prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
 
-    port_ = port;
-    pid_  = fork();
+    port_      = port;
+    exit_code_ = -1;
+    pid_       = fork();
     if (pid_ < 0) {
       std::cerr << "fork() failed\n";
       return false;
@@ -133,6 +137,10 @@ class ServerProcess {
 
     if (pid_ == 0) {
       setpgid(0, 0);  // child leads its own group; parent mirrors this below
+
+      for (const auto& [name, value] : extra_environment) {
+        setenv(name.c_str(), value.c_str(), 1);
+      }
 
       std::vector<const char*> args;
       args.push_back(server_path.c_str());
@@ -196,6 +204,8 @@ class ServerProcess {
 
   pid_t pid() const { return pid_; }
 
+  int exit_code() const { return exit_code_; }
+
   bool is_running() const
   {
     if (pid_ <= 0) return false;
@@ -216,6 +226,7 @@ class ServerProcess {
       int status = 0;
       pid_t ret  = waitpid(pid_, &status, WNOHANG);
       if (ret == pid_ || (ret < 0 && errno == ECHILD)) {
+        if (ret == pid_) { exit_code_ = WIFEXITED(status) ? WEXITSTATUS(status) : -1; }
         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
           deadline - std::chrono::steady_clock::now());
         if (remaining > std::chrono::milliseconds(2000)) {
@@ -341,6 +352,7 @@ class ServerProcess {
 
       int status = 0;
       if (waitpid(pid_, &status, WNOHANG) == pid_) {
+        exit_code_ = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
         std::cerr << "Server process died during startup\n";
         return false;
       }
@@ -352,6 +364,7 @@ class ServerProcess {
   pid_t pid_;
   pid_t pgid_;
   int port_;
+  int exit_code_;
   std::string tls_root_certs_;
   std::string tls_client_cert_;
   std::string tls_client_key_;
@@ -513,26 +526,118 @@ End
     }
   }
 
+  // Result of warm_up_worker. Callers ASSERT on ok so a failure stops the test.
+  // detail is set only on failure and includes the last job status plus a tail
+  // of the server log.
+  struct worker_warmup_result_t {
+    bool ok = false;
+    std::string detail;
+  };
+
   // Prove the shared worker is idle and warm before a timed test begins,
   // instead of trusting whatever the previous test left behind. DefaultServerTests
   // shares one worker across the whole suite, and a prior test's SIGKILL can leave it
-  // mid-respawn (paying for a fresh CUDA context init); untimed here, that debt can't
-  // leak into this test's own timing assertions -- see #1814.
-  // ASSERT_* inside this helper only returns from here, not from the calling
-  // TEST_F -- return the result so callers can ASSERT_TRUE it themselves and
-  // actually stop the test on a warm-up failure instead of continuing on a
-  // worker that was never confirmed ready.
-  bool warm_up_worker(grpc_client_t* client)
+  // mid-respawn (paying for a fresh CUDA context and RMM pool); that debt is absorbed
+  // here so it cannot leak into the caller's timing assertions -- see #1814.
+  //
+  // The job stays QUEUED until the replacement worker finishes init, which can
+  // exceed 60s on a busy runner. Allow 3 minutes for that. Once the worker claims
+  // the job, allow 30s more for this 5s MIP. delete_job of a PROCESSING job
+  // SIGKILLs the worker, so a probe that is still solving is left in place.
+  // A QUEUED probe was never claimed and can be deleted.
+  worker_warmup_result_t warm_up_worker(grpc_client_t* client, const std::string& server_log_path)
   {
+    worker_warmup_result_t result;
+
+    auto fail = [&](const std::string& why, const job_status_result_t& status) {
+      std::ostringstream out;
+      out << "Worker warm-up failed: " << why << ", status=" << job_status_to_string(status.status);
+      if (!status.message.empty()) { out << ", message=" << status.message; }
+      if (!status.error_message.empty()) { out << ", error=" << status.error_message; }
+      out << tail_server_log(server_log_path);
+      result.ok     = false;
+      result.detail = out.str();
+      return result;
+    };
+
     mip_solver_settings_t<int32_t, double> warmup_settings;
     warmup_settings.time_limit = 5.0;
     auto warmup                = client->submit_mip(create_simple_mip(), warmup_settings);
-    if (!warmup.success) { return false; }
-    wait_for_job_done(client, warmup.job_id, 90);
-    auto warmup_status = client->check_status(warmup.job_id);
-    bool completed     = warmup_status.status == job_status_t::COMPLETED;
-    bool deleted       = client->delete_job(warmup.job_id);
-    return completed && deleted;
+    if (!warmup.success) {
+      job_status_result_t submit_status;
+      submit_status.error_message = warmup.error_message;
+      return fail("submit failed", submit_status);
+    }
+
+    constexpr auto queued_budget     = std::chrono::seconds(180);
+    constexpr auto processing_budget = std::chrono::seconds(30);
+    const auto start                 = std::chrono::steady_clock::now();
+    bool saw_processing              = false;
+    auto processing_since            = start;
+    job_status_result_t last_status;
+
+    for (;;) {
+      last_status         = client->check_status(warmup.job_id);
+      const bool terminal = last_status.success && (last_status.status == job_status_t::COMPLETED ||
+                                                    last_status.status == job_status_t::FAILED ||
+                                                    last_status.status == job_status_t::CANCELLED);
+      if (terminal || (last_status.success && last_status.status == job_status_t::NOT_FOUND)) {
+        break;
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      if (last_status.success && last_status.status == job_status_t::PROCESSING) {
+        if (!saw_processing) {
+          saw_processing   = true;
+          processing_since = now;
+        }
+        if (now - processing_since >= processing_budget) { break; }
+      } else if (now - start >= queued_budget) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    const bool terminal = last_status.success && (last_status.status == job_status_t::COMPLETED ||
+                                                  last_status.status == job_status_t::FAILED ||
+                                                  last_status.status == job_status_t::CANCELLED);
+    const bool queued_unclaimed = last_status.success && last_status.status == job_status_t::QUEUED;
+    if (terminal || queued_unclaimed) {
+      if (!client->delete_job(warmup.job_id)) { return fail("delete_job failed", last_status); }
+    }
+
+    if (last_status.success && last_status.status == job_status_t::COMPLETED) {
+      result.ok = true;
+      return result;
+    }
+
+    std::string why = "job ended without COMPLETED";
+    if (last_status.success && last_status.status == job_status_t::PROCESSING) {
+      why = "still PROCESSING after 30s (left running; delete would SIGKILL the worker)";
+    } else if (last_status.success && last_status.status == job_status_t::QUEUED) {
+      why = "still QUEUED after 180s";
+    } else if (!last_status.success) {
+      why = "status check failed";
+    }
+    return fail(why, last_status);
+  }
+
+  static std::string tail_server_log(const std::string& path)
+  {
+    constexpr std::streamoff kTailBytes = 4096;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) { return "\n(server log unavailable: " + path + ")\n"; }
+    in.seekg(0, std::ios::end);
+    const auto size = in.tellg();
+    if (size > kTailBytes) {
+      in.seekg(-kTailBytes, std::ios::end);
+    } else {
+      in.seekg(0);
+    }
+    std::ostringstream out;
+    out << "\n--- server log tail (" << path << ") ---\n"
+        << in.rdbuf() << "\n--- end server log tail ---\n";
+    return out.str();
   }
 
   // Shared by the unary and chunked incumbent-set tests. EXPECT_* here still
@@ -831,6 +936,64 @@ TEST_F(DefaultServerTests, SolveInfeasibleLP)
   auto status = result.solution->get_termination_status();
   EXPECT_NE(status, pdlp_termination_status_t::Optimal)
     << "Expected non-optimal termination for infeasible problem";
+}
+
+// A bad parameter map fails that job. The worker then completes a normal job.
+TEST_F(DefaultServerTests, BadParameterFailsJobAndWorkerContinues)
+{
+  cpu_optimization_problem_t<int32_t, double> problem;
+  std::vector<double> var_lb   = {0.0};
+  std::vector<double> var_ub   = {1.0};
+  std::vector<double> obj      = {1.0};
+  std::vector<int32_t> offsets = {0};
+  problem.set_variable_lower_bounds(var_lb.data(), 1);
+  problem.set_variable_upper_bounds(var_ub.data(), 1);
+  problem.set_objective_coefficients(obj.data(), 1);
+  problem.set_maximize(false);
+  problem.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, offsets.data(), 1);
+  problem.set_constraint_lower_bounds(nullptr, 0);
+  problem.set_constraint_upper_bounds(nullptr, 0);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto request = build_lp_submit_request(problem, settings);
+  (*request.mutable_lp_request()->mutable_settings()->mutable_parameters())["not_a_parameter"] =
+    "1";
+
+  auto channel =
+    grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+  auto stub = cuopt::remote::CuOptRemoteService::NewStub(channel);
+  cuopt::remote::SubmitJobResponse response;
+  {
+    grpc::ClientContext context;
+    auto rpc = stub->SubmitJob(&context, request, &response);
+    ASSERT_TRUE(rpc.ok()) << rpc.error_message();
+  }
+  ASSERT_FALSE(response.job_id().empty());
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  job_status_t final_status = job_status_t::QUEUED;
+  std::string message;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(response.job_id());
+    ASSERT_TRUE(status.success) << status.error_message;
+    final_status = status.status;
+    message      = status.message;
+    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED ||
+        final_status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  EXPECT_EQ(final_status, job_status_t::FAILED) << message;
+  EXPECT_NE(message.find("Invalid solver parameter"), std::string::npos) << message;
+
+  auto good = client->solve_lp(problem, settings);
+  EXPECT_TRUE(good.success) << good.error_message;
+  ASSERT_NE(good.solution, nullptr);
 }
 
 // -- MIP Solve --
@@ -1154,6 +1317,69 @@ TEST_F(DefaultServerTests, SolveLPReturnsWarmStartData)
   EXPECT_GE(ws.total_pdhg_iterations_, 0) << "total_pdhg_iterations should be non-negative";
 }
 
+// A one-step cap makes a resumed solve and a cold solve disagree. PDLP copies
+// total_pdlp_iterations_ out of the supplied warm start, and the solution's
+// warm-start blob reports that live counter. get_num_iterations() is only the
+// steps taken in this run, so it stays near 1 for both and is not the signal.
+// Stable2 is required; the default Stable3 rejects warm start. Presolve stays
+// off so the vectors match the original problem: a later solve skips presolve
+// whenever total_pdlp_iterations_ != -1.
+TEST_F(DefaultServerTests, SolveLPWarmStartIsApplied)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  auto make_settings = []() {
+    pdlp_solver_settings_t<int32_t, double> settings;
+    settings.time_limit       = 30.0;
+    settings.method           = method_t::PDLP;
+    settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable2;
+    settings.presolver        = presolver_t::None;
+    return settings;
+  };
+
+  auto full = client->solve_lp(problem, make_settings());
+  ASSERT_TRUE(full.success) << full.error_message;
+  ASSERT_NE(full.solution, nullptr);
+  ASSERT_TRUE(full.solution->has_warm_start_data());
+  const auto seeded_iterations =
+    full.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+  ASSERT_GT(seeded_iterations, 1) << "full solve must take more than one PDLP iteration so a "
+                                     "one-step cap can tell the runs apart";
+  const auto full_objective = full.solution->get_objective_value();
+
+  auto warm_settings                           = make_settings();
+  warm_settings.iteration_limit                = 1;
+  warm_settings.get_cpu_pdlp_warm_start_data() = full.solution->get_cpu_pdlp_warm_start_data();
+  auto warm                                    = client->solve_lp(problem, warm_settings);
+  ASSERT_TRUE(warm.success) << warm.error_message;
+  ASSERT_NE(warm.solution, nullptr);
+  ASSERT_TRUE(warm.solution->has_warm_start_data());
+  const auto warm_iterations = warm.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  auto cold_settings            = make_settings();
+  cold_settings.iteration_limit = 1;
+  auto cold                     = client->solve_lp(problem, cold_settings);
+  ASSERT_TRUE(cold.success) << cold.error_message;
+  ASSERT_NE(cold.solution, nullptr);
+  ASSERT_TRUE(cold.solution->has_warm_start_data());
+  const auto cold_iterations = cold.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  EXPECT_GE(warm_iterations, seeded_iterations)
+    << "resumed solve should keep the seeded PDLP iteration counter";
+  EXPECT_LT(cold_iterations, seeded_iterations)
+    << "one-step cold solve should not reach the full-solve iteration count";
+
+  const auto warm_obj_gap = std::abs(warm.solution->get_objective_value() - full_objective);
+  const auto cold_obj_gap = std::abs(cold.solution->get_objective_value() - full_objective);
+  EXPECT_LT(warm_obj_gap, cold_obj_gap)
+    << "warm objective " << warm.solution->get_objective_value() << " cold objective "
+    << cold.solution->get_objective_value() << " full objective " << full_objective;
+}
+
 // -- MIP Log Callback --
 
 TEST_F(DefaultServerTests, SolveMIPWithLogCallback)
@@ -1278,9 +1504,13 @@ TEST_F(DefaultServerTests, CancelRunningJob)
     << "Unexpected job_status=" << static_cast<int>(cancel_result.job_status)
     << " message=" << cancel_result.message;
 
-  // Wait for worker to free up before next test
+  // Cancel marks the job CANCELLED as soon as the worker is signaled, which is
+  // before the replacement worker finishes CUDA and RMM init. Warm up here so
+  // the next test inherits a worker that has already completed a job (#1814).
   wait_for_job_done(client.get(), job_id, 15);
   client->delete_job(job_id);
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
 }
 
 // -- Delete should cancel queued / running jobs --
@@ -1289,7 +1519,8 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
-  ASSERT_TRUE(warm_up_worker(client.get())) << "Worker warm-up failed";
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
@@ -1360,7 +1591,8 @@ TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
-  ASSERT_TRUE(warm_up_worker(client.get())) << "Worker warm-up failed";
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
@@ -1955,13 +2187,73 @@ class ErrorRecoveryTests : public GrpcIntegrationTestBase {
   void SetUp() override { port_ = get_test_port(); }
   void TearDown() override { EXPECT_TRUE(server_.stop()); }
 
-  bool start_server(const std::vector<std::string>& extra_args = {})
+  bool start_server(const std::vector<std::string>& extra_args                                = {},
+                    const std::vector<std::pair<std::string, std::string>>& extra_environment = {})
   {
-    return server_.start(port_, extra_args);
+    return server_.start(port_, extra_args, extra_environment);
   }
 
   ServerProcess server_;
 };
+
+TEST_F(ErrorRecoveryTests, PreJobGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server({}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "before-job"}}));
+  const std::string log_path = server_.log_path();
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 5.0;
+  auto submitted      = client->submit_mip(create_simple_mip(), settings);
+  ASSERT_TRUE(submitted.success);
+
+  // start_server() returns when the parent accepts RPCs, not when the worker
+  // finishes CUDA/RMM init. That init can exceed 60s on a busy runner;
+  // warm_up_worker() allows 180s for it. The injected failure is logged only
+  // after init, and the server logger flushes on info. The 15s budget is
+  // shutdown only.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(
+    log_capture.wait_for_server_log("Injected before-job GPU liveness probe failure", 180000))
+    << "Injected pre-job GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the pre-job GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during pre-job probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+TEST_F(ErrorRecoveryTests, IdleGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server(
+    {}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "idle"}, {"CUOPT_GRPC_TEST_GPU_IDLE_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  // Same split as the pre-job test: 180s covers CUDA/RMM init plus the 3s idle
+  // interval. The 15s budget starts only after the injected failure is logged.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("Injected idle GPU liveness probe failure", 180000))
+    << "Injected idle GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the idle GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during idle probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
 
 TEST_F(ErrorRecoveryTests, ClientReconnectsAfterServerRestart)
 {

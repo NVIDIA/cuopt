@@ -1423,16 +1423,47 @@ def _iter_embeds(obj):
         yield num, f"  {prefix}{msg_type} {name} = {num};"
 
 
+def _settings_field_is_parameter(f):
+    """True when the field is applied through set_parameter().
+
+    An explicit ``param_name: null`` marks a wire field with no CUOPT_*
+    string parameter. Everything else is a set_parameter name (the field
+    name, or ``param_name`` when the proto name differs).
+    """
+    return not ("param_name" in f and f["param_name"] is None)
+
+
 def generate_settings_message_proto(registry, message_name, obj):
     lines = []
+    # A parameter map replaces per-parameter proto fields. Typed fields that
+    # set_parameter() accepts stay on the wire and are deprecated. A field
+    # with param_name null, and embeds such as warm start, stay normal fields.
+    parameter_map = obj.get("parameter_map")
     for f in parse_settings_fields(obj.get("fields", [])):
         num = f.get("field_num")
         if num is None:
             continue
         ptype = _settings_field_proto_type(registry, f)
         prefix = "optional " if f.get("optional") else ""
-        lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
+        deprecated = (
+            parameter_map is not None and _settings_field_is_parameter(f)
+        )
+        suffix = " [deprecated = true]" if deprecated else ""
+        lines.append((num, f"  {prefix}{ptype} {f['name']} = {num}{suffix};"))
     lines.extend(_iter_embeds(obj))
+    if parameter_map:
+        num = parameter_map["field_num"]
+        name = parameter_map.get("name", "parameters")
+        lines.append(
+            (
+                num,
+                "  // set_parameter() key/value store. Keys are the CUOPT_*\n"
+                "  // parameter strings; values are the textual form\n"
+                "  // set_parameter_from_string accepts. A key present here\n"
+                "  // takes precedence over the matching deprecated field.\n"
+                f"  map<string, string> {name} = {num};",
+            )
+        )
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 

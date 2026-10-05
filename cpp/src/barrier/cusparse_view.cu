@@ -21,7 +21,11 @@
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/linalg/transpose.cuh>
 
+#include <cuda/stream>
+
 #include <dlfcn.h>
+
+#include <utility>
 
 namespace cuopt::mathematical_optimization::barrier {
 
@@ -115,11 +119,16 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 }
 #endif
 
+// Reads back only the three offsets the check needs.
 template <typename i_t>
-static bool alg2_beta_bug_possible(const std::vector<i_t>& row_start)
+static bool alg2_beta_bug_possible(const rmm::device_uvector<i_t>& row_start,
+                                   cuda::stream_ref stream)
 {
-  const size_t m = row_start.size() - 1;
-  return m > 0 && row_start[m] > row_start[0] && row_start[0] == row_start[m - 1];
+  if (row_start.size() < 2) { return false; }
+  const i_t first       = row_start.front_element(stream);
+  const i_t second_last = row_start.element(row_start.size() - 2, stream);
+  const i_t last        = row_start.back_element(stream);
+  return last > first && first == second_last;
 }
 
 static cusparseSpMVAlg_t get_spmv_alg(bool beta_bug_possible, double beta)
@@ -187,25 +196,26 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
                                                                  CUSPARSE_POINTER_MODE_DEVICE,
                                                                  handle_ptr->get_stream().get()));
-  // TMP matrix data should already be on the GPU
   constexpr bool debug = false;
   if (debug) { printf("A hash: %zu\n", A.hash()); }
-  csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
-  A.to_compressed_row(A_csr);
-  i_t rows                        = A_csr.m;
-  i_t cols                        = A_csr.n;
-  i_t nnz                         = A_csr.x.size();
-  const std::vector<i_t>& offsets = A_csr.row_start;
-  const std::vector<i_t>& indices = A_csr.j;
-  const std::vector<f_t>& data    = A_csr.x;
 
-  A_offsets_ = device_copy(offsets, handle_ptr->get_stream());
-  A_indices_ = device_copy(indices, handle_ptr->get_stream());
-  A_data_    = device_copy(data, handle_ptr->get_stream());
+  // A^T's CSR is A's CSC verbatim, so one upload serves the transpose view; the forward CSR is
+  // then derived from it on device instead of being converted on the host and uploaded again.
+  device_csc_matrix_t<i_t, f_t> d_A(A, handle_ptr->get_stream());
+  device_csr_matrix_t<i_t, f_t> d_A_csr(handle_ptr->get_stream());
+  d_A.to_compressed_row(d_A_csr, handle_ptr);
 
-  A_T_offsets_ = device_copy(A.col_start, handle_ptr->get_stream());
-  A_T_indices_ = device_copy(A.i, handle_ptr->get_stream());
-  A_T_data_    = device_copy(A.x, handle_ptr->get_stream());
+  const i_t rows = A.m;
+  const i_t cols = A.n;
+  const i_t nnz  = A.col_start[A.n];
+
+  A_offsets_ = std::move(d_A_csr.row_start);
+  A_indices_ = std::move(d_A_csr.j);
+  A_data_    = std::move(d_A_csr.x);
+
+  A_T_offsets_ = std::move(d_A.col_start);
+  A_T_indices_ = std::move(d_A.i);
+  A_T_data_    = std::move(d_A.x);
 
   A_ =
     pdlp::make_csr<i_t, f_t>(rows, cols, nnz, A_offsets_.data(), A_indices_.data(), A_data_.data());
@@ -218,8 +228,54 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   auto x = pdlp::make_dnvec<f_t>(d_x.size(), d_x.data());
   auto y = pdlp::make_dnvec<f_t>(d_y.size(), d_y.data());
 
-  beta_bug_possible_           = alg2_beta_bug_possible(offsets);
-  beta_bug_possible_transpose_ = alg2_beta_bug_possible(A.col_start);
+  beta_bug_possible_           = alg2_beta_bug_possible(A_offsets_, handle_ptr_->get_stream());
+  beta_bug_possible_transpose_ = alg2_beta_bug_possible(A_T_offsets_, handle_ptr_->get_stream());
+  init_spmv_buffer_and_preprocess(A_.get(), x.get(), y.get(), spmv_buffer_, beta_bug_possible_);
+  init_spmv_buffer_and_preprocess(
+    A_T_.get(), y.get(), x.get(), spmv_buffer_transpose_, beta_bug_possible_transpose_);
+}
+
+template <typename i_t, typename f_t>
+cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
+                                           device_csc_matrix_t<i_t, f_t>& A_csc,
+                                           device_csc_matrix_t<i_t, f_t>& AT_csc)
+  : handle_ptr_(handle_ptr),
+    A_offsets_(0, handle_ptr->get_stream()),
+    A_indices_(0, handle_ptr->get_stream()),
+    A_data_(0, handle_ptr->get_stream()),
+    A_T_offsets_(0, handle_ptr->get_stream()),
+    A_T_indices_(0, handle_ptr->get_stream()),
+    A_T_data_(0, handle_ptr->get_stream()),
+    spmv_buffer_(0, handle_ptr->get_stream()),
+    spmv_buffer_transpose_(0, handle_ptr->get_stream()),
+    d_one_(one_v<f_t>, handle_ptr->get_stream()),
+    d_minus_one_(neg_one_v<f_t>, handle_ptr->get_stream()),
+    d_zero_(zero_v<f_t>, handle_ptr->get_stream())
+{
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
+  const i_t rows = A_csc.m;
+  const i_t cols = A_csc.n;
+  const i_t nnz  = A_csc.nz_max;
+
+  // Both descriptors are relabellings of the caller's buffers: CSC(A^T) is CSR(A), and CSC(A)
+  // is CSR(A^T).
+  A_ = pdlp::make_csr<i_t, f_t>(
+    rows, cols, nnz, AT_csc.col_start.data(), AT_csc.i.data(), AT_csc.x.data());
+  A_T_ = pdlp::make_csr<i_t, f_t>(
+    cols, rows, nnz, A_csc.col_start.data(), A_csc.i.data(), A_csc.x.data());
+
+  // Temporary vectors used to initialize the SpMV buffers and preprocessing data.
+  rmm::device_uvector<f_t> d_x(cols, handle_ptr_->get_stream());
+  rmm::device_uvector<f_t> d_y(rows, handle_ptr_->get_stream());
+  auto x = pdlp::make_dnvec<f_t>(d_x.size(), d_x.data());
+  auto y = pdlp::make_dnvec<f_t>(d_y.size(), d_y.data());
+
+  beta_bug_possible_ = alg2_beta_bug_possible(AT_csc.col_start, handle_ptr_->get_stream());
+  beta_bug_possible_transpose_ = alg2_beta_bug_possible(A_csc.col_start, handle_ptr_->get_stream());
   init_spmv_buffer_and_preprocess(A_.get(), x.get(), y.get(), spmv_buffer_, beta_bug_possible_);
   init_spmv_buffer_and_preprocess(
     A_T_.get(), y.get(), x.get(), spmv_buffer_transpose_, beta_bug_possible_transpose_);

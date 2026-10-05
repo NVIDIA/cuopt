@@ -458,13 +458,19 @@ struct multi_gpu_engine_t {
 
   // -------- High-level algorithms (defined in distributed_algorithms.cu) ---
   // Refreshes the halo copies of the cumulative variable + constraint scalings on
-  // every shard. Used by the matrix-scaling passes (Ruiz, Pock-Chambolle)
+  // every shard. Used by the matrix-scaling passes (Curtis-Reid, Ruiz, Pock-Chambolle)
   void refresh_halo_cummulative_scalings();
 
   // Global bound/objective rescaling: allreduce the owned partial squared norms
   // of the constraint bounds and (weighted) objective, then apply the identical
   // scalar on every shard.
   void distributed_bound_objective_rescaling(f_t c_scaling_weight);
+
+  // Distributed Curtis-Reid prescaling. Each iteration is a shard-local row log-mean,
+  // a constraint-halo exchange of that log-scale, a shard-local column log-mean, and a
+  // variable-halo exchange. After the last iteration every shard folds
+  // cumulative *= exp(clamp(log_scale)) and the cumulative halo is refreshed.
+  void distributed_curtis_reid_scaling(int num_iter, i_t n_global_vars);
 
   // Distributed Ruiz inf-scaling (num_iter passes). Each shard computes both its
   // owned-row and owned-column inf-norms locally then broadcasts the cumulative scalings to all
@@ -477,7 +483,8 @@ struct multi_gpu_engine_t {
 
   // Full distributed scaling entry point. Mirrors what scale_problem() does in
   // single-GPU by orchestrating:
-  //   - Ruiz inf-scaling -> populates cumulative row/col scalings
+  //   - Curtis-Reid prescaling (skipped inside MIP) -> populates cumulative row/col scalings
+  //   - Ruiz inf-scaling -> same
   //   - Pock-Chambolle scaling -> same
   //   - per-shard apply_cummulative_scaling_to_problem()
   //   - global bound/objective rescaling via distributed_bound_objective_rescaling
