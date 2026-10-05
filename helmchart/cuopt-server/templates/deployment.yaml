@@ -81,8 +81,12 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if or .Values.serverType .Values.env }}
           env:
+            # A Service named cuopt-server would otherwise inject
+            # CUOPT_SERVER_PORT=tcp://... and break argparse. Explicit env
+            # wins over Service links.
+            - name: CUOPT_SERVER_PORT
+              value: {{ include "cuopt-server.listenPort" . | quote }}
             {{- if .Values.serverType }}
             - name: CUOPT_SERVER_TYPE
               value: {{ .Values.serverType | quote }}
@@ -92,11 +96,10 @@ spec:
             {{- end }}
             {{- end }}
             {{- range .Values.env }}
-            {{- if and (ne .name "CUOPT_SERVER_TYPE") (ne .name "CUOPT_GRPC_PORT") }}
+            {{- if and (ne .name "CUOPT_SERVER_TYPE") (ne .name "CUOPT_GRPC_PORT") (ne .name "CUOPT_SERVER_PORT") }}
             {{- toYaml (list .) | nindent 12 }}
             {{- end }}
             {{- end }}
-          {{- end }}
           {{- if .Values.persistence.enabled }}
           volumeMounts:
             - name: storage

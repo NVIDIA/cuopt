@@ -795,7 +795,9 @@ TEST_F(DefaultServerTests, ServerAcceptsConnections)
 }
 
 // Kubelet grpc probes call grpc.health.v1.Health/Check with an empty service
-// name. HealthCheckResponse{status: SERVING} is field 1, varint 1.
+// name. The request has to be a real empty buffer: a default ByteBuffer is
+// null, and the health service rejects that as "could not parse request".
+// HealthCheckResponse{status: SERVING} is field 1, varint 1.
 TEST_F(DefaultServerTests, StandardHealthCheckServing)
 {
   auto channel =
@@ -803,7 +805,8 @@ TEST_F(DefaultServerTests, StandardHealthCheckServing)
   grpc::GenericStub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
-  grpc::ByteBuffer request;
+  grpc::Slice empty_request;
+  grpc::ByteBuffer request(&empty_request, 1);
   grpc::ByteBuffer response;
   grpc::Status status;
   grpc::CompletionQueue cq;

@@ -62,8 +62,10 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-serverType "" leaves the image entrypoint in charge and uses HTTP probes.
-proxy and legacy also use HTTP. grpc uses the standard gRPC health probe.
+rapids-pre-commit-hooks: disable-next-line[verify-hardcoded-version]
+serverType requires an image >= 26.10. "" leaves the image entrypoint in
+charge and uses HTTP probes. proxy and legacy also use HTTP. grpc uses the
+standard gRPC health probe.
 */}}
 {{- define "cuopt-server.validate" -}}
 {{- $serverType := .Values.serverType | default "" -}}
