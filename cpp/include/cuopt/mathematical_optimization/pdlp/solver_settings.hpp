@@ -328,9 +328,6 @@ class pdlp_solver_settings_t {
   // iterations). -1 automatic (uses the built-in heuristic), else the literal starting value.
   f_t barrier_primal_regularization{-1.0};
   f_t barrier_dual_regularization{-1.0};
-  // true to use a single cuSPARSE SpMV over the unperturbed augmented CSR for the barrier
-  // solver's IR matvec, instead of the matrix-free path. Experimental; default off.
-  bool barrier_csr_ir_matvec{false};
   i_t barrier_soc_threshold{100};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};

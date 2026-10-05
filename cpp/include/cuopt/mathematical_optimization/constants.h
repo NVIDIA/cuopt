@@ -54,7 +54,6 @@
 #define CUOPT_BARRIER_ADAPTIVE_REGULARIZATION       "barrier_adaptive_regularization"
 #define CUOPT_BARRIER_PRIMAL_REGULARIZATION         "barrier_primal_regularization"
 #define CUOPT_BARRIER_DUAL_REGULARIZATION           "barrier_dual_regularization"
-#define CUOPT_BARRIER_CSR_IR_MATVEC                 "barrier_csr_ir_matvec"
 #define CUOPT_BARRIER_STEP_SCALE                    "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
@@ -267,9 +266,6 @@
 
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
-
-#define CUOPT_BARRIER_CSR_IR_MATVEC_OFF 0
-#define CUOPT_BARRIER_CSR_IR_MATVEC_ON  1
 
 /* @brief Scalar problem attribute selectors
  * Passed as cuopt_int_t; the valid set depends on the accessor's value type. */
