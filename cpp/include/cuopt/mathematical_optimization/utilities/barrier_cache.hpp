@@ -35,9 +35,9 @@ struct barrier_transform_t;
 /**
  * @brief GPU solve cache owned by DataModel when CUOPT_SEQUENCE_SOLVE is enabled.
  *
- * After an Optimal full solve, holds iteration_data_t and the user-barrier transform.
+ * After an Optimal full solve, holds iteration_data_t and the user-to-presolve transform.
  * The update APIs crush new user data into that workspace and marks the cache dirty so the
- * next Solve reuses it (skip convert/presolve/scaling).
+ * next solve reuses it (skip convert/presolve/scaling).
  */
 class barrier_cache_t {
  public:
@@ -66,7 +66,7 @@ class barrier_cache_t {
   void store_transform(std::unique_ptr<barrier_transform_t> transform);
   [[nodiscard]] barrier_transform_t* transform();
   [[nodiscard]] barrier_transform_t const* transform() const;
-  /** True when an update API has staged new data that the next Solve should reuse. */
+  /** True when an update API has staged new data that the next solve should reuse. */
   [[nodiscard]] bool dirty() const;
   void mark_clean();
 

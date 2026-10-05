@@ -529,8 +529,6 @@ lp_status_t solve_linear_program_with_barrier(
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
 
   auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
-  // Same predicate as the outer QCQP gate. bound_free_variables is already resolved (-1 -> 0)
-  // by run_barrier when sequence_solve is on.
   const bool reuse_cached_data = cuopt::mathematical_optimization::can_reuse_barrier_cache(
     xf,
     settings.barrier_presolve_bound_free_variables,

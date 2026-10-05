@@ -1994,9 +1994,6 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 
     auto* cache    = settings.barrier_cache;
     auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
-    // MPS dump and QC->SOC conversion are outer-only; the rest is can_reuse_barrier_cache,
-    // shared with solve_linear_program_with_barrier so this path never builds the slim
-    // user_problem_from_transform unless the inner gate will accept it.
     const bool reuse_from_cache = settings.user_problem_file.empty() &&
                                   !op_problem.has_quadratic_constraints() &&
                                   can_reuse_barrier_cache(xf,

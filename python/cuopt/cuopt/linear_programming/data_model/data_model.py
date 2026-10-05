@@ -260,7 +260,7 @@ class DataModel(data_model_wrapper.DataModel):
         Range rows and folding in the first solve are not supported and raise;
         run a full solve for those models. Rows that presolve dropped as empty
         are allowed: if the new ``b`` makes one infeasible, the next solve
-        reports infeasible without rerunning the interior point method.
+        reports infeasible without rerunning barrier.
 
         Parameters
         ----------
@@ -278,7 +278,7 @@ class DataModel(data_model_wrapper.DataModel):
             If this DataModel holds an invalid barrier-cache capsule.
         InputValidationError
             If ``b`` has the wrong length, the cached convert used range rows
-            or folding, or the barrier cache is not warm from a prior
+            or folding, or the barrier cache has no transform from a prior
             ``CUOPT_SEQUENCE_SOLVE`` solve.
         """
         super().update_rhs(b)

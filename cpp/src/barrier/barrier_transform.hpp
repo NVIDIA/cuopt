@@ -54,9 +54,6 @@ struct barrier_transform_t {
   std::unique_ptr<csc_matrix_t<int, double>> barrier_Q;
 };
 
-// Shared by the outer QCQP entry (which may swap in a slim fabricated user_problem) and the
-// inner barrier path (which skips convert/presolve/scaling). Both must agree, or the slim
-// problem is fed to a full convert/presolve.
 inline bool can_reuse_barrier_cache(barrier_transform_t const* xf,
                                     int bound_free_variables,
                                     int num_cols,
@@ -133,7 +130,7 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
 
 // success: crushed is written. invalid: error is set and the caller reports a validation
 // failure. infeasible: a presolve-dropped empty row cannot hold the new RHS; the caller records
-// that for the next Solve instead of treating it as a validation failure.
+// that for the next solve instead of treating it as a validation failure.
 enum class crush_rhs_status_t { success = 0, invalid = -1, infeasible = -2 };
 
 template <typename i_t, typename f_t>
