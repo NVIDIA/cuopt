@@ -159,6 +159,145 @@ TEST(barrier, cone_metadata_reindexed_when_slack_is_inserted_before_cones)
   EXPECT_EQ(barrier_lp.cone_var_start, 2);
 }
 
+TEST(barrier, range_and_less_rows_with_soc_block)
+{
+  // Variables ordered as [a, b | t, u, v], where (t, u, v) \in Q^3.
+  //
+  // minimize   -a + t
+  // subject to a + b <= 3        (<= row)
+  //            b - u  = 0
+  //            1 <= b <= 2       (range row)
+  //            (t, u, v) in Q^3
+  //
+  // The <= row and the range row each add a slack column, and both must land in front of the
+  // cone block. With v = 0 and t = u = b the objective is -a + b, and a <= 3 - b gives
+  // -3 + 2b, minimized at the range row's lower end b = 1.
+  //
+  // Optimal: a* = 2, b* = 1, t* = 1, u* = 1, v* = 0, obj* = -1.
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  user_problem_t<int, double> user_problem(&handle);
+
+  constexpr int m  = 3;
+  constexpr int n  = 5;
+  constexpr int nz = 5;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {-1.0, 0.0, 1.0, 0.0, 0.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  // Columns: a, b, t, u, v
+  user_problem.A.col_start = {0, 1, 4, 4, 5, 5};
+  user_problem.A.i         = {0, 0, 1, 2, 1};
+  user_problem.A.x         = {1.0, 1.0, 1.0, 1.0, -1.0};
+
+  // Range rows arrive as 'E' rows with rhs = lower bound and range = upper - lower.
+  user_problem.rhs       = {3.0, 0.0, 1.0};
+  user_problem.row_sense = {'L', 'E', 'E'};
+  user_problem.lower.assign(n, 0.0);
+  user_problem.upper.assign(n, inf);
+
+  user_problem.num_range_rows         = 1;
+  user_problem.range_rows             = {2};
+  user_problem.range_value            = {1.0};
+  user_problem.problem_name           = "range_and_less_rows_with_soc_block";
+  user_problem.cone_var_start         = 2;
+  user_problem.second_order_cone_dims = {3};
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  simplex_solver_settings_t<int, double> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+
+  lp_solution_t<int, double> solution(m, n);
+  auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
+
+  EXPECT_EQ(status, lp_status_t::OPTIMAL);
+  EXPECT_NEAR(solution.objective, -1.0, 1e-4);
+  EXPECT_NEAR(solution.x[0], 2.0, 1e-4);
+  EXPECT_NEAR(solution.x[1], 1.0, 1e-4);
+  EXPECT_NEAR(solution.x[2], 1.0, 1e-4);
+  EXPECT_NEAR(solution.x[3], 1.0, 1e-4);
+  EXPECT_NEAR(std::abs(solution.x[4]), 0.0, 1e-4);
+}
+
+TEST(barrier, qp_with_range_and_less_rows_and_soc_block)
+{
+  // Variables ordered as [l | t, u, v], where (t, u, v) \in Q^3.
+  //
+  // minimize   0.5 l^2 + 0.5 t^2
+  // subject to l - u <= -1       (<= row)
+  //            2 <= l + u <= 4   (range row)
+  //            (t, u, v) in Q^3
+  //
+  // Q has an entry on the cone head t, so it has to move along with the cone block when the two
+  // slack columns are inserted in front of it. Since t >= |u|, v = 0 and t = u at the optimum,
+  // leaving 0.5 l^2 + 0.5 u^2. The unconstrained point l = u = 1 violates l - u <= -1, so the
+  // optimum sits where u - l = 1 meets the range row's lower end l + u = 2 (multipliers 1 and
+  // 0.5, both strictly positive).
+  //
+  // Optimal: l* = 0.5, t* = 1.5, u* = 1.5, v* = 0, obj* = 1.25.
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  user_problem_t<int, double> user_problem(&handle);
+
+  constexpr int m  = 2;
+  constexpr int n  = 4;
+  constexpr int nz = 4;
+
+  user_problem.num_rows = m;
+  user_problem.num_cols = n;
+  user_problem.objective.assign(n, 0.0);
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  // Columns: l, t, u, v
+  user_problem.A.col_start = {0, 2, 2, 4, 4};
+  user_problem.A.i         = {0, 1, 0, 1};
+  user_problem.A.x         = {1.0, 1.0, -1.0, 1.0};
+
+  user_problem.rhs       = {-1.0, 2.0};
+  user_problem.row_sense = {'L', 'E'};
+  user_problem.lower.assign(n, 0.0);
+  user_problem.upper.assign(n, inf);
+
+  user_problem.Q_offsets = {0, 1, 2, 2, 2};
+  user_problem.Q_indices = {0, 1};
+  user_problem.Q_values  = {1.0, 1.0};
+
+  user_problem.num_range_rows         = 1;
+  user_problem.range_rows             = {1};
+  user_problem.range_value            = {2.0};
+  user_problem.problem_name           = "qp_with_range_and_less_rows_and_soc_block";
+  user_problem.cone_var_start         = 1;
+  user_problem.second_order_cone_dims = {3};
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  simplex_solver_settings_t<int, double> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+
+  lp_solution_t<int, double> solution(m, n);
+  auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
+
+  EXPECT_EQ(status, lp_status_t::OPTIMAL);
+  EXPECT_NEAR(solution.objective, 1.25, 1e-4);
+  EXPECT_NEAR(solution.x[0], 0.5, 1e-4);
+  EXPECT_NEAR(solution.x[1], 1.5, 1e-4);
+  EXPECT_NEAR(solution.x[2], 1.5, 1e-4);
+  EXPECT_NEAR(std::abs(solution.x[3]), 0.0, 1e-4);
+}
+
 TEST(barrier, presolve_reindexes_cone_start_after_empty_column_removal)
 {
   raft::handle_t handle{};

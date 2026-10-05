@@ -160,6 +160,10 @@
 /* @brief Block bounded-variable-elimination step of cuOpt's internal MIP presolve */
 #define CUOPT_MIP_HYPER_BLOCK_BVE "mip_hyper_block_bve"
 
+/* @brief Indicator-strengthening step that runs before Papilo presolve on MIPs */
+#define CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING \
+  "mip_hyper_presolve_indicator_strengthening"
+
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
 
@@ -240,14 +244,8 @@
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0
 
-/* @brief Status codes constants */
-#define CUOPT_SUCCESS          0
-#define CUOPT_INVALID_ARGUMENT 1
-#define CUOPT_MPS_FILE_ERROR   2
-#define CUOPT_MPS_PARSE_ERROR  3
-#define CUOPT_VALIDATION_ERROR 4
-#define CUOPT_OUT_OF_MEMORY    5
-#define CUOPT_RUNTIME_ERROR    6
+/* @brief Status codes constants -- shared with cuopt::client, defined in status_codes.h */
+#include "cuopt/status_codes.h"
 
 #define CUOPT_PRESOLVE_DEFAULT -1
 #define CUOPT_PRESOLVE_OFF     0

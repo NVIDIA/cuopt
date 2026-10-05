@@ -33,6 +33,8 @@ GRPC_PID=""
 # C library paths (set by find_cuopt_libraries)
 include_path=""
 lib_path=""
+client_include_path=""
+client_lib_path=""
 
 # Create results directory
 mkdir -p "${RESULTS_DIR}"
@@ -361,12 +363,14 @@ test_c_examples() {
         # Clean and build
         if [ -f "Makefile" ]; then
             log_info "  Building C examples..."
-            local make_vars=""
-            [ -n "${include_path}" ] && make_vars="${make_vars} INCLUDE_PATH=${include_path}"
-            [ -n "${lib_path}" ] && make_vars="${make_vars} LIBCUOPT_LIBRARY_PATH=${lib_path}"
+            local make_vars=()
+            [ -n "${include_path}" ] && make_vars+=("INCLUDE_PATH=${include_path}")
+            [ -n "${lib_path}" ] && make_vars+=("LIBCUOPT_LIBRARY_PATH=${lib_path}")
+            make_vars+=("CLIENT_INCLUDE_PATH=${client_include_path:-${include_path}}")
+            make_vars+=("CLIENT_LIBRARY_PATH=${client_lib_path:-${lib_path}}")
 
             if make clean > "${RESULTS_DIR}/c-clean-${relative_path//\//_}.log" 2>&1 && \
-               make ${make_vars} all > "${RESULTS_DIR}/c-build-${relative_path//\//_}.log" 2>&1; then
+               make "${make_vars[@]}" all > "${RESULTS_DIR}/c-build-${relative_path//\//_}.log" 2>&1; then
                 log_success "  C examples built successfully"
             else
                 log_failure "  Failed to build C examples"
@@ -461,6 +465,8 @@ find_cuopt_libraries() {
     # Reset global variables
     include_path=""
     lib_path=""
+    client_include_path=""
+    client_lib_path=""
 
     # Get Python site-packages directory
     local site_packages=""
@@ -485,9 +491,10 @@ find_cuopt_libraries() {
             found_header=$(find "${search_dir}" -name "cuopt_c.h" -path "*/mathematical_optimization/*" 2>/dev/null | head -1)
 
             if [ -n "${found_header}" ]; then
-                # Check if this is a Python package installation (contains libcuopt/include)
-                if echo "${found_header}" | grep -q "/libcuopt/include/"; then
-                    # Python package structure: /path/to/libcuopt/include/cuopt/mathematical_optimization/cuopt_c.h
+                # Check if this is a Python package installation (contains libcuopt*/include, e.g.
+                # libcuopt/ or the per-component libcuopt_client/, libcuopt_mathopt/, libcuopt_routing/)
+                if echo "${found_header}" | grep -qE "/libcuopt[a-z_]*/include/"; then
+                    # Python package structure: /path/to/libcuopt*/include/cuopt/mathematical_optimization/cuopt_c.h
                     # Extract the include directory by going up 3 directories from the header file
                     include_path=$(dirname "$(dirname "$(dirname "${found_header}")")")
                 else
@@ -499,32 +506,71 @@ find_cuopt_libraries() {
         fi
 
         if [ -z "${lib_path}" ]; then
-            # Search for libcuopt.so in both lib and lib64 directories
+            # The C examples link -lcuopt_mathopt directly, not the libcuopt umbrella (which
+            # no longer bundles it -- it's in libcuopt-mathopt's own wheel since the split).
             local found_lib
-            found_lib=$(find "${search_dir}" -name "libcuopt.so" \( -path "*/lib/*" -o -path "*/lib64/*" \) 2>/dev/null | head -1)
+            found_lib=$(find "${search_dir}" -name "libcuopt_mathopt.so" \( -path "*/lib/*" -o -path "*/lib64/*" \) 2>/dev/null | head -1)
             if [ -n "${found_lib}" ]; then
                 lib_path=$(dirname "${found_lib}")
             fi
         fi
 
-        # Break early if both found
-        if [ -n "${include_path}" ] && [ -n "${lib_path}" ]; then
+        if [ -z "${client_include_path}" ] && [ -n "${include_path}" ] && \
+           [ ! -f "${include_path}/cuopt/status_codes.h" ]; then
+            local found_status_codes
+            found_status_codes=$(find "${search_dir}" -path "*/cuopt/status_codes.h" 2>/dev/null | head -1)
+            if [ -n "${found_status_codes}" ]; then
+                client_include_path=$(dirname "$(dirname "${found_status_codes}")")
+            fi
+        fi
+
+        if [ -z "${client_lib_path}" ] && [ -n "${lib_path}" ] && \
+           [ ! -f "${lib_path}/libcuopt_client.so" ]; then
+            local found_client_lib
+            found_client_lib=$(find "${search_dir}" -name "libcuopt_client.so" \( -path "*/lib/*" -o -path "*/lib64/*" \) 2>/dev/null | head -1)
+            if [ -n "${found_client_lib}" ]; then
+                client_lib_path=$(dirname "${found_client_lib}")
+            fi
+        fi
+
+        # Break early if everything needed is found
+        if [ -n "${include_path}" ] && [ -n "${lib_path}" ] && \
+           { [ -n "${client_include_path}" ] || [ -f "${include_path}/cuopt/status_codes.h" ]; } && \
+           { [ -n "${client_lib_path}" ] || [ -f "${lib_path}/libcuopt_client.so" ]; }; then
             break
         fi
     done
 
-    if [ -z "${include_path}" ] || [ -z "${lib_path}" ]; then
+    local client_include_found=false
+    if [ -n "${client_include_path}" ] || [ -f "${include_path}/cuopt/status_codes.h" ]; then
+        client_include_found=true
+    fi
+    local client_lib_found=false
+    if [ -n "${client_lib_path}" ] || [ -f "${lib_path}/libcuopt_client.so" ]; then
+        client_lib_found=true
+    fi
+
+    if [ -z "${include_path}" ] || [ -z "${lib_path}" ] || \
+       [ "${client_include_found}" = false ] || [ "${client_lib_found}" = false ]; then
         log_failure "Could not find cuOpt headers or libraries"
         if [ -z "${include_path}" ]; then
             log_failure "  Missing: INCLUDE_PATH (searched for cuopt_c.h)"
         fi
         if [ -z "${lib_path}" ]; then
-            log_failure "  Missing: LIBCUOPT_LIBRARY_PATH (searched for libcuopt.so)"
+            log_failure "  Missing: LIBCUOPT_LIBRARY_PATH (searched for libcuopt_mathopt.so)"
+        fi
+        if [ "${client_include_found}" = false ]; then
+            log_failure "  Missing: client include path (searched for status_codes.h)"
+        fi
+        if [ "${client_lib_found}" = false ]; then
+            log_failure "  Missing: client library path (searched for libcuopt_client.so)"
         fi
         return 1
     else
         log_info "Found: INCLUDE_PATH=${include_path}"
         log_info "Found: LIBCUOPT_LIBRARY_PATH=${lib_path}"
+        [ -n "${client_include_path}" ] && log_info "Found: client_include_path=${client_include_path}"
+        [ -n "${client_lib_path}" ] && log_info "Found: client_lib_path=${client_lib_path}"
         return 0
     fi
 }

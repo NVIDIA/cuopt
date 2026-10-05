@@ -99,7 +99,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
 
 // -------- Refresh halo of cumulative scalings -----------------------------
 // Refreshes the halo copies of the cumulative variable + constraint scalings on
-// every shard. Called before and after each matrix-scaling pass in ruiz and pock-chambolle
+// every shard. Called around the matrix-scaling passes (Curtis-Reid, Ruiz, Pock-Chambolle)
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::refresh_halo_cummulative_scalings()
 {
@@ -109,6 +109,43 @@ void multi_gpu_engine_t<i_t, f_t>::refresh_halo_cummulative_scalings()
   halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
     return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
   });
+}
+
+// -------- Distributed Curtis-Reid scaling ---------------------------------
+// Owned rows of A and owned columns of A_T are complete, so each log-mean is
+// local. The other axis's log-scale is read at halo indices, so it is exchanged
+// between the row pass and the column pass.
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_curtis_reid_scaling(int num_iter, i_t n_global_vars)
+{
+  raft::common::nvtx::range scope("distributed_curtis_reid_scaling");
+
+  for_each_shard(
+    [](auto& shard) { shard.sub_pdlp->get_initial_scaling_strategy().curtis_reid_init(); });
+
+  for (int it = 0; it < num_iter; ++it) {
+    for_each_shard([](auto& shard) {
+      shard.sub_pdlp->get_initial_scaling_strategy().curtis_reid_row_iteration();
+    });
+    halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+      return p.get_initial_scaling_strategy().get_iteration_constraint_matrix_scaling();
+    });
+
+    for_each_shard([](auto& shard) {
+      shard.sub_pdlp->get_initial_scaling_strategy().curtis_reid_col_iteration();
+    });
+    halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+      return p.get_initial_scaling_strategy().get_iteration_variable_scaling();
+    });
+  }
+
+  for_each_shard(
+    [](auto& shard) { shard.sub_pdlp->get_initial_scaling_strategy().curtis_reid_folding(); });
+
+  // Downstream passes read halo copies of the cumulative scaling.
+  refresh_halo_cummulative_scalings();
+
+  synchronize_shards();
 }
 
 // -------- Distributed Ruiz inf-scaling ------------------------------------
@@ -171,6 +208,10 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const
 
   // 1) Matrix scaling passes populate the cumulative row/col scalings on
   //    every shard. Each pass keeps the halo copies refreshed internally.
+  //    Curtis-Reid is a prescale and is skipped inside MIP, matching single-GPU.
+  if (hyper_params.do_curtis_reid_scaling && !inside_mip) {
+    distributed_curtis_reid_scaling(hyper_params.number_of_curtis_reid_iterations, n_global_vars);
+  }
   if (hyper_params.do_ruiz_scaling) {
     distributed_ruiz_inf_scaling(hyper_params.default_l_inf_ruiz_iterations, n_global_vars);
   }
@@ -411,6 +452,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_primal_weight(
   template void multi_gpu_engine_t<int, F_TYPE>::gather_potential_next_solutions_to_master();     \
   template void multi_gpu_engine_t<int, F_TYPE>::refresh_halo_cummulative_scalings();             \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_bound_objective_rescaling(F_TYPE);   \
+  template void multi_gpu_engine_t<int, F_TYPE>::distributed_curtis_reid_scaling(int, int);       \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_ruiz_inf_scaling(int, int);          \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_pock_chambolle_scaling(F_TYPE, int); \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_scaling(                             \
