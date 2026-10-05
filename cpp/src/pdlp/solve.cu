@@ -541,35 +541,34 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> barrier_settings;
-  barrier_settings.num_gpus                   = settings.num_gpus;
-  barrier_settings.time_limit                 = settings.time_limit;
-  barrier_settings.iteration_limit            = settings.iteration_limit;
-  barrier_settings.concurrent_halt            = settings.concurrent_halt;
-  barrier_settings.initial_perturbation       = settings.initial_perturbation;
-  barrier_settings.remove_perturbation        = settings.remove_perturbation;
-  barrier_settings.primal_pricing             = settings.primal_pricing;
-  barrier_settings.folding                    = settings.folding;
-  barrier_settings.augmented                  = settings.augmented;
-  barrier_settings.dualize                    = settings.dualize;
-  barrier_settings.ordering                   = settings.ordering;
-  barrier_settings.barrier_dual_initial_point = settings.barrier_dual_initial_point;
-  barrier_settings.postsolve_info             = settings.postsolve_info;
-  barrier_settings.barrier_presolve_bound_free_variables =
-    effective_bound_free_variables(settings);
-  barrier_settings.barrier_initial_point_safeguard = settings.barrier_initial_point_safeguard;
-  barrier_settings.barrier                         = true;
-  barrier_settings.barrier_presolve                = true;
-  barrier_settings.crossover                       = settings.crossover;
-  barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
-  barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
-  barrier_settings.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
-  barrier_settings.barrier_primal_regularization   = settings.barrier_primal_regularization;
-  barrier_settings.barrier_dual_regularization     = settings.barrier_dual_regularization;
-  barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
-  barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
-  barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;
-  barrier_settings.gpu_ruiz_nnz_threshold          = settings.gpu_ruiz_nnz_threshold;
-  barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
+  barrier_settings.num_gpus                              = settings.num_gpus;
+  barrier_settings.time_limit                            = settings.time_limit;
+  barrier_settings.iteration_limit                       = settings.iteration_limit;
+  barrier_settings.concurrent_halt                       = settings.concurrent_halt;
+  barrier_settings.initial_perturbation                  = settings.initial_perturbation;
+  barrier_settings.remove_perturbation                   = settings.remove_perturbation;
+  barrier_settings.primal_pricing                        = settings.primal_pricing;
+  barrier_settings.folding                               = settings.folding;
+  barrier_settings.augmented                             = settings.augmented;
+  barrier_settings.dualize                               = settings.dualize;
+  barrier_settings.ordering                              = settings.ordering;
+  barrier_settings.barrier_dual_initial_point            = settings.barrier_dual_initial_point;
+  barrier_settings.postsolve_info                        = settings.postsolve_info;
+  barrier_settings.barrier_presolve_bound_free_variables = effective_bound_free_variables(settings);
+  barrier_settings.barrier_initial_point_safeguard       = settings.barrier_initial_point_safeguard;
+  barrier_settings.barrier                               = true;
+  barrier_settings.barrier_presolve                      = true;
+  barrier_settings.crossover                             = settings.crossover;
+  barrier_settings.eliminate_dense_columns               = settings.eliminate_dense_columns;
+  barrier_settings.barrier_iterative_refinement          = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_adaptive_regularization       = settings.barrier_adaptive_regularization;
+  barrier_settings.barrier_primal_regularization         = settings.barrier_primal_regularization;
+  barrier_settings.barrier_dual_regularization           = settings.barrier_dual_regularization;
+  barrier_settings.barrier_soc_threshold                 = settings.barrier_soc_threshold;
+  barrier_settings.barrier_step_scale                    = settings.barrier_step_scale;
+  barrier_settings.qcqp_ruiz_equilibration               = settings.qcqp_ruiz_equilibration;
+  barrier_settings.gpu_ruiz_nnz_threshold                = settings.gpu_ruiz_nnz_threshold;
+  barrier_settings.cudss_deterministic                   = settings.cudss_deterministic;
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;
@@ -1997,14 +1996,14 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     // MPS dump and QC->SOC conversion are outer-only; the rest is can_reuse_barrier_cache,
     // shared with solve_linear_program_with_barrier so this path never builds the slim
     // user_problem_from_transform unless the inner gate will accept it.
-    const bool reuse_from_cache =
-      settings.user_problem_file.empty() && !op_problem.has_quadratic_constraints() &&
-      can_reuse_barrier_cache(xf,
-                              effective_bound_free_variables(settings),
-                              op_problem.get_n_variables(),
-                              op_problem.get_n_constraints(),
-                              op_problem.has_quadratic_objective(),
-                              false);
+    const bool reuse_from_cache = settings.user_problem_file.empty() &&
+                                  !op_problem.has_quadratic_constraints() &&
+                                  can_reuse_barrier_cache(xf,
+                                                          effective_bound_free_variables(settings),
+                                                          op_problem.get_n_variables(),
+                                                          op_problem.get_n_constraints(),
+                                                          op_problem.has_quadratic_objective(),
+                                                          false);
 
     if (problem_checking && !reuse_from_cache) {
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
