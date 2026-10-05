@@ -147,12 +147,11 @@ __global__ void init_lhs_and_violation(typename fj_t<i_t, f_t>::climber_data_t::
   for (i_t cstr_idx = TH_ID_X; cstr_idx < fj.pb.n_constraints; cstr_idx += GRID_STRIDE) {
     auto [offset_begin, offset_end] = fj.pb.range_for_constraint(cstr_idx);
 
-    auto delta_it =
-      thrust::make_transform_iterator(thrust::make_counting_iterator(0), [fj] __device__(i_t j) {
-        return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
-      });
     fj.incumbent_lhs[cstr_idx] =
-      fj_kahan_babushka_neumaier_sum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
+      compensated_dot2(fj.pb.coefficients.data() + offset_begin,
+                       thrust::make_permutation_iterator(fj.incumbent_assignment.data(),
+                                                         fj.pb.variables.data() + offset_begin),
+                       offset_end - offset_begin);
     fj.incumbent_lhs_sumcomp[cstr_idx] = 0;
 
     f_t th_violation       = fj.excess_score(cstr_idx, fj.incumbent_lhs[cstr_idx]);
@@ -429,13 +428,12 @@ DI bool check_feasibility(const typename fj_t<i_t, f_t>::climber_data_t::view_t&
 {
   for (i_t cIdx = threadIdx.x; cIdx < fj.pb.n_constraints; cIdx += blockDim.x) {
     auto [offset_begin, offset_end] = fj.pb.range_for_constraint(cIdx);
-    auto delta_it =
-      thrust::make_transform_iterator(thrust::make_counting_iterator(0), [fj] __device__(i_t j) {
-        return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
-      });
 
     f_t lhs =
-      fj_kahan_babushka_neumaier_sum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
+      compensated_dot2(fj.pb.coefficients.data() + offset_begin,
+                       thrust::make_permutation_iterator(fj.incumbent_assignment.data(),
+                                                         fj.pb.variables.data() + offset_begin),
+                       offset_end - offset_begin);
     cuopt_assert(fj.cstr_satisfied(cIdx, lhs), "constraint violated");
   }
   cuopt_func_call(check_variable_feasibility<i_t, f_t>(fj, check_integer));

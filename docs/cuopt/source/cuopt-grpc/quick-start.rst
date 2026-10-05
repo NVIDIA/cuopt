@@ -84,8 +84,8 @@ Entrypoint mode (recommended when you are not passing an explicit command):
 .. code-block:: bash
 
    docker run --gpus all -it --rm -p 5001:5001 \
-     -e CUOPT_SERVER_TYPE=grpc \
-     <CUOPT_IMAGE>
+     <CUOPT_IMAGE> \
+     grpc
 
 Or invoke the binary explicitly:
 
@@ -97,7 +97,7 @@ Or invoke the binary explicitly:
 
 .. note::
 
-   The container image defaults to the Python **REST** server when ``CUOPT_SERVER_TYPE`` is unset and you do not override the command; setting ``CUOPT_SERVER_TYPE=grpc`` selects ``cuopt_grpc_server``. Extra environment variables (``CUOPT_SERVER_PORT``, ``CUOPT_GPU_COUNT``, ``CUOPT_GRPC_ARGS``) and TLS are documented in :doc:`Advanced configuration <advanced>`.
+   ``CUOPT_SERVER_TYPE`` always takes precedence and selects the server. ``proxy`` (the default when the variable is unset) starts the HTTP proxy plus ``cuopt_grpc_server``. ``grpc`` is gRPC only. ``legacy`` is the Python REST server. When the variable is unset, those same words can be passed as the container command. Extra environment variables (``CUOPT_SERVER_PORT``, ``CUOPT_GRPC_PORT``, ``CUOPT_GPU_COUNT``, ``CUOPT_GRPC_ARGS``) and TLS are documented in :doc:`Advanced configuration <advanced>`.
 
 Minimal Python Example
 ======================

@@ -9,6 +9,7 @@ set(BARRIER_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/barrier_cache.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/device_sparse_matrix.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pinned_host_allocator.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/scaling_gpu.cu
   )
 
 set(BARRIER_SRC_FILES ${BARRIER_SRC_FILES} PARENT_SCOPE)

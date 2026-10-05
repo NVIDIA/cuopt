@@ -12,6 +12,8 @@ inline constexpr bool fj_audit_every_iteration = false;
 template <typename i_t, typename f_t>
 void audit_assignment_bounds(fj_cpu_climber_t<i_t, f_t>&, const char*);
 template <typename i_t, typename f_t>
+f_t fresh_row_slack(fj_cpu_climber_t<i_t, f_t>&, i_t, const f_t*, f_t&);
+template <typename i_t, typename f_t>
 f_t fresh_row_slack(fj_cpu_climber_t<i_t, f_t>&, i_t, const f_t*);
 template <typename i_t, typename f_t>
 void audit_objective_update(fj_cpu_climber_t<i_t, f_t>&, i_t, f_t, f_t, f_t, f_t);

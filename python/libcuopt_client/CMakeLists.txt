@@ -15,9 +15,11 @@ project(
   LANGUAGES CXX CUDA
 )
 
-# Already installed: nothing to build, the wheel just stages the component.
+# Already installed: nothing to build, the wheel just stages the component. Checking
+# cuopt::client specifically, not cuopt_FOUND, matters now that libcuopt-client ships
+# cuopt-config.cmake: a sibling wheel resolving it must not short-circuit this build.
 find_package(cuopt "${RAPIDS_VERSION}")
-if(cuopt_FOUND)
+if(TARGET cuopt::client)
   return()
 endif()
 unset(cuopt_FOUND)

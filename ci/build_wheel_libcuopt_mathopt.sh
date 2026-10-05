@@ -13,6 +13,9 @@ source rapids-init-pip
 package_name="libcuopt_mathopt"
 package_dir="python/libcuopt_mathopt"
 
+LIBCUOPT_CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_client cuopt)")
+echo "libcuopt-client @ file://$(echo ${LIBCUOPT_CLIENT_WHEELHOUSE}/libcuopt_client-*.whl)" >> "${PIP_CONSTRAINT}"
+
 # Install rockylinux repo
 if command -v dnf &> /dev/null; then
     bash ci/utils/update_rockylinux_repo.sh
@@ -29,6 +32,8 @@ elif command -v apt-get &> /dev/null; then
     apt-get install -y uuid-dev
 fi
 
+source rapids-configure-sccache
+
 # Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
 bash ci/utils/install_protobuf_grpc.sh
 
@@ -41,7 +46,7 @@ python ci/utils/install_modern_libgomp.py "${MODERN_LIBGOMP_DIR}"
 # Also build our own cuDSS threading layer against this same libgomp (see cpp/CMakeLists.txt,
 # cpp/src/barrier/cudss_mtlayer_cuopt.cpp), instead of cuDSS's prebuilt one, so both actually
 # share one instance, not just the same flavor. Conda keeps cuDSS's default (#1219 discussion).
-export SKBUILD_CMAKE_ARGS="-DOpenMP_gomp_LIBRARY:FILEPATH=${MODERN_LIBGOMP_DIR}/libgomp.so.1.0.0;-DCUOPT_BUILD_CUSTOM_CUDSS_MTLAYER=ON"
+export SKBUILD_CMAKE_ARGS="-DOpenMP_gomp_LIBRARY:FILEPATH=${MODERN_LIBGOMP_DIR}/libgomp.so.1.0.0;-DCUOPT_BUILD_CUSTOM_CUDSS_MTLAYER=ON;-DCUOPT_FIND_CLIENT_EXTERNALLY=ON;-DSKIP_ROUTING_BUILD=ON"
 
 # auditwheel repair does its own dependency resolution separately from the compiler; without
 # this it can't see our fetched copy and silently vendors the old Rocky 8 system one instead.

@@ -241,6 +241,7 @@ void run_cpu_feasibility_pump(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
         fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
       fj_cpu.feasible_found = true;
       report_cpu_incumbent(fj_cpu);
+      share_cpu_incumbent(fj_cpu);
       return;
     }
   }

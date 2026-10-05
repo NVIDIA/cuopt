@@ -15,14 +15,16 @@
 #   make clean            - Remove all built executables
 #
 # Required variables (pass on command line):
-#   make INCLUDE_PATH=/path/to/cuopt/include LIBCUOPT_LIBRARY_PATH=/path/to/cuopt/lib
+#   make INCLUDE_PATH=/path/to/libcuopt_mathopt/include LIBCUOPT_LIBRARY_PATH=/path/to/libcuopt_mathopt/lib \
+#        CLIENT_INCLUDE_PATH=/path/to/libcuopt_client/include CLIENT_LIBRARY_PATH=/path/to/libcuopt_client/lib
 
 # Compiler
 CC = gcc
 
 # Compiler flags
-CFLAGS = -I$(INCLUDE_PATH) -Wall -Wextra
-LDFLAGS = -L$(LIBCUOPT_LIBRARY_PATH) -lcuopt_mathopt -Wl,-rpath,$(LIBCUOPT_LIBRARY_PATH)
+CFLAGS = -I$(INCLUDE_PATH) -I$(CLIENT_INCLUDE_PATH) -Wall -Wextra
+LDFLAGS = -L$(LIBCUOPT_LIBRARY_PATH) -L$(CLIENT_LIBRARY_PATH) -Wl,--no-as-needed -lcuopt_mathopt -lcuopt_client \
+          -Wl,-rpath,$(LIBCUOPT_LIBRARY_PATH) -Wl,-rpath,$(CLIENT_LIBRARY_PATH)
 
 # Automatically discover all C source files in current directory
 SOURCES = $(wildcard *.c)
@@ -39,13 +41,10 @@ clean:
 	rm -f $(TARGETS)
 
 check-paths:
-	@if [ -z "$(INCLUDE_PATH)" ]; then \
-		echo "ERROR: INCLUDE_PATH is not set"; \
-		echo "Usage: make INCLUDE_PATH=/path/to/cuopt/include LIBCUOPT_LIBRARY_PATH=/path/to/cuopt/lib"; \
-		exit 1; \
-	fi
-	@if [ -z "$(LIBCUOPT_LIBRARY_PATH)" ]; then \
-		echo "ERROR: LIBCUOPT_LIBRARY_PATH is not set"; \
-		echo "Usage: make INCLUDE_PATH=/path/to/cuopt/include LIBCUOPT_LIBRARY_PATH=/path/to/cuopt/lib"; \
+	@if [ -z "$(INCLUDE_PATH)" ] || [ -z "$(LIBCUOPT_LIBRARY_PATH)" ] || \
+	    [ -z "$(CLIENT_INCLUDE_PATH)" ] || [ -z "$(CLIENT_LIBRARY_PATH)" ]; then \
+		echo "ERROR: one or more required paths are not set"; \
+		echo "Usage: make INCLUDE_PATH=/path/to/libcuopt_mathopt/include LIBCUOPT_LIBRARY_PATH=/path/to/libcuopt_mathopt/lib \\"; \
+		echo "            CLIENT_INCLUDE_PATH=/path/to/libcuopt_client/include CLIENT_LIBRARY_PATH=/path/to/libcuopt_client/lib"; \
 		exit 1; \
 	fi

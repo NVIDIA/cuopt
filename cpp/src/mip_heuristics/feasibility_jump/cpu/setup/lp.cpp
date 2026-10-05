@@ -125,7 +125,7 @@ void apply_lp_rounded_start(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t lane_time_li
   // the certificate above; ordinary objective-bearing and mixed-sign models are unchanged.
   if (monotone_integer_equalities) {
     for (i_t var = 0; var < fj_cpu.problem->n_variables; ++var)
-      base.objective[var] = f_t{1} + (f_t)fj_cpu.rng.next_double();
+      base.objective[var] = fj_cpu.rng.uniform(f_t{1}, f_t{2});
   }
 
   run_cpu_feasibility_pump(fj_cpu, base, budget, monotone_integer_equalities);
@@ -191,6 +191,7 @@ bool apply_lp_polish(fj_cpu_climber_t<i_t, f_t>& fj_cpu, double budget_s)
   fj_cpu.perturb_streak        = 0;
   fj_cpu.feasible_found        = true;
   report_cpu_incumbent(fj_cpu);
+  share_cpu_incumbent(fj_cpu);
   return true;
 }
 

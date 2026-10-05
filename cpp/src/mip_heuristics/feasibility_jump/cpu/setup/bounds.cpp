@@ -90,7 +90,7 @@ bool tighten_upper_bound(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   return true;
 }
 
-// a light bounds propagation phase that runs much faster than the full scale presolve
+// A light bounds propagation phase that runs much faster than the full scale presolve
 // really helps on some instances.
 template <typename i_t, typename f_t>
 void apply_bound_propagation(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
