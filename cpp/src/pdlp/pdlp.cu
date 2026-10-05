@@ -39,6 +39,8 @@
 
 #include <cub/cub.cuh>
 
+#include <cstdint>
+
 #include <thrust/count.h>
 #include <thrust/extrema.h>
 #include <thrust/iterator/counting_iterator.h>
@@ -3558,6 +3560,12 @@ bool pdlp_solver_t<i_t, f_t>::is_distributed_master() const
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class pdlp_solver_t<int, float>;
 
+// The distributed ctor is a member template, so the class instantiation above does not cover it.
+template pdlp_solver_t<int, float>::pdlp_solver_t(
+  mip::problem_t<int, float>&,
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, float> const&,
+  pdlp_solver_settings_t<int, float> const&);
+
 template __global__ void compute_weights_initial_primal_weight_from_squared_norms<float>(
   const float* b_vec_norm,
   const float* c_vec_norm,
@@ -3569,6 +3577,17 @@ template __global__ void compute_weights_initial_primal_weight_from_squared_norm
 
 #if MIP_INSTANTIATE_DOUBLE
 template class pdlp_solver_t<int, double>;
+
+// The distributed ctor is a member template, so the class instantiation above does not cover it.
+// One per mps index type; int64 is double-only.
+template pdlp_solver_t<int, double>::pdlp_solver_t(
+  mip::problem_t<int, double>&,
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> const&,
+  pdlp_solver_settings_t<int, double> const&);
+template pdlp_solver_t<int, double>::pdlp_solver_t(
+  mip::problem_t<int, double>&,
+  cuopt::mathematical_optimization::io::mps_data_model_t<int64_t, double> const&,
+  pdlp_solver_settings_t<int, double> const&);
 
 template __global__ void compute_weights_initial_primal_weight_from_squared_norms<double>(
   const double* b_vec_norm,

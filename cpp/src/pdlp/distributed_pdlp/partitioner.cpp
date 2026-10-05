@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <thread>
 #include <vector>
@@ -223,6 +224,11 @@ std::unique_ptr<partitioner_i<i_t, f_t>> make_partitioner(partitioner_kind_t kin
 template class round_robin_partitioner_t<int, double>;
 template class kaminpar_partitioner_t<int, double>;
 template std::unique_ptr<partitioner_i<int, double>> make_partitioner<int, double>(
+  partitioner_kind_t);
+
+template class round_robin_partitioner_t<int64_t, double>;
+template class kaminpar_partitioner_t<int64_t, double>;
+template std::unique_ptr<partitioner_i<int64_t, double>> make_partitioner<int64_t, double>(
   partitioner_kind_t);
 
 }  // namespace cuopt::mathematical_optimization::pdlp

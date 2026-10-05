@@ -68,9 +68,11 @@ class pdlp_solver_t {
                 bool is_batch_mode           = false,
                 bool is_distributed_sub_pdlp = false);
 
-  // Distributed Solver Constructor
+  // Distributed Solver Constructor. `index_t` is the model's index type and may be wider
+  // than the solver's i_t: the problem is partitioned into per-GPU shards addressed in i_t.
+  template <typename index_t>
   pdlp_solver_t(mip::problem_t<i_t, f_t>& placeholder_problem,
-                cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
+                cuopt::mathematical_optimization::io::mps_data_model_t<index_t, f_t> const& mps,
                 pdlp_solver_settings_t<i_t, f_t> const& settings);
 
   optimization_problem_solution_t<i_t, f_t> run_solver(const timer_t& timer);

@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cassert>
+#include <cstdint>
 #include <cuopt/error.hpp>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
@@ -2799,6 +2800,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   }
 
   // postsolve
+  if constexpr (std::is_same_v<index_t, i_t>) {
   if (run_presolve) {
     auto h_primal = cuopt::host_copy(sol.get_primal_solution(), handle_ptr->get_stream());
     auto h_dual   = cuopt::host_copy(sol.get_dual_solution(), handle_ptr->get_stream());
@@ -2832,6 +2834,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                                                     std::move(term_vec),
                                                     std::move(status_vec));
   }
+}
 
   sol.set_solve_time(lp_timer.elapsed_time());
   CUOPT_LOG_INFO("PDLP finished");
@@ -3011,6 +3014,21 @@ INSTANTIATE(float)
 
 #if MIP_INSTANTIATE_DOUBLE
 INSTANTIATE(double)
+
+// 64-bit model index is double-only: the CLI variant holds <int64_t, double>, and the float
+// branch of INSTANTIATE above must not grow an int64 overload.
+template CUOPT_EXPORT optimization_problem_solution_t<int, double> solve_lp(
+  raft::handle_t const* handle_ptr,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<int64_t, double>& mps_data_model,
+  pdlp_solver_settings_t<int, double> const& settings,
+  bool problem_checking,
+  bool use_pdlp_solver_mode);
+
+template optimization_problem_solution_t<int, double> solve_lp_distributed_from_mps(
+  raft::handle_t const* handle_ptr,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<int64_t, double>& mps_data_model,
+  pdlp_solver_settings_t<int, double> const& settings,
+  bool use_pdlp_solver_mode);
 #endif
 
 // third_party_presolve_t<int, float> (in mip_heuristics/presolve/) is built
