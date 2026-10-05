@@ -16,6 +16,7 @@
 #include <numeric>
 
 #include <utilities/logger.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 namespace cuopt::mathematical_optimization::pdlp {
 
