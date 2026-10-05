@@ -27,6 +27,9 @@
 #include <mip_heuristics/utils.cuh>
 #include <utilities/hashing.hpp>
 
+#include <cub/device/device_segmented_reduce.cuh>
+#include <cub/device/device_segmented_sort.cuh>
+
 #include <thrust/binary_search.h>
 #include <thrust/copy.h>
 #include <thrust/count.h>
@@ -39,6 +42,7 @@
 #include <thrust/tabulate.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
+#include <cuda/functional>
 #include <cuda/std/functional>
 #include <cuda/stream>
 
@@ -2205,7 +2209,7 @@ void problem_t<i_t, f_t>::set_papilo_presolve_data(
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
-                                                    rmm::cuda_stream_view stream) const
+                                                    cuda::stream_ref stream) const
 {
   presolve_data.papilo_uncrush_assignment(assignment, stream);
 }

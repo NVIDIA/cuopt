@@ -21,6 +21,8 @@
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/linalg/transpose.cuh>
 
+#include <cuda/stream>
+
 #include <dlfcn.h>
 
 #include <utility>
@@ -120,7 +122,7 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 // Reads back only the three offsets the check needs.
 template <typename i_t>
 static bool alg2_beta_bug_possible(const rmm::device_uvector<i_t>& row_start,
-                                   rmm::cuda_stream_view stream)
+                                   cuda::stream_ref stream)
 {
   if (row_start.size() < 2) { return false; }
   const i_t first       = row_start.front_element(stream);

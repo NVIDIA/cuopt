@@ -52,14 +52,9 @@ export SKBUILD_CMAKE_ARGS="-DOpenMP_gomp_LIBRARY:FILEPATH=${MODERN_LIBGOMP_DIR}/
 # this it can't see our fetched copy and silently vendors the old Rocky 8 system one instead.
 export LD_LIBRARY_PATH="${MODERN_LIBGOMP_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
-# OpenSSL 3 hints for libcuopt's own find_package(OpenSSL).
-#
-# install_protobuf_grpc.sh links gRPC against OpenSSL 3 (see that script for
-# rationale). libcuopt then re-resolves OpenSSL via find_package because
-# gRPC's imported targets propagate it transitively. On Rocky/RHEL 8 the
-# EPEL openssl3-devel package installs in non-default paths, so we have to
-# point CMake at them; on Rocky/RHEL 9+ and Ubuntu 22.04+ the default
-# OpenSSL is already 3.x and no hints are needed.
+# OpenSSL 3 hints for find_package(OpenSSL), needed to link the externally-resolved
+# cuopt_client.so's transitive OpenSSL dependency. See install_protobuf_grpc.sh for why
+# Rocky/RHEL 8 needs these; Rocky/RHEL 9+ and Ubuntu 22.04+ need no hints.
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     if [[ "$ID" == "rocky" || "$ID" == "centos" || "$ID" == "rhel" || "$ID" == "fedora" ]] && \

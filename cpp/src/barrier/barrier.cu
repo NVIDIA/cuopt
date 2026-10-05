@@ -57,6 +57,9 @@
 #include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/reduce.h>
+#include <cub/device/device_reduce.cuh>
+#include <cub/device/device_select.cuh>
+#include <cub/device/device_transform.cuh>
 
 #include <cstdio>
 

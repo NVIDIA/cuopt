@@ -41,7 +41,9 @@
 #include <cuopt_remote_service.pb.h>
 #include <grpcpp/grpcpp.h>
 
+#include <limits>
 #include <map>
+#include <stdexcept>
 
 using namespace cuopt::mathematical_optimization;
 using namespace ::testing;
@@ -2017,6 +2019,83 @@ TEST_F(GrpcClientTest, SubmitLP_UnaryForSmallPayload)
   EXPECT_EQ(result.job_id, "unary-lp-001");
 }
 
+// A warm start stays in the settings message after the problem arrays are
+// chunked, so a small problem plus a warm start that crosses the threshold
+// takes the chunked path.
+TEST_F(GrpcClientTest, SubmitLP_WarmStartPushesSmallProblemToChunkedUpload)
+{
+  auto problem             = create_test_lp_problem();
+  const auto problem_bytes = estimate_problem_proto_size(problem);
+
+  grpc_client_config_t cfg;
+  cfg.server_address                = "mock://test";
+  cfg.chunked_array_threshold_bytes = static_cast<int64_t>(problem_bytes);
+  cfg.chunk_size_bytes              = 4 * 1024;
+
+  auto client = std::make_unique<grpc_client_t>(cfg);
+  auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedUploadRequest& req,
+                 cuopt::remote::StartChunkedUploadResponse* resp) {
+      EXPECT_TRUE(req.problem_header().lp_settings().has_warm_start_data());
+      resp->set_upload_id("warm-chunked-001");
+      resp->set_max_message_bytes(4 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, SendArrayChunk(_, _, _))
+    .WillRepeatedly([](grpc::ClientContext*,
+                       const cuopt::remote::SendArrayChunkRequest&,
+                       cuopt::remote::SendArrayChunkResponse* resp) {
+      resp->set_upload_id("warm-chunked-001");
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, FinishChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedUploadRequest&,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      resp->set_job_id("warm-chunked-job");
+      return grpc::Status::OK;
+    });
+
+  pdlp_solver_settings_t<int32_t, double> settings;
+  auto& ws                                   = settings.get_cpu_pdlp_warm_start_data();
+  ws.last_restart_duality_gap_dual_solution_ = {1.0, 2.0};
+  ws.current_primal_solution_                = {0.1, 0.2};
+
+  auto result = client->submit_lp(problem, settings);
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_EQ(result.job_id, "warm-chunked-job");
+}
+
+// Chunking cannot move the warm start out of the header, so a payload larger
+// than the client message cap fails before any RPC.
+TEST_F(GrpcClientTest, SubmitLP_WarmStartLargerThanMessageCapFails)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address    = "mock://test";
+  cfg.max_message_bytes = 4 * 1024 * 1024;
+
+  auto client = std::make_unique<grpc_client_t>(cfg);
+  auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+  EXPECT_CALL(*mock, SubmitJob(_, _, _)).Times(0);
+  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _)).Times(0);
+
+  auto problem = create_test_lp_problem();
+  pdlp_solver_settings_t<int32_t, double> settings;
+  settings.get_cpu_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.assign(
+    (4 * 1024 * 1024) / sizeof(double) + 1, 1.0);
+
+  auto result = client->submit_lp(problem, settings);
+
+  EXPECT_FALSE(result.success);
+  EXPECT_NE(result.error_message.find("warm start"), std::string::npos);
+}
+
 // =============================================================================
 // Mapper Roundtrip Tests
 // =============================================================================
@@ -2478,6 +2557,91 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.save_best_primal_so_far, true);
   EXPECT_EQ(restored.first_primal_feasible, true);
   EXPECT_EQ(restored.hyper_params.do_curtis_reid_scaling, false);
+}
+
+TEST(MapperRoundtrip, SettingsWarmStartRoundTrip)
+{
+  pdlp_solver_settings_t<int32_t, double> empty;
+  EXPECT_EQ(estimate_pdlp_warm_start_proto_size(empty), 0u);
+
+  pdlp_solver_settings_t<int32_t, double> orig;
+  auto& ws                                     = orig.get_cpu_pdlp_warm_start_data();
+  ws.current_primal_solution_                  = {0.1, 0.2};
+  ws.current_dual_solution_                    = {0.3};
+  ws.initial_primal_average_                   = {0.1, 0.2};
+  ws.initial_dual_average_                     = {0.3};
+  ws.current_ATY_                              = {0.4, 0.5};
+  ws.sum_primal_solutions_                     = {0.1, 0.2};
+  ws.sum_dual_solutions_                       = {0.3};
+  ws.last_restart_duality_gap_primal_solution_ = {0.1, 0.2};
+  ws.last_restart_duality_gap_dual_solution_   = {0.3};
+  ws.initial_primal_weight_                    = 1.25;
+  ws.initial_step_size_                        = 0.5;
+  ws.total_pdlp_iterations_                    = 7;
+  ws.total_pdhg_iterations_                    = 8;
+  ws.last_candidate_kkt_score_                 = 0.01;
+  ws.last_restart_kkt_score_                   = 0.02;
+  ws.sum_solution_weight_                      = 3.0;
+  ws.iterations_since_last_restart_            = 4;
+
+  cuopt::remote::PDLPSolverSettings pb;
+  map_pdlp_settings_to_proto(orig, &pb);
+  ASSERT_TRUE(pb.has_warm_start_data());
+  EXPECT_DOUBLE_EQ(pb.warm_start_data().current_primal_solution(0), 0.1);
+  EXPECT_DOUBLE_EQ(pb.warm_start_data().current_dual_solution(0), 0.3);
+  EXPECT_DOUBLE_EQ(pb.warm_start_data().initial_primal_weight(), 1.25);
+  EXPECT_EQ(pb.warm_start_data().total_pdlp_iterations(), 7);
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  map_proto_to_pdlp_settings(pb, restored, 2, 1);
+  const auto& got = restored.get_cpu_pdlp_warm_start_data();
+  ASSERT_TRUE(got.is_populated());
+  EXPECT_DOUBLE_EQ(got.current_primal_solution_[0], 0.1);
+  EXPECT_DOUBLE_EQ(got.current_dual_solution_[0], 0.3);
+  EXPECT_DOUBLE_EQ(got.initial_primal_weight_, 1.25);
+  EXPECT_EQ(got.total_pdlp_iterations_, 7);
+  EXPECT_EQ(got.iterations_since_last_restart_, 4);
+  EXPECT_GE(estimate_pdlp_warm_start_proto_size(orig), pb.warm_start_data().ByteSizeLong());
+
+  cuopt::remote::ChunkedProblemHeader header;
+  cpu_optimization_problem_t<int32_t, double> problem;
+  populate_chunked_header_lp(problem, orig, &header);
+  ASSERT_TRUE(header.lp_settings().has_warm_start_data());
+  EXPECT_DOUBLE_EQ(header.lp_settings().warm_start_data().initial_step_size(), 0.5);
+}
+
+TEST(MapperRoundtrip, SettingsWarmStartRejectsBadPayload)
+{
+  pdlp_solver_settings_t<int32_t, double> orig;
+  auto& ws                                     = orig.get_cpu_pdlp_warm_start_data();
+  ws.current_primal_solution_                  = {0.1, 0.2};
+  ws.current_dual_solution_                    = {0.3};
+  ws.initial_primal_average_                   = {0.1, 0.2};
+  ws.initial_dual_average_                     = {0.3};
+  ws.current_ATY_                              = {0.4, 0.5};
+  ws.sum_primal_solutions_                     = {0.1, 0.2};
+  ws.sum_dual_solutions_                       = {0.3};
+  ws.last_restart_duality_gap_primal_solution_ = {0.1, 0.2};
+  ws.last_restart_duality_gap_dual_solution_   = {0.3};
+  ws.total_pdlp_iterations_                    = 7;
+
+  cuopt::remote::PDLPSolverSettings pb;
+  map_pdlp_settings_to_proto(orig, &pb);
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  EXPECT_THROW(map_proto_to_pdlp_settings(pb, restored, 3, 1), std::invalid_argument);
+  EXPECT_FALSE(restored.get_cpu_pdlp_warm_start_data().is_populated());
+
+  pb.mutable_warm_start_data()->set_initial_primal_weight(std::numeric_limits<double>::quiet_NaN());
+  EXPECT_THROW(map_proto_to_pdlp_settings(pb, restored, 2, 1), std::invalid_argument);
+
+  pb.mutable_warm_start_data()->set_initial_primal_weight(1.25);
+  pb.mutable_warm_start_data()->set_total_pdlp_iterations(-2);
+  EXPECT_THROW(map_proto_to_pdlp_settings(pb, restored, 2, 1), std::invalid_argument);
+
+  pb.mutable_warm_start_data()->set_total_pdlp_iterations(-1);
+  EXPECT_NO_THROW(map_proto_to_pdlp_settings(pb, restored, 2, 1));
+  EXPECT_EQ(restored.get_cpu_pdlp_warm_start_data().total_pdlp_iterations_, -1);
 }
 
 TEST(MapperRoundtrip, ParameterMapEmptyLeavesTypedField)

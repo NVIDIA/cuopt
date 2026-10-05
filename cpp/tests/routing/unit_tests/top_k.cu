@@ -14,9 +14,9 @@
 #include <cub/block/block_radix_sort.cuh>
 #include <cub/block/block_shuffle.cuh>
 #include <cub/block/block_store.cuh>
+#include <cub/device/device_segmented_sort.cuh>
 
 #include <thrust/sort.h>
-#include <cub/cub.cuh>
 
 #include <algorithm>
 #include <iostream>

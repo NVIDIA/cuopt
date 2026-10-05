@@ -235,6 +235,7 @@ struct PendingChunkedUpload {
 // =============================================================================
 
 inline std::atomic<bool> keep_running{true};
+inline std::atomic<bool> fatal_gpu_failure{false};
 inline std::map<std::string, JobInfo> job_tracker;
 inline std::mutex tracker_mutex;
 inline std::condition_variable result_cv;
@@ -282,6 +283,10 @@ inline const std::string LOG_DIR = "/tmp/cuopt_logs";
 
 constexpr int64_t kMiB = 1024LL * 1024;
 constexpr int64_t kGiB = 1024LL * 1024 * 1024;
+
+// Distinguishes a fatal CUDA/RMM health failure from ordinary worker exits
+// such as the SIGKILL used to cancel a running job.
+constexpr int kGpuUnhealthyExitCode = 86;
 
 // Floor: 4 KiB is enough for basic gRPC control messages. Values below this
 // would risk rejecting even metadata-only RPCs like CheckStatus.

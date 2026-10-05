@@ -394,17 +394,19 @@ message(STATUS "Using KaMinPar (distributed PDLP graph partitioner)")
 # ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------
 
+# A gRPC-enabled cuopt_client.so (local or externally resolved) always links OpenSSL, so
+# anything linking cuopt::client needs it resolvable regardless of SKIP_GRPC_BUILD here.
+if (NOT TARGET OpenSSL::SSL)
+    find_package(OpenSSL CONFIG QUIET)
+    if (NOT OpenSSL_FOUND AND NOT OPENSSL_FOUND)
+        find_package(OpenSSL REQUIRED)
+    endif ()
+endif ()
+
 if (NOT SKIP_GRPC_BUILD)
     # gRPC can come from either:
     # - an installed CMake package (gRPCConfig.cmake), or
     # - an in-tree build (e.g. python/libcuopt uses FetchContent(grpc), which defines gRPC::grpc++).
-
-    if (NOT TARGET OpenSSL::SSL)
-        find_package(OpenSSL CONFIG QUIET)
-        if (NOT OpenSSL_FOUND AND NOT OPENSSL_FOUND)
-            find_package(OpenSSL REQUIRED)
-        endif ()
-    endif ()
 
     if (NOT TARGET gRPC::grpc++)
         find_package(gRPC CONFIG REQUIRED)
@@ -872,10 +874,8 @@ target_link_libraries(cuopt_client
         PUBLIC
         rapids_logger::rapids_logger
         CCCL::CCCL
-        # No rmm::rmm: nothing leaks out of rmm's headers here any more (#1890), and
-        # linking it would put librmm.so back in DT_NEEDED and cost the client its
-        # CUDA-free property. It stays on cuopt_client_objs for the include path.
-        #
+        $<COMPILE_ONLY:rmm::rmm>
+        $<COMPILE_ONLY:raft::raft>
         # dl is PUBLIC because the public headers pull in nvtx, whose inline init calls
         # dlopen/dlsym, so a consumer compiling them needs -ldl on its own link line.
         # rmm::rmm used to supply that transitively; dropping it broke the arm64 link of
@@ -1697,6 +1697,12 @@ if (NOT SKIP_GRPC_BUILD)
     # this target instead of leaking a -D into every target in the directory.
     if (CUOPT_ENABLE_GRPC_ROUTING)
         target_compile_definitions(cuopt_grpc_server PRIVATE CUOPT_ENABLE_GRPC_ROUTING)
+    endif ()
+
+    # GPU-health failure injection is compiled only into test builds.
+    # A test opts in by setting CUOPT_GRPC_TEST_GPU_FAILURE.
+    if (BUILD_TESTS)
+        target_compile_definitions(cuopt_grpc_server PRIVATE CUOPT_GRPC_TESTING)
     endif ()
 
     target_compile_options(cuopt_grpc_server

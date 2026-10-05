@@ -33,7 +33,8 @@
 #include <raft/linalg/eltwise.cuh>
 #include <raft/linalg/ternary_op.cuh>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_for.cuh>
+#include <cub/device/device_transform.cuh>
 
 #include <thrust/iterator/zip_iterator.h>
 

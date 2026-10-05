@@ -12,7 +12,7 @@
  *
  * Fixture layout:
  *   NoServerTests          - Tests that don't need a server
- *   DefaultServerTests     - Shared server with default config (~21 tests)
+ *   DefaultServerTests     - Shared server with default config (~22 tests)
  *   ChunkedUploadTests     - Shared server with --max-message-mb 256 (4 tests)
  *   PathSelectionTests     - Shared server with --max-message-bytes 4096 --verbose (4 tests)
  *   ErrorRecoveryTests     - Per-test server lifecycle (4 tests)
@@ -91,7 +91,7 @@ namespace {
 
 class ServerProcess {
  public:
-  ServerProcess() : pid_(-1), pgid_(-1), port_(0) {}
+  ServerProcess() : pid_(-1), pgid_(-1), port_(0), exit_code_(-1) {}
   ServerProcess(const ServerProcess&)            = delete;
   ServerProcess& operator=(const ServerProcess&) = delete;
   ~ServerProcess()
@@ -108,7 +108,9 @@ class ServerProcess {
     tls_client_key_  = client_key;
   }
 
-  bool start(int port, const std::vector<std::string>& extra_args = {})
+  bool start(int port,
+             const std::vector<std::string>& extra_args                                = {},
+             const std::vector<std::pair<std::string, std::string>>& extra_environment = {})
   {
     if (pid_ > 0) {
       std::cerr << "Cannot reuse a ServerProcess while it still owns a process lifecycle\n";
@@ -125,8 +127,9 @@ class ServerProcess {
     // onto this test process so stop() can reap it without relying on init.
     prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
 
-    port_ = port;
-    pid_  = fork();
+    port_      = port;
+    exit_code_ = -1;
+    pid_       = fork();
     if (pid_ < 0) {
       std::cerr << "fork() failed\n";
       return false;
@@ -134,6 +137,10 @@ class ServerProcess {
 
     if (pid_ == 0) {
       setpgid(0, 0);  // child leads its own group; parent mirrors this below
+
+      for (const auto& [name, value] : extra_environment) {
+        setenv(name.c_str(), value.c_str(), 1);
+      }
 
       std::vector<const char*> args;
       args.push_back(server_path.c_str());
@@ -197,6 +204,8 @@ class ServerProcess {
 
   pid_t pid() const { return pid_; }
 
+  int exit_code() const { return exit_code_; }
+
   bool is_running() const
   {
     if (pid_ <= 0) return false;
@@ -217,6 +226,7 @@ class ServerProcess {
       int status = 0;
       pid_t ret  = waitpid(pid_, &status, WNOHANG);
       if (ret == pid_ || (ret < 0 && errno == ECHILD)) {
+        if (ret == pid_) { exit_code_ = WIFEXITED(status) ? WEXITSTATUS(status) : -1; }
         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
           deadline - std::chrono::steady_clock::now());
         if (remaining > std::chrono::milliseconds(2000)) {
@@ -342,6 +352,7 @@ class ServerProcess {
 
       int status = 0;
       if (waitpid(pid_, &status, WNOHANG) == pid_) {
+        exit_code_ = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
         std::cerr << "Server process died during startup\n";
         return false;
       }
@@ -353,6 +364,7 @@ class ServerProcess {
   pid_t pid_;
   pid_t pgid_;
   int port_;
+  int exit_code_;
   std::string tls_root_certs_;
   std::string tls_client_cert_;
   std::string tls_client_key_;
@@ -1305,6 +1317,69 @@ TEST_F(DefaultServerTests, SolveLPReturnsWarmStartData)
   EXPECT_GE(ws.total_pdhg_iterations_, 0) << "total_pdhg_iterations should be non-negative";
 }
 
+// A one-step cap makes a resumed solve and a cold solve disagree. PDLP copies
+// total_pdlp_iterations_ out of the supplied warm start, and the solution's
+// warm-start blob reports that live counter. get_num_iterations() is only the
+// steps taken in this run, so it stays near 1 for both and is not the signal.
+// Stable2 is required; the default Stable3 rejects warm start. Presolve stays
+// off so the vectors match the original problem: a later solve skips presolve
+// whenever total_pdlp_iterations_ != -1.
+TEST_F(DefaultServerTests, SolveLPWarmStartIsApplied)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  auto make_settings = []() {
+    pdlp_solver_settings_t<int32_t, double> settings;
+    settings.time_limit       = 30.0;
+    settings.method           = method_t::PDLP;
+    settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable2;
+    settings.presolver        = presolver_t::None;
+    return settings;
+  };
+
+  auto full = client->solve_lp(problem, make_settings());
+  ASSERT_TRUE(full.success) << full.error_message;
+  ASSERT_NE(full.solution, nullptr);
+  ASSERT_TRUE(full.solution->has_warm_start_data());
+  const auto seeded_iterations =
+    full.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+  ASSERT_GT(seeded_iterations, 1) << "full solve must take more than one PDLP iteration so a "
+                                     "one-step cap can tell the runs apart";
+  const auto full_objective = full.solution->get_objective_value();
+
+  auto warm_settings                           = make_settings();
+  warm_settings.iteration_limit                = 1;
+  warm_settings.get_cpu_pdlp_warm_start_data() = full.solution->get_cpu_pdlp_warm_start_data();
+  auto warm                                    = client->solve_lp(problem, warm_settings);
+  ASSERT_TRUE(warm.success) << warm.error_message;
+  ASSERT_NE(warm.solution, nullptr);
+  ASSERT_TRUE(warm.solution->has_warm_start_data());
+  const auto warm_iterations = warm.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  auto cold_settings            = make_settings();
+  cold_settings.iteration_limit = 1;
+  auto cold                     = client->solve_lp(problem, cold_settings);
+  ASSERT_TRUE(cold.success) << cold.error_message;
+  ASSERT_NE(cold.solution, nullptr);
+  ASSERT_TRUE(cold.solution->has_warm_start_data());
+  const auto cold_iterations = cold.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  EXPECT_GE(warm_iterations, seeded_iterations)
+    << "resumed solve should keep the seeded PDLP iteration counter";
+  EXPECT_LT(cold_iterations, seeded_iterations)
+    << "one-step cold solve should not reach the full-solve iteration count";
+
+  const auto warm_obj_gap = std::abs(warm.solution->get_objective_value() - full_objective);
+  const auto cold_obj_gap = std::abs(cold.solution->get_objective_value() - full_objective);
+  EXPECT_LT(warm_obj_gap, cold_obj_gap)
+    << "warm objective " << warm.solution->get_objective_value() << " cold objective "
+    << cold.solution->get_objective_value() << " full objective " << full_objective;
+}
+
 // -- MIP Log Callback --
 
 TEST_F(DefaultServerTests, SolveMIPWithLogCallback)
@@ -2112,13 +2187,73 @@ class ErrorRecoveryTests : public GrpcIntegrationTestBase {
   void SetUp() override { port_ = get_test_port(); }
   void TearDown() override { EXPECT_TRUE(server_.stop()); }
 
-  bool start_server(const std::vector<std::string>& extra_args = {})
+  bool start_server(const std::vector<std::string>& extra_args                                = {},
+                    const std::vector<std::pair<std::string, std::string>>& extra_environment = {})
   {
-    return server_.start(port_, extra_args);
+    return server_.start(port_, extra_args, extra_environment);
   }
 
   ServerProcess server_;
 };
+
+TEST_F(ErrorRecoveryTests, PreJobGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server({}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "before-job"}}));
+  const std::string log_path = server_.log_path();
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 5.0;
+  auto submitted      = client->submit_mip(create_simple_mip(), settings);
+  ASSERT_TRUE(submitted.success);
+
+  // start_server() returns when the parent accepts RPCs, not when the worker
+  // finishes CUDA/RMM init. That init can exceed 60s on a busy runner;
+  // warm_up_worker() allows 180s for it. The injected failure is logged only
+  // after init, and the server logger flushes on info. The 15s budget is
+  // shutdown only.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(
+    log_capture.wait_for_server_log("Injected before-job GPU liveness probe failure", 180000))
+    << "Injected pre-job GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the pre-job GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during pre-job probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+TEST_F(ErrorRecoveryTests, IdleGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server(
+    {}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "idle"}, {"CUOPT_GRPC_TEST_GPU_IDLE_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  // Same split as the pre-job test: 180s covers CUDA/RMM init plus the 3s idle
+  // interval. The 15s budget starts only after the injected failure is logged.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("Injected idle GPU liveness probe failure", 180000))
+    << "Injected idle GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the idle GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during idle probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
 
 TEST_F(ErrorRecoveryTests, ClientReconnectsAfterServerRestart)
 {

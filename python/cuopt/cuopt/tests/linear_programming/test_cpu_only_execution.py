@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """
@@ -205,11 +205,15 @@ def _impl_warmstart_cpu_only():
     """Warmstart round-trip works without touching CUDA."""
     from cuopt import linear_programming
     from cuopt.linear_programming.solver.solver_parameters import (
-        CUOPT_METHOD,
         CUOPT_ITERATION_LIMIT,
+        CUOPT_METHOD,
+        CUOPT_PDLP_SOLVER_MODE,
         CUOPT_PRESOLVE,
     )
-    from cuopt.linear_programming.solver_settings import SolverMethod
+    from cuopt.linear_programming.solver_settings import (
+        PDLPSolverMode,
+        SolverMethod,
+    )
 
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
@@ -217,6 +221,8 @@ def _impl_warmstart_cpu_only():
 
     settings = linear_programming.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    # PDLP accepts warm start only in Stable2. The default mode is Stable3.
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     settings.set_parameter(CUOPT_PRESOLVE, 0)
     settings.set_parameter(CUOPT_ITERATION_LIMIT, 100)
 

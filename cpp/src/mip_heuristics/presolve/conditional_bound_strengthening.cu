@@ -17,7 +17,7 @@
 #include <raft/sparse/linalg/transpose.cuh>
 #include "cusparse.h"
 
-#include <cub/cub.cuh>
+#include <cub/block/block_merge_sort.cuh>
 
 #include <thrust/extrema.h>
 #include <thrust/iterator/zip_iterator.h>

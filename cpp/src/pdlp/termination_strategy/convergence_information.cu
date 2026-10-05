@@ -37,7 +37,9 @@
 #include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_reduce.cuh>
+#include <cub/device/device_segmented_reduce.cuh>
+#include <cub/device/device_transform.cuh>
 
 #include <cmath>
 

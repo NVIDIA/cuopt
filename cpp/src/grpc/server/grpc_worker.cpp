@@ -22,12 +22,15 @@
 
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
+#include <rmm/device_buffer.hpp>
 #include <rmm/mr/cuda_memory_resource.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 
 #include <cerrno>
 #include <chrono>
 #include <climits>
+#include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <limits>
 #include <memory>
@@ -45,6 +48,82 @@ using cuopt::routing::map_routing_solution_to_proto;
 #endif
 
 namespace {
+
+enum class GpuProbeReason { STARTUP, BEFORE_JOB, IDLE };
+
+const char* gpu_probe_reason_name(GpuProbeReason reason)
+{
+  switch (reason) {
+    case GpuProbeReason::STARTUP: return "startup";
+    case GpuProbeReason::BEFORE_JOB: return "before-job";
+    case GpuProbeReason::IDLE: return "idle";
+  }
+  return "unknown";
+}
+
+std::chrono::milliseconds gpu_health_idle_interval()
+{
+#ifdef CUOPT_GRPC_TESTING
+  // Tests set this so the idle path does not wait the production 30s.
+  if (const char* env = std::getenv("CUOPT_GRPC_TEST_GPU_IDLE_MS")) {
+    char* end         = nullptr;
+    errno             = 0;
+    const long parsed = std::strtol(env, &end, 10);
+    if (errno == 0 && end != env && *end == '\0' && parsed > 0) {
+      return std::chrono::milliseconds(parsed);
+    }
+  }
+#endif
+  return std::chrono::seconds(30);
+}
+
+bool probe_worker_gpu_liveness(int worker_id, GpuProbeReason reason)
+{
+#ifdef CUOPT_GRPC_TESTING
+  // Absent unless a test sets it. Values match gpu_probe_reason_name().
+  if (const char* injected = std::getenv("CUOPT_GRPC_TEST_GPU_FAILURE")) {
+    if (std::strcmp(injected, gpu_probe_reason_name(reason)) == 0) {
+      SERVER_LOG_ERROR("[Worker %d] Injected %s GPU liveness probe failure",
+                       worker_id,
+                       gpu_probe_reason_name(reason));
+      return false;
+    }
+  }
+#endif
+
+  try {
+    // Allocate through the worker's current RMM resource, then submit and
+    // synchronize a real CUDA operation. This checks both the allocator path
+    // and asynchronous device execution without retaining meaningful memory.
+    // rmm::cuda_stream_default is a cuda::stream_ref. The raw stream is get(),
+    // not the old cuda_stream_view::value().
+    const auto stream = rmm::cuda_stream_default;
+    rmm::device_buffer probe(1, stream);
+    cudaError_t err = cudaMemsetAsync(probe.data(), 0, probe.size(), stream.get());
+    if (err == cudaSuccess) { err = cudaStreamSynchronize(stream.get()); }
+    if (err != cudaSuccess) {
+      SERVER_LOG_ERROR("[Worker %d] %s GPU liveness probe failed: %s",
+                       worker_id,
+                       gpu_probe_reason_name(reason),
+                       cudaGetErrorString(err));
+      return false;
+    }
+  } catch (const std::exception& e) {
+    SERVER_LOG_ERROR("[Worker %d] %s RMM liveness probe failed: %s",
+                     worker_id,
+                     gpu_probe_reason_name(reason),
+                     e.what());
+    return false;
+  }
+  return true;
+}
+
+[[noreturn]] void exit_gpu_unhealthy(int worker_id, const char* context)
+{
+  SERVER_LOG_ERROR(
+    "[Worker %d] GPU unhealthy during %s; requesting server shutdown", worker_id, context);
+  _exit(kGpuUnhealthyExitCode);
+}
 
 int parse_pool_gigs_env()
 {
@@ -139,6 +218,24 @@ bool apply_job_parameters(DeserializedJob& dj, const PbSettings& pb_settings)
     return false;
   }
   return true;
+}
+
+// Warm start is checked against the reconstructed problem before it is stored.
+// A rejected payload fails this job, so copy_warmstart_data_to_device never
+// sees it.
+bool apply_lp_job_settings(DeserializedJob& dj,
+                           const cuopt::remote::PDLPSolverSettings& pb_settings)
+{
+  try {
+    map_proto_to_pdlp_settings(pb_settings,
+                               dj.settings.get_pdlp_settings(),
+                               dj.problem.get_n_variables(),
+                               dj.problem.get_n_constraints());
+  } catch (const std::exception& e) {
+    dj.error_message = e.what();
+    return false;
+  }
+  return apply_job_parameters(dj, pb_settings);
 }
 
 struct SolveResult {
@@ -376,18 +473,18 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
         container_arrays.size(),
         container_total_bytes);
     }
+    dj.enable_incumbents    = chunked_header.enable_incumbents();
+    dj.enable_set_incumbent = chunked_header.enable_set_incumbent();
+    // Problem first: warm-start lengths are checked against these dimensions.
+    cuopt::mathematical_optimization::map_chunked_arrays_to_problem(
+      chunked_header, arrays, container_arrays, dj.problem);
     if (chunked_header.has_lp_settings()) {
-      map_proto_to_pdlp_settings(chunked_header.lp_settings(), dj.settings.get_pdlp_settings());
-      if (!apply_job_parameters(dj, chunked_header.lp_settings())) { return; }
+      if (!apply_lp_job_settings(dj, chunked_header.lp_settings())) { return; }
     }
     if (chunked_header.has_mip_settings()) {
       map_proto_to_mip_settings(chunked_header.mip_settings(), dj.settings.get_mip_settings());
       if (!apply_job_parameters(dj, chunked_header.mip_settings())) { return; }
     }
-    dj.enable_incumbents    = chunked_header.enable_incumbents();
-    dj.enable_set_incumbent = chunked_header.enable_set_incumbent();
-    cuopt::mathematical_optimization::map_chunked_arrays_to_problem(
-      chunked_header, arrays, container_arrays, dj.problem);
   } else {
     // Unary path: the entire SubmitJobRequest was serialized as a single
     // protobuf blob.  Simpler but copies more memory for large problems.
@@ -408,8 +505,7 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
       const auto& req = submit_request.lp_request();
       SERVER_LOG_INFO("[Worker] IPC path: UNARY LP (%zu bytes)", request_data.size());
       map_proto_to_problem(req.problem(), dj.problem);
-      map_proto_to_pdlp_settings(req.settings(), dj.settings.get_pdlp_settings());
-      if (!apply_job_parameters(dj, req.settings())) { return; }
+      if (!apply_lp_job_settings(dj, req.settings())) { return; }
     } else if (submit_request.has_mip_request()) {
       const auto& req = submit_request.mip_request();
       SERVER_LOG_INFO("[Worker] IPC path: UNARY MIP (%zu bytes)", request_data.size());
@@ -538,6 +634,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     dj.settings.set_parameter_from_string(CUOPT_LOG_FILE, log_file);
     dj.settings.set_parameter(CUOPT_LOG_TO_CONSOLE, config.log_to_console);
     apply_initial_solutions_to_pdlp_settings(dj.problem, dj.settings.get_pdlp_settings());
+    cuopt::mathematical_optimization::copy_warmstart_data_to_device(dj.settings, &handle);
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");
     auto gpu_problem = to_optimization_problem(dj.problem, &handle);
@@ -744,16 +841,30 @@ void worker_process(int worker_id)
   signal(SIGINT, SIG_IGN);
   signal(SIGTERM, SIG_IGN);
 
-  if (!init_worker_cuda_environment(worker_id)) {
-    SERVER_LOG_ERROR("[Worker %d] CUDA environment initialization failed; exiting", worker_id);
-    _exit(1);
+  try {
+    if (!init_worker_cuda_environment(worker_id) ||
+        !probe_worker_gpu_liveness(worker_id, GpuProbeReason::STARTUP)) {
+      exit_gpu_unhealthy(worker_id, "initialization");
+    }
+  } catch (const std::exception& e) {
+    SERVER_LOG_ERROR(
+      "[Worker %d] CUDA/RMM environment initialization failed: %s", worker_id, e.what());
+    exit_gpu_unhealthy(worker_id, "initialization");
   }
 
   shm_ctrl->active_workers++;
+  auto last_idle_probe = std::chrono::steady_clock::now();
 
   while (!shm_ctrl->shutdown_requested) {
     int job_slot = claim_job_slot(worker_id);
     if (job_slot < 0) {
+      auto now = std::chrono::steady_clock::now();
+      if (now - last_idle_probe >= gpu_health_idle_interval()) {
+        if (!probe_worker_gpu_liveness(worker_id, GpuProbeReason::IDLE)) {
+          exit_gpu_unhealthy(worker_id, "idle probe");
+        }
+        last_idle_probe = now;
+      }
       usleep(10000);
       continue;
     }
@@ -761,6 +872,11 @@ void worker_process(int worker_id)
     JobQueueEntry& job = job_queue[job_slot];
     std::string job_id(job.job_id);
     uint32_t problem_category = job.problem_category;
+
+    if (!probe_worker_gpu_liveness(worker_id, GpuProbeReason::BEFORE_JOB)) {
+      exit_gpu_unhealthy(worker_id, "pre-job probe");
+    }
+    last_idle_probe = std::chrono::steady_clock::now();
 
     if (job.cancelled) {
       SERVER_LOG_INFO("[Worker %d] Job cancelled before processing: %s", worker_id, job_id.c_str());

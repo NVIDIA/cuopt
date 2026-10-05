@@ -851,6 +851,67 @@ i_t remove_fixed_variables(f_t fixed_tolerance,
   return 0;
 }
 
+// Adds one slack column s_k per entry of `rows`; slack k has a single nonzero in row i = rows[k]:
+//   "<=" row (is_range = false):  a_i^T x + s_k = rhs_i,  s_k >= 0
+//   range row (is_range = true):  a_i^T x - s_k = 0,      lower[k] <= s_k <= upper[k]
+// - rows:        indices of the constraint rows of A that receive a slack.
+// - is_range:    selects the form above; the slack's entry in A is +1 or -1 respectively.
+// - lower/upper: bounds of each new slack, indexed like rows.
+// - new_slacks:  receives the column index of each new slack.
+// The slacks are inserted after the linear variables and before the cone variables, giving the
+// layout [linear | slacks | cone]; slacks have zero objective cost and empty rows/columns in Q.
+template <typename i_t, typename f_t>
+static void insert_slack_columns(lp_problem_t<i_t, f_t>& problem,
+                                 const std::vector<i_t>& rows,
+                                 bool is_range,
+                                 const std::vector<f_t>& lower,
+                                 const std::vector<f_t>& upper,
+                                 std::vector<i_t>& new_slacks)
+{
+  const i_t num_new = static_cast<i_t>(rows.size());
+  if (num_new == 0) { return; }
+  const i_t old_num_cols = problem.num_cols;
+  const i_t insert_at    = linear_variable_count(problem);
+  const i_t num_cols     = old_num_cols + num_new;
+
+  csc_matrix_t<i_t, f_t>& A = problem.A;
+  const i_t nz_before       = A.col_start[insert_at];
+  // Insert the pre-slack columns into the matrix A
+  A.i.insert(A.i.begin() + nz_before, rows.begin(), rows.end());
+  A.x.insert(A.x.begin() + nz_before, num_new, is_range ? f_t(-1) : f_t(1));
+  A.col_start.insert(A.col_start.begin() + insert_at, num_new, 0);
+  for (i_t k = 0; k < num_new; ++k) {
+    A.col_start[insert_at + k] = nz_before + k;
+    new_slacks.push_back(insert_at + k);
+  }
+  for (i_t j = insert_at + num_new; j <= num_cols; ++j) {
+    A.col_start[j] += num_new;
+  }
+  A.n = num_cols;
+  A.nz_max += num_new;
+  // Insert the slack columns into the objective, lower, and upper bound vectors
+  problem.objective.insert(problem.objective.begin() + insert_at, num_new, f_t(0));
+  problem.lower.insert(problem.lower.begin() + insert_at, lower.begin(), lower.end());
+  problem.upper.insert(problem.upper.begin() + insert_at, upper.begin(), upper.end());
+
+  if (problem.Q.n > 0) {
+    // Slacks have empty Q rows and columns: add the empty rows, then shift the column indices
+    // that point past them.
+    csr_matrix_t<i_t, f_t>& Q = problem.Q;
+    const i_t q_start         = Q.row_start[insert_at];
+    Q.row_start.insert(Q.row_start.begin() + insert_at + 1, num_new, q_start);
+    for (i_t& col : Q.j) {
+      if (col >= insert_at) { col += num_new; }
+    }
+    Q.m = num_cols;
+    Q.n = num_cols;
+  }
+
+  problem.num_cols = num_cols;
+  // Update the cone variable start index for second-order cone constraints
+  if (!problem.second_order_cone_dims.empty()) { problem.cone_var_start += num_new; }
+}
+
 template <typename i_t, typename f_t>
 i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
                                std::vector<char>& row_sense,
@@ -864,144 +925,21 @@ i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
   }
   // We must convert rows in the form: a_i^T x <= beta
   // into: a_i^T x + s_i = beta, s_i >= 0
-
-  if (!problem.second_order_cone_dims.empty()) {
-    const i_t old_num_cols   = problem.num_cols;
-    const i_t linear_cols    = linear_variable_count(problem);
-    const i_t num_slacks     = less_rows;
-    const i_t num_cols       = old_num_cols + num_slacks;
-    const i_t old_nnz        = problem.A.col_start[old_num_cols];
-    const i_t nnz            = old_nnz + num_slacks;
-    const i_t new_cone_start = linear_cols + num_slacks;
-
-    auto old_A = problem.A;
-    csc_matrix_t<i_t, f_t> expanded_A(problem.A.m, num_cols, nnz);
-
-    std::vector<f_t> objective(num_cols, 0.0);
-    std::vector<f_t> lower(num_cols, 0.0);
-    std::vector<f_t> upper(num_cols, INFINITY);
-    std::vector<i_t> old_to_new(old_num_cols, -1);
-
-    for (i_t j = 0; j < linear_cols; ++j) {
-      old_to_new[j] = j;
-      objective[j]  = problem.objective[j];
-      lower[j]      = problem.lower[j];
-      upper[j]      = problem.upper[j];
-    }
-    for (i_t j = linear_cols; j < old_num_cols; ++j) {
-      old_to_new[j]            = j + num_slacks;
-      objective[old_to_new[j]] = problem.objective[j];
-      lower[old_to_new[j]]     = problem.lower[j];
-      upper[old_to_new[j]]     = problem.upper[j];
-    }
-
-    i_t nz = 0;
-    for (i_t j = 0; j < linear_cols; ++j) {
-      expanded_A.col_start[j] = nz;
-      for (i_t p = old_A.col_start[j]; p < old_A.col_start[j + 1]; ++p) {
-        expanded_A.i[nz] = old_A.i[p];
-        expanded_A.x[nz] = old_A.x[p];
-        ++nz;
-      }
-    }
-
-    i_t slack_col = linear_cols;
-    for (i_t i = 0; i < problem.num_rows; i++) {
-      if (row_sense[i] == 'L') {
-        expanded_A.col_start[slack_col] = nz;
-        expanded_A.i[nz]                = i;
-        expanded_A.x[nz]                = 1.0;
-        new_slacks.push_back(slack_col);
-        row_sense[i] = 'E';
-        ++slack_col;
-        ++nz;
-        --less_rows;
-      }
-    }
-
-    for (i_t j = linear_cols; j < old_num_cols; ++j) {
-      i_t new_j                   = old_to_new[j];
-      expanded_A.col_start[new_j] = nz;
-      for (i_t p = old_A.col_start[j]; p < old_A.col_start[j + 1]; ++p) {
-        expanded_A.i[nz] = old_A.i[p];
-        expanded_A.x[nz] = old_A.x[p];
-        ++nz;
-      }
-    }
-    expanded_A.col_start[num_cols] = nz;
-    assert(less_rows == 0);
-    assert(slack_col == new_cone_start);
-    assert(nz == nnz);
-
-    if (problem.Q.n > 0) {
-      const auto old_Q = problem.Q;
-      const i_t q_nnz  = old_Q.row_start[old_num_cols];
-
-      problem.Q.row_start.assign(num_cols + 1, 0);
-      for (i_t row = 0; row < old_num_cols; ++row) {
-        i_t new_row                      = old_to_new[row];
-        problem.Q.row_start[new_row + 1] = old_Q.row_start[row + 1] - old_Q.row_start[row];
-      }
-      for (i_t row = 0; row < num_cols; ++row) {
-        problem.Q.row_start[row + 1] += problem.Q.row_start[row];
-      }
-
-      problem.Q.j.resize(q_nnz);
-      problem.Q.x.resize(q_nnz);
-      auto row_starts = problem.Q.row_start;
-      for (i_t row = 0; row < old_num_cols; ++row) {
-        i_t new_row = old_to_new[row];
-        for (i_t p = old_Q.row_start[row]; p < old_Q.row_start[row + 1]; ++p) {
-          problem.Q.j[row_starts[new_row]] = old_to_new[old_Q.j[p]];
-          problem.Q.x[row_starts[new_row]] = old_Q.x[p];
-          ++row_starts[new_row];
-        }
-      }
-      problem.Q.m      = num_cols;
-      problem.Q.n      = num_cols;
-      problem.Q.nz_max = q_nnz;
-    }
-
-    problem.A              = expanded_A;
-    problem.A.n            = num_cols;
-    problem.objective      = objective;
-    problem.lower          = lower;
-    problem.upper          = upper;
-    problem.num_cols       = num_cols;
-    problem.cone_var_start = new_cone_start;
-    return 0;
-  }
-
-  i_t num_cols = problem.num_cols + less_rows;
-  i_t nnz      = problem.A.col_start[problem.num_cols] + less_rows;
-  problem.A.col_start.resize(num_cols + 1);
-  problem.A.i.resize(nnz);
-  problem.A.x.resize(nnz);
-  problem.lower.resize(num_cols);
-  problem.upper.resize(num_cols);
-  problem.objective.resize(num_cols);
-
-  i_t p = problem.A.col_start[problem.num_cols];
-  i_t j = problem.num_cols;
+  std::vector<i_t> rows;
+  rows.reserve(less_rows);
   for (i_t i = 0; i < problem.num_rows; i++) {
     if (row_sense[i] == 'L') {
-      problem.lower[j]     = 0.0;
-      problem.upper[j]     = INFINITY;
-      problem.objective[j] = 0.0;
-      problem.A.i[p]       = i;
-      problem.A.x[p]       = 1.0;
-      new_slacks.push_back(j);
-      problem.A.col_start[j++] = p++;
-      row_sense[i]             = 'E';
-      less_rows--;
+      rows.push_back(i);
+      row_sense[i] = 'E';
     }
   }
-  problem.A.col_start[num_cols] = p;
-  assert(less_rows == 0);
-  assert(p == nnz);
-  problem.A.n      = num_cols;
-  problem.num_cols = num_cols;
 
+  insert_slack_columns(problem,
+                       rows,
+                       false,
+                       std::vector<f_t>(rows.size(), 0.0),
+                       std::vector<f_t>(rows.size(), INFINITY),
+                       new_slacks);
   return 0;
 }
 
@@ -1074,23 +1012,17 @@ i_t convert_range_rows(const user_problem_t<i_t, f_t>& user_problem,
   //
   // The values of h_i and u_i are determined by the b_i (RHS) and r_i (RANGES)
   // associated with the ith constraint as well as the row sense
-  i_t num_cols       = problem.num_cols + user_problem.num_range_rows;
-  i_t num_range_rows = user_problem.num_range_rows;
-  i_t nnz            = problem.A.col_start[problem.num_cols] + num_range_rows;
-  problem.A.col_start.resize(num_cols + 1);
-  problem.A.i.resize(nnz);
-  problem.A.x.resize(nnz);
-  problem.lower.resize(num_cols);
-  problem.upper.resize(num_cols);
-  problem.objective.resize(num_cols);
-
-  i_t p = problem.A.col_start[problem.num_cols];
-  i_t j = problem.num_cols;
+  const i_t num_range_rows = user_problem.num_range_rows;
+  std::vector<i_t> rows(num_range_rows);
+  std::vector<f_t> lower(num_range_rows);
+  std::vector<f_t> upper(num_range_rows);
   for (i_t k = 0; k < num_range_rows; k++) {
     const i_t i         = user_problem.range_rows[k];
     const f_t r         = user_problem.range_value[k];
     const f_t b         = problem.rhs[i];
-    auto [lower, upper] = get_range_bounds_from_sense(row_sense[i], b, r);
+    const auto [lo, hi] = get_range_bounds_from_sense(row_sense[i], b, r);
+    lower[k]            = lo;
+    upper[k]            = hi;
     if (row_sense[i] == 'L') {
       less_rows--;
       equal_rows++;
@@ -1098,21 +1030,11 @@ i_t convert_range_rows(const user_problem_t<i_t, f_t>& user_problem,
       greater_rows--;
       equal_rows++;
     }
-    problem.lower[j]     = lower;
-    problem.upper[j]     = upper;
-    problem.objective[j] = 0.0;
-    problem.A.i[p]       = i;
-    problem.A.x[p]       = -1.0;
-    new_slacks.push_back(j);
-    problem.A.col_start[j++] = p++;
-    problem.rhs[i]           = 0.0;
-    row_sense[i]             = 'E';
+    rows[k]        = i;
+    problem.rhs[i] = 0.0;
+    row_sense[i]   = 'E';
   }
-  problem.A.col_start[num_cols] = p;
-  assert(p == nnz);
-  problem.A.n      = num_cols;
-  problem.num_cols = num_cols;
-
+  insert_slack_columns(problem, rows, true, lower, upper, new_slacks);
   return 0;
 }
 
@@ -1327,6 +1249,18 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   problem.cone_var_start         = user_problem.cone_var_start;
   problem.second_order_cone_dims = user_problem.second_order_cone_dims;
 
+  if (user_problem.Q_values.size() > 0) {
+    settings.log.debug("Converting problem with %d quadratic nonzeros\n",
+                       user_problem.Q_values.size());
+    problem.Q.m      = user_problem.num_cols;
+    problem.Q.n      = user_problem.num_cols;
+    problem.Q.nz_max = user_problem.Q_values.size();
+    problem.Q.row_start.assign(user_problem.Q_offsets.begin(),
+                               user_problem.Q_offsets.begin() + user_problem.num_cols + 1);
+    problem.Q.j = user_problem.Q_indices;
+    problem.Q.x = user_problem.Q_values;
+  }
+
   // Make a copy of row_sense so we can modify it
   std::vector<char> row_sense = user_problem.row_sense;
 
@@ -1532,26 +1466,6 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 
   if (less_rows > 0) {
     convert_less_than_to_equal(user_problem, row_sense, problem, less_rows, new_slacks);
-  }
-
-  if (user_problem.Q_values.size() > 0) {
-    settings.log.debug("Converting problem with %d quadratic nonzeros\n",
-                       user_problem.Q_values.size());
-    settings.log.debug(
-      "problem.num_cols: %d user_problem.num_cols: %d\n", problem.num_cols, user_problem.num_cols);
-    problem.Q.m      = problem.num_cols;
-    problem.Q.n      = problem.num_cols;
-    problem.Q.nz_max = user_problem.Q_values.size();
-    problem.Q.row_start.resize(problem.num_cols + 1);
-    for (i_t j = 0; j < user_problem.num_cols; j++) {
-      problem.Q.row_start[j] = user_problem.Q_offsets[j];
-    }
-    i_t nz = user_problem.Q_offsets[user_problem.num_cols];
-    for (i_t j = user_problem.num_cols; j <= problem.num_cols; j++) {
-      problem.Q.row_start[j] = nz;
-    }
-    problem.Q.j = user_problem.Q_indices;
-    problem.Q.x = user_problem.Q_values;
   }
 
   // Add artifical variables

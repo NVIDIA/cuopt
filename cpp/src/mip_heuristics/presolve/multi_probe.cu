@@ -15,7 +15,6 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/device_utils.cuh>
 
-#include <cub/cub.cuh>
 #include "bounds_presolve_helpers.cuh"
 #include "bounds_update_helpers.cuh"
 #include "multi_probe.cuh"
