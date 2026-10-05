@@ -2577,6 +2577,9 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
 {
+  cuopt_expects(!batch_mode_,
+                cuopt::error_type_t::ValidationError,
+                "project_initial_primal_transform() is a dispatch helper for single/multi-GPU PDLP. It is not supported in batch mode");
   using f_t2 = typename type_2<f_t>::type;
   if (is_distributed_master()) {
     multi_gpu_engine->for_each_shard(
