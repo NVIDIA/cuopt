@@ -2607,11 +2607,12 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   if (!is_distributed_master()) {
     // Update FP32 matrix copies for mixed precision SpMV after scaling
     pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
+    pdhg_solver_.redirect_reduced_csr_structure(*problem_ptr);
 
     // Redirect cuSPARSE descriptors to use the original problem's structural data (offsets,
     // indices), then free the duplicated structural vectors from the scaled copy to save device
     // memory.
-    pdhg_solver_.redirect_csr_structure(*problem_ptr);
+    pdhg_solver_.get_cusparse_view().redirect_cusparse_csr_structure_pointers(*problem_ptr);
     op_problem_scaled_.variables.resize(0, stream_view_);
     op_problem_scaled_.offsets.resize(0, stream_view_);
     op_problem_scaled_.reverse_constraints.resize(0, stream_view_);

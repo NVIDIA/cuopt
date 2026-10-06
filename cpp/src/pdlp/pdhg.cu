@@ -1754,10 +1754,9 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
 }
 
 template <typename i_t, typename f_t>
-void pdhg_solver_t<i_t, f_t>::redirect_csr_structure(
+void pdhg_solver_t<i_t, f_t>::redirect_reduced_csr_structure(
   const mip::problem_t<i_t, f_t>& original_problem)
 {
-  cusparse_view_.redirect_cusparse_csr_structure_pointers(original_problem);
   reduced_matrix_.redirect_csr_structure(original_problem);
 }
 
