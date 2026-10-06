@@ -20,7 +20,6 @@ pushd ./pulp || exit 1
 # Install PuLP in editable form so it uses the environment's cuopt (from PIP_CONSTRAINT)
 python -m pip install \
     --constraint "${PIP_CONSTRAINT}" \
-    --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
     pytest \
     -e .
 
