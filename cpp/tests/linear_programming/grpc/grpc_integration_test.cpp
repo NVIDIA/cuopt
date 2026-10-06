@@ -54,7 +54,9 @@
 #include "grpc_test_log_capture.hpp"
 
 #include <cuopt_remote_service.grpc.pb.h>
+#include <grpcpp/generic/generic_stub.h>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/support/byte_buffer.h>
 
 #include "grpc_service_mapper.hpp"
 
@@ -802,6 +804,42 @@ TEST_F(DefaultServerTests, ServerAcceptsConnections)
   EXPECT_TRUE(log_capture.client_log_contains("Connected successfully"))
     << "Expected success log. Logs:\n"
     << log_capture.get_client_logs();
+}
+
+// Kubelet grpc probes call grpc.health.v1.Health/Check with an empty service
+// name. The request has to be a real empty buffer: a default ByteBuffer is
+// null, and the health service rejects that as "could not parse request".
+// HealthCheckResponse{status: SERVING} is field 1, varint 1.
+TEST_F(DefaultServerTests, StandardHealthCheckServing)
+{
+  auto channel =
+    grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+  grpc::GenericStub stub(channel);
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  grpc::Slice empty_request;
+  grpc::ByteBuffer request(&empty_request, 1);
+  grpc::ByteBuffer response;
+  grpc::Status status;
+  grpc::CompletionQueue cq;
+  auto call = stub.PrepareUnaryCall(&ctx, "/grpc.health.v1.Health/Check", request, &cq);
+  ASSERT_NE(call, nullptr);
+  call->StartCall();
+  call->Finish(&response, &status, reinterpret_cast<void*>(1));
+  void* tag = nullptr;
+  bool ok   = false;
+  ASSERT_TRUE(cq.Next(&tag, &ok));
+  EXPECT_TRUE(ok);
+  EXPECT_EQ(tag, reinterpret_cast<void*>(1));
+  EXPECT_TRUE(status.ok()) << status.error_code() << " " << status.error_message();
+
+  std::vector<grpc::Slice> slices;
+  ASSERT_TRUE(response.Dump(&slices).ok());
+  std::string payload;
+  for (const auto& slice : slices) {
+    payload.append(reinterpret_cast<const char*>(slice.begin()), slice.size());
+  }
+  EXPECT_EQ(payload, std::string("\x08\x01", 2));
 }
 
 // -- Status / Cancel / Delete on nonexistent jobs --
@@ -2210,9 +2248,9 @@ TEST_F(ErrorRecoveryTests, PreJobGpuHealthFailureShutsDownWithoutRespawn)
   auto client = create_client();
   ASSERT_NE(client, nullptr);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 5.0;
-  auto submitted      = client->submit_mip(create_simple_mip(), settings);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 5.0);
+  auto submitted = client->submit_mip(create_simple_mip(), settings);
   ASSERT_TRUE(submitted.success);
 
   // start_server() returns when the parent accepts RPCs, not when the worker
