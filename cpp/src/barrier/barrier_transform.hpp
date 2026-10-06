@@ -37,7 +37,7 @@ struct cone_head_bound_t {
  * User-to-barrier transform retained on barrier_cache_t after Optimal:
  * convert / presolve / scaling, plus the scaled LP.
  * Enough to crush new linear objective or RHS data from the original problem into
- * barrier coordinates and to uncrush a solution without rerunning those algorithms.
+ * presolved space and to uncrush a solution without rerunning those algorithms.
  */
 struct barrier_transform_t {
   int user_num_cols{0};
@@ -75,8 +75,6 @@ struct barrier_transform_t {
   std::vector<double> rhs_shift;
   // False when range rows or folding put the user RHS somewhere other than barrier_lp->rhs.
   bool rhs_update_supported{false};
-  // Absolute primal tolerance of the first solve, used to test rows presolve dropped as empty.
-  double primal_tol{1e-6};
   std::unique_ptr<cuopt::mathematical_optimization::simplex::lp_problem_t<int, double>> barrier_lp;
   // CSC Q with slack columns, as consumed by iteration_data_t. Not the same object as
   // barrier_lp->Q.
@@ -437,17 +435,12 @@ inline crush_rhs_status_t crush_user_rhs(
                                                        : expanded[static_cast<std::size_t>(i)];
   }
 
-  // Dropped rows were empty, so the new RHS never reaches the barrier: 'E' needs 0 == b_i and
-  // the rest need 0 <= b_i.
+  // Presolve drops only empty equalities, and only when the RHS is exactly 0.
   for (int i : xf.presolve_info.removed_constraints) {
     if (i < 0 || i >= xf.user_num_rows) {
       return invalid("update_rhs: removed constraint index is out of range.");
     }
-    double const converted_rhs = original[static_cast<std::size_t>(i)];
-    bool const infeasible      = xf.row_sense[static_cast<std::size_t>(i)] == 'E'
-                                   ? std::abs(converted_rhs) > xf.primal_tol
-                                   : converted_rhs < -xf.primal_tol;
-    if (infeasible) { return crush_rhs_status_t::infeasible; }
+    if (original[static_cast<std::size_t>(i)] != 0.0) { return crush_rhs_status_t::infeasible; }
   }
 
   // Empty remaining_constraints means either no empty-row pass ran, or every row was dropped
