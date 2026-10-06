@@ -822,6 +822,7 @@ pdlp_settings:
     # cpp/include/cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh.
   - hyper_params:
     - do_curtis_reid_scaling:
+        param_name: pdlp_hyper_enable_curtis_reid_scaling
         description: >-
           Whether Curtis-Reid prescaling runs before Ruiz/Pock-Chambolle
           matrix scaling.
@@ -966,8 +967,8 @@ mip_settings:
       param_name: mip_symmetry
       # Symmetry-detection level (dejavu). Valid: -1 (default), 0 (off),
       # 1 (orbital fixing), 2 (orbital fixing + lexical reduction). The
-      # mapper clamps out-of-range values to -1 to match the local-solve
-      # range check in cpp/src/math_optimization/solver_settings.cu.
+      # deprecated path calls set_parameter(), which rejects a value outside
+      # the range registered in cpp/src/math_optimization/solver_settings.cu.
       description: >-
         Symmetry detection and handling. -1 automatic, 0 disabled, 1 orbital
         fixing, 2 orbital fixing plus lexical reduction.

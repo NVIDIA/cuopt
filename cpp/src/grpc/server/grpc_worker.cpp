@@ -229,10 +229,8 @@ bool apply_lp_job_settings(DeserializedJob& dj,
                            const cuopt::remote::PDLPSolverSettings& pb_settings)
 {
   try {
-    map_proto_to_pdlp_settings(pb_settings,
-                               dj.settings.get_pdlp_settings(),
-                               dj.problem.get_n_variables(),
-                               dj.problem.get_n_constraints());
+    map_proto_to_pdlp_settings(
+      pb_settings, dj.settings, dj.problem.get_n_variables(), dj.problem.get_n_constraints());
   } catch (const std::exception& e) {
     dj.error_message = e.what();
     return false;
@@ -484,7 +482,7 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
       if (!apply_lp_job_settings(dj, chunked_header.lp_settings())) { return; }
     }
     if (chunked_header.has_mip_settings()) {
-      map_proto_to_mip_settings(chunked_header.mip_settings(), dj.settings.get_mip_settings());
+      map_proto_to_mip_settings(chunked_header.mip_settings(), dj.settings);
       if (!apply_job_parameters(dj, chunked_header.mip_settings())) { return; }
     }
   } else {
@@ -512,7 +510,7 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
       const auto& req = submit_request.mip_request();
       SERVER_LOG_INFO("[Worker] IPC path: UNARY MIP (%zu bytes)", request_data.size());
       map_proto_to_problem(req.problem(), dj.problem);
-      map_proto_to_mip_settings(req.settings(), dj.settings.get_mip_settings());
+      map_proto_to_mip_settings(req.settings(), dj.settings);
       if (!apply_job_parameters(dj, req.settings())) { return; }
       dj.enable_incumbents    = req.has_enable_incumbents() ? req.enable_incumbents() : true;
       dj.enable_set_incumbent = req.has_enable_set_incumbent() ? req.enable_set_incumbent() : false;

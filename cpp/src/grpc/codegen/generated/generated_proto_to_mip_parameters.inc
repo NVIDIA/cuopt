@@ -3,149 +3,149 @@
 // DO NOT EDIT — regenerate with: ./build.sh codegen
 // ============================================================================
   if (pb_settings.has_time_limit()) {
-    settings.time_limit = pb_settings.time_limit();
+    settings.set_parameter("time_limit", static_cast<f_t>(pb_settings.time_limit()));
   }
   if (pb_settings.has_relative_mip_gap()) {
-    settings.tolerances.relative_mip_gap = pb_settings.relative_mip_gap();
+    settings.set_parameter("mip_relative_gap", static_cast<f_t>(pb_settings.relative_mip_gap()));
   }
   if (pb_settings.has_absolute_mip_gap()) {
-    settings.tolerances.absolute_mip_gap = pb_settings.absolute_mip_gap();
+    settings.set_parameter("mip_absolute_gap", static_cast<f_t>(pb_settings.absolute_mip_gap()));
   }
   if (pb_settings.has_integrality_tolerance()) {
-    settings.tolerances.integrality_tolerance = pb_settings.integrality_tolerance();
+    settings.set_parameter("mip_integrality_tolerance", static_cast<f_t>(pb_settings.integrality_tolerance()));
   }
   if (pb_settings.has_absolute_tolerance()) {
-    settings.tolerances.absolute_tolerance = pb_settings.absolute_tolerance();
+    settings.set_parameter("mip_absolute_tolerance", static_cast<f_t>(pb_settings.absolute_tolerance()));
   }
   if (pb_settings.has_relative_tolerance()) {
-    settings.tolerances.relative_tolerance = pb_settings.relative_tolerance();
+    settings.set_parameter("mip_relative_tolerance", static_cast<f_t>(pb_settings.relative_tolerance()));
   }
   if (pb_settings.has_log_to_console()) {
-    settings.log_to_console = pb_settings.log_to_console();
+    settings.set_parameter("log_to_console", pb_settings.log_to_console());
   }
-  settings.heuristics_only = pb_settings.heuristics_only();
+  settings.set_parameter("mip_heuristics_only", pb_settings.heuristics_only());
   if (pb_settings.has_num_cpu_threads()) {
-    settings.num_cpu_threads = pb_settings.num_cpu_threads();
+    settings.set_parameter("num_cpu_threads", static_cast<i_t>(pb_settings.num_cpu_threads()));
   }
   if (pb_settings.has_num_gpus()) {
-    settings.num_gpus = pb_settings.num_gpus();
+    settings.set_parameter("num_gpus", static_cast<i_t>(pb_settings.num_gpus()));
   }
   if (pb_settings.has_presolver()) {
-    settings.presolver = static_cast<presolver_t>(pb_settings.presolver());
+    settings.set_parameter("presolve", static_cast<i_t>(static_cast<presolver_t>(pb_settings.presolver())));
   }
   if (pb_settings.has_mip_scaling()) {
-    settings.mip_scaling = pb_settings.mip_scaling();
+    settings.set_parameter("mip_scaling", static_cast<i_t>(pb_settings.mip_scaling()));
   }
   if (pb_settings.has_symmetry()) {
-    settings.symmetry = pb_settings.symmetry();
+    settings.set_parameter("mip_symmetry", static_cast<i_t>(pb_settings.symmetry()));
   }
   if (pb_settings.has_work_limit()) {
-    settings.work_limit = pb_settings.work_limit();
+    settings.set_parameter("work_limit", static_cast<f_t>(pb_settings.work_limit()));
   }
   if (pb_settings.has_node_limit()) {
     if (pb_settings.node_limit() >= 0) {
-      settings.node_limit = static_cast<i_t>(pb_settings.node_limit());
+      settings.set_parameter("node_limit", static_cast<i_t>(static_cast<i_t>(pb_settings.node_limit())));
     }
   }
   if (pb_settings.has_reliability_branching()) {
-    settings.reliability_branching = pb_settings.reliability_branching();
+    settings.set_parameter("mip_reliability_branching", static_cast<i_t>(pb_settings.reliability_branching()));
   }
-  settings.mip_batch_pdlp_strong_branching = pb_settings.mip_batch_pdlp_strong_branching();
-  settings.mip_batch_pdlp_reliability_branching = pb_settings.mip_batch_pdlp_reliability_branching();
+  settings.set_parameter("mip_batch_pdlp_strong_branching", static_cast<i_t>(pb_settings.mip_batch_pdlp_strong_branching()));
+  settings.set_parameter("mip_batch_pdlp_reliability_branching", static_cast<i_t>(pb_settings.mip_batch_pdlp_reliability_branching()));
   if (pb_settings.has_strong_branching_simplex_iteration_limit()) {
-    settings.strong_branching_simplex_iteration_limit = pb_settings.strong_branching_simplex_iteration_limit();
+    settings.set_parameter("mip_strong_branching_simplex_iteration_limit", static_cast<i_t>(pb_settings.strong_branching_simplex_iteration_limit()));
   }
   if (pb_settings.has_max_cut_passes()) {
-    settings.max_cut_passes = pb_settings.max_cut_passes();
+    settings.set_parameter("mip_cut_passes", static_cast<i_t>(pb_settings.max_cut_passes()));
   }
   if (pb_settings.has_mir_cuts()) {
-    settings.mir_cuts = pb_settings.mir_cuts();
+    settings.set_parameter("mip_mixed_integer_rounding_cuts", static_cast<i_t>(pb_settings.mir_cuts()));
   }
   if (pb_settings.has_mixed_integer_gomory_cuts()) {
-    settings.mixed_integer_gomory_cuts = pb_settings.mixed_integer_gomory_cuts();
+    settings.set_parameter("mip_mixed_integer_gomory_cuts", static_cast<i_t>(pb_settings.mixed_integer_gomory_cuts()));
   }
   if (pb_settings.has_knapsack_cuts()) {
-    settings.knapsack_cuts = pb_settings.knapsack_cuts();
+    settings.set_parameter("mip_knapsack_cuts", static_cast<i_t>(pb_settings.knapsack_cuts()));
   }
   if (pb_settings.has_clique_cuts()) {
-    settings.clique_cuts = pb_settings.clique_cuts();
+    settings.set_parameter("mip_clique_cuts", static_cast<i_t>(pb_settings.clique_cuts()));
   }
   if (pb_settings.has_zero_half_cuts()) {
-    settings.zero_half_cuts = pb_settings.zero_half_cuts();
+    settings.set_parameter("mip_zero_half_cuts", static_cast<i_t>(pb_settings.zero_half_cuts()));
   }
   if (pb_settings.has_implied_bound_cuts()) {
-    settings.implied_bound_cuts = pb_settings.implied_bound_cuts();
+    settings.set_parameter("mip_implied_bound_cuts", static_cast<i_t>(pb_settings.implied_bound_cuts()));
   }
   if (pb_settings.has_strong_chvatal_gomory_cuts()) {
-    settings.strong_chvatal_gomory_cuts = pb_settings.strong_chvatal_gomory_cuts();
+    settings.set_parameter("mip_strong_chvatal_gomory_cuts", static_cast<i_t>(pb_settings.strong_chvatal_gomory_cuts()));
   }
   if (pb_settings.has_reduced_cost_strengthening()) {
-    settings.reduced_cost_strengthening = pb_settings.reduced_cost_strengthening();
+    settings.set_parameter("mip_reduced_cost_strengthening", static_cast<i_t>(pb_settings.reduced_cost_strengthening()));
   }
   if (pb_settings.has_cut_change_threshold()) {
-    settings.cut_change_threshold = pb_settings.cut_change_threshold();
+    settings.set_parameter("mip_cut_change_threshold", static_cast<f_t>(pb_settings.cut_change_threshold()));
   }
   if (pb_settings.has_cut_min_orthogonality()) {
-    settings.cut_min_orthogonality = pb_settings.cut_min_orthogonality();
+    settings.set_parameter("mip_cut_min_orthogonality", static_cast<f_t>(pb_settings.cut_min_orthogonality()));
   }
-  settings.determinism_mode = pb_settings.determinism_mode();
+  settings.set_parameter("mip_determinism_mode", static_cast<i_t>(pb_settings.determinism_mode()));
   if (pb_settings.has_seed()) {
-    settings.seed = pb_settings.seed();
+    settings.set_parameter("random_seed", static_cast<i_t>(pb_settings.seed()));
   }
   if (pb_settings.has_probing()) {
-    settings.probing = pb_settings.probing();
+    settings.set_parameter("mip_probing", pb_settings.probing());
   }
   if (pb_settings.has_semi_continuous_big_m()) {
-    settings.semi_continuous_big_m = pb_settings.semi_continuous_big_m();
+    settings.set_parameter("mip_semi_continuous_big_m", static_cast<f_t>(pb_settings.semi_continuous_big_m()));
   }
   if (pb_settings.has_population_size()) {
-    settings.heuristic_params.population_size = pb_settings.population_size();
+    settings.set_parameter("mip_hyper_heuristic_population_size", static_cast<i_t>(pb_settings.population_size()));
   }
   if (pb_settings.has_num_cpufj_threads()) {
-    settings.heuristic_params.num_cpufj_threads = pb_settings.num_cpufj_threads();
+    settings.set_parameter("mip_hyper_heuristic_num_cpufj_threads", static_cast<i_t>(pb_settings.num_cpufj_threads()));
   }
   if (pb_settings.has_root_lp_time_ratio()) {
-    settings.heuristic_params.root_lp_time_ratio = pb_settings.root_lp_time_ratio();
+    settings.set_parameter("mip_hyper_heuristic_root_lp_time_ratio", static_cast<f_t>(pb_settings.root_lp_time_ratio()));
   }
   if (pb_settings.has_root_lp_max_time()) {
-    settings.heuristic_params.root_lp_max_time = pb_settings.root_lp_max_time();
+    settings.set_parameter("mip_hyper_heuristic_root_lp_max_time", static_cast<f_t>(pb_settings.root_lp_max_time()));
   }
   if (pb_settings.has_rins_time_limit()) {
-    settings.heuristic_params.rins_time_limit = pb_settings.rins_time_limit();
+    settings.set_parameter("mip_hyper_heuristic_rins_time_limit", static_cast<f_t>(pb_settings.rins_time_limit()));
   }
   if (pb_settings.has_rins_max_time_limit()) {
-    settings.heuristic_params.rins_max_time_limit = pb_settings.rins_max_time_limit();
+    settings.set_parameter("mip_hyper_heuristic_rins_max_time_limit", static_cast<f_t>(pb_settings.rins_max_time_limit()));
   }
   if (pb_settings.has_rins_fix_rate()) {
-    settings.heuristic_params.rins_fix_rate = pb_settings.rins_fix_rate();
+    settings.set_parameter("mip_hyper_heuristic_rins_fix_rate", static_cast<f_t>(pb_settings.rins_fix_rate()));
   }
   if (pb_settings.has_stagnation_trigger()) {
-    settings.heuristic_params.stagnation_trigger = pb_settings.stagnation_trigger();
+    settings.set_parameter("mip_hyper_heuristic_stagnation_trigger", static_cast<i_t>(pb_settings.stagnation_trigger()));
   }
   if (pb_settings.has_max_iterations_without_improvement()) {
-    settings.heuristic_params.max_iterations_without_improvement = pb_settings.max_iterations_without_improvement();
+    settings.set_parameter("mip_hyper_heuristic_max_iterations_without_improvement", static_cast<i_t>(pb_settings.max_iterations_without_improvement()));
   }
   if (pb_settings.has_initial_infeasibility_weight()) {
-    settings.heuristic_params.initial_infeasibility_weight = pb_settings.initial_infeasibility_weight();
+    settings.set_parameter("mip_hyper_heuristic_initial_infeasibility_weight", static_cast<f_t>(pb_settings.initial_infeasibility_weight()));
   }
   if (pb_settings.has_n_of_minimums_for_exit()) {
-    settings.heuristic_params.n_of_minimums_for_exit = pb_settings.n_of_minimums_for_exit();
+    settings.set_parameter("mip_hyper_heuristic_n_of_minimums_for_exit", static_cast<i_t>(pb_settings.n_of_minimums_for_exit()));
   }
   if (pb_settings.has_enabled_recombiners()) {
-    settings.heuristic_params.enabled_recombiners = pb_settings.enabled_recombiners();
+    settings.set_parameter("mip_hyper_heuristic_enabled_recombiners", static_cast<i_t>(pb_settings.enabled_recombiners()));
   }
   if (pb_settings.has_cycle_detection_length()) {
-    settings.heuristic_params.cycle_detection_length = pb_settings.cycle_detection_length();
+    settings.set_parameter("mip_hyper_heuristic_cycle_detection_length", static_cast<i_t>(pb_settings.cycle_detection_length()));
   }
   if (pb_settings.has_relaxed_lp_time_limit()) {
-    settings.heuristic_params.relaxed_lp_time_limit = pb_settings.relaxed_lp_time_limit();
+    settings.set_parameter("mip_hyper_heuristic_relaxed_lp_time_limit", static_cast<f_t>(pb_settings.relaxed_lp_time_limit()));
   }
   if (pb_settings.has_related_vars_time_limit()) {
-    settings.heuristic_params.related_vars_time_limit = pb_settings.related_vars_time_limit();
+    settings.set_parameter("mip_hyper_heuristic_related_vars_time_limit", static_cast<f_t>(pb_settings.related_vars_time_limit()));
   }
   if (pb_settings.has_presolve_max_rounds()) {
-    settings.heuristic_params.presolve_max_rounds = pb_settings.presolve_max_rounds();
+    settings.set_parameter("mip_hyper_heuristic_presolve_max_rounds", static_cast<i_t>(pb_settings.presolve_max_rounds()));
   }
   if (pb_settings.has_papilo_probing_max_badgesize()) {
-    settings.heuristic_params.papilo_probing_max_badgesize = pb_settings.papilo_probing_max_badgesize();
+    settings.set_parameter("mip_hyper_heuristic_papilo_probing_max_badgesize", static_cast<i_t>(pb_settings.papilo_probing_max_badgesize()));
   }

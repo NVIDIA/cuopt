@@ -7,7 +7,6 @@
 
 #include <cuopt/export.hpp>
 
-#include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt_remote.pb.h>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
@@ -257,38 +256,18 @@ size_t estimate_pdlp_warm_start_proto_size(const pdlp_solver_settings_t<i_t, f_t
 
 template <typename i_t, typename f_t>
 void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_settings,
-                                pdlp_solver_settings_t<i_t, f_t>& settings,
+                                solver_settings_t<i_t, f_t>& settings,
                                 i_t n_variables,
                                 i_t n_constraints)
 {
   // The serialized map decides this. set_parameter() on the sender's settings
-  // object does not fill it. Empty: older client, copy the deprecated typed
-  // fields. Non-empty: ignore every one of those fields, including any that a
-  // custom client wrote beside the map.
+  // object does not fill it. Empty: older client, apply each deprecated typed
+  // field with set_parameter(). Non-empty: ignore every one of those fields,
+  // including any that a custom client wrote beside the map.
   if (pb_settings.parameters().empty()) {
 #include "generated_proto_to_pdlp_parameters.inc"
-
-    // Post-decode input sanitization: the generated code does raw static_cast
-    // on int32 -> enum, which is UB for values outside the enum range. Clamp
-    // out-of-range values from buggy/untrusted encoders to safe defaults, and
-    // guard the int64 -> i_t conversion of iteration_limit against overflow.
-    {
-      auto pv = pb_settings.presolver();
-      if (pv < CUOPT_PRESOLVE_DEFAULT || pv > CUOPT_PRESOLVE_PSLP) {
-        settings.presolver = presolver_t::Default;
-      }
-    }
-    {
-      auto pv = pb_settings.pdlp_precision();
-      if (pv < CUOPT_PDLP_DEFAULT_PRECISION || pv > CUOPT_PDLP_MIXED_PRECISION) {
-        settings.pdlp_precision = pdlp_precision_t::DefaultPrecision;
-      }
-    }
-    if (pb_settings.iteration_limit() > static_cast<int64_t>(std::numeric_limits<i_t>::max())) {
-      settings.iteration_limit = std::numeric_limits<i_t>::max();
-    }
   }
-  read_settings_warm_start(pb_settings, settings, n_variables, n_constraints);
+  read_settings_warm_start(pb_settings, settings.get_pdlp_settings(), n_variables, n_constraints);
 }
 
 template <typename i_t, typename f_t>
@@ -307,34 +286,13 @@ void map_mip_client_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& set
 
 template <typename i_t, typename f_t>
 void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
-                               mip_solver_settings_t<i_t, f_t>& settings)
+                               solver_settings_t<i_t, f_t>& settings)
 {
   // The serialized map decides this. set_parameter() on the sender's settings
-  // object does not fill it. Empty: older client, copy the deprecated typed
-  // fields. Non-empty: ignore every one of those fields.
+  // object does not fill it. Empty: older client, apply each deprecated typed
+  // field with set_parameter(). Non-empty: ignore every one of those fields.
   if (pb_settings.parameters().empty()) {
 #include "generated_proto_to_mip_parameters.inc"
-
-    // Post-decode input sanitization: clamp out-of-range enum / mode values
-    // from buggy/untrusted encoders to safe defaults.
-    {
-      auto pv = pb_settings.presolver();
-      if (pv < CUOPT_PRESOLVE_DEFAULT || pv > CUOPT_PRESOLVE_PSLP) {
-        settings.presolver = presolver_t::Default;
-      }
-    }
-    {
-      auto sv = pb_settings.mip_scaling();
-      if (sv < CUOPT_MIP_SCALING_OFF || sv > CUOPT_MIP_SCALING_NO_OBJECTIVE) {
-        settings.mip_scaling = CUOPT_MIP_SCALING_ON;
-      }
-    }
-    {
-      // symmetry: valid range matches the local-solve binding in
-      // solver_settings.cu ({CUOPT_MIP_SYMMETRY, ..., -1, 2, -1}).
-      auto sv = pb_settings.symmetry();
-      if (sv < -1 || sv > 2) { settings.symmetry = -1; }
-    }
   }
   // Not a set_parameter() value, so it is applied for both client generations.
 #include "generated_proto_to_mip_non_parameters.inc"
@@ -413,7 +371,7 @@ template CUOPT_EXPORT void map_pdlp_client_settings_to_proto(
   cuopt::remote::PDLPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_pdlp_settings(
   const cuopt::remote::PDLPSolverSettings& pb_settings,
-  pdlp_solver_settings_t<int32_t, float>& settings,
+  solver_settings_t<int32_t, float>& settings,
   int32_t n_variables,
   int32_t n_constraints);
 template CUOPT_EXPORT size_t
@@ -425,8 +383,7 @@ template CUOPT_EXPORT void map_mip_client_settings_to_proto(
   const mip_solver_settings_t<int32_t, float>& settings,
   cuopt::remote::MIPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_mip_settings(
-  const cuopt::remote::MIPSolverSettings& pb_settings,
-  mip_solver_settings_t<int32_t, float>& settings);
+  const cuopt::remote::MIPSolverSettings& pb_settings, solver_settings_t<int32_t, float>& settings);
 template CUOPT_EXPORT void apply_parameter_overrides(
   solver_settings_t<int32_t, float>& settings,
   const google::protobuf::Map<std::string, std::string>& parameters);
@@ -444,7 +401,7 @@ template CUOPT_EXPORT void map_pdlp_client_settings_to_proto(
   cuopt::remote::PDLPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_pdlp_settings(
   const cuopt::remote::PDLPSolverSettings& pb_settings,
-  pdlp_solver_settings_t<int32_t, double>& settings,
+  solver_settings_t<int32_t, double>& settings,
   int32_t n_variables,
   int32_t n_constraints);
 template CUOPT_EXPORT size_t
@@ -457,7 +414,7 @@ template CUOPT_EXPORT void map_mip_client_settings_to_proto(
   cuopt::remote::MIPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_mip_settings(
   const cuopt::remote::MIPSolverSettings& pb_settings,
-  mip_solver_settings_t<int32_t, double>& settings);
+  solver_settings_t<int32_t, double>& settings);
 template CUOPT_EXPORT void apply_parameter_overrides(
   solver_settings_t<int32_t, double>& settings,
   const google::protobuf::Map<std::string, std::string>& parameters);

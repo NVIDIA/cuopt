@@ -2132,14 +2132,14 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
 
   // Branching
   orig.reliability_branching           = 32;
-  orig.mip_batch_pdlp_strong_branching = 16;
+  orig.mip_batch_pdlp_strong_branching = 2;
 
   // Cut configuration
   orig.max_cut_passes             = 20;
   orig.mir_cuts                   = 1;
-  orig.mixed_integer_gomory_cuts  = 2;
+  orig.mixed_integer_gomory_cuts  = 1;
   orig.knapsack_cuts              = 0;
-  orig.clique_cuts                = 3;
+  orig.clique_cuts                = 0;
   orig.strong_chvatal_gomory_cuts = -1;
   orig.reduced_cost_strengthening = 1;
   orig.cut_change_threshold       = 0.05;
@@ -2174,8 +2174,9 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   cuopt::remote::MIPSolverSettings pb;
   map_mip_settings_to_proto(orig, &pb);
 
-  mip_solver_settings_t<int32_t, double> restored;
-  map_proto_to_mip_settings(pb, restored);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_mip_settings(pb, restored_settings);
+  auto& restored = restored_settings.get_mip_settings();
 
   // Limits
   EXPECT_DOUBLE_EQ(restored.time_limit, 42.5);
@@ -2204,14 +2205,14 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
 
   // Branching
   EXPECT_EQ(restored.reliability_branching, 32);
-  EXPECT_EQ(restored.mip_batch_pdlp_strong_branching, 16);
+  EXPECT_EQ(restored.mip_batch_pdlp_strong_branching, 2);
 
   // Cut configuration
   EXPECT_EQ(restored.max_cut_passes, 20);
   EXPECT_EQ(restored.mir_cuts, 1);
-  EXPECT_EQ(restored.mixed_integer_gomory_cuts, 2);
+  EXPECT_EQ(restored.mixed_integer_gomory_cuts, 1);
   EXPECT_EQ(restored.knapsack_cuts, 0);
-  EXPECT_EQ(restored.clique_cuts, 3);
+  EXPECT_EQ(restored.clique_cuts, 0);
   EXPECT_EQ(restored.strong_chvatal_gomory_cuts, -1);
   EXPECT_EQ(restored.reduced_cost_strengthening, 1);
   EXPECT_DOUBLE_EQ(restored.cut_change_threshold, 0.05);
@@ -2241,19 +2242,19 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   EXPECT_DOUBLE_EQ(restored.heuristic_params.related_vars_time_limit, 45.0);
 }
 
-TEST(MapperRoundtrip, MIPSettingsSymmetryClampsOutOfRange)
+TEST(MapperRoundtrip, MIPSettingsSymmetryRejectsOutOfRange)
 {
-  // The local-solve binding (solver_settings.cu) restricts symmetry to [-1, 2].
-  // The mapper applies the same range to defend against buggy/untrusted clients.
+  // set_parameter() rejects a symmetry value outside [-1, 2] and does not
+  // write it.
   for (int bad_value : {-2, 3, 99, std::numeric_limits<int32_t>::min()}) {
     cuopt::remote::MIPSolverSettings pb;
     pb.set_symmetry(bad_value);
 
-    mip_solver_settings_t<int32_t, double> restored;
-    restored.symmetry = 0;  // confirm clamp actively overwrites
-    map_proto_to_mip_settings(pb, restored);
-
-    EXPECT_EQ(restored.symmetry, -1) << "symmetry=" << bad_value << " should clamp to -1 (default)";
+    solver_settings_t<int32_t, double> restored_settings;
+    restored_settings.get_mip_settings().symmetry = 0;
+    EXPECT_THROW(map_proto_to_mip_settings(pb, restored_settings), std::invalid_argument);
+    EXPECT_EQ(restored_settings.get_mip_settings().symmetry, 0)
+      << "symmetry=" << bad_value << " should be rejected before it is stored";
   }
 
   // In-range values pass through unchanged.
@@ -2261,10 +2262,10 @@ TEST(MapperRoundtrip, MIPSettingsSymmetryClampsOutOfRange)
     cuopt::remote::MIPSolverSettings pb;
     pb.set_symmetry(good_value);
 
-    mip_solver_settings_t<int32_t, double> restored;
-    map_proto_to_mip_settings(pb, restored);
+    solver_settings_t<int32_t, double> restored_settings;
+    map_proto_to_mip_settings(pb, restored_settings);
 
-    EXPECT_EQ(restored.symmetry, good_value)
+    EXPECT_EQ(restored_settings.get_mip_settings().symmetry, good_value)
       << "symmetry=" << good_value << " should round-trip unchanged";
   }
 }
@@ -2278,9 +2279,10 @@ TEST(MapperRoundtrip, MIPSettingsNodeLimitSentinel)
   map_mip_settings_to_proto(orig, &pb);
   EXPECT_EQ(pb.node_limit(), -1) << "max() should map to -1 sentinel in proto";
 
-  mip_solver_settings_t<int32_t, double> restored;
+  solver_settings_t<int32_t, double> restored_settings;
+  auto& restored      = restored_settings.get_mip_settings();
   restored.node_limit = 0;
-  map_proto_to_mip_settings(pb, restored);
+  map_proto_to_mip_settings(pb, restored_settings);
   EXPECT_EQ(restored.node_limit, 0) << "Negative sentinel should leave node_limit unchanged";
 }
 
@@ -2519,8 +2521,9 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   cuopt::remote::PDLPSolverSettings pb;
   map_pdlp_settings_to_proto(orig, &pb);
 
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings);
+  auto& restored = restored_settings.get_pdlp_settings();
 
   EXPECT_DOUBLE_EQ(restored.tolerances.absolute_gap_tolerance, 1e-7);
   EXPECT_DOUBLE_EQ(restored.tolerances.relative_gap_tolerance, 1e-6);
@@ -2593,9 +2596,9 @@ TEST(MapperRoundtrip, SettingsWarmStartRoundTrip)
   EXPECT_DOUBLE_EQ(pb.warm_start_data().initial_primal_weight(), 1.25);
   EXPECT_EQ(pb.warm_start_data().total_pdlp_iterations(), 7);
 
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored, 2, 1);
-  const auto& got = restored.get_cpu_pdlp_warm_start_data();
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings, 2, 1);
+  const auto& got = restored_settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data();
   ASSERT_TRUE(got.is_populated());
   EXPECT_DOUBLE_EQ(got.current_primal_solution_[0], 0.1);
   EXPECT_DOUBLE_EQ(got.current_dual_solution_[0], 0.3);
@@ -2629,9 +2632,9 @@ TEST(MapperRoundtrip, SettingsWarmStartRejectsBadPayload)
   cuopt::remote::PDLPSolverSettings pb;
   map_pdlp_settings_to_proto(orig, &pb);
 
-  pdlp_solver_settings_t<int32_t, double> restored;
+  solver_settings_t<int32_t, double> restored;
   EXPECT_THROW(map_proto_to_pdlp_settings(pb, restored, 3, 1), std::invalid_argument);
-  EXPECT_FALSE(restored.get_cpu_pdlp_warm_start_data().is_populated());
+  EXPECT_FALSE(restored.get_pdlp_settings().get_cpu_pdlp_warm_start_data().is_populated());
 
   pb.mutable_warm_start_data()->set_initial_primal_weight(std::numeric_limits<double>::quiet_NaN());
   EXPECT_THROW(map_proto_to_pdlp_settings(pb, restored, 2, 1), std::invalid_argument);
@@ -2642,7 +2645,7 @@ TEST(MapperRoundtrip, SettingsWarmStartRejectsBadPayload)
 
   pb.mutable_warm_start_data()->set_total_pdlp_iterations(-1);
   EXPECT_NO_THROW(map_proto_to_pdlp_settings(pb, restored, 2, 1));
-  EXPECT_EQ(restored.get_cpu_pdlp_warm_start_data().total_pdlp_iterations_, -1);
+  EXPECT_EQ(restored.get_pdlp_settings().get_cpu_pdlp_warm_start_data().total_pdlp_iterations_, -1);
 }
 
 TEST(MapperRoundtrip, ParameterMapEmptyLeavesTypedField)
@@ -2651,7 +2654,7 @@ TEST(MapperRoundtrip, ParameterMapEmptyLeavesTypedField)
   pb.set_time_limit(3.5);
 
   solver_settings_t<int32_t, double> settings;
-  map_proto_to_pdlp_settings(pb, settings.get_pdlp_settings());
+  map_proto_to_pdlp_settings(pb, settings);
   apply_parameter_overrides(settings, pb.parameters());
 
   EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().time_limit, 3.5);
@@ -2664,7 +2667,7 @@ TEST(MapperRoundtrip, ParameterMapOverridesDeprecatedFields)
   (*pb.mutable_parameters())[CUOPT_TIME_LIMIT] = "9.25";
 
   solver_settings_t<int32_t, double> settings;
-  map_proto_to_pdlp_settings(pb, settings.get_pdlp_settings());
+  map_proto_to_pdlp_settings(pb, settings);
   // The typed field is ignored while the map is non-empty.
   pdlp_solver_settings_t<int32_t, double> fresh;
   EXPECT_EQ(settings.get_pdlp_settings().time_limit, fresh.time_limit);
@@ -2688,7 +2691,7 @@ TEST(MapperRoundtrip, PartialParameterMapSetsOnlyNamedKeys)
 
   solver_settings_t<int32_t, double> settings;
   pdlp_solver_settings_t<int32_t, double> fresh_lp;
-  map_proto_to_pdlp_settings(lp, settings.get_pdlp_settings());
+  map_proto_to_pdlp_settings(lp, settings);
   apply_parameter_overrides(settings, lp.parameters());
 
   EXPECT_TRUE(settings.get_pdlp_settings().sequence_solve);
@@ -2705,7 +2708,7 @@ TEST(MapperRoundtrip, PartialParameterMapSetsOnlyNamedKeys)
 
   solver_settings_t<int32_t, double> mip_settings;
   mip_solver_settings_t<int32_t, double> fresh_mip;
-  map_proto_to_mip_settings(mip, mip_settings.get_mip_settings());
+  map_proto_to_mip_settings(mip, mip_settings);
   apply_parameter_overrides(mip_settings, mip.parameters());
 
   EXPECT_EQ(mip_settings.get_mip_settings().flow_cover_cuts, 1);
@@ -2772,7 +2775,7 @@ TEST(MapperRoundtrip, ParameterMapRoundTripsSolverSettings)
 
   settings_t dst;
   pdlp_solver_settings_t<int32_t, double> fresh;
-  map_proto_to_pdlp_settings(lp_pb, dst.get_pdlp_settings());
+  map_proto_to_pdlp_settings(lp_pb, dst);
   EXPECT_EQ(dst.get_pdlp_settings().time_limit, fresh.time_limit);
   apply_parameter_overrides(dst, lp_pb.parameters());
   EXPECT_DOUBLE_EQ(dst.get_pdlp_settings().time_limit, 4.5);
@@ -2785,7 +2788,7 @@ TEST(MapperRoundtrip, ParameterMapRoundTripsSolverSettings)
   EXPECT_EQ(mip_pb.parameters().at(CUOPT_MIP_FLOW_COVER_CUTS), "1");
 
   settings_t mip_dst;
-  map_proto_to_mip_settings(mip_pb, mip_dst.get_mip_settings());
+  map_proto_to_mip_settings(mip_pb, mip_dst);
   apply_parameter_overrides(mip_dst, mip_pb.parameters());
   EXPECT_EQ(mip_dst.get_mip_settings().flow_cover_cuts, 1);
 
@@ -2857,9 +2860,10 @@ TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
   map_pdlp_settings_to_proto(orig, &pb);
   EXPECT_EQ(pb.iteration_limit(), -1) << "max() should map to -1 sentinel";
 
-  pdlp_solver_settings_t<int32_t, double> restored;
+  solver_settings_t<int32_t, double> restored_settings;
+  auto& restored     = restored_settings.get_pdlp_settings();
   auto default_limit = restored.iteration_limit;
-  map_proto_to_pdlp_settings(pb, restored);
+  map_proto_to_pdlp_settings(pb, restored_settings);
   EXPECT_EQ(restored.iteration_limit, default_limit) << "Negative sentinel should keep default";
 }
 
@@ -2878,16 +2882,18 @@ TEST(MapperRoundtrip, MIPSettingsProbingOmittedPreservesDefault)
 {
   cuopt::remote::MIPSolverSettings pb;  // default-constructed: probing absent
 
-  mip_solver_settings_t<int32_t, double> restored;
+  solver_settings_t<int32_t, double> restored_settings;
+  auto& restored = restored_settings.get_mip_settings();
   ASSERT_TRUE(restored.probing) << "C++ default is expected to be true";
   restored.probing = false;  // confirm the guard actively skips the assignment
-  map_proto_to_mip_settings(pb, restored);
+  map_proto_to_mip_settings(pb, restored_settings);
   EXPECT_FALSE(restored.probing)
     << "Omitted optional bool must not overwrite the existing struct value; "
        "the in-class default would be restored only if the struct was fresh";
 
-  mip_solver_settings_t<int32_t, double> fresh;
-  map_proto_to_mip_settings(pb, fresh);
+  solver_settings_t<int32_t, double> fresh_settings;
+  map_proto_to_mip_settings(pb, fresh_settings);
+  auto& fresh = fresh_settings.get_mip_settings();
   EXPECT_TRUE(fresh.probing) << "Omitted optional bool must preserve the C++ default `true`";
 }
 
@@ -2897,18 +2903,19 @@ TEST(MapperRoundtrip, MIPSettingsProbingExplicitFalseRoundtrips)
   pb.set_probing(false);
   ASSERT_TRUE(pb.has_probing()) << "set_probing must mark presence on optional field";
 
-  mip_solver_settings_t<int32_t, double> restored;
-  map_proto_to_mip_settings(pb, restored);
-  EXPECT_FALSE(restored.probing) << "Explicit false must apply";
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_mip_settings(pb, restored_settings);
+  EXPECT_FALSE(restored_settings.get_mip_settings().probing) << "Explicit false must apply";
 }
 
 TEST(MapperRoundtrip, PDLPSettingsDualPostsolveOmittedPreservesDefault)
 {
   cuopt::remote::PDLPSolverSettings pb;  // default-constructed
 
-  pdlp_solver_settings_t<int32_t, double> fresh;
+  solver_settings_t<int32_t, double> fresh_settings;
+  auto& fresh = fresh_settings.get_pdlp_settings();
   ASSERT_TRUE(fresh.dual_postsolve) << "C++ default is expected to be true";
-  map_proto_to_pdlp_settings(pb, fresh);
+  map_proto_to_pdlp_settings(pb, fresh_settings);
   EXPECT_TRUE(fresh.dual_postsolve) << "Omitted optional bool must preserve the C++ default `true`";
 }
 
@@ -2918,18 +2925,19 @@ TEST(MapperRoundtrip, PDLPSettingsDualPostsolveExplicitFalseRoundtrips)
   pb.set_dual_postsolve(false);
   ASSERT_TRUE(pb.has_dual_postsolve());
 
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored);
-  EXPECT_FALSE(restored.dual_postsolve);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings);
+  EXPECT_FALSE(restored_settings.get_pdlp_settings().dual_postsolve);
 }
 
 TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementOmittedPreservesDefault)
 {
   cuopt::remote::PDLPSolverSettings pb;
 
-  pdlp_solver_settings_t<int32_t, double> fresh;
+  solver_settings_t<int32_t, double> fresh_settings;
+  auto& fresh = fresh_settings.get_pdlp_settings();
   ASSERT_TRUE(fresh.barrier_iterative_refinement);
-  map_proto_to_pdlp_settings(pb, fresh);
+  map_proto_to_pdlp_settings(pb, fresh_settings);
   EXPECT_TRUE(fresh.barrier_iterative_refinement)
     << "Omitted optional bool must preserve the C++ default `true`";
 }
@@ -2940,18 +2948,19 @@ TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementExplicitFalseRoundtr
   pb.set_barrier_iterative_refinement(false);
   ASSERT_TRUE(pb.has_barrier_iterative_refinement());
 
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored);
-  EXPECT_FALSE(restored.barrier_iterative_refinement);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings);
+  EXPECT_FALSE(restored_settings.get_pdlp_settings().barrier_iterative_refinement);
 }
 
 TEST(MapperRoundtrip, PDLPSettingsCurtisReidScalingOmittedPreservesDefault)
 {
   cuopt::remote::PDLPSolverSettings pb;
 
-  pdlp_solver_settings_t<int32_t, double> fresh;
+  solver_settings_t<int32_t, double> fresh_settings;
+  auto& fresh = fresh_settings.get_pdlp_settings();
   ASSERT_TRUE(fresh.hyper_params.do_curtis_reid_scaling);
-  map_proto_to_pdlp_settings(pb, fresh);
+  map_proto_to_pdlp_settings(pb, fresh_settings);
   EXPECT_TRUE(fresh.hyper_params.do_curtis_reid_scaling)
     << "Omitted optional bool must preserve the C++ default `true`";
 }
@@ -2962,9 +2971,9 @@ TEST(MapperRoundtrip, PDLPSettingsCurtisReidScalingExplicitFalseRoundtrips)
   pb.set_do_curtis_reid_scaling(false);
   ASSERT_TRUE(pb.has_do_curtis_reid_scaling());
 
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored);
-  EXPECT_FALSE(restored.hyper_params.do_curtis_reid_scaling);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings);
+  EXPECT_FALSE(restored_settings.get_pdlp_settings().hyper_params.do_curtis_reid_scaling);
 }
 
 // Wide-coverage sanity: a default-constructed proto (no fields touched on the
@@ -2978,9 +2987,11 @@ TEST(MapperRoundtrip, PDLPSettingsCurtisReidScalingExplicitFalseRoundtrips)
 TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
 {
   cuopt::remote::PDLPSolverSettings pb;
-  pdlp_solver_settings_t<int32_t, double> fresh;
-  pdlp_solver_settings_t<int32_t, double> after = fresh;
-  map_proto_to_pdlp_settings(pb, after);
+  solver_settings_t<int32_t, double> fresh_settings;
+  solver_settings_t<int32_t, double> after_settings;
+  map_proto_to_pdlp_settings(pb, after_settings);
+  auto& fresh = fresh_settings.get_pdlp_settings();
+  auto& after = after_settings.get_pdlp_settings();
 
   // Tolerances (all 1e-4 / 1e-10 by C++ default).
   EXPECT_DOUBLE_EQ(after.tolerances.absolute_gap_tolerance,
@@ -3015,9 +3026,9 @@ TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_EQ(after.ordering, fresh.ordering);
   EXPECT_EQ(after.barrier_dual_initial_point, fresh.barrier_dual_initial_point);
   EXPECT_DOUBLE_EQ(after.barrier_step_scale, fresh.barrier_step_scale);
-  // Enum-int32 fields (post-decode clamping defends out-of-range; default `0`
-  // on the wire is in-range so the clamp does not fire, but the `optional`
-  // guard prevents the assignment entirely and the C++ default survives).
+  // Enum-int32 fields. An omitted optional field is not passed to
+  // set_parameter(), so the C++ default survives. An out-of-range value
+  // throws instead of being clamped.
   EXPECT_EQ(static_cast<int>(after.presolver), static_cast<int>(fresh.presolver));
   EXPECT_EQ(static_cast<int>(after.pdlp_precision), static_cast<int>(fresh.pdlp_precision));
   // True-enum field: the proto3 enum zero is `Stable1` (first listed value)
@@ -3032,9 +3043,11 @@ TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
 TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
 {
   cuopt::remote::MIPSolverSettings pb;
-  mip_solver_settings_t<int32_t, double> fresh;
-  mip_solver_settings_t<int32_t, double> after = fresh;
-  map_proto_to_mip_settings(pb, after);
+  solver_settings_t<int32_t, double> fresh_settings;
+  solver_settings_t<int32_t, double> after_settings;
+  map_proto_to_mip_settings(pb, after_settings);
+  auto& fresh = fresh_settings.get_mip_settings();
+  auto& after = after_settings.get_mip_settings();
 
   // Tolerances.
   EXPECT_DOUBLE_EQ(after.tolerances.absolute_mip_gap, fresh.tolerances.absolute_mip_gap);
@@ -3055,7 +3068,7 @@ TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_EQ(after.num_cpu_threads, fresh.num_cpu_threads);
   EXPECT_EQ(after.num_gpus, fresh.num_gpus);
   EXPECT_EQ(after.reliability_branching, fresh.reliability_branching);
-  EXPECT_EQ(after.symmetry, fresh.symmetry);  // clamp-defended; default -1
+  EXPECT_EQ(after.symmetry, fresh.symmetry);  // omitted optional; default -1
   EXPECT_EQ(after.max_cut_passes, fresh.max_cut_passes);
   EXPECT_EQ(after.mir_cuts, fresh.mir_cuts);
   EXPECT_EQ(after.mixed_integer_gomory_cuts, fresh.mixed_integer_gomory_cuts);

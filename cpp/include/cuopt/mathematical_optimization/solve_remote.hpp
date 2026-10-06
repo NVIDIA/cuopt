@@ -29,9 +29,6 @@ class solver_settings_t;
 
 /**
  * @brief Solve an LP remotely.
- *
- * Serializes every set_parameter() value into the parameters map and does not
- * write deprecated typed fields. Warm start is still a normal field.
  */
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
@@ -39,10 +36,6 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
 
 /**
  * @brief Solve a MIP remotely.
- *
- * Serializes every set_parameter() value into the parameters map and does not
- * write deprecated typed fields. presolve_absolute_tolerance is still a
- * normal field.
  */
 template <typename i_t, typename f_t>
 std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(

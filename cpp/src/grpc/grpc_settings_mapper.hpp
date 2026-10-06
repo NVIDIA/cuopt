@@ -45,13 +45,14 @@ void map_pdlp_client_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& s
                                        cuopt::remote::PDLPSolverSettings* pb_settings);
 
 /**
- * @brief Map protobuf PDLPSolverSettings message to pdlp_solver_settings_t.
+ * @brief Map protobuf PDLPSolverSettings message onto solver_settings_t.
  *
  * Reads from a protobuf message using the generated protobuf C++ API.
  * Does not perform deserialization — that is handled by the protobuf library.
  *
- * Deprecated set_parameter() fields are copied only when parameters is empty.
- * A non-empty map leaves those fields at the C++ defaults; the caller applies
+ * Deprecated set_parameter() fields are applied with set_parameter() only when
+ * parameters is empty. An out-of-range value throws std::invalid_argument. A
+ * non-empty map leaves those fields at the C++ defaults; the caller applies
  * the map. Warm start is always read. When @p n_variables and @p n_constraints
  * are non-negative, a warm start is checked against those dimensions before it
  * is stored. A negative count skips that check. Non-finite values and
@@ -60,7 +61,7 @@ void map_pdlp_client_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& s
  */
 template <typename i_t, typename f_t>
 void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_settings,
-                                pdlp_solver_settings_t<i_t, f_t>& settings,
+                                solver_settings_t<i_t, f_t>& settings,
                                 i_t n_variables   = -1,
                                 i_t n_constraints = -1);
 
@@ -97,15 +98,16 @@ void map_mip_client_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& set
                                       cuopt::remote::MIPSolverSettings* pb_settings);
 
 /**
- * @brief Map protobuf MIPSolverSettings message to mip_solver_settings_t.
+ * @brief Map protobuf MIPSolverSettings message onto solver_settings_t.
  *
- * Deprecated set_parameter() fields are copied only when parameters is empty.
- * A non-empty map leaves those fields at the C++ defaults; the caller applies
+ * Deprecated set_parameter() fields are applied with set_parameter() only when
+ * parameters is empty. An out-of-range value throws std::invalid_argument. A
+ * non-empty map leaves those fields at the C++ defaults; the caller applies
  * the map. presolve_absolute_tolerance is always read.
  */
 template <typename i_t, typename f_t>
 void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
-                               mip_solver_settings_t<i_t, f_t>& settings);
+                               solver_settings_t<i_t, f_t>& settings);
 
 /**
  * @brief Write every registered solver parameter into the map.

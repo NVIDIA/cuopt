@@ -3,5 +3,5 @@
 // DO NOT EDIT — regenerate with: ./build.sh codegen
 // ============================================================================
   if (pb_settings.has_presolve_absolute_tolerance()) {
-    settings.tolerances.presolve_absolute_tolerance = pb_settings.presolve_absolute_tolerance();
+    settings.get_mip_settings().tolerances.presolve_absolute_tolerance = pb_settings.presolve_absolute_tolerance();
   }

@@ -3,93 +3,93 @@
 // DO NOT EDIT — regenerate with: ./build.sh codegen
 // ============================================================================
   if (pb_settings.has_absolute_gap_tolerance()) {
-    settings.tolerances.absolute_gap_tolerance = pb_settings.absolute_gap_tolerance();
+    settings.set_parameter("absolute_gap_tolerance", static_cast<f_t>(pb_settings.absolute_gap_tolerance()));
   }
   if (pb_settings.has_relative_gap_tolerance()) {
-    settings.tolerances.relative_gap_tolerance = pb_settings.relative_gap_tolerance();
+    settings.set_parameter("relative_gap_tolerance", static_cast<f_t>(pb_settings.relative_gap_tolerance()));
   }
   if (pb_settings.has_primal_infeasible_tolerance()) {
-    settings.tolerances.primal_infeasible_tolerance = pb_settings.primal_infeasible_tolerance();
+    settings.set_parameter("primal_infeasible_tolerance", static_cast<f_t>(pb_settings.primal_infeasible_tolerance()));
   }
   if (pb_settings.has_dual_infeasible_tolerance()) {
-    settings.tolerances.dual_infeasible_tolerance = pb_settings.dual_infeasible_tolerance();
+    settings.set_parameter("dual_infeasible_tolerance", static_cast<f_t>(pb_settings.dual_infeasible_tolerance()));
   }
   if (pb_settings.has_absolute_dual_tolerance()) {
-    settings.tolerances.absolute_dual_tolerance = pb_settings.absolute_dual_tolerance();
+    settings.set_parameter("absolute_dual_tolerance", static_cast<f_t>(pb_settings.absolute_dual_tolerance()));
   }
   if (pb_settings.has_relative_dual_tolerance()) {
-    settings.tolerances.relative_dual_tolerance = pb_settings.relative_dual_tolerance();
+    settings.set_parameter("relative_dual_tolerance", static_cast<f_t>(pb_settings.relative_dual_tolerance()));
   }
   if (pb_settings.has_absolute_primal_tolerance()) {
-    settings.tolerances.absolute_primal_tolerance = pb_settings.absolute_primal_tolerance();
+    settings.set_parameter("absolute_primal_tolerance", static_cast<f_t>(pb_settings.absolute_primal_tolerance()));
   }
   if (pb_settings.has_relative_primal_tolerance()) {
-    settings.tolerances.relative_primal_tolerance = pb_settings.relative_primal_tolerance();
+    settings.set_parameter("relative_primal_tolerance", static_cast<f_t>(pb_settings.relative_primal_tolerance()));
   }
   if (pb_settings.has_time_limit()) {
-    settings.time_limit = pb_settings.time_limit();
+    settings.set_parameter("time_limit", static_cast<f_t>(pb_settings.time_limit()));
   }
   if (pb_settings.has_iteration_limit()) {
     if (pb_settings.iteration_limit() >= 0) {
-      settings.iteration_limit = static_cast<i_t>(pb_settings.iteration_limit());
+      settings.set_parameter_from_string("iteration_limit", std::to_string(pb_settings.iteration_limit()));
     }
   }
   if (pb_settings.has_log_to_console()) {
-    settings.log_to_console = pb_settings.log_to_console();
+    settings.set_parameter("log_to_console", pb_settings.log_to_console());
   }
-  settings.detect_infeasibility = pb_settings.detect_infeasibility();
-  settings.strict_infeasibility = pb_settings.strict_infeasibility();
+  settings.set_parameter("infeasibility_detection", pb_settings.detect_infeasibility());
+  settings.set_parameter("strict_infeasibility", pb_settings.strict_infeasibility());
   if (pb_settings.has_pdlp_solver_mode()) {
-    settings.pdlp_solver_mode = from_proto_pdlp_solver_mode(pb_settings.pdlp_solver_mode());
+    settings.set_parameter("pdlp_solver_mode", static_cast<i_t>(from_proto_pdlp_solver_mode(pb_settings.pdlp_solver_mode())));
   }
-  settings.method = from_proto_lp_method(pb_settings.method());
+  settings.set_parameter("method", static_cast<i_t>(from_proto_lp_method(pb_settings.method())));
   if (pb_settings.has_presolver()) {
-    settings.presolver = static_cast<presolver_t>(pb_settings.presolver());
+    settings.set_parameter("presolve", static_cast<i_t>(static_cast<presolver_t>(pb_settings.presolver())));
   }
   if (pb_settings.has_dual_postsolve()) {
-    settings.dual_postsolve = pb_settings.dual_postsolve();
+    settings.set_parameter("dual_postsolve", pb_settings.dual_postsolve());
   }
-  settings.crossover = pb_settings.crossover();
+  settings.set_parameter("crossover", pb_settings.crossover());
   if (pb_settings.has_num_gpus()) {
-    settings.num_gpus = pb_settings.num_gpus();
+    settings.set_parameter("num_gpus", static_cast<i_t>(pb_settings.num_gpus()));
   }
-  settings.per_constraint_residual = pb_settings.per_constraint_residual();
-  settings.cudss_deterministic = pb_settings.cudss_deterministic();
+  settings.set_parameter("per_constraint_residual", pb_settings.per_constraint_residual());
+  settings.set_parameter("cudss_deterministic", pb_settings.cudss_deterministic());
   if (pb_settings.has_folding()) {
-    settings.folding = pb_settings.folding();
+    settings.set_parameter("folding", static_cast<i_t>(pb_settings.folding()));
   }
   if (pb_settings.has_augmented()) {
-    settings.augmented = pb_settings.augmented();
+    settings.set_parameter("augmented", static_cast<i_t>(pb_settings.augmented()));
   }
   if (pb_settings.has_dualize()) {
-    settings.dualize = pb_settings.dualize();
+    settings.set_parameter("dualize", static_cast<i_t>(pb_settings.dualize()));
   }
   if (pb_settings.has_ordering()) {
-    settings.ordering = pb_settings.ordering();
+    settings.set_parameter("ordering", static_cast<i_t>(pb_settings.ordering()));
   }
   if (pb_settings.has_barrier_dual_initial_point()) {
-    settings.barrier_dual_initial_point = static_cast<barrier_dual_initial_point_t>(pb_settings.barrier_dual_initial_point());
+    settings.set_parameter("barrier_dual_initial_point", static_cast<i_t>(static_cast<barrier_dual_initial_point_t>(pb_settings.barrier_dual_initial_point())));
   }
   if (pb_settings.has_eliminate_dense_columns()) {
-    settings.eliminate_dense_columns = pb_settings.eliminate_dense_columns();
+    settings.set_parameter("eliminate_dense_columns", pb_settings.eliminate_dense_columns());
   }
   if (pb_settings.has_barrier_iterative_refinement()) {
-    settings.barrier_iterative_refinement = pb_settings.barrier_iterative_refinement();
+    settings.set_parameter("barrier_iterative_refinement", pb_settings.barrier_iterative_refinement());
   }
   if (pb_settings.has_barrier_adaptive_regularization()) {
-    settings.barrier_adaptive_regularization = pb_settings.barrier_adaptive_regularization();
+    settings.set_parameter("barrier_adaptive_regularization", static_cast<i_t>(pb_settings.barrier_adaptive_regularization()));
   }
   if (pb_settings.has_barrier_step_scale()) {
-    settings.barrier_step_scale = pb_settings.barrier_step_scale();
+    settings.set_parameter("barrier_step_scale", static_cast<f_t>(pb_settings.barrier_step_scale()));
   }
   if (pb_settings.has_postsolve_info()) {
-    settings.postsolve_info = pb_settings.postsolve_info();
+    settings.set_parameter("postsolve_info", static_cast<i_t>(pb_settings.postsolve_info()));
   }
-  settings.save_best_primal_so_far = pb_settings.save_best_primal_so_far();
-  settings.first_primal_feasible = pb_settings.first_primal_feasible();
+  settings.set_parameter("save_best_primal_so_far", pb_settings.save_best_primal_so_far());
+  settings.set_parameter("first_primal_feasible", pb_settings.first_primal_feasible());
   if (pb_settings.has_pdlp_precision()) {
-    settings.pdlp_precision = static_cast<pdlp_precision_t>(pb_settings.pdlp_precision());
+    settings.set_parameter("pdlp_precision", static_cast<i_t>(static_cast<pdlp_precision_t>(pb_settings.pdlp_precision())));
   }
   if (pb_settings.has_do_curtis_reid_scaling()) {
-    settings.hyper_params.do_curtis_reid_scaling = pb_settings.do_curtis_reid_scaling();
+    settings.set_parameter("pdlp_hyper_enable_curtis_reid_scaling", pb_settings.do_curtis_reid_scaling());
   }

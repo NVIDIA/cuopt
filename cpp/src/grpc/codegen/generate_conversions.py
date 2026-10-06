@@ -1506,8 +1506,46 @@ def generate_settings_to_proto_body(
     return "\n".join(lines)
 
 
+def _parameter_set_name(f):
+    """CUOPT_* string set_parameter() looks up. The proto field name is that
+    string unless ``param_name`` says otherwise.
+    """
+    name = f.get("param_name")
+    return name if name else f["name"]
+
+
+def _parameter_assign(f, value_expr, proto_accessor):
+    """Apply one deprecated typed field through the parameter table.
+
+    set_parameter() rejects an out-of-range int or float. An int64 is passed
+    through set_parameter_from_string() so a value that does not fit in i_t
+    is rejected there instead of being narrowed first.
+    """
+    name = _parameter_set_name(f)
+    ftype = f.get("type", "double")
+    if ftype == "int64":
+        return (
+            f'settings.set_parameter_from_string("{name}", '
+            f"std::to_string({proto_accessor}));"
+        )
+    if ftype == "bool":
+        arg = value_expr
+    elif ftype == "string":
+        arg = f"std::string({value_expr})"
+    elif ftype in ("double", "float"):
+        arg = f"static_cast<f_t>({value_expr})"
+    else:
+        arg = f"static_cast<i_t>({value_expr})"
+    return f'settings.set_parameter("{name}", {arg});'
+
+
 def generate_proto_to_settings_body(
-    registry, obj_name, obj, indent="  ", field_filter="all"
+    registry,
+    obj_name,
+    obj,
+    indent="  ",
+    field_filter="all",
+    settings_expr="settings",
 ):
     # Two presence mechanisms (handled by `emit_scalar_from_proto_assign`):
     #   * `optional` -> wrap the body in `if (pb.has_X())` so an omitted
@@ -1519,8 +1557,10 @@ def generate_proto_to_settings_body(
     # value-guard runs inside it.
     #
     # field_filter splits set_parameter() fields from the rest. The server
-    # copies the parameter fields only when the parameters map is empty.
-    # Warm start is not a field here; the caller reads it separately.
+    # applies parameter fields only when the parameters map is empty, and it
+    # does that by calling set_parameter() on a solver_settings_t. Fields that
+    # are not parameters are assigned on the nested settings object named by
+    # settings_expr. Warm start is not a field here; the caller reads it.
     lines, ind = [], indent
     for f in parse_settings_fields(obj.get("fields", [])):
         is_parameter = _settings_field_is_parameter(f)
@@ -1529,11 +1569,22 @@ def generate_proto_to_settings_body(
         if field_filter == "non_parameters" and is_parameter:
             continue
         pname = _proto_cpp_name(f["name"])
-        cpp_member = f.get("member", f["name"])
+        proto_accessor = f"pb_settings.{pname}()"
+        if field_filter == "parameters":
+
+            def assign(v, field=f, acc=proto_accessor):
+                return _parameter_assign(field, v, acc)
+
+        else:
+            cpp_member = f.get("member", f["name"])
+
+            def assign(v, m=cpp_member, expr=settings_expr):
+                return f"{expr}.{m} = {v};"
+
         lines.extend(
             emit_scalar_from_proto_assign(
-                lambda v, m=cpp_member: f"settings.{m} = {v};",
-                f"pb_settings.{pname}()",
+                assign,
+                proto_accessor,
                 f,
                 registry,
                 ind,
@@ -4057,8 +4108,17 @@ def main():
                     )
                     + "\n",
                 )
+                nested = (
+                    "settings.get_mip_settings()"
+                    if label == "mip"
+                    else "settings.get_pdlp_settings()"
+                )
                 non_parameters = generate_proto_to_settings_body(
-                    registry, key, obj, field_filter="non_parameters"
+                    registry,
+                    key,
+                    obj,
+                    field_filter="non_parameters",
+                    settings_expr=nested,
                 )
                 if non_parameters.strip():
                     write_file(
