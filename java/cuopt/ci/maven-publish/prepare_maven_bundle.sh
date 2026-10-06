@@ -4,7 +4,7 @@
 
 # Host wrapper that prepares a signed Maven repository tree in a container.
 #
-# Vendored from rapidsai/shared-workflows (ci/maven-publish/) for 26.10 release
+# Vendored from rapidsai/shared-workflows (ci/maven-publish/) for this release
 # stability -- see TODO in build.yaml's java-maven-publish job.
 
 set -euo pipefail

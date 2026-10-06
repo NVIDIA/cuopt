@@ -8,7 +8,7 @@
 # Never calls the /publish endpoint: publication always requires a human click.
 #
 # Vendored from rapidsai/shared-workflows (ci/maven-publish/) with the
-# --profile-id decoupling from rapidsai/shared-workflows#652, for 26.10 release
+# --profile-id decoupling from rapidsai/shared-workflows#652, for this release
 # stability -- see TODO in build.yaml's java-maven-publish job.
 
 set -euo pipefail
@@ -54,7 +54,7 @@ REQUIRED:
     -i, --input                    Signed Maven repository directory.
     -g, --group-id                 Maven groupId, e.g. ai.rapids.
     -a, --artifact-id              Maven artifactId, e.g. cudf.
-    -v, --version                  Release version, e.g. 26.08.0.
+    -v, --version                  Release version, e.g. 1.2.3.
     -o, --output-bundle            Path for the retained deployment ZIP.
 
 OPTIONS:

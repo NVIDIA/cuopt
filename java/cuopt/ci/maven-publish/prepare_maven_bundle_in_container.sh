@@ -4,7 +4,7 @@
 
 # In-container worker for prepare_maven_bundle.sh.
 #
-# Vendored from rapidsai/shared-workflows (ci/maven-publish/) for 26.10 release
+# Vendored from rapidsai/shared-workflows (ci/maven-publish/) for this release
 # stability -- see TODO in build.yaml's java-maven-publish job.
 
 set -euo pipefail
