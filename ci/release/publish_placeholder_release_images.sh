@@ -47,6 +47,7 @@ fi
 
 NGC_REPO="nvcr.io/nvstaging/nvaie/cuopt"
 
+# rapids-pre-commit-hooks: disable-next-line[verify-hardcoded-version]
 # Strip leading zeros from each dotted segment, e.g. 26.10.00 -> 26.10.0
 BASE_VER=$(sed -E 's/\.0+([0-9])/\.\1/g' VERSION | tr -d '[:space:]')
 
