@@ -652,21 +652,13 @@ if (NOT SKIP_GRPC_BUILD)
 
     # GRPC_INFRA_FILES exists only to carry the -DNDEBUG property below; it is not a target
     # source list.
-    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
-    if (CUOPT_ENABLE_GRPC_ROUTING)
-        list(APPEND GRPC_INFRA_FILES ${GRPC_ROUTING_FILES})
-    endif ()
+    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES} ${GRPC_ROUTING_FILES})
 
     # The protocol and the LP/MIP arm are CUDA-free, so they build into cuopt_client. The
-    # routing arm calls routing accessors that live in CUDA translation units, so it builds
-    # into cuopt_client alongside the LP/MIP arm.
-    list(APPEND CUOPT_CLIENT_SRC_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
-    # The routing arm now builds into cuopt_client alongside the LP/MIP arm. Its mappers only
-    # touch routing::solver_settings_t and assignment_t accessors, which are host-only and
-    # build there too, so this no longer drags in the routing engine.
-    if (CUOPT_ENABLE_GRPC_ROUTING)
-        list(APPEND CUOPT_CLIENT_SRC_FILES ${GRPC_ROUTING_FILES})
-    endif ()
+    # routing arm's mappers only touch routing::solver_settings_t and assignment_t accessors,
+    # which are host-only and build there too, so this doesn't drag in the routing engine --
+    # it builds into cuopt_client regardless of SKIP_ROUTING_BUILD, same as the LP/MIP arm.
+    list(APPEND CUOPT_CLIENT_SRC_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES} ${GRPC_ROUTING_FILES})
 
 
     # Always keep NDEBUG defined for gRPC infrastructure files so that abseil
@@ -1270,7 +1262,7 @@ endif()
 if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CPACK_COMPONENTS_ALL routing routing-dev)
 endif()
-if(NOT SKIP_GRPC_BUILD)
+if(NOT SKIP_GRPC_BUILD AND NOT SKIP_MATHOPT_BUILD)
     list(APPEND CPACK_COMPONENTS_ALL grpc-server)
 endif()
 set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/local")
@@ -1431,16 +1423,12 @@ It pulls both solver engines whether or not you use them, so prefer a component 
 
 ]=])
 
-# cuopt::client exists in every configuration, but only carries the gRPC client when
-# SKIP_GRPC_BUILD was off, so its presence alone tells a consumer nothing. Export the
-# answer: the Python bindings use it to skip the gRPC extension module, which would
-# otherwise fail to link against a client built without that arm.
-# CUOPT_HAS_GRPC_ROUTING is reported separately rather than inferred from cuopt::routing:
-# it is CUOPT_ENABLE_GRPC_ROUTING that gates cython_grpc_client_vrp.cpp, and the two would
-# diverge the moment the VRP arm gains an option of its own.
+# Exported for third-party consumers. CUOPT_HAS_GRPC_ROUTING stays distinct from
+# CUOPT_HAS_GRPC because grpc_client.pyx cimports cuopt::routing headers unconditionally,
+# available only when SKIP_ROUTING_BUILD is off.
 if(SKIP_GRPC_BUILD)
     set(cuopt_code_string "set(CUOPT_HAS_GRPC OFF)\nset(CUOPT_HAS_GRPC_ROUTING OFF)")
-elseif(CUOPT_ENABLE_GRPC_ROUTING)
+elseif(NOT SKIP_ROUTING_BUILD)
     set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)\nset(CUOPT_HAS_GRPC_ROUTING ON)")
 else()
     set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)\nset(CUOPT_HAS_GRPC_ROUTING OFF)")
@@ -1674,7 +1662,7 @@ endif ()
 # ##################################################################################################
 # - cuopt_grpc_server - gRPC-based remote server --------------------------------------------------
 
-if (NOT SKIP_GRPC_BUILD)
+if (NOT SKIP_GRPC_BUILD AND NOT SKIP_MATHOPT_BUILD)
     add_executable(cuopt_grpc_server
             src/grpc/server/grpc_server_main.cpp
             src/grpc/server/grpc_server_logger.cpp
@@ -1726,12 +1714,6 @@ if (NOT SKIP_GRPC_BUILD)
 
     find_library(UUID_LIBRARY uuid REQUIRED)
 
-    # grpc_worker.cpp calls into the mathopt engine unconditionally, unlike routing which has
-    # a SKIP_ROUTING_BUILD opt-out. A routing-only wheel should set SKIP_GRPC_BUILD=ON instead.
-    if (SKIP_MATHOPT_BUILD)
-        message(FATAL_ERROR "cuopt_grpc_server requires mathopt; set SKIP_GRPC_BUILD=ON too")
-    endif ()
-
     # Links both engines directly. It used to reach cuopt_routing transitively through
     # cuopt_grpc; that component is gone, and the server is the one artifact that solves
     # both VRP and LP/MIP, so the dependency is now explicit.
@@ -1758,7 +1740,9 @@ if (NOT SKIP_GRPC_BUILD)
     )
 
     message(STATUS "Building cuopt_grpc_server (gRPC-based remote solve server)")
-endif (NOT SKIP_GRPC_BUILD)
+elseif (SKIP_MATHOPT_BUILD)
+    message(STATUS "cuopt_grpc_server disabled (SKIP_MATHOPT_BUILD)")
+endif (NOT SKIP_GRPC_BUILD AND NOT SKIP_MATHOPT_BUILD)
 
 # ##################################################################################################
 # - CPack has to be the last item in the cmake file-------------------------------------------------
