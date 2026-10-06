@@ -19,6 +19,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace cuopt::mathematical_optimization {
@@ -311,25 +312,44 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
   }
 }
 
+namespace {
+
+// A protobuf map keeps one value per key. A repeated name must already hold
+// the same value on every registration. set_parameter() writes all of them.
+template <typename T, typename Format>
+void append_parameter_list(const std::vector<parameter_info_t<T>>& parameters,
+                           google::protobuf::Map<std::string, std::string>* out,
+                           Format format)
+{
+  std::unordered_map<std::string, T> seen;
+  for (const auto& p : parameters) {
+    const T value             = *p.value_ptr;
+    const auto [it, inserted] = seen.emplace(p.param_name, value);
+    if (!inserted) {
+      if (it->second != value) {
+        throw std::invalid_argument("Parameter " + p.param_name +
+                                    " differs between LP and MIP settings");
+      }
+      continue;
+    }
+    (*out)[p.param_name] = format(value);
+  }
+}
+
+}  // namespace
+
 template <typename i_t, typename f_t>
 void append_solver_parameters(const solver_settings_t<i_t, f_t>& settings,
                               google::protobuf::Map<std::string, std::string>* out)
 {
-  // A protobuf map keeps one value per key. Walking in registration order
-  // means a shared name keeps the later registration. set_parameter() writes
-  // every registration of a name, so those values already agree.
-  for (const auto& p : settings.get_float_parameters()) {
-    (*out)[p.param_name] = format_parameter_float(*p.value_ptr);
-  }
-  for (const auto& p : settings.get_int_parameters()) {
-    (*out)[p.param_name] = std::to_string(*p.value_ptr);
-  }
-  for (const auto& p : settings.get_bool_parameters()) {
-    (*out)[p.param_name] = *p.value_ptr ? "true" : "false";
-  }
-  for (const auto& p : settings.get_string_parameters()) {
-    (*out)[p.param_name] = *p.value_ptr;
-  }
+  append_parameter_list(
+    settings.get_float_parameters(), out, [](f_t value) { return format_parameter_float(value); });
+  append_parameter_list(
+    settings.get_int_parameters(), out, [](i_t value) { return std::to_string(value); });
+  append_parameter_list(
+    settings.get_bool_parameters(), out, [](bool value) { return value ? "true" : "false"; });
+  append_parameter_list(
+    settings.get_string_parameters(), out, [](const std::string& value) { return value; });
 }
 
 template <typename i_t, typename f_t>

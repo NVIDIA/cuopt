@@ -1155,13 +1155,11 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
         problem_interface->get_problem_category() == problem_category_t::IP) {
       solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
         get_settings_handle(settings)->settings;
-      cuopt::mathematical_optimization::mip_solver_settings_t<cuopt_int_t, cuopt_float_t>&
-        mip_settings = solver_settings->get_mip_settings();
 
       // Solve returns unique_ptr<mip_solution_interface_t>
       auto solution_interface =
         cuopt::mathematical_optimization::solve_mip<cuopt_int_t, cuopt_float_t>(problem_interface,
-                                                                                mip_settings);
+                                                                                *solver_settings);
 
       auto solution_holder =
         std::make_unique<solution_and_stream_view_t>(true, problem_and_stream_view->memory_backend);
@@ -1176,13 +1174,11 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
     } else {
       solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
         get_settings_handle(settings)->settings;
-      cuopt::mathematical_optimization::pdlp_solver_settings_t<cuopt_int_t, cuopt_float_t>&
-        pdlp_settings = solver_settings->get_pdlp_settings();
 
       // Solve returns unique_ptr<lp_solution_interface_t>
       auto solution_interface =
         cuopt::mathematical_optimization::solve_lp<cuopt_int_t, cuopt_float_t>(problem_interface,
-                                                                               pdlp_settings);
+                                                                               *solver_settings);
 
       auto solution_holder = std::make_unique<solution_and_stream_view_t>(
         false, problem_and_stream_view->memory_backend);

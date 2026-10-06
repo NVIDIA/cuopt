@@ -42,13 +42,13 @@ struct solver_ret_t {
 
 mathematical_optimization::lp_solution_interface_t<int, double>* call_solve_lp(
   mathematical_optimization::optimization_problem_interface_t<int, double>* problem_interface,
-  mathematical_optimization::pdlp_solver_settings_t<int, double>& solver_settings,
+  mathematical_optimization::solver_settings_t<int, double>& solver_settings,
   bool is_batch_mode = false);
 
 // Call solve_mip and return solution interface pointer
 mathematical_optimization::mip_solution_interface_t<int, double>* call_solve_mip(
   mathematical_optimization::optimization_problem_interface_t<int, double>* problem_interface,
-  mathematical_optimization::mip_solver_settings_t<int, double>& solver_settings);
+  mathematical_optimization::solver_settings_t<int, double>& solver_settings);
 
 // Main solve entry point from Python
 std::unique_ptr<solver_ret_t> call_solve(
