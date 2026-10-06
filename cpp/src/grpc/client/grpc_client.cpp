@@ -646,10 +646,21 @@ submit_result_t grpc_client_t::submit_lp(const cpu_optimization_problem_t<i_t, f
     return result;
   }
 
+  // Warm start stays in PDLPSolverSettings on both the unary request and the
+  // chunked header, so it counts toward the message the server has to accept
+  // in one piece. A payload larger than the client message cap cannot be sent.
+  constexpr int64_t kChunkedHeaderSlack = 64 * 1024;
+  const size_t warm_bytes               = estimate_pdlp_warm_start_proto_size(settings);
+  if (warm_bytes > 0 &&
+      static_cast<int64_t>(warm_bytes) + kChunkedHeaderSlack > config_.max_message_bytes) {
+    result.error_message = "PDLP warm start exceeds the maximum message size";
+    return result;
+  }
+
   // Check if chunked array upload should be used
   bool use_chunked = false;
   if (chunked_array_threshold_bytes_ >= 0) {
-    size_t est  = estimate_problem_proto_size(problem);
+    size_t est  = estimate_problem_proto_size(problem) + warm_bytes;
     use_chunked = (static_cast<int64_t>(est) > chunked_array_threshold_bytes_);
     GRPC_CLIENT_DEBUG_LOG(config_,
                           "[grpc_client] submit_lp: estimated_size="
@@ -688,10 +699,19 @@ submit_result_t grpc_client_t::submit_lp(const cpu_optimization_problem_t<i_t, f
     return result;
   }
 
+  // Warm start stays in the settings message on this overload too.
+  constexpr int64_t kChunkedHeaderSlack = 64 * 1024;
+  const size_t warm_bytes = estimate_pdlp_warm_start_proto_size(settings.get_pdlp_settings());
+  if (warm_bytes > 0 &&
+      static_cast<int64_t>(warm_bytes) + kChunkedHeaderSlack > config_.max_message_bytes) {
+    result.error_message = "PDLP warm start exceeds the maximum message size";
+    return result;
+  }
+
   bool use_chunked = false;
   if (chunked_array_threshold_bytes_ >= 0) {
-    use_chunked =
-      static_cast<int64_t>(estimate_problem_proto_size(problem)) > chunked_array_threshold_bytes_;
+    use_chunked = static_cast<int64_t>(estimate_problem_proto_size(problem) + warm_bytes) >
+                  chunked_array_threshold_bytes_;
   }
 
   if (use_chunked) {

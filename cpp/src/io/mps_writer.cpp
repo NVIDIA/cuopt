@@ -55,7 +55,7 @@ data_model_view_t<i_t, f_t> mps_writer_t<i_t, f_t>::create_view(
   const auto& A_values  = model.get_constraint_matrix_values();
   const auto& A_indices = model.get_constraint_matrix_indices();
   const auto& A_offsets = model.get_constraint_matrix_offsets();
-  if (!A_values.empty()) {
+  if (!A_offsets.empty()) {
     view.set_csr_constraint_matrix(A_values.data(),
                                    static_cast<i_t>(A_values.size()),
                                    A_indices.data(),
@@ -150,6 +150,11 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     n_constraints = problem_.get_constraint_bounds().size();
   else
     n_constraints = problem_.get_constraint_lower_bounds().size();
+  const auto& A_offsets = problem_.get_constraint_matrix_offsets();
+  mps_parser_expects(A_offsets.size() == static_cast<size_t>(n_constraints) + 1 ||
+                       (n_constraints == 0 && A_offsets.empty()),
+                     error_type_t::ValidationError,
+                     "Constraint matrix offsets must have one entry per row plus one");
   const auto& quadratic_constraints = problem_.get_quadratic_constraints();
   const i_t n_quadratic_constraints = static_cast<i_t>(quadratic_constraints.size());
 

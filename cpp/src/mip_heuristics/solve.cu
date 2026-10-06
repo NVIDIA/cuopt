@@ -637,7 +637,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
                                            ? std::numeric_limits<double>::infinity()
                                            : timer.remaining_time();
 
-      presolver   = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
+      presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
+      presolver->set_indicator_strengthening(settings.indicator_strengthening);
       auto result = presolver->apply_presolve_from_op_problem(
         op_problem,
         cuopt::mathematical_optimization::problem_category_t::MIP,
@@ -902,6 +903,10 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                    mip_solver_settings_t<i_t, f_t> const& settings_const)
 {
+  cuopt_expects(!op_problem.has_quadratic_objective() && !op_problem.has_quadratic_constraints(),
+                error_type_t::ValidationError,
+                "Mixed-integer quadratic problems (MIQP/MIQCP) are not supported.");
+
   std::exception_ptr exception;
   i_t num_threads = 0;
   if (settings_const.num_cpu_threads < 0) {

@@ -23,10 +23,10 @@ fi
 export CUOPT_PREFIX="${CUOPT_SITE_PACKAGES}"
 export CUOPT_LIBRARY="${CUOPT_SITE_PACKAGES}/lib64/libcuopt.so"
 export CUOPT_RUNTIME_LIBRARY_DIR="${CUOPT_SITE_PACKAGES}/lib64"
-# rmm and rapids_logger are separate pip packages with their own include dirs (unlike conda,
-# where CUOPT_PREFIX/include/rapids covers all three).
+# rmm, rapids_logger, and raft are separate pip packages with their own include dirs (unlike
+# conda, where CUOPT_PREFIX/include/rapids covers all three).
 PIP_SITE_PACKAGES="$(dirname "${CUOPT_SITE_PACKAGES}")"
-export CUOPT_EXTRA_INCLUDE_DIRS="${REPO_ROOT}/cpp/include;${REPO_ROOT}/cpp/src;${PIP_SITE_PACKAGES}/librmm/include;${PIP_SITE_PACKAGES}/rapids_logger/include"
+export CUOPT_EXTRA_INCLUDE_DIRS="${REPO_ROOT}/cpp/include;${REPO_ROOT}/cpp/src;${PIP_SITE_PACKAGES}/librmm/include;${PIP_SITE_PACKAGES}/rapids_logger/include;${PIP_SITE_PACKAGES}/libraft/include"
 export CUOPT_JAVA_NATIVE_BUILD_DIR="${REPO_ROOT}/java/cuopt/build/native"
 
 cd "${REPO_ROOT}"

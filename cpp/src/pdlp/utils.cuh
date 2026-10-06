@@ -12,6 +12,7 @@
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <utilities/macros.cuh>
 
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -34,6 +35,8 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
+#include <cub/device/device_reduce.cuh>
+#include <cub/device/device_transform.cuh>
 
 namespace cuopt::mathematical_optimization::pdlp {
 

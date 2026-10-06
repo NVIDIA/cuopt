@@ -37,7 +37,8 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_reduce.cuh>
+#include <cub/device/device_transform.cuh>
 
 #include <thrust/count.h>
 #include <thrust/extrema.h>
@@ -529,9 +530,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
   sub_pdlp_settings.num_gpus                         = 1;
-  // Disable automatic ruiz and pock-chambolle in the initial_scaling ctor: the
-  // distributed pipeline computes them via distributed_scaling using the
-  // GLOBAL problem.
+  // Disable automatic matrix scaling in the initial_scaling ctor: the
+  // distributed pipeline computes Curtis-Reid, Ruiz, and Pock-Chambolle via
+  // distributed_scaling using the global problem.
+  sub_pdlp_settings.hyper_params.do_curtis_reid_scaling    = false;
   sub_pdlp_settings.hyper_params.do_ruiz_scaling           = false;
   sub_pdlp_settings.hyper_params.do_pock_chambolle_scaling = false;
 
@@ -2636,7 +2638,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   }
 
   // Everything below (seed-from-settings, initial_k, get_primal_and_dual_stepsizes,
-  // initial primal/dual, projection, transpose, verbose prints, log header)
+  // initial primal/dual, projection, transpose, verbose prints)
   // still runs single-GPU only.  Distributed rejects
   // has_initial_{primal,dual}_solution() and warm-start data up front, and
   // its per-shard primal/dual step sizes were derived above
@@ -2841,11 +2843,10 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     raft::print_device_vector(
       "Initial primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
 #endif
-
-    if (!inside_mip_) {
-      CUOPT_LOG_INFO(
-        "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
-    }
+  }
+  if (!inside_mip_) {
+    CUOPT_LOG_INFO(
+      "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
   }
   while (true) {
 #ifdef CUPDLP_DEBUG_MODE

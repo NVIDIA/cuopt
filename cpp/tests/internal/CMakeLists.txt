@@ -20,6 +20,7 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/linear_programming/parser_test.cpp
     # mip
     ${CUOPT_TEST_DIR}/mip/miplib_test.cu
+    ${CUOPT_TEST_DIR}/mip/mip_node_test.cpp
     ${CUOPT_TEST_DIR}/mip/problem_test.cu
     ${CUOPT_TEST_DIR}/mip/population_test.cu
     ${CUOPT_TEST_DIR}/mip/elim_var_remap_test.cu
@@ -33,6 +34,7 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/mip/block_bve_test.cu
     ${CUOPT_TEST_DIR}/mip/bhw_coeff_reduce_test.cpp
     ${CUOPT_TEST_DIR}/mip/gf2_presolve_test.cpp
+    ${CUOPT_TEST_DIR}/mip/indicator_strengthening_test.cpp
     ${CUOPT_TEST_DIR}/mip/arc_flow_test.cu
     ${CUOPT_TEST_DIR}/mip/single_lock_dual_aggregation_test.cpp
     ${CUOPT_TEST_DIR}/mip/termination_test.cu

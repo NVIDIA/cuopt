@@ -12,6 +12,8 @@
 #include "constraint_prop.cuh"
 #include "simple_rounding.cuh"
 
+#include <cub/device/device_segmented_sort.cuh>
+
 #include <thrust/copy.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/transform_output_iterator.h>

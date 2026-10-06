@@ -136,9 +136,13 @@ files:
       key: requires
     includes:
       - build_common
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
+  # Thin metapackage: depends on the three component wheels instead of bundling them.
   py_run_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -148,7 +152,9 @@ files:
     extras:
       table: project
     includes:
-      - cuda_wheels
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
@@ -204,6 +210,7 @@ files:
       key: requires
     includes:
       - build_common
+      - depends_on_libcuopt_client
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
@@ -239,6 +246,7 @@ files:
       key: requires
     includes:
       - build_common
+      - depends_on_libcuopt_client
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
@@ -276,6 +284,10 @@ files:
       - build_common
       - build_python_common
       - depends_on_libcuopt
+      # needed for find_package(cuopt) to resolve cuopt::client/mathopt/routing
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
       - depends_on_rapids_logger
       - depends_on_cupy
       - depends_on_pylibraft
@@ -757,11 +769,35 @@ dependencies:
           # pip recognizes the index as a global option for the requirements.txt file
           - --extra-index-url=https://pypi.nvidia.com
           - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+  # cuopt/routing/data_model_view.hpp is a public header and includes raft/core/handle.hpp
+  # and raft/core/device_span.hpp, so anything compiling against cuOpt needs raft's headers.
+  # The wheel that carries them is named libraft; the conda package is libraft-headers.
   depends_on_libraft_headers:
     common:
       - output_types: conda
         packages:
           - libraft-headers==26.10.*,>=0.0.0a0
+      - output_types: requirements
+        packages:
+          # pip recognizes the index as a global option for the requirements.txt file
+          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+    specific:
+      - output_types: [requirements, pyproject]
+        matrices:
+          - matrix:
+              cuda: "12.*"
+              cuda_suffixed: "true"
+            packages:
+              - libraft-cu12==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - libraft-cu13==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - libraft==26.10.*,>=0.0.0a0
   depends_on_librmm:
     common:
       - output_types: conda
