@@ -3308,8 +3308,10 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     std::vector<f_t> z = make_singular_value_probe<f_t>(static_cast<std::size_t>(m));
     rmm::device_uvector<f_t> d_z(m, stream_view_);
     rmm::device_uvector<f_t> d_q(m, stream_view_);
-    // This scratch is idle during setup and the product overwrites its first n entries.
-    // Reuse it instead of allocating another full primal vector for the power iteration.
+    // PDHG owns at least n scratch entries, with no live iteration data during setup.
+    // SpMV with beta = 0 overwrites the first n entries before they are read, and setup
+    // finishes on the same stream before PDHG reuses the scratch. This avoids another
+    // n * sizeof(f_t) device allocation without changing the power iteration.
     auto& d_atq = pdhg_solver_.get_primal_tmp_resource();
 
     device_copy(d_z, z, stream_view_);

@@ -410,9 +410,11 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
   // Compute A_t @ (y' - y) = A_t @ y' - 1 * current_AtY
 
   // First compute Ay' to be reused as Ay in next PDHG iteration (if found step size if valid)
-  // Constant-step PDLP uses this routine for the fixed-point error but does not
-  // swap/retain next_AtY. Its product can be computed and subtracted in-place in
-  // tmp_primal, which otherwise receives the difference below.
+  // Adaptive steps retain next_AtY for the next accepted iterate. Single-problem
+  // constant-step PDLP only needs it here for the fixed-point error, so saddle_point_state_t
+  // leaves it unallocated. SpMV overwrites tmp_primal, then the transform below subtracts
+  // current_AtY in-place on the same stream. This saves primal_size * sizeof(f_t) bytes;
+  // adaptive and batched modes keep their dedicated next_AtY storage.
   const bool reuse_tmp_primal = current_saddle_point_state.get_next_AtY().is_empty();
   if (!batch_mode_) {
     RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(
