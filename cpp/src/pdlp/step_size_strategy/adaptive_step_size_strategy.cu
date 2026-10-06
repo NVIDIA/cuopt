@@ -410,18 +410,22 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
   // Compute A_t @ (y' - y) = A_t @ y' - 1 * current_AtY
 
   // First compute Ay' to be reused as Ay in next PDHG iteration (if found step size if valid)
+  // Constant-step PDLP uses this routine for the fixed-point error but does not
+  // swap/retain next_AtY. Its product can be computed and subtracted in-place in
+  // tmp_primal, which otherwise receives the difference below.
+  const bool reuse_tmp_primal = current_saddle_point_state.get_next_AtY().is_empty();
   if (!batch_mode_) {
-    RAFT_CUSPARSE_TRY(
-      raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                         reusable_device_scalar_value_1_.data(),  // alpha
-                                         cusparse_view.A_T.get(),
-                                         cusparse_view.potential_next_dual_solution.get(),
-                                         reusable_device_scalar_value_0_.data(),  // beta
-                                         cusparse_view.next_AtY.get(),
-                                         CUSPARSE_SPMV_CSR_ALG2,
-                                         (f_t*)cusparse_view.buffer_transpose.data(),
-                                         stream_view_.get()));
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),  // alpha
+      cusparse_view.A_T.get(),
+      cusparse_view.potential_next_dual_solution.get(),
+      reusable_device_scalar_value_0_.data(),  // beta
+      reuse_tmp_primal ? cusparse_view.tmp_primal.get() : cusparse_view.next_AtY.get(),
+      CUSPARSE_SPMV_CSR_ALG2,
+      (f_t*)cusparse_view.buffer_transpose.data(),
+      stream_view_.get()));
   } else {
     // TODO later batch mode: handle if not all restart
     RAFT_CUSPARSE_TRY(
@@ -441,8 +445,9 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
   // Compute Ay' - Ay = next_Aty - current_Aty
   // TODO later batch mode: remove this once you want to do per climber restart
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(current_saddle_point_state.get_next_AtY().data(),
-                          current_saddle_point_state.get_current_AtY().data()),
+    cuda::std::make_tuple(
+      reuse_tmp_primal ? tmp_primal.data() : current_saddle_point_state.get_next_AtY().data(),
+      current_saddle_point_state.get_current_AtY().data()),
     tmp_primal.data(),
     tmp_primal.size(),
     cuda::std::minus<>{},

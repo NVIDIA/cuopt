@@ -410,7 +410,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 
   current_AtY = make_dnvec<f_t>(op_problem_scaled.n_variables,
                                 current_saddle_point_state.get_current_AtY().data());
-  next_AtY    = make_dnvec<f_t>(op_problem_scaled.n_variables,
+  next_AtY    = make_dnvec<f_t>(current_saddle_point_state.get_next_AtY().size(),
                              current_saddle_point_state.get_next_AtY().data());
 
   potential_next_dual_solution =

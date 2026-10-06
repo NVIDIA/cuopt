@@ -14,6 +14,7 @@
 #include <pdlp/distributed_pdlp/distributed_utils.hpp>
 #include <pdlp/distributed_pdlp/partitioner.hpp>
 #include <pdlp/pdlp.cuh>
+#include <pdlp/problem_memory.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utils.cuh>
 
@@ -173,8 +174,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
     stream_view_(handle_ptr_->get_stream()),
     settings_(settings),
     problem_ptr(&op_problem),
-    op_problem_scaled_(
-      op_problem, false),  // False to call the PDLP custom version of the problem copy constructor
+    op_problem_scaled_(make_scaled_pdlp_problem(op_problem)),
     unscaled_primal_avg_solution_{static_cast<size_t>(op_problem.n_variables), stream_view_},
     unscaled_dual_avg_solution_{static_cast<size_t>(op_problem.n_constraints), stream_view_},
     primal_size_h_(op_problem.n_variables),
@@ -2600,7 +2600,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     compute_initial_primal_weight();
 
   scale_problem();
-  create_spmv_op_plans();
 
   // mixed precision and cusparse structure redirection are not supported in distributed
   // as memory footprint is not currently a bottleneck in distributed
@@ -2612,11 +2611,13 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     // indices), then free the duplicated structural vectors from the scaled copy to save device
     // memory.
     pdhg_solver_.get_cusparse_view().redirect_cusparse_csr_structure_pointers(*problem_ptr);
-    op_problem_scaled_.variables.resize(0, stream_view_);
-    op_problem_scaled_.offsets.resize(0, stream_view_);
-    op_problem_scaled_.reverse_constraints.resize(0, stream_view_);
-    op_problem_scaled_.reverse_offsets.resize(0, stream_view_);
+    release_workspace(op_problem_scaled_.variables);
+    release_workspace(op_problem_scaled_.offsets);
+    release_workspace(op_problem_scaled_.reverse_constraints);
+    release_workspace(op_problem_scaled_.reverse_offsets);
   }
+  // Plans must capture the final, shared CSR structure, not the released copies.
+  create_spmv_op_plans();
 
   if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
       !settings_.get_initial_step_size().has_value())
@@ -3216,16 +3217,13 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
 
     // Free per-shard scratch: no further scaling passes happen after this point.
     multi_gpu_engine->for_each_shard([](auto& shard) {
-      auto& scaling = shard.sub_pdlp->get_initial_scaling_strategy();
-      scaling.get_iteration_variable_scaling().resize(0, shard.stream.view());
-      scaling.get_iteration_constraint_matrix_scaling().resize(0, shard.stream.view());
+      shard.sub_pdlp->get_initial_scaling_strategy().release_iteration_scratch();
     });
   } else {
     initial_scaling_strategy_.scale_problem();
 
     // Free scratch: no further scaling passes happen after this point.
-    initial_scaling_strategy_.get_iteration_variable_scaling().resize(0, stream_view_);
-    initial_scaling_strategy_.get_iteration_constraint_matrix_scaling().resize(0, stream_view_);
+    initial_scaling_strategy_.release_iteration_scratch();
   }
 }
 
@@ -3310,7 +3308,9 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     std::vector<f_t> z = make_singular_value_probe<f_t>(static_cast<std::size_t>(m));
     rmm::device_uvector<f_t> d_z(m, stream_view_);
     rmm::device_uvector<f_t> d_q(m, stream_view_);
-    rmm::device_uvector<f_t> d_atq(n, stream_view_);
+    // This scratch is idle during setup and the product overwrites its first n entries.
+    // Reuse it instead of allocating another full primal vector for the power iteration.
+    auto& d_atq = pdhg_solver_.get_primal_tmp_resource();
 
     device_copy(d_z, z, stream_view_);
 

@@ -36,7 +36,11 @@ saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handl
       handle_ptr->get_stream()},
     dual_gradient_{batch_size * dual_size, handle_ptr->get_stream()},
     current_AtY_{batch_size * primal_size, handle_ptr->get_stream()},
-    next_AtY_{batch_size * primal_size, handle_ptr->get_stream()}
+    // Constant-step PDLP only needs the next A^T*y temporarily for the fixed-point
+    // error; compute_interaction_and_movement reuses tmp_primal for that product.
+    next_AtY_{
+      hyper_params.use_adaptive_step_size_strategy || batch_size > 1 ? batch_size * primal_size : 0,
+      handle_ptr->get_stream()}
 {
   EXE_CUOPT_EXPECTS(primal_size >= 0, "Size of the primal problem must be non-negative");
   EXE_CUOPT_EXPECTS(dual_size >= 0, "Size of the dual problem must be non-negative");
