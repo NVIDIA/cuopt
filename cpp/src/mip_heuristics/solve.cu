@@ -1063,14 +1063,13 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 template <typename i_t, typename f_t>
 std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   optimization_problem_interface_t<i_t, f_t>* problem_interface,
-  mip_solver_settings_t<i_t, f_t> const& settings)
+  solver_settings_t<i_t, f_t>& settings)
 {
   cuopt_expects(problem_interface != nullptr,
                 error_type_t::ValidationError,
                 "problem_interface cannot be null");
 
   try {
-    // Check if remote execution is enabled (always uses CPU backend)
     if (is_remote_execution_enabled()) {
       auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
       cuopt_expects(cpu_prob != nullptr,
@@ -1085,14 +1084,15 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 #endif
     }
 
-    // Local execution - dispatch to appropriate overload based on problem type
-    auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
+    // Local execution. The GPU solver takes the nested MIP settings.
+    auto& mip_settings = settings.get_mip_settings();
+    auto* cpu_prob     = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
     if (cpu_prob != nullptr) {
       cuopt_expects(is_remote_execution_enabled(),
                     error_type_t::ValidationError,
                     "A CPU-memory problem requires remote execution. Set CUOPT_REMOTE_HOST and "
                     "CUOPT_REMOTE_PORT to solve on a remote GPU server.");
-      return solve_mip(*cpu_prob, settings);
+      return solve_mip(*cpu_prob, mip_settings);
     }
 
     // GPU problem: call GPU solver directly
@@ -1100,7 +1100,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
     cuopt_expects(gpu_prob != nullptr,
                   error_type_t::ValidationError,
                   "problem_interface must be either a CPU or GPU optimization problem");
-    auto gpu_solution = solve_mip<i_t, f_t>(*gpu_prob, settings);
+    auto gpu_solution = solve_mip<i_t, f_t>(*gpu_prob, mip_settings);
     return std::make_unique<gpu_mip_solution_t<i_t, f_t>>(std::move(gpu_solution));
   } catch (const cuopt::logic_error& e) {
     CUOPT_LOG_ERROR("Error in solve_mip (interface): %s", e.what());
@@ -1125,7 +1125,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
     cpu_optimization_problem_t<int, F_TYPE>&, mip_solver_settings_t<int, F_TYPE> const&);      \
                                                                                                \
   template CUOPT_EXPORT std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(      \
-    optimization_problem_interface_t<int, F_TYPE>*, mip_solver_settings_t<int, F_TYPE> const&);
+    optimization_problem_interface_t<int, F_TYPE>*, solver_settings_t<int, F_TYPE>&);
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
