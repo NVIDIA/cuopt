@@ -1563,7 +1563,8 @@ void remove_leaving_perturbation(const lp_problem_t<i_t, f_t>& lp,
                                  i_t leaving_index,
                                  i_t direction,
                                  std::vector<f_t>& z,
-                                 std::vector<f_t>& objective)
+                                 std::vector<f_t>& objective,
+                                 f_t& sum_perturb)
 {
   const f_t perturb = objective[leaving_index] - lp.objective[leaving_index];
   if (perturb == 0.0) return;
@@ -1598,6 +1599,8 @@ void remove_leaving_perturbation(const lp_problem_t<i_t, f_t>& lp,
       objective[leaving_index] -= correction;
     }
   }
+  sum_perturb +=
+    std::abs(objective[leaving_index] - lp.objective[leaving_index]) - std::abs(perturb);
 }
 
 template <typename i_t, typename f_t>
@@ -1616,21 +1619,22 @@ i_t compute_perturbation(const lp_problem_t<i_t, f_t>& lp,
   const i_t m         = lp.num_rows;
   const f_t tight_tol = settings.tight_tol;
   i_t num_perturb     = 0;
-  sum_perturb         = 0.0;
   for (i_t k = 0; k < delta_z_indices.size(); ++k) {
     const i_t j = delta_z_indices[k];
     if (lp.upper[j] == inf && lp.lower[j] > -inf && z[j] < -tight_tol) {
       const f_t violation = -z[j];
       z[j] += violation;  // z[j] <- 0
+      const f_t old_perturbation = std::abs(objective[j] - lp.objective[j]);
       objective[j] += violation;
       num_perturb++;
-      sum_perturb += violation;
+      sum_perturb += std::abs(objective[j] - lp.objective[j]) - old_perturbation;
     } else if (lp.lower[j] == -inf && lp.upper[j] < inf && z[j] > tight_tol) {
       const f_t violation = z[j];
       z[j] -= violation;  // z[j] <- 0
+      const f_t old_perturbation = std::abs(objective[j] - lp.objective[j]);
       objective[j] -= violation;
       num_perturb++;
-      sum_perturb += violation;
+      sum_perturb += std::abs(objective[j] - lp.objective[j]) - old_perturbation;
     }
   }
   // On degenerate steps, shift the entering variable's cost
@@ -1639,13 +1643,16 @@ i_t compute_perturbation(const lp_problem_t<i_t, f_t>& lp,
     assert(vstatus[entering_index] != variable_status_t::BASIC);
     const f_t shift = -z[entering_index];
     if (shift != 0.0) {
+      const f_t old_perturbation =
+        std::abs(objective[entering_index] - lp.objective[entering_index]);
       objective[entering_index] += shift;
       z[entering_index] = 0.0;
-      sum_perturb += std::abs(shift);
+      sum_perturb +=
+        std::abs(objective[entering_index] - lp.objective[entering_index]) - old_perturbation;
       num_perturb++;
     }
   }
-  work_estimate += 7 * delta_z_indices.size();
+  work_estimate += 7 * delta_z_indices.size() + 5 * num_perturb;
   return 0;
 }
 
@@ -3389,8 +3396,9 @@ static dual_status_t dual_phase2_with_advanced_basis(
     return dual_status_t::CONCURRENT_LIMIT;
   }
 
-  f_t obj = compute_objective(lp, x);
-  phase2_work_estimate += 2 * n;
+  f_t obj         = compute_objective(lp, x);
+  f_t sum_perturb = phase2::amount_of_perturbation(lp, objective);
+  phase2_work_estimate += 5 * n;
 
   const i_t start_iter = iter;
 
@@ -3426,7 +3434,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
                         compute_user_objective(lp, obj),
                         infeasibility_indices.size(),
                         primal_infeasibility_squared,
-                        0.0,
+                        sum_perturb,
                         toc(start_time));
   }
   i_t iterations_since_refactor = 0;
@@ -3631,7 +3639,8 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                                      primal_infeasibility_squared,
                                                                      phase2_work_estimate);
         if (removal_status == 1) {  // CONTINUE_DUAL
-          obj = compute_objective(lp, x);
+          sum_perturb = 0.0;
+          obj         = compute_objective(lp, x);
           phase2_work_estimate += 2 * n;
           continue;
         }
@@ -3649,6 +3658,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                                           phase2_work_estimate);
           if (cleanup_status != dual_status_t::OPTIMAL) { return cleanup_status; }
         }
+        sum_perturb = 0.0;
         // removal_status == 0 (OPTIMAL) or primal cleanup done: fall through to prepare_optimality
       }
 
@@ -4150,9 +4160,9 @@ static dual_status_t dual_phase2_with_advanced_basis(
 
     timers.start_timer(phase2_work_estimate + ft.work_estimate());
     if (settings.remove_perturbation != 0) {
-      phase2::remove_leaving_perturbation(lp, settings, leaving_index, direction, z, objective);
+      phase2::remove_leaving_perturbation(
+        lp, settings, leaving_index, direction, z, objective, sum_perturb);
     }
-    f_t sum_perturb = 0.0;
     phase2::compute_perturbation(lp,
                                  settings,
                                  delta_z_indices,
