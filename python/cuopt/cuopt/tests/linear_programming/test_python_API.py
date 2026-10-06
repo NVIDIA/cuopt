@@ -920,3 +920,23 @@ def test_quadratic_matrix_2():
     assert x2.getValue() == pytest.approx(0.0000000, abs=1e-3)
     assert x3.getValue() == pytest.approx(0.1092896, abs=1e-3)
     assert problem.ObjValue == pytest.approx(3.715847, abs=1e-3)
+
+
+def test_linear_expression_unary_ops():
+    p = Problem("test_unary")
+    x = p.addVariable(lb=0, ub=5, vtype=CONTINUOUS, name="x")
+    y = p.addVariable(lb=0, ub=5, vtype=CONTINUOUS, name="y")
+    e = 2 * x + 3 * y + 4.0
+
+    neg_e = -e
+    assert neg_e.coefficients == [-2.0, -3.0]
+    assert neg_e.constant == -4.0
+
+    pos_e = +e
+    assert pos_e.coefficients == [2.0, 3.0]
+    assert pos_e.constant == 4.0
+
+    x.Value = 1.0
+    y.Value = 2.0
+    assert abs(e) == 12.0
+    assert abs(-e) == 12.0

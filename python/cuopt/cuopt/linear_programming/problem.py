@@ -1086,6 +1086,18 @@ class LinearExpression:
     def __len__(self):
         return len(self.vars)
 
+    def __neg__(self):
+        return self * -1.0
+
+    def __pos__(self):
+        return LinearExpression(
+            list(self.vars), list(self.coefficients), self.constant
+        )
+
+    def __abs__(self):
+        val = self.getValue()
+        return val if val >= 0.0 else -val
+
     def __iadd__(self, other):
         # Compute expr1 += expr2
         match other:
