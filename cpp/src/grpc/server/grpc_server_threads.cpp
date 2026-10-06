@@ -22,6 +22,7 @@ void worker_monitor_thread()
       bool was_clean_shutdown_exit;
     };
     std::vector<DeadWorker> dead;
+    bool gpu_failure_detected = false;
 
     {
       std::lock_guard<std::mutex> lock(worker_pids_mutex);
@@ -37,8 +38,13 @@ void worker_monitor_thread()
         bool signaled                = WIFSIGNALED(status);
         int signal_num               = signaled ? WTERMSIG(status) : 0;
         bool was_clean_shutdown_exit = false;
+        bool was_gpu_failure         = exit_code == kGpuUnhealthyExitCode;
 
-        if (signaled) {
+        if (was_gpu_failure) {
+          gpu_failure_detected = true;
+          SERVER_LOG_ERROR("[Server] Worker %d reported fatal GPU health failure; shutting down",
+                           pid);
+        } else if (signaled) {
           SERVER_LOG_ERROR("[Server] Worker %d killed by signal %d", pid, signal_num);
         } else if (exit_code != 0) {
           SERVER_LOG_ERROR("[Server] Worker %d exited with code %d", pid, exit_code);
@@ -53,12 +59,26 @@ void worker_monitor_thread()
       }
     }
 
+    if (gpu_failure_detected) {
+      fatal_gpu_failure.store(true, std::memory_order_release);
+      // SIGINT/SIGTERM are blocked process-wide. Sending SIGTERM to ourselves
+      // wakes the existing sigwait shutdown thread and keeps one shutdown path.
+      if (kill(getpid(), SIGTERM) != 0) {
+        SERVER_LOG_ERROR("[Server] Failed to request shutdown after GPU health failure: %s",
+                         strerror(errno));
+        keep_running = false;
+        if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
+      }
+    }
+
     for (const auto& dw : dead) {
       if (dw.was_clean_shutdown_exit) continue;
 
       mark_worker_jobs_failed(dw.pid);
 
-      if (!(keep_running && shm_ctrl && !shm_ctrl->shutdown_requested)) { continue; }
+      if (gpu_failure_detected || !(keep_running && shm_ctrl && !shm_ctrl->shutdown_requested)) {
+        continue;
+      }
 
       pid_t new_pid = spawn_single_worker(static_cast<int>(dw.index));
       {

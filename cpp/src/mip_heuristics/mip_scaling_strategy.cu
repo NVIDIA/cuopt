@@ -14,7 +14,7 @@
 #include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_segmented_reduce.cuh>
 
 #include <thrust/binary_search.h>
 #include <thrust/count.h>

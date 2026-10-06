@@ -13,7 +13,9 @@
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/sort.h>
 #include <thrust/unique.h>
-#include <cub/cub.cuh>
+#include <cub/device/device_merge_sort.cuh>
+#include <cub/device/device_radix_sort.cuh>
+#include <cub/device/device_scan.cuh>
 
 #include <deque>
 #include <unordered_set>

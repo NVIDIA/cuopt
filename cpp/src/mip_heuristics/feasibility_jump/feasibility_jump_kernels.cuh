@@ -15,8 +15,6 @@
 #include <cuda/stream>
 #include <raft/random/rng.cuh>
 
-#include <cub/cub.cuh>
-
 namespace cuopt::mathematical_optimization::mip {
 
 enum class weight_strategy_t { Increment, Multiply };

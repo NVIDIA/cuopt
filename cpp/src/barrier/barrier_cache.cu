@@ -154,7 +154,7 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   auto const& linear_obj_shift = impl_->transform->linear_obj_shift;
   auto const& column_scales    = impl_->transform->column_scales;
   auto const& translated_lower = impl_->transform->presolve_info.removed_lower_bounds;
-  auto& barrier_lp             = *impl_->transform->barrier_lp;
+  simplex::lp_problem_t<int, double>& barrier_lp = *impl_->transform->barrier_lp;
   if (!translated_lower.empty() && linear_obj_shift.size() == crushed.size() &&
       column_scales.size() == crushed.size() && barrier_lp.objective.size() == crushed.size()) {
     double obj_constant_delta = 0.0;
@@ -168,7 +168,7 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   add_shift(crushed, linear_obj_shift);
   // The next solve builds its solver from barrier_lp, so keep its objective and the cached
   // iteration workspace on the same c.
-  auto& barrier_objective = barrier_lp.objective;
+  std::vector<double>& barrier_objective = barrier_lp.objective;
   cuopt_expects(barrier_objective.size() == crushed.size(),
                 error_type_t::ValidationError,
                 "update_linear_objective: crushed objective size does not match the cached "

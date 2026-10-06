@@ -504,7 +504,7 @@ def test_cone_update_rhs_rejects_wrong_length(capfd):
 
 
 def test_update_rhs_rejects_wrong_length():
-    """Length is validated against the cached user row count."""
+    """Length is validated against the cached model row count."""
     settings = _sequence_settings()
     model = _build(**dict(MIXED_SENSES, rhs=[5.0, 8.0, 3.0]))
     assert solver.Solve(model, settings).get_termination_reason() == "Optimal"

@@ -16,6 +16,7 @@
 #include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/partition.h>
 #include <thrust/sort.h>
+#include <cub/device/device_segmented_sort.cuh>
 
 namespace cuopt::mathematical_optimization::mip {
 

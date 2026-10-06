@@ -10,9 +10,9 @@
 
 #include <cub/block/block_load.cuh>
 #include <cub/block/block_radix_sort.cuh>
+#include <cub/block/block_reduce.cuh>
 #include <cub/block/block_shuffle.cuh>
 #include <cub/block/block_store.cuh>
-#include <cub/cub.cuh>
 
 #include <cuda/std/type_traits>
 
