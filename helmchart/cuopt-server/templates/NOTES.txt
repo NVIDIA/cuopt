@@ -1,3 +1,6 @@
+{{- $isGrpc := eq (.Values.serverType | default "") "grpc" -}}
+{{- $svcPort := include "cuopt-server.servicePort" . -}}
+{{- $listenPort := include "cuopt-server.listenPort" . -}}
 1. Get the application URL by running these commands:
 {{- if .Values.ingress.enabled }}
 {{- range $host := .Values.ingress.hosts }}
@@ -8,17 +11,30 @@
 {{- else if contains "NodePort" .Values.service.type }}
   export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "cuopt-server.fullname" . }})
   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+{{- if $isGrpc }}
+  echo "$NODE_IP:$NODE_PORT (plaintext gRPC cuOpt API)"
+{{- else }}
   echo http://$NODE_IP:$NODE_PORT
+{{- end }}
 {{- else if contains "LoadBalancer" .Values.service.type }}
      NOTE: It may take a few minutes for the LoadBalancer IP to be available.
            You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "cuopt-server.fullname" . }}'
   export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "cuopt-server.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
-  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- if $isGrpc }}
+  echo "$SERVICE_IP:{{ $svcPort }} (plaintext gRPC cuOpt API)"
+{{- else }}
+  echo http://$SERVICE_IP:{{ $svcPort }}
+{{- end }}
 {{- else if contains "ClusterIP" .Values.service.type }}
   export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "{{ include "cuopt-server.selectorLabels" . }}" -o jsonpath="{.items[0].metadata.name}")
   export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
-  echo "Visit http://127.0.0.1:5000 to use your application"
-  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 5000:$CONTAINER_PORT
+{{- if $isGrpc }}
+  echo "Forward plaintext gRPC to 127.0.0.1:{{ $listenPort }} and connect your client there"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME {{ $listenPort }}:$CONTAINER_PORT
+{{- else }}
+  echo "Visit http://127.0.0.1:{{ $listenPort }} to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME {{ $listenPort }}:$CONTAINER_PORT
+{{- end }}
 {{- end }}
 
 2. To check the status of your cuOpt server deployment:
@@ -30,5 +46,6 @@
 4. Important Notes:
    - This deployment requires GPU nodes in your cluster
    - Make sure your cluster has the NVIDIA device plugin installed
-   - The chart does not select a server. The image entrypoint does. Override that with CUOPT_SERVER_TYPE set to proxy or legacy. Do not put mode names in command
-   - Port 5000 is exposed for the HTTP API. Probes call /v2/health/live and /v2/health/ready on that port. CUOPT_SERVER_TYPE=grpc does not serve them, so this chart cannot run gRPC-only
+   {{/* rapids-pre-commit-hooks: disable-next-line[verify-hardcoded-version] */}}
+   - serverType requires an image >= 26.10. Leave it empty to use the image entrypoint. proxy and legacy keep HTTP probes on port 5000. grpc publishes grpc.port and uses plaintext gRPC health probes. Do not put mode names in command
+   - Port 5000 is the HTTP API. serverType grpc uses port 5001 by default and cannot enable ingress
