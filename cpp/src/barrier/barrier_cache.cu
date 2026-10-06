@@ -186,7 +186,7 @@ void barrier_cache_t::update_rhs(double const* b, int m)
   std::string error;
   crush_rhs_status_t const status = crush_user_rhs(*impl_->transform, b, m, crushed, error);
   if (status == crush_rhs_status_t::infeasible) {
-    // Cache stays usable for a later feasible update; the next Solve reports INFEASIBLE from
+    // Cache stays usable for a later feasible update; the next solve reports INFEASIBLE from
     // this flag without running barrier.
     impl_->rhs_infeasible = true;
     impl_->rhs_dirty      = true;

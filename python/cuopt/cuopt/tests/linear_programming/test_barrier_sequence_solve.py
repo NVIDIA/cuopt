@@ -25,7 +25,7 @@ from cuopt.linear_programming import (
 
 REUSE_LOG = "reusing cache"
 RHS_INFEASIBLE_LOG = "update_rhs made an empty constraint row infeasible"
-IPM_LOG = "Optimal solution found"
+BARRIER_LOG = "Optimal solution found"
 
 
 def _sequence_settings():
@@ -183,7 +183,7 @@ def test_update_rhs_infeasible_empty_row_short_circuits(capfd):
 
     The row has no variables, so it is either satisfied for every x or for
     none. That makes the verdict exact and lets the next Solve answer without
-    running IPM. The cache is kept, so a later feasible RHS still reuses it.
+    running barrier. The cache is kept, so a later feasible RHS still reuses it.
     """
     settings = _sequence_settings()
     model = _build(**dict(EMPTY_ROW, rhs=[0.0, 2.0]))
@@ -195,7 +195,7 @@ def test_update_rhs_infeasible_empty_row_short_circuits(capfd):
     infeasible, log = _solve(model, settings, capfd)
     assert infeasible.get_termination_reason() == "PrimalInfeasible"
     assert RHS_INFEASIBLE_LOG in log
-    assert IPM_LOG not in log, "IPM ran despite a provably infeasible row"
+    assert BARRIER_LOG not in log, "barrier ran despite a provably infeasible row"
 
     # Same cache, feasible RHS again.
     rhs = [0.0, 4.0]

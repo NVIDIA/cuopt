@@ -382,7 +382,7 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
 
 // success: crushed is written. invalid: error is set and the caller reports a validation
 // failure. infeasible: a presolve-dropped empty row cannot hold the new RHS; the caller records
-// that for the next Solve instead of treating it as a validation failure.
+// that for the next solve instead of treating it as a validation failure.
 enum class crush_rhs_status_t { success = 0, invalid = -1, infeasible = -2 };
 
 template <typename i_t, typename f_t>
