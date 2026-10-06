@@ -57,8 +57,7 @@ TEST_P(PdlpMemory, OnlyAllocateWorkspacesUsedBySelectedMode)
   set_pdlp_solver_mode(settings);
 
   pdlp::pdlp_solver_t<int, double> solver(problem, settings);
-  EXPECT_EQ(solver.pdhg_solver_.get_saddle_point_state().get_next_AtY().size(),
-            settings.hyper_params.use_adaptive_step_size_strategy ? 3 : 0);
+  EXPECT_EQ(solver.pdhg_solver_.get_saddle_point_state().get_next_AtY().size(), 3);
   auto& scaling = solver.get_initial_scaling_strategy();
   // resize(0) alone would pass a size check but still pin the entire allocation.
   EXPECT_EQ(scaling.get_iteration_variable_scaling().capacity(), 0);
