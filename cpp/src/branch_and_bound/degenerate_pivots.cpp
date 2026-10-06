@@ -63,50 +63,11 @@ void pivot_to_improve_reduced_cost_strengthening(
 {
   const double strengthening_start = tic();
   // The const basis object accumulates solve work in a mutable counter. Never reset it here.
-  const f_t basis_work_start      = basis_update.work_estimate();
-  f_t work_estimate               = 0.0;
-  const i_t entry_num_updates     = basis_update.num_updates();
-  double btran_time               = 0.0;
-  double density_time             = 0.0;
-  double reduced_cost_update_time = 0.0;
-  double ratio_time               = 0.0;
-  double validation_time          = 0.0;
-  double bound_insertion_time     = 0.0;
-  double cleanup_time             = 0.0;
-  double dy_sparse_sum            = 0.0;
-  double dy_sparse_max            = 0.0;
-  double dy_significant_sum       = 0.0;
-  double dy_significant_max       = 0.0;
-  double dz_indices_sum           = 0.0;
-  double dz_indices_max           = 0.0;
-  i_t fixedwidth_candidates       = 0;
-  i_t processed_candidates        = 0;
-  i_t btran_candidates            = 0;
-  i_t skipped_dense               = 0;
-  i_t sparse_update_calls         = 0;
-  i_t dense_update_calls          = 0;
-  double zero_steps[2]            = {};
-  double infinite_steps[2]        = {};
-  double positive_steps[2]        = {};
-  double rejected_dual[2]         = {};
-  double bound_attempts[2]        = {};
-  double accepted_bounds[2]       = {};
-  // Include all BTRANs in the significant dy density bins, even skipped candidates.
-  const double density_limits[5] = {0.1, 1.0, 5.0, 10.0, 30.0};
-  const char* density_labels[6]  = {"[0,0.1)", "[0.1,1)", "[1,5)", "[5,10)", "[10,30)", "[30,inf)"};
-  struct density_stats_t {
-    double candidates    = 0.0;
-    double skipped_dense = 0.0;
-    double btran         = 0.0;
-    double density       = 0.0;
-    double update        = 0.0;
-    double scan          = 0.0;
-    double additions     = 0.0;
-  } density_stats[6];
-  // Count primal degenerate basic variables
-  i_t num_degenerate            = 0;
-  i_t num_degenerate_continuous = 0;
-  i_t num_degenerate_integer    = 0;
+  const f_t basis_work_start = basis_update.work_estimate();
+  f_t work_estimate          = 0.0;
+  i_t processed_candidates   = 0;
+  i_t skipped_dense          = 0;
+  i_t rejected_dual          = 0;
   std::vector<i_t> degenerate_integer_list;
   degenerate_integer_list.reserve(lp.num_rows);
   // Approximate scalar work, including reserved/initialized storage and scan passes.
@@ -116,49 +77,14 @@ void pivot_to_improve_reduced_cost_strengthening(
     const f_t slack_to_lower = soln.x[j] - lp.lower[j];
     const f_t slack_to_upper = lp.upper[j] - soln.x[j];
     if (slack_to_lower <= settings.primal_tol || slack_to_upper <= settings.primal_tol) {
-      num_degenerate++;
       if (var_types[j] == variable_type_t::INTEGER) {
-        num_degenerate_integer++;
         degenerate_integer_list.push_back(j);
-        work_estimate += 3;
-        if (lp.lower[j] == lp.upper[j]) { fixedwidth_candidates++; }
-      } else {
-        num_degenerate_continuous++;
+        work_estimate++;
       }
     }
   }
 
-  settings.log.printf(
-    "RCS timing start: candidates=%d fixedwidth=%d nonfixed=%d num_updates=%d "
-    "m=%d n=%d nnz=%d factor_nnz=unavailable elapsed=%.6f\n",
-    num_degenerate_integer,
-    fixedwidth_candidates,
-    num_degenerate_integer - fixedwidth_candidates,
-    entry_num_updates,
-    lp.num_rows,
-    lp.num_cols,
-    lp.A.nnz(),
-    toc(start_time));
-  if (num_degenerate_integer == 0) {
-    const double total_time = toc(strengthening_start);
-    settings.log.printf(
-      "RCS timing end: candidates=0 bounds=0 total=%.6f setup=%.6f btran=0 density=0 "
-      "reduced_cost_update=0 ratio=0 validation=0 bound_insertion=0 cleanup=0 elapsed=%.6f\n",
-      total_time,
-      total_time,
-      toc(start_time));
-    const f_t basis_work = basis_update.work_estimate() - basis_work_start;
-    const f_t total_work = work_estimate + basis_work;
-    settings.log.printf(
-      "RCS work: processed=0 skipped=0 skipped_dense=0 local=%.6e basis=%.6e total=%.6e "
-      "root=%.6e root_ratio=%.6e\n",
-      work_estimate,
-      basis_work,
-      total_work,
-      root_relax_work_estimate,
-      root_relax_work_estimate > 0 ? total_work / root_relax_work_estimate : 0.0);
-    return;
-  }
+  if (degenerate_integer_list.empty()) { return; }
   std::vector<i_t> variable_to_basic_position(lp.num_cols, -1);
   for (i_t k = 0; k < lp.num_rows; k++) {
     variable_to_basic_position[basic_list[k]] = k;
@@ -186,8 +112,7 @@ void pivot_to_improve_reduced_cost_strengthening(
   const f_t zero_tol   = settings.zero_tol;
   const f_t harris_tol = settings.dual_tol / 10;
 
-  i_t num_bounds_added    = 0;
-  const double setup_time = toc(strengthening_start);
+  i_t num_bounds_added = 0;
   for (i_t j : degenerate_integer_list) {
     // x_j is a degenerate integer basic variable.
     // We would like a dual-feasible point where x_j is nonbasic with a nonzero
@@ -201,7 +126,6 @@ void pivot_to_improve_reduced_cost_strengthening(
     const i_t p             = variable_to_basic_position[j];
     work_estimate += 3;
     if (p == -1) continue;
-    btran_candidates++;
 
     sparse_vector_t<i_t, f_t> ep(lp.num_rows, 1);
     ep.i[0] = p;
@@ -209,45 +133,23 @@ void pivot_to_improve_reduced_cost_strengthening(
     work_estimate += 4;  // Singleton RHS allocation/initialization and assignments.
     sparse_vector_t<i_t, f_t> delta_y_sparse;
     sparse_vector_t<i_t, f_t> UTsol_sparse;
-    const double btran_start = tic();
     basis_update.b_transpose_solve(ep, delta_y_sparse, UTsol_sparse);
-    const double candidate_btran_time = toc(btran_start);
-    btran_time += candidate_btran_time;
 
-    const double density_start = tic();
-    i_t delta_y_nz0            = 0;
+    i_t delta_y_nz0 = 0;
     for (const f_t value : delta_y_sparse.x) {
       if (std::abs(value) > 1e-12) { delta_y_nz0++; }
     }
     work_estimate += 3.0 * delta_y_sparse.x.size() + 2;
     const f_t delta_y_nz_percentage = delta_y_nz0 / static_cast<f_t>(lp.num_rows) * 100.0;
-    dy_sparse_sum += static_cast<double>(delta_y_sparse.i.size());
-    dy_sparse_max = std::max(dy_sparse_max, static_cast<double>(delta_y_sparse.i.size()));
-    dy_significant_sum += delta_y_nz0;
-    dy_significant_max = std::max(dy_significant_max, static_cast<double>(delta_y_nz0));
-    i_t density_bin    = 0;
-    while (density_bin < 5 && delta_y_nz_percentage >= density_limits[density_bin]) {
-      density_bin++;
-    }
-    work_estimate += 8 + 2 * density_bin;
-    auto& bin = density_stats[density_bin];
-    bin.candidates++;
-    bin.btran += candidate_btran_time;
-    const double candidate_density_time = toc(density_start);
-    density_time += candidate_density_time;
-    bin.density += candidate_density_time;
     if (delta_y_nz_percentage > 5.0) {
       skipped_dense++;
-      bin.skipped_dense++;
       // BTRAN restored its own workspace; no delta_z marks or dense delta_y were touched.
       continue;
     }
     processed_candidates++;
 
     // delta_zN = -N^T * delta_y, delta_z[leaving] = -1
-    const double reduced_cost_update_start = tic();
     if (delta_y_nz_percentage <= 30.0) {
-      sparse_update_calls++;
       simplex::compute_delta_z(local_Arow,
                                delta_y_sparse,
                                leaving_index,
@@ -258,7 +160,6 @@ void pivot_to_improve_reduced_cost_strengthening(
                                delta_z,
                                work_estimate);
     } else {
-      dense_update_calls++;
       delta_y_sparse.to_dense(delta_y);
       work_estimate += delta_y.size() + 2.0 * delta_y_sparse.i.size();
       simplex::compute_reduced_cost_update(lp,
@@ -272,11 +173,6 @@ void pivot_to_improve_reduced_cost_strengthening(
                                            delta_z,
                                            work_estimate);
     }
-    const double candidate_update_time = toc(reduced_cost_update_start);
-    reduced_cost_update_time += candidate_update_time;
-    dz_indices_sum += static_cast<double>(delta_z_indices.size());
-    dz_indices_max = std::max(dz_indices_max, static_cast<double>(delta_z_indices.size()));
-    bin.update += candidate_update_time;
 
     const f_t lower_j   = lp.lower[j];
     const f_t upper_j   = lp.upper[j];
@@ -287,13 +183,11 @@ void pivot_to_improve_reduced_cost_strengthening(
     // Try both dual rays. scale == +1 uses the computed delta_z (direction -1);
     // scale == -1 uses -delta_z (direction +1). Either or both may yield an RCS bound.
     for (const f_t scale : {1.0, -1.0}) {
-      const i_t sign_index     = scale == 1.0 ? 0 : 1;
-      const double ratio_start = tic();
       // Maximum dual step-length alpha that keeps dual feasibility on this ray.
       // zl_j + alpha * delta_zN_j >= 0 for nonbasic j on lower bound
       // zu_j + alpha * delta_zN_j <= 0 for nonbasic j on upper bound
       f_t alpha = inf;
-      work_estimate += 3;
+      work_estimate++;
       for (i_t jj : delta_z_indices) {
         work_estimate += 2;
         if (vstatus[jj] == variable_status_t::NONBASIC_FIXED) { continue; }
@@ -310,112 +204,36 @@ void pivot_to_improve_reduced_cost_strengthening(
           if (ratio < alpha) { alpha = ratio; }
         }
       }
-      const double ray_ratio_time = toc(ratio_start);
-      ratio_time += ray_ratio_time;
-      bin.scan += ray_ratio_time;
-      if (alpha == 0.0 || !std::isfinite(alpha)) {
-        if (alpha == 0.0) {
-          zero_steps[sign_index]++;
-        } else {
-          infinite_steps[sign_index]++;
-        }
-        continue;
-      }
-      positive_steps[sign_index]++;
-      const double validation_start = tic();
+      if (alpha == 0.0 || !std::isfinite(alpha)) { continue; }
 
       // Verify dual feasibility of the new point z_new = z + alpha * scale * delta_z
       // For NONBASIC_LOWER: z_new[jj] >= -dual_tol
       // For NONBASIC_UPPER: z_new[jj] <= dual_tol
       {
-        f_t max_initial_dual_infeas = 0.0;
-        f_t max_dual_infeas         = 0.0;
-        f_t worst_old_z             = 0.0;
-        f_t worst_delta_z           = 0.0;
-        f_t worst_step              = 0.0;
-        f_t worst_new_z             = 0.0;
-        i_t num_initial_dual_infeas = 0;
-        i_t num_dual_infeas         = 0;
-        i_t worst_j                 = -1;
+        i_t num_dual_infeas = 0;
         for (i_t jj : delta_z_indices) {
           work_estimate += 2;
           if (vstatus[jj] == variable_status_t::NONBASIC_FIXED) { continue; }
-          work_estimate += 12;
-          const f_t old_zj = soln.z[jj];
-          const f_t step   = alpha * scale * delta_z[jj];
-          const f_t new_zj = old_zj + step;
-          const bool initially_infeasible =
-            (vstatus[jj] == variable_status_t::NONBASIC_LOWER && old_zj < -settings.dual_tol) ||
-            (vstatus[jj] == variable_status_t::NONBASIC_UPPER && old_zj > settings.dual_tol);
-          if (initially_infeasible) {
-            work_estimate += 3;
-            num_initial_dual_infeas++;
-            max_initial_dual_infeas = std::max(max_initial_dual_infeas, std::abs(old_zj));
-          }
+          work_estimate += 8;
+          const f_t new_zj = soln.z[jj] + alpha * scale * delta_z[jj];
           if (vstatus[jj] == variable_status_t::NONBASIC_LOWER && new_zj < -settings.dual_tol) {
             num_dual_infeas++;
-            if (std::abs(new_zj) > max_dual_infeas) {
-              work_estimate += 7;
-              max_dual_infeas = std::abs(new_zj);
-              worst_j         = jj;
-              worst_old_z     = old_zj;
-              worst_delta_z   = scale * delta_z[jj];
-              worst_step      = step;
-              worst_new_z     = new_zj;
-            }
+            work_estimate++;
           }
           if (vstatus[jj] == variable_status_t::NONBASIC_UPPER && new_zj > settings.dual_tol) {
             num_dual_infeas++;
-            if (std::abs(new_zj) > max_dual_infeas) {
-              work_estimate += 7;
-              max_dual_infeas = std::abs(new_zj);
-              worst_j         = jj;
-              worst_old_z     = old_zj;
-              worst_delta_z   = scale * delta_z[jj];
-              worst_step      = step;
-              worst_new_z     = new_zj;
-            }
+            work_estimate++;
           }
         }
-        // Also check the leaving variable itself
-        const f_t new_zj_leaving = soln.z[j] + alpha * scale * delta_z[j];
-        work_estimate += 4;
-        const double ray_validation_time = toc(validation_start);
-        validation_time += ray_validation_time;
-        bin.scan += ray_validation_time;
         if (num_dual_infeas > 0) {
-          rejected_dual[sign_index]++;
-          // Keep one diagnostic sample per call; report all rejections in the summary.
-          if (rejected_dual[0] + rejected_dual[1] == 1.0) {
-            settings.log.printf(
-              "WARNING pivot_to_improve_rc: dual infeasibility after step! "
-              "var=%d alpha=%.6e scale=%.0f initial_num_infeas=%d "
-              "initial_max_infeas=%.6e num_infeas=%d max_infeas=%.6e worst_j=%d "
-              "worst_status=%d old_z=%.16e delta_z=%.16e step=%.16e new_z=%.16e "
-              "new_rc_leaving=%.6e\n",
-              j,
-              alpha,
-              scale,
-              num_initial_dual_infeas,
-              max_initial_dual_infeas,
-              num_dual_infeas,
-              max_dual_infeas,
-              worst_j,
-              static_cast<int>(vstatus[worst_j]),
-              worst_old_z,
-              worst_delta_z,
-              worst_step,
-              worst_new_z,
-              new_zj_leaving);
-          }
+          rejected_dual++;
           continue;
         }
       }
 
       // Claim: We don't actually need to take a pivot if all we want to do is add a bound
       // coming from reduced cost strengthening
-      const double bound_insertion_start = tic();
-      const f_t new_reduced_cost         = soln.z[j] + alpha * scale * delta_z[j];
+      const f_t new_reduced_cost = soln.z[j] + alpha * scale * delta_z[j];
       work_estimate += 10;
 
       // x_j <= l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j]
@@ -439,14 +257,7 @@ void pivot_to_improve_reduced_cost_strengthening(
             std::isfinite(objective_j) && std::isfinite(bound_j)) {
           i_t info = reduced_cost_bounds.add_upper_bound(j, objective_j, bound_j);
           work_estimate += 10;  // Constant-size bound-table lookup, comparisons and writes.
-          bound_attempts[sign_index]++;
-          if (info > 0) {
-            num_bounds_added++;
-            accepted_bounds[sign_index]++;
-            bin.additions++;
-          }
-          // settings.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound.
-          // Info %d\n", objective_j, bound_j, j, info);
+          if (info > 0) { num_bounds_added++; }
         }
       }
 
@@ -470,21 +281,12 @@ void pivot_to_improve_reduced_cost_strengthening(
             std::isfinite(objective_j) && std::isfinite(bound_j)) {
           i_t info = reduced_cost_bounds.add_lower_bound(j, objective_j, bound_j);
           work_estimate += 10;
-          bound_attempts[sign_index]++;
-          if (info > 0) {
-            num_bounds_added++;
-            accepted_bounds[sign_index]++;
-            bin.additions++;
-          }
-          // settings.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound.
-          // Info %d\n", objective_j, bound_j, j, info);
+          if (info > 0) { num_bounds_added++; }
         }
       }
-      bound_insertion_time += toc(bound_insertion_start);
     }
 
     // Clear arrays for next iteration, including when either or both rays were rejected.
-    const double cleanup_start = tic();
     work_estimate += 3.0 * delta_z_indices.size() + 2.0 * delta_y_sparse.i.size() + 2;
     for (i_t k : delta_z_indices) {
       delta_z_mark[k] = 0;
@@ -495,90 +297,21 @@ void pivot_to_improve_reduced_cost_strengthening(
     for (i_t k : delta_y_sparse.i) {
       delta_y[k] = 0.0;
     }
-    cleanup_time += toc(cleanup_start);
-  }
-  const double total_time      = toc(strengthening_start);
-  const double candidate_count = std::max(1.0, static_cast<double>(processed_candidates));
-  const double btran_count     = std::max(1.0, static_cast<double>(btran_candidates));
-  settings.log.printf("Added %d bounds for reduced cost strengthening\n", num_bounds_added);
-  settings.log.printf(
-    "RCS timing end: candidates=%d bounds=%d total=%.6f setup=%.6f btran=%.6f density=%.6f "
-    "reduced_cost_update=%.6f ratio=%.6f validation=%.6f bound_insertion=%.6f cleanup=%.6f "
-    "other=%.6f seconds_per_candidate=%.9f elapsed=%.6f\n",
-    num_degenerate_integer,
-    num_bounds_added,
-    total_time,
-    setup_time,
-    btran_time,
-    density_time,
-    reduced_cost_update_time,
-    ratio_time,
-    validation_time,
-    bound_insertion_time,
-    cleanup_time,
-    total_time - setup_time - btran_time - density_time - reduced_cost_update_time - ratio_time -
-      validation_time - bound_insertion_time - cleanup_time,
-    total_time / btran_count,
-    toc(start_time));
-  settings.log.printf(
-    "RCS sparsity: processed=%d skipped=%d skipped_dense=%d btran_candidates=%d "
-    "dy_sparse_avg=%.3f dy_sparse_max=%.0f "
-    "dy_significant_avg=%.3f dy_significant_max=%.0f dz_indices_avg=%.3f dz_indices_max=%.0f "
-    "sparse_update_calls=%d dense_update_calls=%d significant_tol=1e-12 sparse_max_pct=30 "
-    "skip_dense_above_pct=5\n",
-    processed_candidates,
-    num_degenerate_integer - processed_candidates,
-    skipped_dense,
-    btran_candidates,
-    dy_sparse_sum / btran_count,
-    dy_sparse_max,
-    dy_significant_sum / btran_count,
-    dy_significant_max,
-    dz_indices_sum / candidate_count,
-    dz_indices_max,
-    sparse_update_calls,
-    dense_update_calls);
-  for (i_t sign_index = 0; sign_index < 2; sign_index++) {
-    settings.log.printf(
-      "RCS rays: scale=%d zero_steps=%.0f infinite_steps=%.0f positive_steps=%.0f "
-      "rejected_dual=%.0f dual_feasible_steps=%.0f bound_attempts=%.0f accepted_bounds=%.0f\n",
-      sign_index == 0 ? 1 : -1,
-      zero_steps[sign_index],
-      infinite_steps[sign_index],
-      positive_steps[sign_index],
-      rejected_dual[sign_index],
-      positive_steps[sign_index] - rejected_dual[sign_index],
-      bound_attempts[sign_index],
-      accepted_bounds[sign_index]);
-  }
-  for (i_t density_bin = 0; density_bin < 6; density_bin++) {
-    const auto& bin = density_stats[density_bin];
-    settings.log.printf(
-      "RCS density: dy_significant_pct=%s candidates=%.0f skipped_dense=%.0f "
-      "btran=%.6f density=%.6f update=%.6f "
-      "scan=%.6f accepted_bounds=%.0f\n",
-      density_labels[density_bin],
-      bin.candidates,
-      bin.skipped_dense,
-      bin.btran,
-      bin.density,
-      bin.update,
-      bin.scan,
-      bin.additions);
   }
   const f_t basis_work = basis_update.work_estimate() - basis_work_start;
   const f_t total_work = work_estimate + basis_work;
   settings.log.printf(
-    "RCS work: processed=%d skipped=%d skipped_dense=%d local=%.6e basis=%.6e total=%.6e "
-    "root=%.6e root_ratio=%.6e\n",
+    "RCS: candidates=%d bounds=%d skipped_dense=%d rejected_dual=%d time=%f work=%e "
+    "root_work=%e root_ratio=%f elapsed=%f\n",
     processed_candidates,
-    num_degenerate_integer - processed_candidates,
+    num_bounds_added,
     skipped_dense,
-    work_estimate,
-    basis_work,
+    rejected_dual,
+    toc(strengthening_start),
     total_work,
     root_relax_work_estimate,
-    root_relax_work_estimate > 0 ? total_work / root_relax_work_estimate : 0.0);
+    root_relax_work_estimate > 0 ? total_work / root_relax_work_estimate : 0.0,
+    toc(start_time));
 }
 
 template <typename i_t, typename f_t>
