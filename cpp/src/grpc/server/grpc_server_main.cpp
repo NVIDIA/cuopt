@@ -207,6 +207,7 @@ int main(int argc, char** argv)
     shm_unlink(SHM_JOB_QUEUE.c_str());
     shm_unlink(SHM_RESULT_QUEUE.c_str());
     shm_unlink(SHM_CONTROL.c_str());
+    shm_unlink(SHM_WORKER_READY.c_str());
 
     job_queue = static_cast<JobQueueEntry*>(
       create_shared_memory(SHM_JOB_QUEUE.c_str(), sizeof(JobQueueEntry) * MAX_JOBS));
@@ -215,6 +216,9 @@ int main(int argc, char** argv)
     shm_ctrl = static_cast<SharedMemoryControl*>(
       create_shared_memory(SHM_CONTROL.c_str(), sizeof(SharedMemoryControl)));
     new (shm_ctrl) SharedMemoryControl{};
+    worker_ready_flags = static_cast<std::atomic<bool>*>(
+      create_shared_memory(SHM_WORKER_READY.c_str(),
+                           sizeof(std::atomic<bool>) * static_cast<size_t>(config.num_workers)));
 
     for (size_t i = 0; i < MAX_JOBS; ++i) {
       new (&job_queue[i]) JobQueueEntry{};
@@ -229,6 +233,10 @@ int main(int argc, char** argv)
       result_queue[i].claimed.store(false);
       result_queue[i].ready.store(false);
       result_queue[i].retrieved.store(false);
+    }
+
+    for (int i = 0; i < config.num_workers; ++i) {
+      new (&worker_ready_flags[i]) std::atomic<bool>{false};
     }
 
     shm_ctrl->shutdown_requested.store(false);
