@@ -288,14 +288,21 @@ class grpc_client_t {
   bool ping(int timeout_seconds = 5);
 
   /**
-   * @brief Solve an LP remotely, sending typed fields and the parameter map.
+   * @brief Solve an LP remotely.
+   *
+   * Serializes every set_parameter() value into the parameters map and does
+   * not write deprecated typed fields. Warm start is still a normal field.
    */
   template <typename i_t, typename f_t>
   remote_lp_result_t<i_t, f_t> solve_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
                                         solver_settings_t<i_t, f_t>& settings);
 
   /**
-   * @brief Solve a MIP remotely, sending typed fields and the parameter map.
+   * @brief Solve a MIP remotely.
+   *
+   * Serializes every set_parameter() value into the parameters map and does
+   * not write deprecated typed fields. presolve_absolute_tolerance is still a
+   * normal field.
    */
   template <typename i_t, typename f_t>
   remote_mip_result_t<i_t, f_t> solve_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
@@ -309,7 +316,8 @@ class grpc_client_t {
   /**
    * @brief Submit an LP problem from a solver_settings_t.
    *
-   * Writes the deprecated typed fields and then every set_parameter() value.
+   * Serializes every set_parameter() value into the parameters map and does
+   * not write deprecated typed fields. Warm start is still a normal field.
    */
   template <typename i_t, typename f_t>
   submit_result_t submit_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
@@ -318,7 +326,9 @@ class grpc_client_t {
   /**
    * @brief Submit a MIP problem from a solver_settings_t.
    *
-   * Writes the deprecated typed fields and then every set_parameter() value.
+   * Serializes every set_parameter() value into the parameters map and does
+   * not write deprecated typed fields. presolve_absolute_tolerance is still a
+   * normal field.
    */
   template <typename i_t, typename f_t>
   submit_result_t submit_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,

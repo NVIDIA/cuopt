@@ -471,10 +471,12 @@ pdlp_settings:
   # Those fields stay in the message so a server can still read a client that
   # sends them. The current client writes set_parameter() values only in
   # `parameters` and needs a server that applies that map. New parameters are
-  # not added here. A non-empty parameters map is the whole set_parameter()
-  # payload: the server skips the deprecated typed fields and applies only the
-  # keys in the map. An empty map is an older client, and those typed fields
-  # are applied. Warm start is an embed and is always applied.
+  # not added here. All or nothing is a property of the serialized map, not of
+  # set_parameter() on the settings object. A non-empty map skips every
+  # deprecated typed field and applies only the keys it contains. An empty map
+  # is an older client, and those typed fields are applied. An old client that
+  # calls set_parameter() still sends an empty map unless its serializer writes
+  # one. Warm start is an embed and is always applied.
   parameter_map:
     name: parameters
     field_num: 60

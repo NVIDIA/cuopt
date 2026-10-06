@@ -2210,9 +2210,9 @@ TEST_F(ErrorRecoveryTests, PreJobGpuHealthFailureShutsDownWithoutRespawn)
   auto client = create_client();
   ASSERT_NE(client, nullptr);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 5.0;
-  auto submitted      = client->submit_mip(create_simple_mip(), settings);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 5.0);
+  auto submitted = client->submit_mip(create_simple_mip(), settings);
   ASSERT_TRUE(submitted.success);
 
   // start_server() returns when the parent accepts RPCs, not when the worker

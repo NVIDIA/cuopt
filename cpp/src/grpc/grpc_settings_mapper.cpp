@@ -261,9 +261,10 @@ void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_sett
                                 i_t n_variables,
                                 i_t n_constraints)
 {
-  // Older clients send typed fields and an empty map. A non-empty map is the
-  // whole set_parameter() payload, so proto3 zeros in the deprecated fields
-  // must not replace C++ defaults.
+  // The serialized map decides this. set_parameter() on the sender's settings
+  // object does not fill it. Empty: older client, copy the deprecated typed
+  // fields. Non-empty: ignore every one of those fields, including any that a
+  // custom client wrote beside the map.
   if (pb_settings.parameters().empty()) {
 #include "generated_proto_to_pdlp_parameters.inc"
 
@@ -308,8 +309,9 @@ template <typename i_t, typename f_t>
 void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
                                mip_solver_settings_t<i_t, f_t>& settings)
 {
-  // Older clients send typed fields and an empty map. A non-empty map is the
-  // whole set_parameter() payload.
+  // The serialized map decides this. set_parameter() on the sender's settings
+  // object does not fill it. Empty: older client, copy the deprecated typed
+  // fields. Non-empty: ignore every one of those fields.
   if (pb_settings.parameters().empty()) {
 #include "generated_proto_to_mip_parameters.inc"
 

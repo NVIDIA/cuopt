@@ -1459,8 +1459,14 @@ def generate_settings_message_proto(registry, message_name, obj):
                 num,
                 "  // set_parameter() key/value store. Keys are the CUOPT_*\n"
                 "  // parameter strings; values are the textual form\n"
-                "  // set_parameter_from_string accepts. A key present here\n"
-                "  // takes precedence over the matching deprecated field.\n"
+                "  // set_parameter_from_string accepts. All or nothing, based\n"
+                "  // on this serialized map. Non-empty: only these entries are\n"
+                "  // applied, and every deprecated typed field in this message\n"
+                "  // is ignored. Empty: an older client; those typed fields are\n"
+                "  // applied and this map changes nothing. Calling\n"
+                "  // set_parameter() on a settings object does not fill this\n"
+                "  // map. A client writes it only by serializing it. Warm start\n"
+                "  // and presolve_absolute_tolerance still apply either way.\n"
                 f"  map<string, string> {name} = {num};",
             )
         )
