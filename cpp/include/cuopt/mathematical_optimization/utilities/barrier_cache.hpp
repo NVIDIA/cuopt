@@ -37,7 +37,7 @@ struct barrier_transform_t;
  *
  * After an Optimal full solve, holds iteration_data_t and the user-barrier transform.
  * The update APIs crush new user data into that workspace and marks the cache dirty so the
- * next Solve reuses it (skip convert/presolve/scaling).
+ * next solve reuses it (skip convert/presolve/scaling).
  */
 class barrier_cache_t {
  public:

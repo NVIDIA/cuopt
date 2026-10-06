@@ -533,16 +533,20 @@ lp_status_t solve_linear_program_with_barrier(
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
 
   auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
+  const bool user_has_soc = !user_problem.second_order_cone_dims.empty();
+  // run_barrier already resolved -1 to 0. can_reuse_barrier_cache also rejects a cache whose
+  // presolve bounded free variables, which this path cannot replay.
   const bool reuse_cached_data =
-    xf != nullptr && xf->barrier_lp != nullptr &&
-    // Only quadratic-objective and cone models reach the barrier at all.
-    (!user_problem.Q_values.empty() || !user_problem.second_order_cone_dims.empty()) &&
-    cuopt::mathematical_optimization::cone_layout_matches(*xf, user_problem) &&
-    // run_barrier already resolved -1 to 0. The second check covers caches built by an earlier
-    // solve that did bound free variables, whose presolve state the reuse path cannot replay.
-    settings.barrier_presolve_bound_free_variables == 0 &&
-    xf->presolve_info.bounded_free_variables.empty() &&
-    user_problem.num_cols == xf->user_num_cols && user_problem.num_rows == xf->user_num_rows;
+    cuopt::mathematical_optimization::can_reuse_barrier_cache(
+      xf,
+      settings.barrier_presolve_bound_free_variables,
+      user_problem.num_cols,
+      user_problem.num_rows,
+      !user_problem.Q_values.empty(),
+      user_has_soc) &&
+    (xf != nullptr && cuopt::mathematical_optimization::cone_layout_matches(*xf, user_problem)) &&
+    (!user_has_soc ||
+     (user_problem.num_cols == xf->user_num_cols && user_problem.num_rows == xf->user_num_rows));
 
   if (reuse_cached_data) {
     if (cache->rhs_infeasible()) {

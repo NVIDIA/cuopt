@@ -83,6 +83,27 @@ struct barrier_transform_t {
   std::unique_ptr<csc_matrix_t<int, double>> barrier_Q;
 };
 
+// Shared reuse gate from the update-API work. A cone model skips the QP-only
+// size check: the caller compares either expanded user counts or pre-expansion
+// model counts, which are not the same number.
+inline bool can_reuse_barrier_cache(barrier_transform_t const* xf,
+                                    int bound_free_variables,
+                                    int num_cols,
+                                    int num_rows,
+                                    bool has_quadratic_objective,
+                                    bool user_has_soc)
+{
+  if (xf == nullptr || xf->barrier_lp == nullptr) { return false; }
+  if (bound_free_variables != 0 || !xf->presolve_info.bounded_free_variables.empty()) {
+    return false;
+  }
+  if (user_has_soc) { return true; }
+  return has_quadratic_objective && xf->second_order_cone_dims.empty() &&
+         xf->barrier_lp->second_order_cone_dims.empty() &&
+         static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
+         num_cols == xf->user_num_cols && num_rows == xf->user_num_rows;
+}
+
 // Dimensions an update is sized in: the cached user counts, or the smaller pre-expansion counts
 // when the QCMATRIX->SOC expansion grew the problem.
 inline int model_num_cols(barrier_transform_t const& xf)
