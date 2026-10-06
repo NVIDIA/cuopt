@@ -231,6 +231,14 @@ void map_pdlp_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& settings
 }
 
 template <typename i_t, typename f_t>
+void map_pdlp_client_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& settings,
+                                       cuopt::remote::PDLPSolverSettings* pb_settings)
+{
+#include "generated_pdlp_client_settings_to_proto.inc"
+  write_settings_warm_start(settings, pb_settings);
+}
+
+template <typename i_t, typename f_t>
 size_t estimate_pdlp_warm_start_proto_size(const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
   const auto& ws = settings.get_cpu_pdlp_warm_start_data();
@@ -282,6 +290,13 @@ void map_mip_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& settings,
                                cuopt::remote::MIPSolverSettings* pb_settings)
 {
 #include "generated_mip_settings_to_proto.inc"
+}
+
+template <typename i_t, typename f_t>
+void map_mip_client_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& settings,
+                                      cuopt::remote::MIPSolverSettings* pb_settings)
+{
+#include "generated_mip_client_settings_to_proto.inc"
 }
 
 template <typename i_t, typename f_t>
@@ -382,6 +397,9 @@ void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,
 template CUOPT_EXPORT void map_pdlp_settings_to_proto(
   const pdlp_solver_settings_t<int32_t, float>& settings,
   cuopt::remote::PDLPSolverSettings* pb_settings);
+template CUOPT_EXPORT void map_pdlp_client_settings_to_proto(
+  const pdlp_solver_settings_t<int32_t, float>& settings,
+  cuopt::remote::PDLPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_pdlp_settings(
   const cuopt::remote::PDLPSolverSettings& pb_settings,
   pdlp_solver_settings_t<int32_t, float>& settings,
@@ -390,6 +408,9 @@ template CUOPT_EXPORT void map_proto_to_pdlp_settings(
 template CUOPT_EXPORT size_t
 estimate_pdlp_warm_start_proto_size(const pdlp_solver_settings_t<int32_t, float>& settings);
 template CUOPT_EXPORT void map_mip_settings_to_proto(
+  const mip_solver_settings_t<int32_t, float>& settings,
+  cuopt::remote::MIPSolverSettings* pb_settings);
+template CUOPT_EXPORT void map_mip_client_settings_to_proto(
   const mip_solver_settings_t<int32_t, float>& settings,
   cuopt::remote::MIPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_mip_settings(
@@ -407,6 +428,9 @@ template CUOPT_EXPORT void append_solver_parameters(
 template CUOPT_EXPORT void map_pdlp_settings_to_proto(
   const pdlp_solver_settings_t<int32_t, double>& settings,
   cuopt::remote::PDLPSolverSettings* pb_settings);
+template CUOPT_EXPORT void map_pdlp_client_settings_to_proto(
+  const pdlp_solver_settings_t<int32_t, double>& settings,
+  cuopt::remote::PDLPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_pdlp_settings(
   const cuopt::remote::PDLPSolverSettings& pb_settings,
   pdlp_solver_settings_t<int32_t, double>& settings,
@@ -415,6 +439,9 @@ template CUOPT_EXPORT void map_proto_to_pdlp_settings(
 template CUOPT_EXPORT size_t
 estimate_pdlp_warm_start_proto_size(const pdlp_solver_settings_t<int32_t, double>& settings);
 template CUOPT_EXPORT void map_mip_settings_to_proto(
+  const mip_solver_settings_t<int32_t, double>& settings,
+  cuopt::remote::MIPSolverSettings* pb_settings);
+template CUOPT_EXPORT void map_mip_client_settings_to_proto(
   const mip_solver_settings_t<int32_t, double>& settings,
   cuopt::remote::MIPSolverSettings* pb_settings);
 template CUOPT_EXPORT void map_proto_to_mip_settings(

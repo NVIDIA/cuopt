@@ -33,6 +33,18 @@ void map_pdlp_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& settings
                                 cuopt::remote::PDLPSolverSettings* pb_settings);
 
 /**
+ * @brief Client export of PDLP settings.
+ *
+ * Writes warm start only. set_parameter() values are left for the caller to
+ * put in the parameters map. A request built this way needs a server that
+ * applies that map. map_pdlp_settings_to_proto still writes the deprecated
+ * typed fields so an older client message can be reproduced in tests.
+ */
+template <typename i_t, typename f_t>
+void map_pdlp_client_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& settings,
+                                       cuopt::remote::PDLPSolverSettings* pb_settings);
+
+/**
  * @brief Map protobuf PDLPSolverSettings message to pdlp_solver_settings_t.
  *
  * Reads from a protobuf message using the generated protobuf C++ API.
@@ -70,6 +82,17 @@ size_t estimate_pdlp_warm_start_proto_size(const pdlp_solver_settings_t<i_t, f_t
 template <typename i_t, typename f_t>
 void map_mip_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& settings,
                                cuopt::remote::MIPSolverSettings* pb_settings);
+
+/**
+ * @brief Client export of MIP settings.
+ *
+ * Writes presolve_absolute_tolerance, which is not a set_parameter() value.
+ * Every set_parameter() value is left for the caller to put in the parameters
+ * map. A request built this way needs a server that applies that map.
+ */
+template <typename i_t, typename f_t>
+void map_mip_client_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& settings,
+                                      cuopt::remote::MIPSolverSettings* pb_settings);
 
 /**
  * @brief Map protobuf MIPSolverSettings message to mip_solver_settings_t.

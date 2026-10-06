@@ -2751,6 +2751,46 @@ TEST(MapperRoundtrip, ParameterMapRoundTripsSolverSettings)
   EXPECT_EQ(inf_pb.parameters().at(CUOPT_TIME_LIMIT), "inf");
 }
 
+// The live client sends set_parameter() values only in the map. Warm start and
+// presolve_absolute_tolerance still travel as ordinary fields.
+TEST(MapperRoundtrip, ClientRequestOmitsDeprecatedParameterFields)
+{
+  using settings_t = solver_settings_t<int32_t, double>;
+  settings_t settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 4.5);
+  settings.get_mip_settings().tolerances.presolve_absolute_tolerance = 5e-7;
+  auto& ws = settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data();
+  ws.last_restart_duality_gap_dual_solution_ = {0.3};
+  ws.initial_step_size_                      = 0.5;
+
+  auto lp_problem         = create_test_lp_problem();
+  auto lp                 = build_lp_submit_request(lp_problem, settings);
+  const auto& lp_settings = lp.lp_request().settings();
+  EXPECT_FALSE(lp_settings.has_time_limit());
+  EXPECT_EQ(lp_settings.parameters().at(CUOPT_TIME_LIMIT), "4.5");
+  ASSERT_TRUE(lp_settings.has_warm_start_data());
+  EXPECT_DOUBLE_EQ(lp_settings.warm_start_data().initial_step_size(), 0.5);
+
+  auto mip_problem         = create_test_mip_problem();
+  auto mip                 = build_mip_submit_request(mip_problem, settings);
+  const auto& mip_settings = mip.mip_request().settings();
+  EXPECT_FALSE(mip_settings.has_time_limit());
+  EXPECT_TRUE(mip_settings.has_presolve_absolute_tolerance());
+  EXPECT_DOUBLE_EQ(mip_settings.presolve_absolute_tolerance(), 5e-7);
+  EXPECT_EQ(mip_settings.parameters().at(CUOPT_TIME_LIMIT), "4.5");
+
+  cuopt::remote::ChunkedProblemHeader lp_header;
+  populate_chunked_header_lp(lp_problem, settings.get_pdlp_settings(), &lp_header);
+  EXPECT_FALSE(lp_header.lp_settings().has_time_limit());
+  ASSERT_TRUE(lp_header.lp_settings().has_warm_start_data());
+
+  cuopt::remote::ChunkedProblemHeader mip_header;
+  populate_chunked_header_mip(mip_problem, settings.get_mip_settings(), false, false, &mip_header);
+  EXPECT_FALSE(mip_header.mip_settings().has_time_limit());
+  EXPECT_TRUE(mip_header.mip_settings().has_presolve_absolute_tolerance());
+  EXPECT_DOUBLE_EQ(mip_header.mip_settings().presolve_absolute_tolerance(), 5e-7);
+}
+
 // A shared name has to agree on both nested settings before it can be sent.
 TEST(MapperRoundtrip, ParameterMapRejectsDivergentSharedTimeLimit)
 {

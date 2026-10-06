@@ -1468,21 +1468,34 @@ def generate_settings_message_proto(registry, message_name, obj):
     return "\n".join(item[1] for item in lines)
 
 
-def generate_settings_to_proto_body(registry, obj_name, obj, indent="  "):
+def generate_settings_to_proto_body(
+    registry, obj_name, obj, indent="  ", skip_parameters=False
+):
     # Two presence mechanisms (handled by `emit_scalar_to_proto`):
     #   * `sentinel` -> if/else wrapping so a C++ sentinel value (e.g.
     #     std::numeric_limits<i_t>::max()) is emitted as a reserved proto
     #     value (e.g. -1).
     # (`optional` only affects the from-proto direction and the proto
     # declaration; the to-proto setter always writes a value.)
+    #
+    # skip_parameters is the live client export. set_parameter() values go in
+    # the parameters map, so a client built from that export needs a server
+    # that applies the map. The full body stays for the deprecated typed
+    # fields an older client still sends.
     lines, ind = [], indent
     for f in parse_settings_fields(obj.get("fields", [])):
+        if skip_parameters and _settings_field_is_parameter(f):
+            continue
         cpp_member = f.get("member", f["name"])
         setter_lhs = f"pb_settings->set_{_proto_cpp_name(f['name'])}"
         lines.extend(
             emit_scalar_to_proto(
                 setter_lhs, f"settings.{cpp_member}", f, registry, ind
             )
+        )
+    if not lines:
+        lines.append(
+            f"{ind}// set_parameter() values travel in the parameters map."
         )
     return "\n".join(lines)
 
@@ -2596,11 +2609,11 @@ def _gen_populate_chunked_header(registry, solver_type, indent="  "):
 
     if solver_type == "lp":
         lines.append(
-            f"{ind}map_pdlp_settings_to_proto(settings, header->mutable_lp_settings());"
+            f"{ind}map_pdlp_client_settings_to_proto(settings, header->mutable_lp_settings());"
         )
     else:
         lines.append(
-            f"{ind}map_mip_settings_to_proto(settings, header->mutable_mip_settings());"
+            f"{ind}map_mip_client_settings_to_proto(settings, header->mutable_mip_settings());"
         )
         lines.append(f"{ind}header->set_enable_incumbents(enable_incumbents);")
         lines.append(
@@ -4004,6 +4017,18 @@ def main():
                 + generate_settings_to_proto_body(registry, key, obj)
                 + "\n",
             )
+            if obj.get("parameter_map"):
+                write_file(
+                    os.path.join(
+                        outdir,
+                        f"generated_{label}_client_settings_to_proto.inc",
+                    ),
+                    HEADER
+                    + generate_settings_to_proto_body(
+                        registry, key, obj, skip_parameters=True
+                    )
+                    + "\n",
+                )
             write_file(
                 os.path.join(
                     outdir, f"generated_proto_to_{label}_settings.inc"
