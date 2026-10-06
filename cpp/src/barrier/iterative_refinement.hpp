@@ -6,6 +6,7 @@
 /* clang-format on */
 #pragma once
 
+#include <barrier/device_sparse_matrix.cuh>
 #include <linear_algebra/dense_vector.hpp>
 
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -24,11 +25,163 @@
 #include <rmm/device_uvector.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::barrier {
+
+template <typename f_t, int dimension>
+struct gmres_update_op {
+  const f_t* x;
+  const f_t* basis[dimension];
+  f_t coefficients[dimension];
+  int count;
+
+  __device__ f_t operator()(size_t i) const
+  {
+    f_t delta = 0;
+    for (int j = 0; j < count; ++j) {
+      delta += coefficients[j] * basis[j][i];
+    }
+    return x[i] + delta;
+  }
+};
+
+// Reuse device storage across the affine/corrector solves and GMRES restarts.
+template <typename f_t>
+struct gmres_workspace_t {
+  static constexpr int dimension = 10;
+  rmm::device_uvector<f_t> r, x_sav;
+  std::vector<rmm::device_uvector<f_t>> V, Z;
+  transform_reduce_helper_t<f_t> reductions;
+  rmm::device_uvector<f_t> d_column;
+  std::array<f_t, dimension + 2> h_column;
+
+  explicit gmres_workspace_t(cuda::stream_ref stream)
+    : r(0, stream), x_sav(0, stream), reductions(stream), d_column(dimension + 2, stream)
+  {
+  }
+
+  void resize(size_t n, cuda::stream_ref stream)
+  {
+    r.resize(n, stream);
+    x_sav.resize(n, stream);
+  }
+
+  void resize_basis(size_t n, cuda::stream_ref stream)
+  {
+    if (V.empty()) {
+      for (int k = 0; k <= dimension; ++k) {
+        V.emplace_back(n, stream);
+        Z.emplace_back(n, stream);
+      }
+    } else {
+      for (int k = 0; k <= dimension; ++k) {
+        V[k].resize(n, stream);
+        Z[k].resize(n, stream);
+      }
+    }
+  }
+
+  f_t norm_inf(const rmm::device_uvector<f_t>& x)
+  {
+    return reductions.transform_reduce(
+      x.data(),
+      thrust::maximum<f_t>{},
+      [] __host__ __device__(f_t v) { return abs(v); },
+      f_t(0),
+      x.size(),
+      x.stream());
+  }
+
+  f_t norm2(const rmm::device_uvector<f_t>& x)
+  {
+    return std::sqrt(reductions.transform_reduce(
+      x.data(),
+      thrust::plus<f_t>{},
+      [] __host__ __device__(f_t v) { return v * v; },
+      f_t(0),
+      x.size(),
+      x.stream()));
+  }
+
+  void update(rmm::device_uvector<f_t>& x, const std::vector<f_t>& coefficients, int count)
+  {
+    gmres_update_op<f_t, dimension> op{};
+    op.x     = x.data();
+    op.count = count;
+    for (int j = 0; j < count; ++j) {
+      op.basis[j]        = Z[j].data();
+      op.coefficients[j] = coefficients[j];
+    }
+    auto first = thrust::make_counting_iterator<size_t>(0);
+    thrust::transform(rmm::exec_policy_nosync(x.stream()), first, first + x.size(), x.begin(), op);
+  }
+
+  template <typename Input, typename Reduce, typename Transform>
+  void reduce_async(
+    Input input, Reduce reduce, Transform transform, size_t n, f_t* output, cuda::stream_ref stream)
+  {
+    cub::DeviceReduce::TransformReduce(
+      nullptr, reductions.buffer_size, input, output, n, reduce, transform, f_t(0), stream.get());
+    reductions.buffer_data.resize(reductions.buffer_size, stream);
+    cub::DeviceReduce::TransformReduce(reductions.buffer_data.data(),
+                                       reductions.buffer_size,
+                                       input,
+                                       output,
+                                       n,
+                                       reduce,
+                                       transform,
+                                       f_t(0),
+                                       stream.get());
+  }
+
+  void check_preconditioner_async(const rmm::device_uvector<f_t>& z)
+  {
+    reduce_async(
+      z.data(),
+      thrust::maximum<f_t>{},
+      [] __host__ __device__(f_t v) { return abs(v); },
+      z.size(),
+      d_column.data() + dimension + 1,
+      z.stream());
+  }
+
+  void orthogonalize(int k)
+  {
+    auto& w           = V[k + 1];
+    const auto stream = w.stream();
+    for (int j = 0; j <= k; ++j) {
+      const f_t* wp  = w.data();
+      const f_t* vp  = V[j].data();
+      const f_t* hij = d_column.data() + j;
+      reduce_async(
+        thrust::make_counting_iterator<size_t>(0),
+        thrust::plus<f_t>{},
+        [wp, vp] __device__(size_t i) -> f_t { return wp[i] * vp[i]; },
+        w.size(),
+        d_column.data() + j,
+        stream);
+      thrust::transform(rmm::exec_policy_nosync(stream),
+                        w.begin(),
+                        w.end(),
+                        V[j].begin(),
+                        w.begin(),
+                        [hij] __device__(f_t a, f_t b) { return a - *hij * b; });
+    }
+    reduce_async(
+      w.data(),
+      thrust::plus<f_t>{},
+      [] __host__ __device__(f_t v) { return v * v; },
+      w.size(),
+      d_column.data() + k + 1,
+      stream);
+    raft::copy(h_column.data(), d_column.data(), h_column.size(), stream);
+    stream.sync();
+  }
+};
 
 // Functors for device operations (defined at namespace scope to avoid CUDA lambda restrictions)
 template <typename T>
@@ -76,14 +229,14 @@ f_t iterative_refinement_simple(T& op,
   rmm::device_uvector<f_t> delta_x(x.size(), op.data_.handle_ptr->get_stream());
   i_t iter = 0;
   while (error > tol && iter < 30) {
-    thrust::fill(op.data_.handle_ptr->get_thrust_policy(),
+    thrust::fill(rmm::exec_policy_nosync(op.data_.handle_ptr->get_stream()),
                  delta_x.data(),
                  delta_x.data() + delta_x.size(),
                  0.0);
     RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
     op.solve(r, delta_x);
 
-    thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
+    thrust::transform(rmm::exec_policy_nosync(op.data_.handle_ptr->get_stream()),
                       x.data(),
                       x.data() + x.size(),
                       delta_x.data(),
@@ -132,11 +285,12 @@ f_t iterative_refinement_gmres(T& op,
   // better solutions in case of true residual is far from the measured residual and true residuals
   // are not converging after some point
   const int max_restarts = 3;
-  const int m            = 10;  // Krylov space dimension
-
-  rmm::device_uvector<f_t> r(x.size(), x.stream());
-  rmm::device_uvector<f_t> x_sav(x, x.stream());
-  rmm::device_uvector<f_t> delta_x(x.size(), x.stream());
+  const int m            = gmres_workspace_t<f_t>::dimension;
+  auto& workspace        = op.data_.gmres_workspace_;
+  workspace.resize(x.size(), x.stream());
+  auto& r     = workspace.r;
+  auto& x_sav = workspace.x_sav;
+  raft::copy(x_sav.data(), x.data(), x.size(), x.stream());
 
   // Host workspace for the Hessenberg matrix and other small arrays
   std::vector<std::vector<f_t>> H(m + 1, std::vector<f_t>(m, 0.0));
@@ -148,7 +302,7 @@ f_t iterative_refinement_gmres(T& op,
   bool show_info = false;
 
   f_t stop_ratio = 5.0;
-  f_t bnorm      = std::max(1.0, vector_norm_inf<f_t>(b));
+  f_t bnorm      = show_info ? std::max(f_t(1), workspace.norm_inf(b)) : f_t(1);
   f_t rel_res    = 1.0;
   int outer_iter = 0;
 
@@ -156,7 +310,7 @@ f_t iterative_refinement_gmres(T& op,
   raft::copy(r.data(), b.data(), b.size(), x.stream());
   op.a_multiply(-1.0, x, 1.0, r);
 
-  f_t norm_r = vector_norm_inf<f_t>(r);
+  f_t norm_r = workspace.norm_inf(r);
   if (show_info) { CUOPT_LOG_INFO("GMRES IR: initial residual = %e, |b| = %e", norm_r, bnorm); }
   if (norm_r <= tol) { return norm_r; }
 
@@ -167,20 +321,16 @@ f_t iterative_refinement_gmres(T& op,
   while (residual > tol && outer_iter < max_restarts) {
     // For right preconditioning: Apply preconditioner on Krylov directions, not on the residual.
     // So, start GMRES on r = b - A*x. v0 = r / ||r||
-    std::vector<rmm::device_uvector<f_t>> V;
-    std::vector<rmm::device_uvector<f_t>> Z;  // Store preconditioned vectors Z[k] = M^{-1} V[k]
-    for (int k = 0; k < m + 1; ++k) {
-      V.emplace_back(x.size(), x.stream());
-      Z.emplace_back(x.size(), x.stream());
-    }
+    workspace.resize_basis(x.size(), x.stream());
+    auto& V = workspace.V;
+    auto& Z = workspace.Z;
     // v0 = r / ||r||
-    f_t rnorm     = vector_norm2<f_t>(r);
+    f_t rnorm     = workspace.norm2(r);
     f_t inv_rnorm = (rnorm > 0) ? (f_t(1) / rnorm) : f_t(1);
 
-    raft::copy(V[0].data(), r.data(), r.size(), x.stream());
-    thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
-                      V[0].data(),
-                      V[0].data() + V[0].size(),
+    thrust::transform(rmm::exec_policy_nosync(op.data_.handle_ptr->get_stream()),
+                      r.data(),
+                      r.data() + r.size(),
                       V[0].data(),
                       scale_op<f_t>{inv_rnorm});
     RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
@@ -194,37 +344,24 @@ f_t iterative_refinement_gmres(T& op,
       op.solve(V[k], Z[k]);
 
       // Check if solve produced NaN (indicates cuDSS failure)
-      f_t z_norm = vector_norm_inf<f_t>(Z[k]);
+      workspace.check_preconditioner_async(Z[k]);
+
+      // Stream-ordered dot/update pairs retain modified Gram-Schmidt while
+      // deferring host scalar reads until the complete column is available.
+      op.a_multiply(1.0, Z[k], 0.0, V[k + 1]);
+      workspace.orthogonalize(k);
+      f_t z_norm = workspace.h_column[m + 1];
       if (!std::isfinite(z_norm)) {
         CUOPT_LOG_INFO("GMRES IR: solve at k=%d produced NaN, terminating", k);
         return std::numeric_limits<f_t>::quiet_NaN();
       }
 
-      // w = A * Z[k]
-      op.a_multiply(1.0, Z[k], 0.0, V[k + 1]);
-
-      // Modified Gram-Schmidt orthogonalization
       for (int j = 0; j <= k; ++j) {
-        // H[j][k] = dot(w, V[j])
-        f_t hij = thrust::inner_product(op.data_.handle_ptr->get_thrust_policy(),
-                                        V[k + 1].data(),
-                                        V[k + 1].data() + x.size(),
-                                        V[j].data(),
-                                        f_t(0));
-        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
-        H[j][k] = hij;
-        // w -= H[j][k] * V[j]
-        thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
-                          V[k + 1].data(),
-                          V[k + 1].data() + x.size(),
-                          V[j].data(),
-                          V[k + 1].data(),
-                          subtract_scaled_op<f_t>{hij});
-        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
+        H[j][k] = workspace.h_column[j];
       }
 
       // H[k+1][k] = ||w||
-      f_t h_k1k = vector_norm2<f_t>(V[k + 1]);
+      f_t h_k1k = std::sqrt(workspace.h_column[k + 1]);
 
       // Check for "lucky breakdown" BEFORE using h_k1k - Krylov subspace has converged
       // When h_k1k is zero, very small, or NaN, V[k+1] is in span of previous V's
@@ -242,7 +379,7 @@ f_t iterative_refinement_gmres(T& op,
 
       // V[k+1] = V[k+1] / H[k+1][k]
       f_t inv_h = f_t(1) / h_k1k;
-      thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
+      thrust::transform(rmm::exec_policy_nosync(op.data_.handle_ptr->get_stream()),
                         V[k + 1].data(),
                         V[k + 1].data() + x.size(),
                         V[k + 1].data(),
@@ -293,38 +430,17 @@ f_t iterative_refinement_gmres(T& op,
       }
     }
 
-    // Compute GMRES update: delta_x = sum_j y_j * Z[j], where Z[j] = M^{-1} V[j]
-    thrust::fill(op.data_.handle_ptr->get_thrust_policy(),
-                 delta_x.data(),
-                 delta_x.data() + delta_x.size(),
-                 0.0);
-    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
-    for (int j = 0; j < k; ++j) {
-      thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
-                        delta_x.data(),
-                        delta_x.data() + delta_x.size(),
-                        Z[j].data(),
-                        delta_x.data(),
-                        axpy_op<f_t>{y[j]});
-      RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
-    }
-
-    // Update x = x + delta_x
-    thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
-                      x.data(),
-                      x.data() + x.size(),
-                      delta_x.data(),
-                      x.data(),
-                      thrust::plus<f_t>());
+    // Preserve the sequential basis accumulation without a temporary vector.
+    workspace.update(x, y, k);
     RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
     // r = b - A*x
     raft::copy(r.data(), b.data(), b.size(), x.stream());
     op.a_multiply(-1.0, x, 1.0, r);
 
-    residual = vector_norm_inf<f_t>(r);
+    residual = workspace.norm_inf(r);
 
     if (show_info) {
-      auto l2_residual = vector_norm2<f_t>(r);
+      auto l2_residual = workspace.norm2(r);
       CUOPT_LOG_INFO("GMRES IR: after outer_iter %d residual = %e, l2_residual = %e",
                      outer_iter,
                      residual,

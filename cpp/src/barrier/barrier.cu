@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <barrier/augmented_matvec.cuh>
 #include <barrier/barrier.hpp>
 
 #include <barrier/conjugate_gradient.hpp>
@@ -620,6 +621,7 @@ class iteration_data_t {
       transform_reduce_pair_helper_(lp.handle_ptr->get_stream()),
       sum_reduce_helper_(lp.handle_ptr->get_stream()),
       reduce_helper_(lp.handle_ptr->get_stream()),
+      gmres_workspace_(lp.handle_ptr->get_stream()),
       indefinite_Q(false),
       Q_diagonal(false),
       symbolic_status(0),
@@ -2143,31 +2145,27 @@ class iteration_data_t {
     cuopt_assert(static_cast<i_t>(x.size()) >= sys_size, "augmented_multiply: x too small");
     cuopt_assert(static_cast<i_t>(y.size()) >= sys_size, "augmented_multiply: y too small");
 
-    raft::copy(d_aug_x1_.data(), x.data(), n, handle_ptr->get_stream());
-    raft::copy(d_aug_x2_.data(), x.data() + n, m, handle_ptr->get_stream());
-    raft::copy(d_aug_y1_.data(), y.data(), n, handle_ptr->get_stream());
-    raft::copy(d_aug_y2_.data(), y.data() + n, m, handle_ptr->get_stream());
-    if (p > 0) {
-      raft::copy(d_aug_y_exp_orig_.data(), y.data() + n + m, p, handle_ptr->get_stream());
-      thrust::fill_n(rmm::exec_policy(stream_view_), d_aug_y_exp_.begin(), p, f_t(0));
-    }
-
-    // y1 <- alpha ( -(Q + D + H) * x_1 + A^T x_2) + beta * y1
-
-    thrust::fill_n(rmm::exec_policy(stream_view_), d_r1_.begin(), n, f_t(0));
-
-    // r1 <- D * x_1 on linear indices; barrier D is zero on direct free variables
-    const i_t linear_n = has_soc ? cone_start() : n;
-    {
-      raft::common::nvtx::range scope("Barrier: augmented_multiply: D * x1 (linear)");
-      pairwise_multiply_skip_direct_free_linear(d_aug_x1_.data(),
-                                                d_diag_.data(),
-                                                d_is_direct_free_linear_.data(),
-                                                d_r1_.data(),
-                                                linear_n,
-                                                stream_view_);
-      RAFT_CHECK_CUDA(stream_view_.get());
-    }
+    const i_t linear_n    = has_soc ? cone_start() : n;
+    const i_t vector_size = std::max(n, std::max(m, p));
+    if (vector_size == 0) { return; }
+    const i_t blocks = (vector_size + 255) / 256;
+    prepare_augmented_matvec<<<blocks, 256, 0, stream_view_.get()>>>(
+      x.data(),
+      y.data(),
+      d_diag_.data(),
+      d_is_direct_free_linear_.data(),
+      d_aug_x1_.data(),
+      d_aug_x2_.data(),
+      d_aug_y1_.data(),
+      d_aug_y2_.data(),
+      d_r1_.data(),
+      d_aug_y_exp_.data(),
+      d_aug_y_exp_orig_.data(),
+      n,
+      m,
+      p,
+      linear_n);
+    RAFT_CHECK_CUDA(stream_view_.get());
 
     // r1 <- D * x_1 + H x_1 on cone rows
     // (dense cones: explicit dense H block; sparse cones: rank-2 expansion, which adds
@@ -2217,22 +2215,19 @@ class iteration_data_t {
       // y2 <- alpha ( A*x) + beta * y2
       // matrix_vector_multiply(A, alpha, x1, beta, y2);
       cusparse_view_.spmv(alpha, d_aug_x1_, beta, d_aug_y2_);
-
-      if (p > 0) {
-        axpy(alpha,
-             d_aug_y_exp_.data(),
-             beta,
-             d_aug_y_exp_orig_.data(),
-             d_aug_y_exp_.data(),
-             p,
-             stream_view_);
-      }
     }
 
-    raft::copy(y.data(), d_aug_y1_.data(), n, stream_view_);
-    raft::copy(y.data() + n, d_aug_y2_.data(), m, stream_view_);
-    if (p > 0) { raft::copy(y.data() + n + m, d_aug_y_exp_.data(), p, stream_view_); }
-    handle_ptr->sync_stream();
+    finish_augmented_matvec<<<blocks, 256, 0, stream_view_.get()>>>(y.data(),
+                                                                    d_aug_y1_.data(),
+                                                                    d_aug_y2_.data(),
+                                                                    d_aug_y_exp_.data(),
+                                                                    d_aug_y_exp_orig_.data(),
+                                                                    alpha,
+                                                                    beta,
+                                                                    n,
+                                                                    m,
+                                                                    p);
+    RAFT_CHECK_CUDA(stream_view_.get());
   }
 
   void augmented_multiply(f_t alpha,
@@ -2432,6 +2427,7 @@ class iteration_data_t {
   sum_reduce_helper_t<f_t> sum_reduce_helper_;
 
   barrier_reduce_helper_t<i_t, f_t> reduce_helper_;
+  gmres_workspace_t<f_t> gmres_workspace_;
 
   bool cone_combined_step_;
   f_t cone_sigma_mu_;
@@ -3288,10 +3284,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     raft::copy(data.d_dx_.data(), data.d_augmented_soln_.data(), lp.num_cols, stream_view_);
     raft::copy(
       data.d_dy_.data(), data.d_augmented_soln_.data() + lp.num_cols, lp.num_rows, stream_view_);
-    {
-      raft::common::nvtx::range fun_scope("Barrier: augmented solve sync");
-      stream_view_.sync();
-    }
 
     // TMP should only be init once
     data.cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
@@ -4580,7 +4572,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
     settings.log.printf(
       "Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed\n");
     float64_t elapsed_time = toc(start_time);
-    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
+    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.3f\n",
                         iter,
                         user_primal_objective,
                         user_dual_objective,
@@ -4786,7 +4778,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
                                              solution);
       }
 
-      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
+      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.3f\n",
                           iter,
                           compute_user_objective(lp, primal_objective),
                           compute_user_objective(lp, dual_objective),
