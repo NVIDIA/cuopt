@@ -1758,6 +1758,8 @@ void adjust_for_flips(const basis_update_mpf_t<i_t, f_t>& ft,
                       sparse_vector_t<i_t, f_t>& delta_xB_0_sparse,
                       std::vector<f_t>& delta_x_flip,
                       std::vector<f_t>& x,
+                      const std::vector<f_t>& original_objective,
+                      f_t& obj,
                       f_t& work_estimate)
 {
   const i_t atilde_nz = atilde_index.size();
@@ -1775,14 +1777,16 @@ void adjust_for_flips(const basis_update_mpf_t<i_t, f_t>& ft,
   for (i_t k = 0; k < delta_xB_0_nz; ++k) {
     const i_t j = basic_list[delta_xB_0_sparse.i[k]];
     x[j] += delta_xB_0_sparse.x[k];
+    obj += original_objective[j] * delta_xB_0_sparse.x[k];
   }
-  work_estimate += 4 * delta_xB_0_nz;
+  work_estimate += 7 * delta_xB_0_nz;
   for (i_t k = 0; k < delta_z_indices.size(); ++k) {
     const i_t j = delta_z_indices[k];
     x[j] += delta_x_flip[j];
+    obj += original_objective[j] * delta_x_flip[j];
     delta_x_flip[j] = 0.0;
   }
-  work_estimate += 4 * delta_z_indices.size();
+  work_estimate += 7 * delta_z_indices.size();
   // Clear atilde
   for (i_t k = 0; k < atilde_index.size(); ++k) {
     atilde[atilde_index[k]] = 0.0;
@@ -3555,7 +3559,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
           solve_work                = 0.0;
 
           if (primal_infeasibility > settings.primal_tol) {
-            obj = phase2::compute_perturbed_objective(objective, x);
+            obj = compute_objective(lp, x);
             phase2_work_estimate += 2 * n;
             settings.log.printf(
               "New infeasibilities found after recompute (primal_inf=%.2e). "
@@ -3588,7 +3592,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                                      primal_infeasibility_squared,
                                                                      phase2_work_estimate);
         if (removal_status == 1) {  // CONTINUE_DUAL
-          obj = phase2::compute_perturbed_objective(objective, x);
+          obj = compute_objective(lp, x);
           phase2_work_estimate += 2 * n;
           continue;
         }
@@ -3612,6 +3616,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
       if (phase == 2 && std::isfinite(box_objective_bound)) {
         // This helps prevent small negative bound O(-1e-8) on cbs-cta.
         const f_t original_objective = compute_objective(lp, x);
+        obj                          = original_objective;
         phase2_work_estimate += 2 * n;
         if (box_objective_bound - original_objective >= settings.tight_tol) {
           // Normal pricing ignores sub-primal_tol violations, but their objective
@@ -3945,6 +3950,8 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                delta_xB_0_sparse,
                                delta_x_flip,
                                x,
+                               lp.objective,
+                               obj,
                                phase2_work_estimate);
       timers.ftran_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     }
@@ -4033,8 +4040,6 @@ static dual_status_t dual_phase2_with_advanced_basis(
 #endif
 
     timers.start_timer(phase2_work_estimate + ft.work_estimate());
-    // TODO(CMM): Do I also need to update the objective due to the bound flips?
-    // TODO(CMM): I'm using the unperturbed objective here, should this be the perturbed objective?
     phase2::update_objective(basic_list,
                              scaled_delta_xB_sparse.i,
                              lp.objective,
@@ -4250,7 +4255,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                      phase2_work_estimate);
           x = unperturbed_x;
           phase2_work_estimate += 2 * n;
-          obj = phase2::compute_perturbed_objective(objective, x);
+          obj = compute_objective(lp, x);
           phase2_work_estimate += 2 * n;
         }
         primal_infeasibility_squared =
