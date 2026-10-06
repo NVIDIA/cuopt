@@ -4,8 +4,6 @@
 import os
 import time
 
-from numpy.typing import ArrayLike
-
 from . import data_model_wrapper
 from .utilities import catch_cuopt_exception
 
@@ -248,7 +246,7 @@ class DataModel(data_model_wrapper.DataModel):
         super().update_linear_objective(coefficients)
 
     @catch_cuopt_exception
-    def update_rhs(self, b: ArrayLike) -> None:
+    def update_rhs(self, b):
         """
         Update the linear-equality constraint right-hand side (b) for a sequence re-solve.
 
