@@ -948,9 +948,10 @@ class iteration_data_t {
   }
 
   // Attach this solve's settings and rewind iterate-dependent state so barrier can
-  // start with the new c / b. A and Q are unchanged; the previous solve
-  // left D and the KKT values at its last iterate. Reuse is QP-only (no cones),
-  // so form_*(false) updates values in the existing CSR; no symbolic rebuild.
+  // start with the new c / b. A and Q are unchanged. The previous solve left D
+  // and the KKT values at its last iterate. form_*(false) rewrites values in the
+  // existing CSR. The cone block is put back to the initial diagonal a cold start
+  // factorizes; Nesterov-Todd scaling is recomputed from the new point.
   bool reset_iterate_state(const simplex_solver_settings_t<i_t, f_t>& settings)
   {
     if (chol == nullptr || symbolic_status != 0) { return false; }
@@ -987,7 +988,7 @@ class iteration_data_t {
     }
 
     if (use_augmented) {
-      form_augmented(false);
+      form_augmented(false, true);
     } else {
       form_adat(false);
     }
@@ -1063,7 +1064,7 @@ class iteration_data_t {
     return degree;
   }
 
-  void form_augmented(bool first_call = false)
+  void form_augmented(bool first_call = false, bool initial_cone_block = false)
   {
     i_t n    = A.n;
     i_t m    = A.m;
@@ -1165,7 +1166,40 @@ class iteration_data_t {
                          });
       RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 
-      if (has_soc) {
+      if (has_soc && initial_cone_block) {
+        // Cold initial_point factorizes this diagonal, then the first Newton step
+        // rebuilds the Nesterov-Todd Hessian. Zero w and eta so a dense block
+        // scatter and the matrix-free product both see that same initial matrix.
+        auto stream = handle_ptr->get_stream();
+        thrust::fill(rmm::exec_policy(stream), cones().w.begin(), cones().w.end(), f_t(0));
+        thrust::fill(rmm::exec_policy(stream), cones().eta.begin(), cones().eta.end(), f_t(0));
+        if (cones().has_sparse_cones()) {
+          restore_initial_sparse_cone_block(cones(),
+                                            device_augmented.x,
+                                            cone_kkt_data_.sparse_Hs_diag,
+                                            cone_kkt_data_.sparse_hessian_diag,
+                                            cone_kkt_data_.sparse_hessian_Q,
+                                            cone_kkt_data_.sparse_exp_v_col,
+                                            cone_kkt_data_.sparse_exp_u_col,
+                                            cone_kkt_data_.sparse_exp_v_row,
+                                            cone_kkt_data_.sparse_exp_u_row,
+                                            cone_kkt_data_.sparse_expansion_D,
+                                            stream,
+                                            dual_perturb);
+          RAFT_CHECK_CUDA(stream.get());
+        }
+        if (cones().n_dense_cones() > 0) {
+          scatter_dense_hessian_into_augmented(cones(),
+                                               device_augmented.x,
+                                               cone_kkt_data_.cone_csr_indices,
+                                               cone_kkt_data_.cone_Q_values,
+                                               cone_kkt_data_.dense_block_offsets,
+                                               cone_kkt_data_.dense_cone_ids,
+                                               stream,
+                                               dual_perturb);
+          RAFT_CHECK_CUDA(stream.get());
+        }
+      } else if (has_soc) {
         if (cones().has_sparse_cones()) {
           scatter_sparse_hessian_into_augmented(cones(),
                                                 device_augmented.x,

@@ -19,6 +19,7 @@
 #include <raft/core/device_span.hpp>
 
 #include <thrust/binary_search.h>
+#include <thrust/fill.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/permutation_iterator.h>
@@ -1074,6 +1075,89 @@ void scatter_sparse_hessian_into_augmented(cone_data_t<i_t, f_t>& cones,
                                                       cuopt::make_span(q_values),
                                                       cuopt::make_span(cones.sparse_v),
                                                       cuopt::make_span(cones.sparse_u),
+                                                      cuopt::make_span(exp_v_col),
+                                                      cuopt::make_span(exp_u_col),
+                                                      cuopt::make_span(exp_v_row),
+                                                      cuopt::make_span(exp_u_row),
+                                                      cuopt::make_span(sparse_expansion_D),
+                                                      dual_perturb);
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+}
+
+// Write the cone block a cold start factorizes, before any Nesterov-Todd scaling
+// exists: Hessian diagonal -Q - dual_perturb, and sparse expansion couplings and
+// diagonals at zero. The rank-2 matvec state is cleared to match that matrix.
+template <std::integral i_t, std::floating_point f_t>
+__global__ void __launch_bounds__(soc_block_size) restore_initial_sparse_cone_block_kernel(
+  raft::device_span<f_t> augmented_x,
+  raft::device_span<f_t> Hs_diag,
+  raft::device_span<f_t> sparse_v,
+  raft::device_span<f_t> sparse_u,
+  raft::device_span<f_t> d,
+  raft::device_span<const i_t> sparse_entry_offsets,
+  i_t n_sparse_cones,
+  raft::device_span<const i_t> hessian_diag_csr_indices,
+  raft::device_span<const f_t> q_values,
+  raft::device_span<const i_t> exp_v_col,
+  raft::device_span<const i_t> exp_u_col,
+  raft::device_span<const i_t> exp_v_row,
+  raft::device_span<const i_t> exp_u_row,
+  raft::device_span<const i_t> sparse_expansion_D,
+  f_t dual_perturb)
+{
+  const size_t e = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (e >= Hs_diag.size()) { return; }
+
+  const i_t e_i        = static_cast<i_t>(e);
+  const i_t sparse_idx = bucket_index(sparse_entry_offsets, e_i, n_sparse_cones);
+  const bool is_head   = e_i == sparse_entry_offsets[sparse_idx];
+
+  Hs_diag[e]  = f_t(0);
+  sparse_v[e] = f_t(0);
+  sparse_u[e] = f_t(0);
+
+  augmented_x[hessian_diag_csr_indices[e]] = -q_values[e] - dual_perturb;
+  augmented_x[exp_v_col[e]]                = f_t(0);
+  augmented_x[exp_u_col[e]]                = f_t(0);
+  augmented_x[exp_v_row[e]]                = f_t(0);
+  augmented_x[exp_u_row[e]]                = f_t(0);
+
+  if (is_head) {
+    d[sparse_idx]                                       = f_t(0);
+    augmented_x[sparse_expansion_D[2 * sparse_idx]]     = f_t(0);
+    augmented_x[sparse_expansion_D[2 * sparse_idx + 1]] = f_t(0);
+  }
+}
+
+template <std::integral i_t, std::floating_point f_t>
+void restore_initial_sparse_cone_block(cone_data_t<i_t, f_t>& cones,
+                                       rmm::device_uvector<f_t>& augmented_x,
+                                       rmm::device_uvector<f_t>& Hs_diag,
+                                       const rmm::device_uvector<i_t>& hessian_diag_csr_indices,
+                                       const rmm::device_uvector<f_t>& q_values,
+                                       const rmm::device_uvector<i_t>& exp_v_col,
+                                       const rmm::device_uvector<i_t>& exp_u_col,
+                                       const rmm::device_uvector<i_t>& exp_v_row,
+                                       const rmm::device_uvector<i_t>& exp_u_row,
+                                       const rmm::device_uvector<i_t>& sparse_expansion_D,
+                                       cuda::stream_ref stream,
+                                       f_t dual_perturb)
+{
+  if (!cones.has_sparse_cones()) { return; }
+
+  const i_t n_sparse      = cones.n_sparse_cones;
+  const size_t E          = cones.n_sparse_cone_entries;
+  const size_t entry_grid = raft::ceildiv<size_t>(E, soc_block_size);
+  restore_initial_sparse_cone_block_kernel<i_t, f_t>
+    <<<entry_grid, soc_block_size, 0, stream.get()>>>(cuopt::make_span(augmented_x),
+                                                      cuopt::make_span(Hs_diag),
+                                                      cuopt::make_span(cones.sparse_v),
+                                                      cuopt::make_span(cones.sparse_u),
+                                                      cuopt::make_span(cones.d),
+                                                      cuopt::make_span(cones.sparse_entry_offsets),
+                                                      n_sparse,
+                                                      cuopt::make_span(hessian_diag_csr_indices),
+                                                      cuopt::make_span(q_values),
                                                       cuopt::make_span(exp_v_col),
                                                       cuopt::make_span(exp_u_col),
                                                       cuopt::make_span(exp_v_row),
