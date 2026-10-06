@@ -619,19 +619,11 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - libcuopt-client==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
   depends_on_libcuopt_mathopt:
     common:
       - output_types: conda
         packages:
           - &libcuopt_mathopt_unsuffixed libcuopt-mathopt==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -654,10 +646,6 @@ dependencies:
       - output_types: conda
         packages:
           - &libcuopt_routing_unsuffixed libcuopt-routing==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -680,10 +668,6 @@ dependencies:
       - output_types: conda
         packages:
           - &libcuopt_unsuffixed libcuopt==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -706,10 +690,6 @@ dependencies:
       - output_types: conda
         packages:
           - &cuopt_unsuffixed cuopt==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -732,10 +712,6 @@ dependencies:
       - output_types: conda
         packages:
           - &cuopt_server_unsuffixed cuopt-server==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -758,10 +734,6 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - cuopt-sh-client==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
   # cuopt/routing/data_model_view.hpp is a public header and includes raft/core/handle.hpp
   # and raft/core/device_span.hpp, so anything compiling against cuOpt needs raft's headers.
   # The wheel that carries them is named libraft; the conda package is libraft-headers.
