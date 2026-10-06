@@ -235,7 +235,7 @@ struct PendingChunkedUpload {
 // =============================================================================
 
 inline std::atomic<bool> keep_running{true};
-inline std::atomic<bool> fatal_gpu_failure{false};
+inline std::atomic<bool> fatal_worker_failure{false};
 inline std::map<std::string, JobInfo> job_tracker;
 inline std::mutex tracker_mutex;
 inline std::condition_variable result_cv;
