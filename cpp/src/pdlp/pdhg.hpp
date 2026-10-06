@@ -10,6 +10,7 @@
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
+#include <pdlp/reduced_matrix.cuh>
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utilities/ping_pong_graph.cuh>
@@ -43,6 +44,7 @@ class pdhg_solver_t {
 
   saddle_point_state_t<i_t, f_t>& get_saddle_point_state();
   cusparse_view_t<i_t, f_t>& get_cusparse_view();
+  void redirect_csr_structure(const mip::problem_t<i_t, f_t>& original_problem);
   rmm::device_uvector<f_t>& get_primal_tmp_resource();
   rmm::device_uvector<f_t>& get_dual_tmp_resource();
   rmm::device_uvector<f_t>& get_potential_next_primal_solution();
@@ -102,6 +104,10 @@ class pdhg_solver_t {
   void spmv_At_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
   void spmv_A_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
 
+  void update_reduced_matrix(f_t relative_kkt,
+                             bool restarted,
+                             rmm::device_uvector<f_t>& restart_primal);
+
   // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
   // the single-GPU vs distributed-GPU uses the same calls
   void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size,
@@ -154,6 +160,7 @@ class pdhg_solver_t {
   // The new_bounds re-projection that follows still needs that pre-Halpern iterate, so save it
   // for those entries before the projection runs.
   void save_new_bounds_primal();
+  void reset_iteration_graphs();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
@@ -178,6 +185,7 @@ class pdhg_solver_t {
 
   // Important that vectors passed down to the cusparse_view are allocated before
   cusparse_view_t<i_t, f_t> cusparse_view_;
+  reduced_matrix_t<i_t, f_t> reduced_matrix_;
 
   const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_0_;

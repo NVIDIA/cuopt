@@ -102,6 +102,15 @@ TEST(SolverSettingsTest, ConcurrentNnzCutoffParameter)
   EXPECT_EQ(settings.get_mip_settings().concurrent_nnz_cutoff, -1);
 }
 
+TEST(SolverSettingsTest, ReducedMatrixParameter)
+{
+  solver_settings_t<int, double> settings;
+  EXPECT_FALSE(settings.get_pdlp_settings().hyper_params.use_reduced_matrix);
+
+  settings.set_parameter_from_string(CUOPT_PDLP_HYPER_REDUCED_MATRIX, "true");
+  EXPECT_TRUE(settings.get_pdlp_settings().hyper_params.use_reduced_matrix);
+}
+
 TEST(SolverSettingsTest, warm_start_smaller_vector)
 {
   const raft::handle_t handle_{};

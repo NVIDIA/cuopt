@@ -269,6 +269,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING, &mip_settings.indicator_strengthening, true, "append implied indicator rows and lift capacity rows before Papilo presolve"},
     // PDLP scaling hyper-parameter (hidden from default --help: name contains "hyper_")
     {CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, &pdlp_settings.hyper_params.do_curtis_reid_scaling, true, "Curtis-Reid prescaling, run before Ruiz/Pock-Chambolle scaling"},
+    {CUOPT_PDLP_HYPER_REDUCED_MATRIX, &pdlp_settings.hyper_params.use_reduced_matrix, true, "adaptive reduced-matrix SpMV for large, wide LPs"},
   };
   // String parameters
   string_parameters = {

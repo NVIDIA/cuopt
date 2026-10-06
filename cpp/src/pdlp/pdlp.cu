@@ -2611,7 +2611,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     // Redirect cuSPARSE descriptors to use the original problem's structural data (offsets,
     // indices), then free the duplicated structural vectors from the scaled copy to save device
     // memory.
-    pdhg_solver_.get_cusparse_view().redirect_cusparse_csr_structure_pointers(*problem_ptr);
+    pdhg_solver_.redirect_csr_structure(*problem_ptr);
     op_problem_scaled_.variables.resize(0, stream_view_);
     op_problem_scaled_.offsets.resize(0, stream_view_);
     op_problem_scaled_.reverse_constraints.resize(0, stream_view_);
@@ -2983,6 +2983,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
       if (solution.has_value()) { return std::move(solution.value()); }
 
+      const auto& convergence      = current_termination_strategy_.get_convergence_information();
+      const f_t reduced_matrix_kkt = std::max({convergence.get_relative_l2_primal_residual_value(),
+                                               convergence.get_relative_l2_dual_residual_value(),
+                                               convergence.get_relative_gap_value()});
+
       if (settings_.hyper_params.rescale_for_restart) {
         if (!settings_.hyper_params.never_restart_to_average) {
           initial_scaling_strategy_.scale_solutions(unscaled_primal_avg_solution_,
@@ -3045,6 +3050,13 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
             pdhg_solver_.get_dual_slack());
         }
       }
+
+      const bool checkpoint_restarted = std::any_of(
+        has_restarted.begin(), has_restarted.end(), [](int restarted) { return restarted == 1; });
+      pdhg_solver_.update_reduced_matrix(
+        reduced_matrix_kkt,
+        checkpoint_restarted,
+        restart_strategy_.last_restart_duality_gap_.primal_solution_);
 
       // In batch mode, after having checked for termination and restart
       // We transpose back to row for the PDHG iterations

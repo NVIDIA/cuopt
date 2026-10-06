@@ -171,6 +171,7 @@
 
 /* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
 #define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
+#define CUOPT_PDLP_HYPER_REDUCED_MATRIX             "pdlp_hyper_reduced_matrix"
 
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
