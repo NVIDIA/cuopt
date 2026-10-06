@@ -2505,6 +2505,45 @@ f_t amount_of_perturbation(const lp_problem_t<i_t, f_t>& lp, const std::vector<f
   return perturbation;
 }
 
+template <typename i_t, typename f_t>
+f_t compute_lower_bound_on_primal_objective(const lp_problem_t<i_t, f_t>& lp,
+                                            const simplex_solver_settings_t<i_t, f_t>& settings,
+                                            const basis_update_mpf_t<i_t, f_t>& ft,
+                                            const std::vector<i_t>& basic_list,
+                                            const std::vector<f_t>& objective,
+                                            std::vector<f_t>& trial_y,
+                                            std::vector<f_t>& reduced_cost,
+                                            f_t& work_estimate)
+{
+  const i_t num_rows = lp.num_rows;
+  const i_t num_cols = lp.num_cols;
+  if (amount_of_perturbation(lp, objective) != 0.0) {
+    std::vector<f_t> original_basic_cost(num_rows);
+    for (i_t basic_index = 0; basic_index < num_rows; ++basic_index) {
+      original_basic_cost[basic_index] = lp.objective[basic_list[basic_index]];
+    }
+    work_estimate += 5 * num_rows;
+    ft.b_transpose_solve(original_basic_cost, trial_y);
+  }
+  // Include residual reduced costs for basic variables in the dual bound.
+  reduced_cost = lp.objective;
+  matrix_transpose_vector_multiply(lp.A, -1.0, trial_y, 1.0, reduced_cost);
+  f_t lower_bound = dot<i_t, f_t>(lp.rhs, trial_y);
+  for (i_t column = 0; column < num_cols; ++column) {
+    const bool missing_bound = (reduced_cost[column] > 0.0 && lp.lower[column] == -inf) ||
+                               (reduced_cost[column] < 0.0 && lp.upper[column] == inf);
+    // Tolerate roundoff at infinite bounds only; this is an approximate certificate.
+    if (missing_bound && std::abs(reduced_cost[column]) <= settings.zero_tol) { continue; }
+    if (reduced_cost[column] > 0.0) {
+      lower_bound += reduced_cost[column] * lp.lower[column];
+    } else if (reduced_cost[column] < 0.0) {
+      lower_bound += reduced_cost[column] * lp.upper[column];
+    }
+  }
+  work_estimate += 3 * lp.A.col_start[num_cols] + 12 * num_cols + 2 * num_rows;
+  return lower_bound;
+}
+
 // Attempt to remove perturbation at optimality of the perturbed problem.
 // Returns:
 //   0 (OPTIMAL)        - perturbation fully removed, solution is optimal for original problem
@@ -4323,9 +4362,15 @@ static dual_status_t dual_phase2_with_advanced_basis(
                           primal_infeasibility_squared,
                           sum_perturb,
                           now);
-      if (phase == 2 && settings.inside_mip == 1 && settings.dual_simplex_objective_callback) {
-        settings.dual_simplex_objective_callback(obj);
-      }
+    }
+
+    if (phase == 2 && settings.inside_mip == 1 && settings.dual_simplex_objective_callback &&
+        iter % (10 * settings.iteration_log_frequency) == 0) {
+      std::vector<f_t> trial_y = y;
+      std::vector<f_t> reduced_cost;
+      const f_t lower_bound = phase2::compute_lower_bound_on_primal_objective(
+        lp, settings, ft, basic_list, objective, trial_y, reduced_cost, phase2_work_estimate);
+      if (std::isfinite(lower_bound)) { settings.dual_simplex_objective_callback(lower_bound); }
     }
 
     // Use the pivotal BTRAN density already measured in this iteration. Always
@@ -4339,30 +4384,9 @@ static dual_status_t dual_phase2_with_advanced_basis(
       if (unperturb_obj >= settings.cut_off) {
         // Validate the cutoff using the original objective, not the perturbed costs.
         std::vector<f_t> trial_y = y;
-        if (phase2::amount_of_perturbation(lp, objective) != 0.0) {
-          std::vector<f_t> original_basic_cost(m);
-          for (i_t k = 0; k < m; ++k) {
-            original_basic_cost[k] = lp.objective[basic_list[k]];
-          }
-          phase2_work_estimate += 5 * m;
-          ft.b_transpose_solve(original_basic_cost, trial_y);
-        }
-        // Include residual reduced costs for basic variables in the dual bound.
-        std::vector<f_t> reduced_cost = lp.objective;
-        matrix_transpose_vector_multiply(lp.A, -1.0, trial_y, 1.0, reduced_cost);
-        f_t dual_objective = dot<i_t, f_t>(lp.rhs, trial_y);
-        for (i_t j = 0; j < n; j++) {
-          const bool missing_bound = (reduced_cost[j] > 0.0 && lp.lower[j] == -inf) ||
-                                     (reduced_cost[j] < 0.0 && lp.upper[j] == inf);
-          // Tolerate roundoff at infinite bounds only; this is an approximate certificate.
-          if (missing_bound && std::abs(reduced_cost[j]) <= settings.zero_tol) { continue; }
-          if (reduced_cost[j] > 0.0) {
-            dual_objective += reduced_cost[j] * lp.lower[j];
-          } else if (reduced_cost[j] < 0.0) {
-            dual_objective += reduced_cost[j] * lp.upper[j];
-          }
-        }
-        phase2_work_estimate += 3 * lp.A.col_start[n] + 12 * n + 2 * m;
+        std::vector<f_t> reduced_cost;
+        const f_t dual_objective = phase2::compute_lower_bound_on_primal_objective(
+          lp, settings, ft, basic_list, objective, trial_y, reduced_cost, phase2_work_estimate);
 
         if (std::isfinite(dual_objective) && dual_objective >= settings.cut_off) {
           // Preserve the basic reduced-cost convention only after evaluating the bound.
