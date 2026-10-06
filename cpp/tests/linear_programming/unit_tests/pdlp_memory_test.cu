@@ -5,8 +5,8 @@
  */
 /* clang-format on */
 
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <pdlp/pdlp.cuh>
-#include <pdlp/problem_memory.cuh>
 #include <pdlp/solve.cuh>
 #include <utilities/copy_helpers.hpp>
 
@@ -163,35 +163,130 @@ void expect_no_mip_workspace(const mip::problem_t<int, double>& problem)
   EXPECT_EQ(problem.fixing_helpers.variable_fix_mask.capacity(), 0);
 }
 
-TEST(PdlpMemoryProblem, ReleaseOwnedWorkspacePreservesModelAndCallerState)
+TEST(PdlpMemoryProblem, LpConstructionOmitsMipWorkspace)
 {
   raft::handle_t handle;
   auto op = make_memory_test_problem(handle);
+  ASSERT_EQ(op.get_problem_category(), problem_category_t::LP);
   mip::problem_t<int, double> problem(op);
-  const auto* caller_primal = problem.lp_state.prev_primal.data();
-  const auto* caller_mask   = problem.fixing_helpers.variable_fix_mask.data();
-  {
-    auto scaled = pdlp::make_scaled_pdlp_problem(problem);
-    expect_no_mip_workspace(scaled);
-    EXPECT_EQ(problem.lp_state.prev_primal.data(), caller_primal);
-    EXPECT_EQ(problem.fixing_helpers.variable_fix_mask.data(), caller_mask);
-    EXPECT_EQ(problem.lp_state.prev_primal.size(), 3);
-    EXPECT_EQ(problem.fixing_helpers.variable_fix_mask.size(), 3);
-    EXPECT_NE(scaled.coefficients.data(), problem.coefficients.data());
-    EXPECT_EQ(host_copy(scaled.coefficients, handle.get_stream()),
-              host_copy(problem.coefficients, handle.get_stream()));
-  }
-  const auto* matrix = problem.coefficients.data();
-  const auto* bounds = problem.variable_bounds.data();
-  pdlp::release_mip_only_workspace(problem);
   expect_no_mip_workspace(problem);
-  EXPECT_EQ(problem.coefficients.data(), matrix);
-  EXPECT_EQ(problem.variable_bounds.data(), bounds);
   EXPECT_EQ(problem.n_variables, 3);
   EXPECT_EQ(problem.n_constraints, 2);
   EXPECT_EQ(problem.nnz, 4);
   EXPECT_EQ(host_copy(problem.objective_coefficients, handle.get_stream()),
             (std::vector<double>{1, 2, 3}));
+  mip::problem_t<int, double> copy(problem);
+  expect_no_mip_workspace(copy);
+  mip::problem_t<int, double> scaled(problem, false);
+  expect_no_mip_workspace(scaled);
+  EXPECT_NE(scaled.coefficients.data(), problem.coefficients.data());
+  EXPECT_EQ(host_copy(scaled.coefficients, handle.get_stream()),
+            host_copy(problem.coefficients, handle.get_stream()));
+  handle.sync_stream();
+}
+
+TEST(PdlpMemoryProblem, ExplicitRelaxationOmitsWorkspaceAndPreservesMetadata)
+{
+  raft::handle_t handle;
+  auto op = make_memory_test_problem(handle);
+  const std::vector<var_t> types{var_t::INTEGER, var_t::CONTINUOUS, var_t::CONTINUOUS};
+  op.set_variable_types(types.data(), types.size());
+  // Disable only MIP workspace, not the model's integer-variable metadata.
+  mip::problem_t<int, double> relaxation(op, {}, false, false);
+  expect_no_mip_workspace(relaxation);
+  EXPECT_EQ(relaxation.n_integer_vars, 1);
+  EXPECT_EQ(host_copy(relaxation.variable_types, handle.get_stream()), types);
+  for (auto presolver : {presolver_t::None, presolver_t::PSLP}) {
+    auto settings            = pdlp_solver_settings_t<int, double>{};
+    settings.method          = method_t::PDLP;
+    settings.presolver       = presolver;
+    settings.iteration_limit = 2000;
+    settings.set_optimality_tolerance(1e-6);
+    auto result = solve_lp(op, settings);
+    EXPECT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
+    EXPECT_NEAR(result.get_additional_termination_information().primal_objective, 2.0, 1e-5);
+    EXPECT_EQ(op.get_problem_category(), problem_category_t::MIP);
+    EXPECT_EQ(host_copy(op.get_variable_types(), handle.get_stream()), types);
+  }
+  handle.sync_stream();
+}
+
+void expect_mip_workspace(const mip::problem_t<int, double>& problem)
+{
+  EXPECT_EQ(problem.integer_fixed_variable_map.size(), 3);
+  EXPECT_EQ(problem.related_variables_offsets.size(), 3);
+  EXPECT_EQ(problem.lp_state.prev_primal.size(), 3);
+  EXPECT_EQ(problem.lp_state.prev_dual.size(), 2);
+  EXPECT_EQ(problem.fixing_helpers.reduction_in_rhs.size(), 2);
+  EXPECT_EQ(problem.fixing_helpers.variable_fix_mask.size(), 3);
+}
+
+TEST(PdlpMemoryProblem, MipConstructionAndCopiesPreserveWorkspace)
+{
+  raft::handle_t handle;
+  for (bool all_integer : {false, true}) {
+    auto op = make_memory_test_problem(handle);
+    const std::vector<var_t> types{var_t::INTEGER,
+                                   all_integer ? var_t::INTEGER : var_t::CONTINUOUS,
+                                   all_integer ? var_t::INTEGER : var_t::CONTINUOUS};
+    op.set_variable_types(types.data(), types.size());
+    ASSERT_NE(op.get_problem_category(), problem_category_t::LP);
+    mip::problem_t<int, double> problem(op);
+    expect_mip_workspace(problem);
+    EXPECT_EQ(host_copy(problem.lp_state.prev_primal, handle.get_stream()),
+              (std::vector<double>{0, 0, 0}));
+    EXPECT_EQ(host_copy(problem.lp_state.prev_dual, handle.get_stream()),
+              (std::vector<double>{0, 0}));
+    problem.related_variables    = device_copy(std::vector<int>{1, 2}, handle.get_stream());
+    problem.lp_state.prev_primal = device_copy(std::vector<double>{1, 2, 3}, handle.get_stream());
+    mip::problem_t<int, double> copy(problem);
+    mip::problem_t<int, double> stream_copy(problem, &handle);
+    mip::problem_t<int, double> fixing_copy(problem, true);
+    for (const auto* copied : {&copy, &stream_copy, &fixing_copy}) {
+      expect_mip_workspace(*copied);
+      EXPECT_NE(copied->lp_state.prev_primal.data(), problem.lp_state.prev_primal.data());
+      EXPECT_EQ(host_copy(copied->lp_state.prev_primal, handle.get_stream()),
+                (std::vector<double>{1, 2, 3}));
+      EXPECT_EQ(host_copy(copied->related_variables, handle.get_stream()),
+                (std::vector<int>{1, 2}));
+    }
+    // PDLP's copy must omit MIP state even when its source has populated buffers.
+    mip::problem_t<int, double> scaled(problem, false);
+    expect_no_mip_workspace(scaled);
+    expect_mip_workspace(problem);
+    EXPECT_EQ(host_copy(problem.lp_state.prev_primal, handle.get_stream()),
+              (std::vector<double>{1, 2, 3}));
+    EXPECT_NE(scaled.coefficients.data(), problem.coefficients.data());
+    EXPECT_EQ(host_copy(scaled.coefficients, handle.get_stream()),
+              host_copy(problem.coefficients, handle.get_stream()));
+  }
+  handle.sync_stream();
+}
+
+TEST(PdlpMemoryProblem, PdlpSolvePreservesCallerMipWorkspace)
+{
+  raft::handle_t handle;
+  auto op = make_memory_test_problem(handle);
+  const std::vector<var_t> types{var_t::INTEGER, var_t::CONTINUOUS, var_t::CONTINUOUS};
+  op.set_variable_types(types.data(), types.size());
+  mip::problem_t<int, double> problem(op);
+  const auto* caller_primal = problem.lp_state.prev_primal.data();
+  const auto* caller_mask   = problem.fixing_helpers.variable_fix_mask.data();
+  auto settings             = pdlp_solver_settings_t<int, double>{};
+  settings.inside_mip       = true;
+  settings.iteration_limit  = 2000;
+  settings.set_optimality_tolerance(1e-6);
+  set_pdlp_solver_mode(settings);
+  pdlp::pdlp_solver_t<int, double> solver(problem, settings);
+  expect_no_mip_workspace(solver.get_initial_scaling_strategy().get_scaled_op_problem());
+  auto result = solver.run_solver(timer_t(30));
+  EXPECT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(result.get_additional_termination_information().primal_objective, 2.0, 1e-5);
+  expect_mip_workspace(problem);
+  EXPECT_EQ(problem.lp_state.prev_primal.data(), caller_primal);
+  EXPECT_EQ(problem.fixing_helpers.variable_fix_mask.data(), caller_mask);
+  EXPECT_EQ(host_copy(problem.lp_state.prev_primal, handle.get_stream()),
+            (std::vector<double>{0, 0, 0}));
   handle.sync_stream();
 }
 

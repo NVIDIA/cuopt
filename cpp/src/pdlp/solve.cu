@@ -13,7 +13,6 @@
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
-#include <pdlp/problem_memory.cuh>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <pdlp/translate.hpp>
@@ -2281,13 +2280,20 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
           op_problem.get_row_names());
       }
 
-      problem.emplace(result->reduced_problem);
+      problem.emplace(result->reduced_problem,
+                      typename mip_solver_settings_t<i_t, f_t>::tolerances_t{},
+                      false,
+                      settings.inside_mip);
       presolve_time = lp_timer.elapsed_time();
       CUOPT_LOG_INFO("%s presolve time: %.2fs",
                      settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
                      presolve_time);
     } else {
-      problem.emplace(op_problem);
+      // Explicit LP relaxations can retain integer metadata when presolve is disabled.
+      problem.emplace(op_problem,
+                      typename mip_solver_settings_t<i_t, f_t>::tolerances_t{},
+                      false,
+                      settings.inside_mip);
     }
 
     if (!settings_const.inside_mip) {
@@ -2307,10 +2313,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
-
-    // This local problem is never used for branch-and-bound or variable fixing.
-    // Release its MIP-only capacity before constructing PDLP's scaled copy/state.
-    if (!settings.inside_mip) { pdlp::release_mip_only_workspace(*problem); }
 
     auto solution = solve_lp_with_method(*problem, settings, lp_timer, is_batch_mode);
 
