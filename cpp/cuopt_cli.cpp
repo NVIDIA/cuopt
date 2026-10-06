@@ -229,15 +229,12 @@ int run_single_file(const std::string& file_path,
       return -1;
 #endif
     } else if (is_mip) {
-      auto& mip_settings = settings.get_mip_settings();
       auto solution =
-        cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);
+        cuopt::mathematical_optimization::solve_mip(problem_interface.get(), settings);
     } else {
       // Distributed PDLP was handled by the early-exit branch above; this
       // path is always single-GPU LP going through problem_interface.
-      auto& lp_settings = settings.get_pdlp_settings();
-      auto solution =
-        cuopt::mathematical_optimization::solve_lp(problem_interface.get(), lp_settings);
+      auto solution = cuopt::mathematical_optimization::solve_lp(problem_interface.get(), settings);
     }
   } catch (const std::exception& e) {
     fprintf(stderr, "cuopt_cli error: %s\n", e.what());

@@ -124,7 +124,7 @@ class presolve_data_t {
   bool has_papilo_presolve_data() const { return papilo_presolve_ptr != nullptr; }
   i_t get_papilo_original_num_variables() const { return papilo_original_num_variables; }
   void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
-                                 rmm::cuda_stream_view stream) const;
+                                 cuda::stream_ref stream) const;
 
   presolve_data_t(presolve_data_t&&)                 = default;
   presolve_data_t& operator=(presolve_data_t&&)      = default;

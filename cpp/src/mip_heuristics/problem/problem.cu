@@ -2209,7 +2209,7 @@ void problem_t<i_t, f_t>::set_papilo_presolve_data(
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
-                                                    rmm::cuda_stream_view stream) const
+                                                    cuda::stream_ref stream) const
 {
   presolve_data.papilo_uncrush_assignment(assignment, stream);
 }
