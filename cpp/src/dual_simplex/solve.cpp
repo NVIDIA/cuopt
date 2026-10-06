@@ -687,9 +687,9 @@ lp_status_t solve_linear_program_with_barrier(
       bool objective_shift_ok = false;
       try {
         auto const model_objective =
-          cuopt::mathematical_optimization::gather_model_objective(*xf, user_problem.objective);
+          cuopt::mathematical_optimization::gather_model_objective<i_t>(*xf, user_problem.objective);
         auto const crushed = cuopt::mathematical_optimization::crush_user_linear_objective(
-          *xf, model_objective.data(), static_cast<int>(model_objective.size()));
+          *xf, model_objective.data(), static_cast<i_t>(model_objective.size()));
         objective_shift_ok =
           shift_from<i_t, f_t>(solver_lp->objective, crushed, xf->linear_obj_shift) == 0;
       } catch (std::exception const&) {
@@ -702,10 +702,10 @@ lp_status_t solve_linear_program_with_barrier(
       if (xf->rhs_update_supported) {
         std::vector<f_t> crushed;
         std::string error;
-        const int model_m = cuopt::mathematical_optimization::model_num_rows(*xf);
+        const i_t model_m = cuopt::mathematical_optimization::model_num_rows(*xf);
         bool const rhs_shift_ok =
           cuopt::mathematical_optimization::crush_user_rhs(
-            *xf, user_problem.rhs.data(), static_cast<i_t>(model_m), crushed, error) ==
+            *xf, user_problem.rhs.data(), model_m, crushed, error) ==
             cuopt::mathematical_optimization::crush_rhs_status_t::success &&
           shift_from<i_t, f_t>(solver_lp->rhs, crushed, xf->rhs_shift) == 0;
         if (!rhs_shift_ok) {

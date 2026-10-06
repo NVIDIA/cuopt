@@ -88,7 +88,8 @@ simplex::user_problem_t<i_t, f_t> user_problem_from_transform(
   simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
   user_problem.num_rows  = xf.user_num_rows;
   user_problem.num_cols  = xf.user_num_cols;
-  user_problem.objective = scatter_model_objective(xf, model.get_objective_coefficients_host());
+  user_problem.objective =
+    scatter_model_objective<i_t>(xf, model.get_objective_coefficients_host());
   user_problem.row_sense = xf.row_sense;
   user_problem.rhs.assign(static_cast<std::size_t>(xf.user_num_rows), f_t(0));
   user_problem.obj_scale    = static_cast<f_t>(xf.obj_scale);
@@ -2009,9 +2010,9 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                               op_problem.has_quadratic_objective(),
                               user_has_soc) &&
       (!user_has_soc ||
-       (static_cast<int>(op_problem.get_quadratic_constraints().size()) ==
+       (static_cast<i_t>(op_problem.get_quadratic_constraints().size()) ==
           xf->num_quadratic_constraints &&
-        static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
+        static_cast<i_t>(xf->row_sense.size()) == xf->user_num_rows &&
         op_problem.get_n_variables() == model_num_cols(*xf) &&
         op_problem.get_n_constraints() == model_num_rows(*xf)));
 
