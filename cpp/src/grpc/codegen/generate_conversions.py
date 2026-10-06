@@ -1500,7 +1500,9 @@ def generate_settings_to_proto_body(
     return "\n".join(lines)
 
 
-def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
+def generate_proto_to_settings_body(
+    registry, obj_name, obj, indent="  ", field_filter="all"
+):
     # Two presence mechanisms (handled by `emit_scalar_from_proto_assign`):
     #   * `optional` -> wrap the body in `if (pb.has_X())` so an omitted
     #     wire field preserves the C++ struct's in-class default.
@@ -1509,8 +1511,17 @@ def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
     #     as "use default" (e.g. -1 for iteration_limit).
     # When both are set, the optional guard runs first, then the sentinel
     # value-guard runs inside it.
+    #
+    # field_filter splits set_parameter() fields from the rest. The server
+    # copies the parameter fields only when the parameters map is empty.
+    # Warm start is not a field here; the caller reads it separately.
     lines, ind = [], indent
     for f in parse_settings_fields(obj.get("fields", [])):
+        is_parameter = _settings_field_is_parameter(f)
+        if field_filter == "parameters" and not is_parameter:
+            continue
+        if field_filter == "non_parameters" and is_parameter:
+            continue
         pname = _proto_cpp_name(f["name"])
         cpp_member = f.get("member", f["name"])
         lines.extend(
@@ -4029,14 +4040,37 @@ def main():
                     )
                     + "\n",
                 )
-            write_file(
-                os.path.join(
-                    outdir, f"generated_proto_to_{label}_settings.inc"
-                ),
-                HEADER
-                + generate_proto_to_settings_body(registry, key, obj)
-                + "\n",
-            )
+            if obj.get("parameter_map"):
+                write_file(
+                    os.path.join(
+                        outdir, f"generated_proto_to_{label}_parameters.inc"
+                    ),
+                    HEADER
+                    + generate_proto_to_settings_body(
+                        registry, key, obj, field_filter="parameters"
+                    )
+                    + "\n",
+                )
+                non_parameters = generate_proto_to_settings_body(
+                    registry, key, obj, field_filter="non_parameters"
+                )
+                if non_parameters.strip():
+                    write_file(
+                        os.path.join(
+                            outdir,
+                            f"generated_proto_to_{label}_non_parameters.inc",
+                        ),
+                        HEADER + non_parameters + "\n",
+                    )
+            else:
+                write_file(
+                    os.path.join(
+                        outdir, f"generated_proto_to_{label}_settings.inc"
+                    ),
+                    HEADER
+                    + generate_proto_to_settings_body(registry, key, obj)
+                    + "\n",
+                )
 
     # Full data proto
     write_file(

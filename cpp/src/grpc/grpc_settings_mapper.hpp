@@ -50,11 +50,13 @@ void map_pdlp_client_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& s
  * Reads from a protobuf message using the generated protobuf C++ API.
  * Does not perform deserialization — that is handled by the protobuf library.
  *
- * When @p n_variables and @p n_constraints are non-negative, a warm start is
- * checked against those dimensions before it is stored. A negative count skips
- * that check. Non-finite values and iteration counters below the -1 sentinel
- * are always rejected. Throws std::invalid_argument and leaves the warm start
- * unset.
+ * Deprecated set_parameter() fields are copied only when parameters is empty.
+ * A non-empty map leaves those fields at the C++ defaults; the caller applies
+ * the map. Warm start is always read. When @p n_variables and @p n_constraints
+ * are non-negative, a warm start is checked against those dimensions before it
+ * is stored. A negative count skips that check. Non-finite values and
+ * iteration counters below the -1 sentinel are always rejected. Throws
+ * std::invalid_argument and leaves the warm start unset.
  */
 template <typename i_t, typename f_t>
 void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_settings,
@@ -97,8 +99,9 @@ void map_mip_client_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& set
 /**
  * @brief Map protobuf MIPSolverSettings message to mip_solver_settings_t.
  *
- * Reads from a protobuf message using the generated protobuf C++ API.
- * Does not perform deserialization — that is handled by the protobuf library.
+ * Deprecated set_parameter() fields are copied only when parameters is empty.
+ * A non-empty map leaves those fields at the C++ defaults; the caller applies
+ * the map. presolve_absolute_tolerance is always read.
  */
 template <typename i_t, typename f_t>
 void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
@@ -121,12 +124,13 @@ void append_solver_parameters(const solver_settings_t<i_t, f_t>& settings,
 /**
  * @brief Apply PDLPSolverSettings.parameters / MIPSolverSettings.parameters.
  *
- * Each entry is passed to set_parameter_from_string(). Call this after the
- * typed fields have been copied onto `settings`, so a key in the map wins
- * over those deprecated fields. An empty map changes nothing. An unknown
- * name or an out-of-range value throws std::invalid_argument. A map with more
- * entries than twice the number of registered parameter slots throws
- * std::invalid_argument as well. That limit follows the parameter tables.
+ * Each entry is passed to set_parameter_from_string(). Only keys present in
+ * the map are set. A name absent from the map stays at the C++ default when
+ * the deprecated typed fields were skipped, which is the non-empty-map path.
+ * An empty map changes nothing. An unknown name or an out-of-range value
+ * throws std::invalid_argument. A map with more entries than twice the number
+ * of registered parameter slots throws std::invalid_argument as well. That
+ * limit follows the parameter tables.
  */
 template <typename i_t, typename f_t>
 void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,

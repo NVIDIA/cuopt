@@ -20,9 +20,6 @@
   if (pb_settings.has_relative_tolerance()) {
     settings.tolerances.relative_tolerance = pb_settings.relative_tolerance();
   }
-  if (pb_settings.has_presolve_absolute_tolerance()) {
-    settings.tolerances.presolve_absolute_tolerance = pb_settings.presolve_absolute_tolerance();
-  }
   if (pb_settings.has_log_to_console()) {
     settings.log_to_console = pb_settings.log_to_console();
   }

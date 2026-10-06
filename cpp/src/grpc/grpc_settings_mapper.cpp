@@ -261,26 +261,31 @@ void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_sett
                                 i_t n_variables,
                                 i_t n_constraints)
 {
-#include "generated_proto_to_pdlp_settings.inc"
+  // Older clients send typed fields and an empty map. A non-empty map is the
+  // whole set_parameter() payload, so proto3 zeros in the deprecated fields
+  // must not replace C++ defaults.
+  if (pb_settings.parameters().empty()) {
+#include "generated_proto_to_pdlp_parameters.inc"
 
-  // Post-decode input sanitization: the generated code does raw static_cast
-  // on int32 -> enum, which is UB for values outside the enum range. Clamp
-  // out-of-range values from buggy/untrusted encoders to safe defaults, and
-  // guard the int64 -> i_t conversion of iteration_limit against overflow.
-  {
-    auto pv = pb_settings.presolver();
-    if (pv < CUOPT_PRESOLVE_DEFAULT || pv > CUOPT_PRESOLVE_PSLP) {
-      settings.presolver = presolver_t::Default;
+    // Post-decode input sanitization: the generated code does raw static_cast
+    // on int32 -> enum, which is UB for values outside the enum range. Clamp
+    // out-of-range values from buggy/untrusted encoders to safe defaults, and
+    // guard the int64 -> i_t conversion of iteration_limit against overflow.
+    {
+      auto pv = pb_settings.presolver();
+      if (pv < CUOPT_PRESOLVE_DEFAULT || pv > CUOPT_PRESOLVE_PSLP) {
+        settings.presolver = presolver_t::Default;
+      }
     }
-  }
-  {
-    auto pv = pb_settings.pdlp_precision();
-    if (pv < CUOPT_PDLP_DEFAULT_PRECISION || pv > CUOPT_PDLP_MIXED_PRECISION) {
-      settings.pdlp_precision = pdlp_precision_t::DefaultPrecision;
+    {
+      auto pv = pb_settings.pdlp_precision();
+      if (pv < CUOPT_PDLP_DEFAULT_PRECISION || pv > CUOPT_PDLP_MIXED_PRECISION) {
+        settings.pdlp_precision = pdlp_precision_t::DefaultPrecision;
+      }
     }
-  }
-  if (pb_settings.iteration_limit() > static_cast<int64_t>(std::numeric_limits<i_t>::max())) {
-    settings.iteration_limit = std::numeric_limits<i_t>::max();
+    if (pb_settings.iteration_limit() > static_cast<int64_t>(std::numeric_limits<i_t>::max())) {
+      settings.iteration_limit = std::numeric_limits<i_t>::max();
+    }
   }
   read_settings_warm_start(pb_settings, settings, n_variables, n_constraints);
 }
@@ -303,28 +308,34 @@ template <typename i_t, typename f_t>
 void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
                                mip_solver_settings_t<i_t, f_t>& settings)
 {
-#include "generated_proto_to_mip_settings.inc"
+  // Older clients send typed fields and an empty map. A non-empty map is the
+  // whole set_parameter() payload.
+  if (pb_settings.parameters().empty()) {
+#include "generated_proto_to_mip_parameters.inc"
 
-  // Post-decode input sanitization: clamp out-of-range enum / mode values
-  // from buggy/untrusted encoders to safe defaults.
-  {
-    auto pv = pb_settings.presolver();
-    if (pv < CUOPT_PRESOLVE_DEFAULT || pv > CUOPT_PRESOLVE_PSLP) {
-      settings.presolver = presolver_t::Default;
+    // Post-decode input sanitization: clamp out-of-range enum / mode values
+    // from buggy/untrusted encoders to safe defaults.
+    {
+      auto pv = pb_settings.presolver();
+      if (pv < CUOPT_PRESOLVE_DEFAULT || pv > CUOPT_PRESOLVE_PSLP) {
+        settings.presolver = presolver_t::Default;
+      }
+    }
+    {
+      auto sv = pb_settings.mip_scaling();
+      if (sv < CUOPT_MIP_SCALING_OFF || sv > CUOPT_MIP_SCALING_NO_OBJECTIVE) {
+        settings.mip_scaling = CUOPT_MIP_SCALING_ON;
+      }
+    }
+    {
+      // symmetry: valid range matches the local-solve binding in
+      // solver_settings.cu ({CUOPT_MIP_SYMMETRY, ..., -1, 2, -1}).
+      auto sv = pb_settings.symmetry();
+      if (sv < -1 || sv > 2) { settings.symmetry = -1; }
     }
   }
-  {
-    auto sv = pb_settings.mip_scaling();
-    if (sv < CUOPT_MIP_SCALING_OFF || sv > CUOPT_MIP_SCALING_NO_OBJECTIVE) {
-      settings.mip_scaling = CUOPT_MIP_SCALING_ON;
-    }
-  }
-  {
-    // symmetry: valid range matches the local-solve binding in
-    // solver_settings.cu ({CUOPT_MIP_SYMMETRY, ..., -1, 2, -1}).
-    auto sv = pb_settings.symmetry();
-    if (sv < -1 || sv > 2) { settings.symmetry = -1; }
-  }
+  // Not a set_parameter() value, so it is applied for both client generations.
+#include "generated_proto_to_mip_non_parameters.inc"
 }
 
 namespace {
@@ -383,10 +394,8 @@ void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,
     throw std::invalid_argument("Too many solver parameters");
   }
 
-  // After the deprecated typed fields have been copied onto `settings`.
-  // set_parameter_from_string is the same path the CLI and C API use, so a
-  // key here wins over those fields and a parameter with no typed field is
-  // still applied.
+  // Only names present in the map are set. The caller has already skipped
+  // deprecated typed fields when this map is non-empty.
   for (const auto& entry : parameters) {
     settings.set_parameter_from_string(entry.first, entry.second);
   }

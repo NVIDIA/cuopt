@@ -2665,9 +2665,52 @@ TEST(MapperRoundtrip, ParameterMapOverridesDeprecatedFields)
 
   solver_settings_t<int32_t, double> settings;
   map_proto_to_pdlp_settings(pb, settings.get_pdlp_settings());
+  // The typed field is ignored while the map is non-empty.
+  pdlp_solver_settings_t<int32_t, double> fresh;
+  EXPECT_EQ(settings.get_pdlp_settings().time_limit, fresh.time_limit);
   apply_parameter_overrides(settings, pb.parameters());
 
   EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().time_limit, 9.25);
+}
+
+// A map that names one parameter leaves every other parameter at the C++
+// default, including a deprecated field set on the same message. Warm start
+// and presolve_absolute_tolerance still apply.
+TEST(MapperRoundtrip, PartialParameterMapSetsOnlyNamedKeys)
+{
+  cuopt::remote::PDLPSolverSettings lp;
+  lp.set_time_limit(3.5);
+  lp.set_detect_infeasibility(true);
+  (*lp.mutable_parameters())[CUOPT_SEQUENCE_SOLVE] = "true";
+  auto* ws                                         = lp.mutable_warm_start_data();
+  ws->add_last_restart_duality_gap_dual_solution(0.3);
+  ws->set_initial_step_size(0.5);
+
+  solver_settings_t<int32_t, double> settings;
+  pdlp_solver_settings_t<int32_t, double> fresh_lp;
+  map_proto_to_pdlp_settings(lp, settings.get_pdlp_settings());
+  apply_parameter_overrides(settings, lp.parameters());
+
+  EXPECT_TRUE(settings.get_pdlp_settings().sequence_solve);
+  EXPECT_EQ(settings.get_pdlp_settings().time_limit, fresh_lp.time_limit);
+  EXPECT_EQ(settings.get_pdlp_settings().detect_infeasibility, fresh_lp.detect_infeasibility);
+  ASSERT_TRUE(settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data().is_populated());
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data().initial_step_size_,
+                   0.5);
+
+  cuopt::remote::MIPSolverSettings mip;
+  mip.set_time_limit(3.5);
+  mip.set_presolve_absolute_tolerance(5e-7);
+  (*mip.mutable_parameters())[CUOPT_MIP_FLOW_COVER_CUTS] = "1";
+
+  solver_settings_t<int32_t, double> mip_settings;
+  mip_solver_settings_t<int32_t, double> fresh_mip;
+  map_proto_to_mip_settings(mip, mip_settings.get_mip_settings());
+  apply_parameter_overrides(mip_settings, mip.parameters());
+
+  EXPECT_EQ(mip_settings.get_mip_settings().flow_cover_cuts, 1);
+  EXPECT_EQ(mip_settings.get_mip_settings().time_limit, fresh_mip.time_limit);
+  EXPECT_DOUBLE_EQ(mip_settings.get_mip_settings().tolerances.presolve_absolute_tolerance, 5e-7);
 }
 
 TEST(MapperRoundtrip, ParameterMapRejectsUnknownName)
@@ -2724,12 +2767,13 @@ TEST(MapperRoundtrip, ParameterMapRoundTripsSolverSettings)
   append_solver_parameters(src, lp_pb.mutable_parameters());
 
   EXPECT_EQ(lp_pb.parameters().at(CUOPT_SEQUENCE_SOLVE), "true");
-  // A published client can still set the typed field. The map wins.
+  // Ignored: the map is non-empty, so deprecated typed fields are not copied.
   lp_pb.set_time_limit(1.0);
 
   settings_t dst;
+  pdlp_solver_settings_t<int32_t, double> fresh;
   map_proto_to_pdlp_settings(lp_pb, dst.get_pdlp_settings());
-  EXPECT_DOUBLE_EQ(dst.get_pdlp_settings().time_limit, 1.0);
+  EXPECT_EQ(dst.get_pdlp_settings().time_limit, fresh.time_limit);
   apply_parameter_overrides(dst, lp_pb.parameters());
   EXPECT_DOUBLE_EQ(dst.get_pdlp_settings().time_limit, 4.5);
   EXPECT_DOUBLE_EQ(dst.get_pdlp_settings().tolerances.absolute_dual_tolerance, precise);

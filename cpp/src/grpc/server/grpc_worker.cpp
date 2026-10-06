@@ -205,9 +205,11 @@ struct DeserializedJob {
   std::string error_message;
 };
 
-// Applies the set_parameter() map after the deprecated typed fields. Returns
-// false and stores the message when a key or value is rejected. The caller
-// fails that job; it does not kill the worker.
+// Applies the set_parameter() map. map_proto_to_*_settings copies deprecated
+// typed fields only when this map is empty, and always copies warm start and
+// presolve_absolute_tolerance. Returns false and stores the message when a
+// key or value is rejected. The caller fails that job; it does not kill the
+// worker.
 template <typename PbSettings>
 bool apply_job_parameters(DeserializedJob& dj, const PbSettings& pb_settings)
 {

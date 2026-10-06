@@ -471,9 +471,10 @@ pdlp_settings:
   # Those fields stay in the message so a server can still read a client that
   # sends them. The current client writes set_parameter() values only in
   # `parameters` and needs a server that applies that map. New parameters are
-  # not added here. The server applies the map with set_parameter_from_string()
-  # after any deprecated typed fields, so a key in the map wins. Warm start is
-  # an embed and is not deprecated.
+  # not added here. A non-empty parameters map is the whole set_parameter()
+  # payload: the server skips the deprecated typed fields and applies only the
+  # keys in the map. An empty map is an older client, and those typed fields
+  # are applied. Warm start is an embed and is always applied.
   parameter_map:
     name: parameters
     field_num: 60
