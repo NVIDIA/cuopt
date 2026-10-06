@@ -30,6 +30,7 @@ void apply_barrier_rhs(iteration_data_t<int, double>& data, double const* barrie
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
 
+template <typename i_t, typename f_t>
 struct barrier_transform_t;
 
 /**
@@ -63,9 +64,9 @@ class barrier_cache_t {
    */
   barrier::iteration_data_t<int, double>* release_iteration_data();
 
-  void store_transform(std::unique_ptr<barrier_transform_t> transform);
-  [[nodiscard]] barrier_transform_t* transform();
-  [[nodiscard]] barrier_transform_t const* transform() const;
+  void store_transform(std::unique_ptr<barrier_transform_t<int, double>> transform);
+  [[nodiscard]] barrier_transform_t<int, double>* transform();
+  [[nodiscard]] barrier_transform_t<int, double> const* transform() const;
   /** True when an update API has staged new data that the next solve should reuse. */
   [[nodiscard]] bool dirty() const;
   void mark_clean();

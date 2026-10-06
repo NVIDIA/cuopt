@@ -79,11 +79,11 @@ namespace cuopt::mathematical_optimization {
 
 namespace {
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename xf_f_t>
 simplex::user_problem_t<i_t, f_t> user_problem_from_transform(
   raft::handle_t const* handle_ptr,
   optimization_problem_t<i_t, f_t>& model,
-  cuopt::mathematical_optimization::barrier_transform_t const& xf)
+  cuopt::mathematical_optimization::barrier_transform_t<i_t, xf_f_t> const& xf)
 {
   simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
   user_problem.num_rows  = xf.user_num_rows;
@@ -2065,7 +2065,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       // Reuse never re-runs the cone expansion, so the gate above rejects a model that has
       // gained or lost a quadratic constraint since the cache was built.
       cache->transform()->num_quadratic_constraints =
-        static_cast<int>(op_problem.get_quadratic_constraints().size());
+        static_cast<i_t>(op_problem.get_quadratic_constraints().size());
     }
     auto solution = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),

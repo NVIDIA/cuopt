@@ -23,7 +23,7 @@ using barrier_iteration_data_t = barrier::iteration_data_t<int, double>;
 using barrier_iteration_data_ptr =
   std::unique_ptr<barrier_iteration_data_t, void (*)(barrier_iteration_data_t*)>;
 
-static void require_cache(barrier_transform_t const* transform,
+static void require_cache(barrier_transform_t<int, double> const* transform,
                           barrier_iteration_data_t const* data,
                           char const* api)
 {
@@ -59,7 +59,7 @@ struct barrier_cache_t::impl {
   std::unique_ptr<rmm::cuda_stream> stream;
   std::unique_ptr<raft::handle_t> handle;
   // Destroy iteration_data before transform: it may const-ref A/Q stored on the transform.
-  std::unique_ptr<barrier_transform_t> transform;
+  std::unique_ptr<barrier_transform_t<int, double>> transform;
   barrier_iteration_data_ptr iteration_data;
   bool linear_objective_dirty{false};
   bool rhs_dirty{false};
@@ -107,14 +107,17 @@ barrier_iteration_data_t* barrier_cache_t::release_iteration_data()
   return impl_->iteration_data.release();
 }
 
-void barrier_cache_t::store_transform(std::unique_ptr<barrier_transform_t> transform)
+void barrier_cache_t::store_transform(std::unique_ptr<barrier_transform_t<int, double>> transform)
 {
   impl_->transform = std::move(transform);
 }
 
-barrier_transform_t* barrier_cache_t::transform() { return impl_->transform.get(); }
+barrier_transform_t<int, double>* barrier_cache_t::transform() { return impl_->transform.get(); }
 
-barrier_transform_t const* barrier_cache_t::transform() const { return impl_->transform.get(); }
+barrier_transform_t<int, double> const* barrier_cache_t::transform() const
+{
+  return impl_->transform.get();
+}
 
 bool barrier_cache_t::dirty() const
 {

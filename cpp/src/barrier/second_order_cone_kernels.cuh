@@ -35,7 +35,6 @@
 #include <cub/device/device_reduce.cuh>
 #include <cub/warp/warp_reduce.cuh>
 
-#include <concepts>
 #include <cstddef>
 #include <numeric>
 #include <span>
@@ -66,7 +65,7 @@ inline constexpr int soc_block_size = 256;
 /**
  * Tail aggregates for the cone step-length reduction (CUB value type).
  */
-template <std::floating_point f_t>
+template <typename f_t>
 struct step_tail_sums_t {
   f_t du_tail_sq{};
   f_t u_tail_du_tail{};
@@ -85,7 +84,7 @@ struct step_tail_sums_t {
  * slots and `temp_cone` sequentially inside a higher-level operation, but no
  * persistent NT scaling or iterate state is stored here.
  */
-template <std::integral i_t, std::floating_point f_t, int n_slots = 3>
+template <typename i_t, typename f_t, int n_slots = 3>
 struct cone_scratch_t {
   i_t n_cones;            // number of SOC blocks
   size_t n_cone_entries;  // total packed cone dimension
@@ -157,7 +156,7 @@ struct to_size_t_t {
  * solver's global x/z vectors. The caller must keep the underlying storage
  * alive for the lifetime of this object.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 struct cone_data_t {
   // Topology. This is immutable after construction.
   i_t n_cones;            // number of SOC blocks
@@ -294,7 +293,7 @@ struct cone_data_t {
   i_t expansion_var_count() const { return 2 * n_sparse_cones; }
 };
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   nt_finalize_scaling_scalars_kernel(raft::device_span<const f_t> x,
                                      raft::device_span<const f_t> z,
@@ -318,7 +317,7 @@ __global__ void __launch_bounds__(soc_block_size)
   eta[cone]     = sqrt(z_scale[cone] / x_scale[cone]);
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   nt_finalize_w_scale_kernel(raft::device_span<const f_t> w,
                              raft::device_span<const f_t> tail_sq,
@@ -342,7 +341,7 @@ __global__ void __launch_bounds__(soc_block_size)
  *   w_0 = z_0 / z_scale + x_0 / x_scale
  *   w_tail = z_tail / z_scale - x_tail / x_scale.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   nt_write_w_kernel(raft::device_span<const f_t> x,
                     raft::device_span<const f_t> z,
@@ -365,7 +364,7 @@ __global__ void __launch_bounds__(soc_block_size)
   w[idx] = z[idx] / z_scale[cone] - x[idx] / x_scale[cone];
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   nt_normalize_w_kernel(raft::device_span<f_t> w,
                         raft::device_span<const f_t> w_scale,
@@ -378,7 +377,7 @@ __global__ void __launch_bounds__(soc_block_size)
   w[idx] /= w_scale[cone];
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   nt_finalize_head_kernel(raft::device_span<f_t> w,
                           raft::device_span<const f_t> normalized_tail_sq,
@@ -391,7 +390,7 @@ __global__ void __launch_bounds__(soc_block_size)
   w[cone_offsets[cone]] = sqrt(1 + normalized_tail_sq[cone]);
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   nt_write_lambda_kernel(raft::device_span<const f_t> x,
                          raft::device_span<const f_t> z,
@@ -448,7 +447,7 @@ __global__ void __launch_bounds__(soc_block_size)
  *   0: ||x_tail||^2 -> x_scale
  *   1: ||z_tail||^2 -> z_scale
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, cuda::stream_ref stream)
 {
   auto x_scale = cones.scratch.template get_slot<0>();
@@ -534,7 +533,7 @@ void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, cuda::stream_ref stream)
 // One block per sparse cone. Recompute the rank-2 factors (corner d and the
 // vectors v, u, both scaled by eta^2) from the current NT direction w so that
 // the implicit block reproduces the dense H = eta^2 (2 w w^T - J).
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void update_scaling_sparse_kernel(raft::device_span<const f_t> w,
                                              raft::device_span<const f_t> eta,
                                              raft::device_span<f_t> d,
@@ -599,7 +598,7 @@ __global__ void update_scaling_sparse_kernel(raft::device_span<const f_t> w,
  * scaling, so the implicit sparse block matches the dense Hessian for this
  * iteration. Call after `launch_nt_scaling` has updated w and eta.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void launch_update_scaling_sparse(cone_data_t<i_t, f_t>& cones, cuda::stream_ref stream)
 {
   if (!cones.has_sparse_cones()) { return; }
@@ -619,7 +618,7 @@ void launch_update_scaling_sparse(cone_data_t<i_t, f_t>& cones, cuda::stream_ref
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   apply_w_inv_write_kernel(raft::device_span<const f_t> v,
                            raft::device_span<f_t> out,
@@ -650,7 +649,7 @@ __global__ void __launch_bounds__(soc_block_size)
   out[idx]        = inv_eta * (v[idx] + coeff * w[idx]);
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   apply_w_write_kernel(raft::device_span<const f_t> v,
                        raft::device_span<f_t> out,
@@ -681,7 +680,7 @@ __global__ void __launch_bounds__(soc_block_size)
   out[idx]        = cone_eta * (v[idx] + coeff * w[idx]);
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   apply_hessian_kernel(raft::device_span<const f_t> v,
                        raft::device_span<f_t> out,
@@ -713,7 +712,7 @@ __global__ void __launch_bounds__(soc_block_size)
   out[idx] = bias.empty() ? h_value : bias_scale * bias[idx] + h_value;
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   gather_cone_heads_kernel(raft::device_span<const f_t> values,
                            raft::device_span<f_t> heads,
@@ -738,7 +737,7 @@ __global__ void __launch_bounds__(soc_block_size)
  *   d_0    = <scaled_dx, scaled_dz> - sigma_mu
  *   d_tail = scaled_dx_0 * scaled_dz_tail + scaled_dz_0 * scaled_dx_tail.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   combined_cone_shift_write_kernel(raft::device_span<f_t> shift,
                                    raft::device_span<const f_t> scaled_dx,
@@ -774,7 +773,7 @@ __global__ void __launch_bounds__(soc_block_size)
  * A second flat kernel writes `-p`, which lets the final W^{-1} call produce
  * q = -W^{-1} p without adding an output-scale argument to W^{-1}.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   jordan_divide_by_lambda_scalar_kernel(raft::device_span<const f_t> shift,
                                         raft::device_span<const f_t> nt_point,
@@ -798,7 +797,7 @@ __global__ void __launch_bounds__(soc_block_size)
   inv_lambda0[cone] = 1 / lambda0;
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   jordan_divide_by_lambda_write_kernel(raft::device_span<const f_t> shift,
                                        raft::device_span<const f_t> nt_point,
@@ -831,7 +830,7 @@ __global__ void __launch_bounds__(soc_block_size)
  *   (W^{-1}v)_0 = inv_eta * (w_0 v_0 - zeta)
  *   (W^{-1}v)_tail = inv_eta * (v_tail + (-v_0 + zeta / (1 + w_0)) w_tail)
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void apply_w_inv(raft::device_span<const f_t> v,
                  raft::device_span<f_t> out,
                  cone_data_t<i_t, f_t>& cones,
@@ -867,7 +866,7 @@ void apply_w_inv(raft::device_span<const f_t> v,
  *   (W * v)_tail =
  *     eta * (v_tail + (v_0 + zeta / (1 + w_0)) w_tail)
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void apply_w(raft::device_span<const f_t> v,
              raft::device_span<f_t> out,
              cone_data_t<i_t, f_t>& cones,
@@ -900,7 +899,7 @@ void apply_w(raft::device_span<const f_t> v,
  *   (Hv)_0 = eta^{2} (2 w_0 rho - v_0)
  *   (Hv)_tail = eta^{2} (2 w_tail rho + v_tail)
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void apply_hessian(raft::device_span<const f_t> v,
                    raft::device_span<f_t> out,
                    cone_data_t<i_t, f_t>& cones,
@@ -945,7 +944,7 @@ void apply_hessian(raft::device_span<const f_t> v,
  * This function applies the cone block H = S^2 and writes:
  *   dz = cone_target - H dx.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void recover_cone_dz_from_target(raft::device_span<const f_t> dx,
                                  cone_data_t<i_t, f_t>& cones,
                                  raft::device_span<const f_t> cone_target,
@@ -959,7 +958,7 @@ void recover_cone_dz_from_target(raft::device_span<const f_t> dx,
  * Accumulate the dense SOC cone-block matvec into an existing output vector:
  *   out += H x, where H = S^2, applied to dense cones only.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void launch_dense_hessian_matvec(raft::device_span<const f_t> x,
                                  cone_data_t<i_t, f_t>& cones,
                                  raft::device_span<f_t> out,
@@ -971,7 +970,7 @@ void launch_dense_hessian_matvec(raft::device_span<const f_t> x,
 
 // Bucket index owning `entry` via upper-bound search on the exclusive prefix ends in
 // offsets[1..n_buckets].
-template <std::integral i_t, typename offset_t>
+template <typename i_t, typename offset_t>
 __device__ i_t bucket_index(raft::device_span<const offset_t> offsets,
                             offset_t entry,
                             i_t n_buckets)
@@ -989,7 +988,7 @@ __device__ i_t bucket_index(raft::device_span<const offset_t> offsets,
   return lo;
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size) scatter_sparse_hessian_into_augmented_kernel(
   raft::device_span<f_t> augmented_x,
   raft::device_span<f_t> Hs_diag,
@@ -1044,7 +1043,7 @@ __global__ void __launch_bounds__(soc_block_size) scatter_sparse_hessian_into_au
  *
  * `Hs_diag` is left populated for downstream matrix-free matvec / iterative refinement use.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void scatter_sparse_hessian_into_augmented(cone_data_t<i_t, f_t>& cones,
                                            rmm::device_uvector<f_t>& augmented_x,
                                            rmm::device_uvector<f_t>& Hs_diag,
@@ -1087,7 +1086,7 @@ void scatter_sparse_hessian_into_augmented(cone_data_t<i_t, f_t>& cones,
 // Write the cone block a cold start factorizes, before any Nesterov-Todd scaling
 // exists: Hessian diagonal -Q - dual_perturb, and sparse expansion couplings and
 // diagonals at zero. The rank-2 matvec state is cleared to match that matrix.
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size) restore_initial_sparse_cone_block_kernel(
   raft::device_span<f_t> augmented_x,
   raft::device_span<f_t> Hs_diag,
@@ -1129,7 +1128,7 @@ __global__ void __launch_bounds__(soc_block_size) restore_initial_sparse_cone_bl
   }
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void restore_initial_sparse_cone_block(cone_data_t<i_t, f_t>& cones,
                                        rmm::device_uvector<f_t>& augmented_x,
                                        rmm::device_uvector<f_t>& Hs_diag,
@@ -1179,7 +1178,7 @@ void restore_initial_sparse_cone_block(cone_data_t<i_t, f_t>& cones,
  *
  * `v` and `u` are the rank-2 vectors in cones.sparse_v / cones.sparse_u.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void sparse_augmented_matvec_kernel(raft::device_span<const f_t> x,
                                                raft::device_span<f_t> r1,
                                                raft::device_span<f_t> y_exp,
@@ -1246,7 +1245,7 @@ __global__ void sparse_augmented_matvec_kernel(raft::device_span<const f_t> x,
  * `sparse_augmented_matvec_kernel`). Accumulates the cone-row contribution into
  * `r1` and the expansion-row contribution into `y_exp`, one block per sparse cone.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void launch_sparse_augmented_matvec(raft::device_span<const f_t> x,
                                     raft::device_span<f_t> r1,
                                     raft::device_span<f_t> y_exp,
@@ -1285,7 +1284,7 @@ void launch_sparse_augmented_matvec(raft::device_span<const f_t> x,
 
 // Scatter one nonzero of a dense cone's q x q NT Hessian block into the
 // augmented value buffer. Only cones with dim <= soc_threshold take this path.
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size)
   scatter_dense_hessian_into_augmented_kernel(raft::device_span<f_t> augmented_x,
                                               raft::device_span<const i_t> csr_indices,
@@ -1328,7 +1327,7 @@ __global__ void __launch_bounds__(soc_block_size)
  * Write the full q x q NT Hessian blocks of the dense cones (dim <= soc_threshold)
  * into the augmented system value buffer at the precomputed CSR positions.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void scatter_dense_hessian_into_augmented(const cone_data_t<i_t, f_t>& cones,
                                           rmm::device_uvector<f_t>& augmented_x,
                                           const rmm::device_uvector<i_t>& csr_indices,
@@ -1367,7 +1366,7 @@ void scatter_dense_hessian_into_augmented(const cone_data_t<i_t, f_t>& cones,
 // boundary. Small/medium/large partitions come from segmented_sum_t.
 // =============================================================================
 
-template <std::floating_point f_t>
+template <typename f_t>
 HD f_t cone_step_length_from_scalars(
   f_t u0, f_t du0, f_t du_tail_sq, f_t u_tail_du_tail, f_t u_tail_sq, f_t alpha_max)
 {
@@ -1402,7 +1401,7 @@ HD f_t cone_step_length_from_scalars(
  * One warp per small cone: accumulate the three tail scalars, then solve for
  * alpha[cone]. Tail-only (local index 0 is the SOC head).
  */
-template <std::integral i_t, std::floating_point f_t, int warps_per_cta = 8>
+template <typename i_t, typename f_t, int warps_per_cta = 8>
 __global__ void __launch_bounds__(warps_per_cta* raft::WarpSize)
   step_length_small_kernel(raft::device_span<const f_t> u,
                            raft::device_span<const f_t> du,
@@ -1450,7 +1449,7 @@ __global__ void __launch_bounds__(warps_per_cta* raft::WarpSize)
 /**
  * One block per medium cone: three-scalar tail reduction + step solve.
  */
-template <std::integral i_t, std::floating_point f_t, int block_dim = 256>
+template <typename i_t, typename f_t, int block_dim = 256>
 __global__ void __launch_bounds__(block_dim)
   step_length_medium_kernel(raft::device_span<const f_t> u,
                             raft::device_span<const f_t> du,
@@ -1514,7 +1513,7 @@ __global__ void __launch_bounds__(block_dim)
   }
 }
 
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 __global__ void step_length_large_solve_kernel(raft::device_span<const f_t> u,
                                                raft::device_span<const f_t> du,
                                                raft::device_span<f_t> alpha,
@@ -1537,7 +1536,7 @@ __global__ void step_length_large_solve_kernel(raft::device_span<const f_t> u,
  * Size-aware step length: one pass over each cone's tail, then write
  * alpha[cone].
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void launch_cone_step_length(segmented_sum_t<i_t>& partitions,
                              raft::device_span<const f_t> u,
                              raft::device_span<const f_t> du,
@@ -1620,7 +1619,7 @@ void launch_cone_step_length(segmented_sum_t<i_t>& partitions,
  *
  *   x + alpha dx in Q,  z + alpha dz in Q,  alpha <= alpha_max.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 f_t compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
                              raft::device_span<const f_t> dx,
                              raft::device_span<const f_t> dz,
@@ -1662,7 +1661,7 @@ f_t compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
  * On return, `out` holds `q`. Internally, `out` is reused for `W^{-T} dz_aff` and
  * then `d`; `scratch.temp_cone` is reused for `W dx_aff`, then `-p`.
  */
-template <std::integral i_t, std::floating_point f_t>
+template <typename i_t, typename f_t>
 void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
                                     raft::device_span<const f_t> dz_aff,
                                     cone_data_t<i_t, f_t>& cones,

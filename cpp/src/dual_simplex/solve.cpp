@@ -626,7 +626,7 @@ lp_status_t solve_linear_program_with_barrier(
   lp_problem_t<i_t, f_t> const* solver_lp = &barrier_lp;
   if (cache != nullptr) {
     cache->clear();
-    auto xf           = std::make_unique<cuopt::mathematical_optimization::barrier_transform_t>();
+    auto xf = std::make_unique<cuopt::mathematical_optimization::barrier_transform_t<i_t, f_t>>();
     xf->user_num_cols = user_problem.num_cols;
     xf->user_num_rows = user_problem.num_rows;
     xf->original_num_cols            = original_lp.num_cols;
