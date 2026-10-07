@@ -380,6 +380,18 @@ def proxy(proxy_server, monkeypatch):
     set_max_request_size(1024 * 1024 * 1024)
 
 
+def test_openapi_legacy_path_matches_canonical(proxy_server):
+    canonical = requests.get(proxy_server + "/cuopt/openapi.json")
+    alias = requests.get(proxy_server + "/cuopt.yaml")
+    assert canonical.status_code == 200
+    assert alias.status_code == 200
+    assert alias.headers["content-type"].startswith("application/json")
+    body = alias.json()
+    assert body == canonical.json()
+    assert body["info"]["title"] == "NVIDIA cuOpt HTTP proxy"
+    assert "/cuopt.yaml" not in body["paths"]
+
+
 def test_parse_args_defaults():
     args = parse_args([])
     assert args.port == 5000
