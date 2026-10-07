@@ -103,14 +103,18 @@ jobs:
       - name: Upload to Maven Central
         id: publish
         run: |
-          java/cuopt/ci/maven-publish/maven_central_publish.sh \
-            --input signed-maven-repo \
-            --group-id "${GROUP_ID}" \
-            --profile-id "${PROFILE_ID:-$GROUP_ID}" \
-            --artifact-id "${ARTIFACT_ID}" \
-            --version "${VERSION}" \
-            --output-bundle central-bundle.zip \
+          args=(
+            --input signed-maven-repo
+            --group-id "${GROUP_ID}"
+            --artifact-id "${ARTIFACT_ID}"
+            --version "${VERSION}"
+            --output-bundle central-bundle.zip
             --auto-drop "${AUTO_DROP}"
+          )
+          if [[ -n ${PROFILE_ID} ]]; then
+            args+=(--profile-id "${PROFILE_ID}")
+          fi
+          java/cuopt/ci/maven-publish/maven_central_publish.sh "${args[@]}"
         env:
           GROUP_ID: ${{ steps.prepare.outputs.GROUP_ID }}
           PROFILE_ID: ${{ inputs.profile-id }}
