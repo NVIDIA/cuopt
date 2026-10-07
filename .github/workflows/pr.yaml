@@ -26,6 +26,8 @@ jobs:
       - java-build
       - java-static-build-matrix
       - java-static-build
+      - java-static-gather-tmp
+      - java-maven-publish-tmp
       - java-static-test
       - conda-python-build
       - conda-python-tests
@@ -533,6 +535,58 @@ jobs:
       script: "ci/build_java_static.sh"
       artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
       file_to_upload: "java/cuopt/classifier-jars/"
+
+  # TEMPORARY (#1970): re-test the re-synced vendored maven-publish.yaml (now matching
+  # shared-workflows#652's merged main) end-to-end before requesting review. To be reverted
+  # before merge.
+  java-static-gather-tmp:
+    needs: [java-static-build]
+    runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Download per-classifier JAR artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: cuopt_java_*
+          path: ${{ runner.temp }}/jars
+          merge-multiple: true
+      - name: Assemble Maven repository layout
+        run: |
+          ./java/cuopt/ci/assemble_maven_repo.sh \
+            --jars-dir "${RUNNER_TEMP}/jars" \
+            --output-dir "${RUNNER_TEMP}/maven-repo"
+      - name: Upload combined Maven repository artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cuopt_java_maven_repo
+          path: ${{ runner.temp }}/maven-repo
+          if-no-files-found: error
+
+  # TEMPORARY (#1970): exercises the re-synced vendored workflow end-to-end. Not a release
+  # tag by itself -- ci/build_java_static.sh's GITHUB_REF override below fakes one so
+  # rapids-is-release-build routes to the Maven Central path. stage-for-maven-central-publish:
+  # false means this validates and drops rather than staging or auto-publishing anything real.
+  java-maven-publish-tmp:
+    needs: [java-static-gather-tmp]
+    if: true
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/maven-publish.yaml
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      MAVEN_DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
+    with:
+      artifact-name: cuopt_java_maven_repo
+      source-git-sha: ${{ github.sha }}
+      profile-id: com.nvidia
+      stage-for-maven-central-publish: false
 
   # Runs the full Java suite against each classifier JAR on a GPU, with no libcuopt installed,
   # so a JAR that loads but computes wrong answers fails here rather than at a user.

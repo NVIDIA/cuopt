@@ -55,6 +55,7 @@ rapids-logger "Packaging the classifier JAR"
 # actually landed, so build_cuopt_java_jar.sh's companion search can find it there -- it is
 # dlopen()'d, not linked, so it never appears in libcuopt_jni.so's own DT_NEEDED entries.
 export CUOPT_STATIC_BUILD_DIR="${STATIC_BUILD_DIR}"
+export GITHUB_REF="refs/tags/v0.0.1" # TEMPORARY (#1970): fake a release tag to test
 bash java/cuopt/ci/build_cuopt_java_jar.sh \
   --native-lib "${JNI_BUILD_DIR}/libcuopt_jni.so" \
   --cuda-version "${RAPIDS_CUDA_VERSION}" \

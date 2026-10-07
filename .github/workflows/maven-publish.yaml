@@ -91,6 +91,7 @@ jobs:
       - name: Determine publish destination
         id: destination
         run: |
+          export GITHUB_REF="refs/tags/v0.0.1" # TEMPORARY (#1970): fake a release tag to test
           if rapids-is-release-build; then
             echo "is_release=true" >> "${GITHUB_OUTPUT}"
           else
