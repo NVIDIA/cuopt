@@ -11,6 +11,7 @@
 #include <cuopt/mathematical_optimization/constants.h>
 #include <barrier/iterative_refinement.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/scaling.hpp>
 #include <dual_simplex/solve.hpp>
@@ -24,6 +25,7 @@
 #include <cub/device/device_transform.cuh>
 
 #include <cmath>
+#include <optional>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::simplex::test {
@@ -59,21 +61,19 @@ TEST(barrier, fused_augmented_matvec_preserves_segments_and_free_variables)
     raft::copy(mask.data(), free_linear.data(), n, stream);
     raft::copy(work.data(), scratch.data(), scratch.size(), stream);
     auto* w = work.data();
-    barrier::prepare_augmented_matvec<<<3, 256, 0, stream.get()>>>(dx.data(),
-                                                                   dy.data(),
-                                                                   dd.data(),
-                                                                   mask.data(),
-                                                                   w,
-                                                                   w + x2_offset,
-                                                                   w + y1_offset,
-                                                                   w + y2_offset,
-                                                                   w + r1_offset,
-                                                                   w + exp_offset,
-                                                                   w + orig_offset,
-                                                                   n,
-                                                                   m,
-                                                                   p,
-                                                                   linear_n);
+    barrier::prepare_augmented_matvec<int, double>
+      <<<3, 256, 0, stream.get()>>>(raft::device_span<const double>(dx.data(), size),
+                                    raft::device_span<const double>(dy.data(), size),
+                                    raft::device_span<const double>(dd.data(), n),
+                                    raft::device_span<const int>(mask.data(), n),
+                                    raft::device_span<double>(w, n),
+                                    raft::device_span<double>(w + x2_offset, m),
+                                    raft::device_span<double>(w + y1_offset, n),
+                                    raft::device_span<double>(w + y2_offset, m),
+                                    raft::device_span<double>(w + r1_offset, n),
+                                    raft::device_span<double>(w + exp_offset, p),
+                                    raft::device_span<double>(w + orig_offset, p),
+                                    linear_n);
     RAFT_CUDA_TRY(cudaGetLastError());
     raft::copy(scratch.data(), w, scratch.size(), stream);
     stream.sync();
@@ -92,8 +92,14 @@ TEST(barrier, fused_augmented_matvec_preserves_segments_and_free_variables)
       scratch[exp_offset + i] = i + 5;
     }
     raft::copy(w, scratch.data(), scratch.size(), stream);
-    barrier::finish_augmented_matvec<<<3, 256, 0, stream.get()>>>(
-      dy.data(), w + y1_offset, w + y2_offset, w + exp_offset, w + orig_offset, 2.0, -3.0, n, m, p);
+    barrier::finish_augmented_matvec<int, double>
+      <<<3, 256, 0, stream.get()>>>(raft::device_span<double>(dy.data(), size),
+                                    raft::device_span<const double>(w + y1_offset, n),
+                                    raft::device_span<const double>(w + y2_offset, m),
+                                    raft::device_span<const double>(w + exp_offset, p),
+                                    raft::device_span<const double>(w + orig_offset, p),
+                                    2.0,
+                                    -3.0);
     RAFT_CUDA_TRY(cudaGetLastError());
     std::vector<double> result(size);
     raft::copy(result.data(), dy.data(), size, stream);
@@ -111,9 +117,8 @@ TEST(barrier, device_arnoldi_column_matches_sequential_orthogonalization)
 {
   raft::handle_t handle;
   const auto stream = handle.get_stream();
-  barrier::gmres_workspace_t<double> workspace(stream);
-  constexpr int n = 257;
-  workspace.resize_basis(n, stream);
+  constexpr int n   = 257;
+  barrier::gmres_workspace_t<double> workspace(n, stream);
   for (int k : {0, 2}) {
     std::vector<std::vector<double>> basis(k + 1, std::vector<double>(n));
     std::vector<double> expected(n), actual(n), z(n, 2.0);
@@ -157,16 +162,16 @@ TEST(barrier, device_arnoldi_column_matches_sequential_orthogonalization)
 struct refinement_test_operator_t {
   struct data_t {
     raft::handle_t const* handle_ptr;
-    barrier::gmres_workspace_t<double> gmres_workspace_;
-    explicit data_t(raft::handle_t const* handle)
-      : handle_ptr(handle), gmres_workspace_(handle->get_stream())
+    std::optional<barrier::gmres_workspace_t<double>> gmres_workspace_;
+    data_t(raft::handle_t const* handle, size_t n)
+      : handle_ptr(handle), gmres_workspace_(std::in_place, n, handle->get_stream())
     {
     }
   } data_;
   double preconditioner;
 
-  refinement_test_operator_t(raft::handle_t const* handle, double preconditioner_value)
-    : data_(handle), preconditioner(preconditioner_value)
+  refinement_test_operator_t(raft::handle_t const* handle, size_t n, double preconditioner_value)
+    : data_(handle, n), preconditioner(preconditioner_value)
   {
   }
 
@@ -202,19 +207,25 @@ struct refinement_test_operator_t {
 TEST(barrier, refinement_reuses_workspace_and_checks_true_residual)
 {
   raft::handle_t handle;
-  // Exercise different preconditioner scalings, repeated RHS solves, and resizing.
+  // Each linear system owns fixed-size storage reused for different right-hand sides.
   for (double preconditioner : {1.0, 0.25}) {
-    refinement_test_operator_t op(&handle, preconditioner);
-    for (int n : {128, 128, 257}) {
-      std::vector<double> rhs(n, 1.0), zero(n, 0.0), result(n);
-      auto b             = cuopt::device_copy(rhs, handle.get_stream());
-      auto x             = cuopt::device_copy(zero, handle.get_stream());
-      const double error = barrier::iterative_refinement<int, double>(op, b, x, 1e-10);
-      EXPECT_LE(error, 1e-10);
-      raft::copy(result.data(), x.data(), n, handle.get_stream());
-      handle.get_stream().sync();
-      for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR((1.0 + 0.01 * (i % 7)) * result[i], rhs[i], 1e-10);
+    for (int n : {128, 257}) {
+      refinement_test_operator_t op(&handle, n, preconditioner);
+      const auto* saved_r = op.data_.gmres_workspace_->r.data();
+      const auto* saved_v = op.data_.gmres_workspace_->V[0].data();
+      for (double rhs_value : {1.0, 2.0}) {
+        std::vector<double> rhs(n, rhs_value), zero(n, 0.0), result(n);
+        auto b             = cuopt::device_copy(rhs, handle.get_stream());
+        auto x             = cuopt::device_copy(zero, handle.get_stream());
+        const double error = barrier::iterative_refinement<int, double>(op, b, x, 1e-10);
+        EXPECT_LE(error, 1e-10);
+        EXPECT_EQ(op.data_.gmres_workspace_->r.data(), saved_r);
+        EXPECT_EQ(op.data_.gmres_workspace_->V[0].data(), saved_v);
+        raft::copy(result.data(), x.data(), n, handle.get_stream());
+        handle.get_stream().sync();
+        for (int i = 0; i < n; ++i) {
+          EXPECT_NEAR((1.0 + 0.01 * (i % 7)) * result[i], rhs[i], 1e-10);
+        }
       }
     }
   }
@@ -1580,6 +1591,128 @@ TEST(barrier, free_variable_substitution_postsolve_kkt)
   std::vector<double> solved_dual;
   dual_residual(original_lp, solution.x, solution.y, solution.z, solved_dual);
   EXPECT_NEAR((vector_norm_inf<int, double>(solved_dual)), 0.0, 1e-5);
+}
+
+TEST(barrier, cached_solve_can_enable_iterative_refinement)
+{
+  // The first solve has no GMRES workspace. Enabling refinement on a cached solve must
+  // create it for the retained system, including the ADAT case whose size is only m.
+  for (int augmented : {0, 1}) {
+    SCOPED_TRACE(augmented);
+    auto cache = barrier_cache_t::create(cudaStreamNonBlocking);
+    init_handler(cache->handle_ptr());
+    user_problem_t<int, double> user_problem(cache->handle_ptr());
+
+    // Minimize 0.5 * (x0^2 + x1^2), subject to x0 + x1 = rhs and 0 <= x <= 10.
+    // The unique solution is x0 = x1 = rhs / 2, with objective rhs^2 / 4.
+    constexpr int m = 1, n = 2, nz = 2;
+    user_problem.num_rows = m;
+    user_problem.num_cols = n;
+    user_problem.objective.assign(n, 0.0);
+    user_problem.A.m      = m;
+    user_problem.A.n      = n;
+    user_problem.A.nz_max = nz;
+    user_problem.A.reallocate(nz);
+    user_problem.A.col_start = {0, 1, 2};
+    user_problem.A.i         = {0, 0};
+    user_problem.A.x         = {1.0, 1.0};
+    user_problem.rhs         = {2.0};
+    user_problem.row_sense   = {'E'};
+    user_problem.lower.assign(n, 0.0);
+    user_problem.upper.assign(n, 10.0);
+    user_problem.Q_offsets = {0, 1, 2};
+    user_problem.Q_indices = {0, 1};
+    user_problem.Q_values  = {1.0, 1.0};
+    user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+    user_problem.problem_name = "cached_solve_can_enable_iterative_refinement";
+
+    simplex_solver_settings_t<int, double> settings;
+    settings.barrier                               = true;
+    settings.barrier_presolve                      = false;
+    settings.barrier_presolve_bound_free_variables = 0;
+    settings.dualize                               = 0;
+    settings.augmented                             = augmented;
+    settings.barrier_iterative_refinement          = false;
+    lp_solution_t<int, double> solution(m, n);
+    ASSERT_EQ(solve_linear_program_with_barrier(user_problem, settings, solution, cache.get()),
+              lp_status_t::OPTIMAL);
+    ASSERT_NE(cache->transform(), nullptr);
+    EXPECT_NEAR(solution.objective, 1.0, 1e-4);
+
+    settings.barrier_iterative_refinement = true;
+    for (double rhs : {4.0, 6.0}) {
+      SCOPED_TRACE(rhs);
+      // Update only the cache: rebuilding from user_problem would still solve RHS 2
+      // and fail the expected solution/objective checks below.
+      cache->update_rhs(&rhs, m);
+      ASSERT_TRUE(cache->dirty());
+      const auto status =
+        solve_linear_program_with_barrier(user_problem, settings, solution, cache.get());
+      ASSERT_EQ(status, lp_status_t::OPTIMAL);
+      EXPECT_FALSE(cache->dirty());
+      EXPECT_NEAR(solution.x[0], rhs / 2, 1e-4);
+      EXPECT_NEAR(solution.x[1], rhs / 2, 1e-4);
+      EXPECT_NEAR(solution.objective, rhs * rhs / 4, 1e-4);
+    }
+  }
+}
+
+struct reduction_test_square_op {
+  __host__ __device__ double operator()(double value) const { return value * value; }
+};
+
+TEST(barrier, shared_reductions_reuse_storage_and_preserve_async_outputs)
+{
+  raft::handle_t handle;
+  const auto stream = handle.get_stream();
+  transform_reduce_helper_t<double> reductions(stream);
+  rmm::device_uvector<double> empty(0, stream);
+  auto singleton  = cuopt::device_copy(std::vector<double>{-7.0}, stream);
+  constexpr int n = 4096;
+  auto large      = cuopt::device_copy(std::vector<double>(n, -3.0), stream);
+
+  EXPECT_DOUBLE_EQ(vector_norm_inf(empty, reductions), 0.0);
+  EXPECT_DOUBLE_EQ(vector_norm2(empty, reductions), 0.0);
+  EXPECT_DOUBLE_EQ(vector_norm_inf(singleton, reductions), 7.0);
+  EXPECT_DOUBLE_EQ(vector_norm2(singleton, reductions), 7.0);
+  EXPECT_DOUBLE_EQ(vector_norm_inf(large, reductions), 3.0);
+  EXPECT_DOUBLE_EQ(vector_norm2(large, reductions), 192.0);
+
+  rmm::device_uvector<double> outputs(2, stream);
+  std::vector<double> results(2);
+  const void* scratch = nullptr;
+  size_t capacity     = 0;
+  for (int size : {n, 1, 0, n}) {
+    SCOPED_TRACE(size);
+    const auto& input          = size == n ? large : (size == 1 ? singleton : empty);
+    const double expected_norm = size == n ? 3.0 : (size == 1 ? 7.0 : 0.0);
+    // Queue two reductions into distinct caller-owned slots before a single readback.
+    vector_norm_inf_async(raft::device_span<const double>(input.data(), input.size()),
+                          raft::device_span<double>(outputs.data(), 1),
+                          reductions,
+                          stream);
+    reductions.transform_reduce_async(input.data(),
+                                      thrust::plus<double>{},
+                                      reduction_test_square_op{},
+                                      5.0,
+                                      input.size(),
+                                      raft::device_span<double>(outputs.data() + 1, 1),
+                                      stream);
+    raft::copy(results.data(), outputs.data(), results.size(), stream);
+    stream.sync();
+    EXPECT_DOUBLE_EQ(results[0], expected_norm);
+    EXPECT_DOUBLE_EQ(results[1], 5.0 + size * expected_norm * expected_norm);
+
+    if (scratch == nullptr) {
+      // Warm both reduction operators before checking large-to-small-to-large reuse.
+      scratch  = reductions.buffer_data.data();
+      capacity = reductions.buffer_data.capacity();
+      ASSERT_NE(scratch, nullptr);
+    } else {
+      EXPECT_EQ(reductions.buffer_data.data(), scratch);
+      EXPECT_EQ(reductions.buffer_data.capacity(), capacity);
+    }
+  }
 }
 
 }  // namespace cuopt::mathematical_optimization::simplex::test

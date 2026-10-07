@@ -283,7 +283,7 @@ template <typename i_t, typename f_t>
 class barrier_reduce_helper_t {
  public:
   explicit barrier_reduce_helper_t(cuda::stream_ref stream_view)
-    : d_results_(kCount, stream_view), h_results_(kCount), d_temp_storage_(0, stream_view)
+    : d_results_(kCount, stream_view), h_results_(kCount), reductions_(stream_view)
   {
   }
 
@@ -399,22 +399,21 @@ class barrier_reduce_helper_t {
   void reduce_async(
     Slot slot, const f_t* in, i_t size, ReduceOpT op, f_t init, cuda::stream_ref stream_view)
   {
-    f_t* out = d_results_.data() + slot;
-    if (size == 0) {
-      RAFT_CUDA_TRY(cudaMemsetAsync(out, 0, sizeof(f_t), stream_view.get()));
-      return;
-    }
-    size_t temp_storage_bytes = 0;
-    cub::DeviceReduce::Reduce(
-      nullptr, temp_storage_bytes, in, out, size, op, init, stream_view.get());
-    d_temp_storage_.resize(temp_storage_bytes, stream_view);
-    cub::DeviceReduce::Reduce(
-      d_temp_storage_.data(), temp_storage_bytes, in, out, size, op, init, stream_view.get());
+    reductions_.transform_reduce_async(in,
+                                       op,
+                                       cuda::std::identity{},
+                                       init,
+                                       size,
+                                       raft::device_span<f_t>(d_results_.data() + slot, 1),
+                                       stream_view);
   }
 
   void norm_inf_async(Slot slot, const f_t* in, i_t size, cuda::stream_ref stream_view)
   {
-    reduce_async(slot, in, size, norm_inf_max{}, f_t(0), stream_view);
+    vector_norm_inf_async(raft::device_span<const f_t>(in, size),
+                          raft::device_span<f_t>(d_results_.data() + slot, 1),
+                          reductions_,
+                          stream_view);
   }
 
   void max_async(Slot slot, const f_t* in, i_t size, cuda::stream_ref stream_view)
@@ -424,12 +423,7 @@ class barrier_reduce_helper_t {
 
   void sum_async(Slot slot, const f_t* in, i_t size, cuda::stream_ref stream_view)
   {
-    f_t* out                  = d_results_.data() + slot;
-    size_t temp_storage_bytes = 0;
-    cub::DeviceReduce::Sum(nullptr, temp_storage_bytes, in, out, size, stream_view.get());
-    d_temp_storage_.resize(temp_storage_bytes, stream_view);
-    cub::DeviceReduce::Sum(
-      d_temp_storage_.data(), temp_storage_bytes, in, out, size, stream_view.get());
+    reduce_async(slot, in, size, thrust::plus<f_t>{}, f_t(0), stream_view);
   }
 
   void dot_async(Slot slot,
@@ -450,7 +444,7 @@ class barrier_reduce_helper_t {
 
   rmm::device_uvector<f_t> d_results_;
   pinned_dense_vector_t<i_t, f_t> h_results_;
-  rmm::device_buffer d_temp_storage_;
+  transform_reduce_helper_t<f_t> reductions_;
 };
 
 template <typename i_t, typename f_t>
@@ -621,7 +615,6 @@ class iteration_data_t {
       transform_reduce_pair_helper_(lp.handle_ptr->get_stream()),
       sum_reduce_helper_(lp.handle_ptr->get_stream()),
       reduce_helper_(lp.handle_ptr->get_stream()),
-      gmres_workspace_(lp.handle_ptr->get_stream()),
       indefinite_Q(false),
       Q_diagonal(false),
       symbolic_status(0),
@@ -921,6 +914,7 @@ class iteration_data_t {
       raft::common::nvtx::range scope("Barrier: LP Data: Cholesky init");
       i_t factorization_size =
         use_augmented ? augmented_system_size(lp.num_cols, lp.num_rows) : lp.num_rows;
+      prepare_gmres_workspace();
       chol = std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(
         handle_ptr, settings_, factorization_size);
       chol->set_positive_definite(false);
@@ -949,6 +943,16 @@ class iteration_data_t {
     }
   }
 
+  void prepare_gmres_workspace()
+  {
+    // Dense-column ADAT solves do not use iterative refinement. A cached solve may
+    // enable refinement later, but the selected linear system's dimensions stay fixed.
+    if (settings_.barrier_iterative_refinement && (use_augmented || n_dense_columns == 0) &&
+        !gmres_workspace_) {
+      gmres_workspace_.emplace(use_augmented ? augmented_system_size(A.n, A.m) : A.m, stream_view_);
+    }
+  }
+
   // Attach this solve's settings and rewind iterate-dependent state so barrier can
   // start with the new c / b. A and Q are unchanged; the previous solve
   // left D and the KKT values at its last iterate. Reuse is QP-only (no cones),
@@ -957,6 +961,7 @@ class iteration_data_t {
   {
     if (chol == nullptr || symbolic_status != 0) { return false; }
     settings_ = settings;
+    prepare_gmres_workspace();
 
     {
       raft::common::nvtx::range fun_scope("Barrier: reset diagonal scaling");
@@ -2149,21 +2154,18 @@ class iteration_data_t {
     const i_t vector_size = std::max(n, std::max(m, p));
     if (vector_size == 0) { return; }
     const i_t blocks = (vector_size + 255) / 256;
-    prepare_augmented_matvec<<<blocks, 256, 0, stream_view_.get()>>>(
-      x.data(),
-      y.data(),
-      d_diag_.data(),
-      d_is_direct_free_linear_.data(),
-      d_aug_x1_.data(),
-      d_aug_x2_.data(),
-      d_aug_y1_.data(),
-      d_aug_y2_.data(),
-      d_r1_.data(),
-      d_aug_y_exp_.data(),
-      d_aug_y_exp_orig_.data(),
-      n,
-      m,
-      p,
+    prepare_augmented_matvec<i_t, f_t><<<blocks, 256, 0, stream_view_.get()>>>(
+      raft::device_span<const f_t>(x.data(), sys_size),
+      raft::device_span<const f_t>(y.data(), sys_size),
+      raft::device_span<const f_t>(d_diag_.data(), n),
+      raft::device_span<const i_t>(d_is_direct_free_linear_.data(), n),
+      raft::device_span<f_t>(d_aug_x1_.data(), n),
+      raft::device_span<f_t>(d_aug_x2_.data(), m),
+      raft::device_span<f_t>(d_aug_y1_.data(), n),
+      raft::device_span<f_t>(d_aug_y2_.data(), m),
+      raft::device_span<f_t>(d_r1_.data(), n),
+      raft::device_span<f_t>(d_aug_y_exp_.data(), p),
+      raft::device_span<f_t>(d_aug_y_exp_orig_.data(), p),
       linear_n);
     RAFT_CHECK_CUDA(stream_view_.get());
 
@@ -2217,16 +2219,14 @@ class iteration_data_t {
       cusparse_view_.spmv(alpha, d_aug_x1_, beta, d_aug_y2_);
     }
 
-    finish_augmented_matvec<<<blocks, 256, 0, stream_view_.get()>>>(y.data(),
-                                                                    d_aug_y1_.data(),
-                                                                    d_aug_y2_.data(),
-                                                                    d_aug_y_exp_.data(),
-                                                                    d_aug_y_exp_orig_.data(),
-                                                                    alpha,
-                                                                    beta,
-                                                                    n,
-                                                                    m,
-                                                                    p);
+    finish_augmented_matvec<i_t, f_t><<<blocks, 256, 0, stream_view_.get()>>>(
+      raft::device_span<f_t>(y.data(), sys_size),
+      raft::device_span<const f_t>(d_aug_y1_.data(), n),
+      raft::device_span<const f_t>(d_aug_y2_.data(), m),
+      raft::device_span<const f_t>(d_aug_y_exp_.data(), p),
+      raft::device_span<const f_t>(d_aug_y_exp_orig_.data(), p),
+      alpha,
+      beta);
     RAFT_CHECK_CUDA(stream_view_.get());
   }
 
@@ -2427,7 +2427,7 @@ class iteration_data_t {
   sum_reduce_helper_t<f_t> sum_reduce_helper_;
 
   barrier_reduce_helper_t<i_t, f_t> reduce_helper_;
-  gmres_workspace_t<f_t> gmres_workspace_;
+  std::optional<gmres_workspace_t<f_t>> gmres_workspace_;
 
   bool cone_combined_step_;
   f_t cone_sigma_mu_;
