@@ -14,47 +14,47 @@ ARGS=$*
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 
-VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client java docs deb --run-java-tests -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo --split-compile [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client java docs deb --run-java-tests -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo --export-debug-symbols --split-compile [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
-   clean            - remove all existing build artifacts and configuration (start over)
-   codegen          - regenerate gRPC .inc files and proto from field_registry.yaml (requires pyyaml)
-   libcuopt         - build the cuopt C++ code
-   cuopt_grpc_server - build only the gRPC server binary (configures + builds libcuopt as needed)
-   cuopt            - build the cuopt Python package
-   cuopt_server     - build the cuopt_server Python package
-   cuopt_sh_client  - build cuopt self host client
-   java             - build the cuopt Java bindings (requires libcuopt; needs maven and a JDK)
-   docs             - build the docs
-   deb              - build deb package (requires libcuopt to be built first)
+   clean                      - remove all existing build artifacts and configuration (start over)
+   codegen                    - regenerate gRPC .inc files and proto from field_registry.yaml (requires pyyaml)
+   libcuopt                   - build the cuopt C++ library
+   cuopt_grpc_server          - build only the gRPC server binary (configures and builds libcuopt as needed)
+   cuopt                      - build the cuopt Python package
+   cuopt_server               - build the cuopt_server Python package
+   cuopt_sh_client            - build the cuopt self-hosted client
+   java                       - build the cuopt Java bindings (requires libcuopt; needs maven and a JDK)
+   docs                       - build the docs
+   deb                        - build the deb package (requires libcuopt to be built first)
  and <flag> is:
-   -v               - verbose build mode
-   -g               - build for debug
-   -a               - Enable assertion (by default in debug mode)
-   -b               - Build with benchmark settings
-   -fsanitize       - Build with AddressSanitizer and UndefinedBehaviorSanitizer
-   -tsan            - Build with ThreadSanitizer (cannot be used with -fsanitize or -msan)
-   -msan            - Build with MemorySanitizer (cannot be used with -fsanitize or -tsan)
-   --install        - install built libraries into the active conda environment (default: build only, no install)
-   --no-fetch-rapids  - don't fetch rapids dependencies
-   --run-java-tests - run the Java test suite as part of the 'java' target (needs a GPU)
-   -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
-   --verbose-pdlp   - verbose mode for pdlp solver
-   --build-lp-only  - build only linear programming components, excluding routing package and MIP-specific files
-   --skip-c-python-adapters - skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)
-   --skip-tests-build  - disable building of all tests
-   --skip-routing-build - skip building routing components
-   --skip-grpc-build    - skip building gRPC and protobuf components (auto-enabled with -tsan)
-   --skip-fatbin-write      - skip the fatbin write
-   --host-lineinfo           - build with debug line information for host code
-   --split-compile           - opt in to nvcc split compilation; builds may be nondeterministic
-   --cache-tool=<tool> - pass the build cache tool (eg: ccache, sccache, distcc) that will be used
-                      to speedup the build process.
-   --cmake-args=\\\"<args>\\\"   - pass arbitrary list of CMake configuration options (escape all quotes in argument)
-   --allgpuarch     - build for all supported GPU architectures
-   --ci-only-arch   - build for volta and ampere only
-   --show_depr_warn - show cmake deprecation warnings
-   -h               - print this text
+   -v                         - verbose build mode
+   -g                         - build for debug
+   -a                         - enable assertions (on by default in debug mode)
+   -b                         - build with benchmark settings
+   -fsanitize                 - build with AddressSanitizer and UndefinedBehaviorSanitizer
+   -tsan                      - build with ThreadSanitizer (cannot be used with -fsanitize or -msan)
+   -msan                      - build with MemorySanitizer (cannot be used with -fsanitize or -tsan)
+   --install                  - install the built libraries into the active conda environment (default: build only)
+   --no-fetch-rapids          - do not fetch the RAPIDS dependencies
+   --run-java-tests           - run the Java test suite as part of the 'java' target (needs a GPU)
+   -l=                        - log level: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF (default: INFO)
+   --verbose-pdlp             - verbose mode for the PDLP solver
+   --build-lp-only            - build only the LP components, excluding routing and MIP-specific files
+   --skip-c-python-adapters   - skip building the C and Python adapter files (cython_solve.cu and cuopt_c.cpp)
+   --skip-tests-build         - skip building all tests
+   --skip-routing-build       - skip building the routing components
+   --skip-grpc-build          - skip building the gRPC and protobuf components (auto-enabled with -tsan)
+   --skip-fatbin-write        - skip the fatbin write
+   --host-lineinfo            - build with debug line information for host code
+   --export-debug-symbols     - expose internal symbols (default: off)
+   --split-compile            - opt in to nvcc split compilation; builds may be nondeterministic
+   --cache-tool=<tool>        - build cache tool used to speed up the build (e.g. ccache, sccache, distcc)
+   --cmake-args=\\\"<args>\\\" - pass an arbitrary list of CMake options (escape all quotes in the argument)
+   --allgpuarch               - build for all supported GPU architectures
+   --ci-only-arch             - build for Volta and Ampere only
+   --show_depr_warn           - show CMake deprecation warnings
+   -h                         - print this text
 
  default action (no args) is to build 'libcuopt', 'cuopt', 'cuopt_server', and 'cuopt_sh_client' targets without installing into the conda environment (pass --install to also install libcuopt into the active conda environment; pass 'docs' explicitly to build documentation)
 
@@ -94,6 +94,7 @@ SKIP_ROUTING_BUILD=0
 SKIP_GRPC_BUILD=0
 WRITE_FATBIN=1
 HOST_LINEINFO=0
+EXPORT_DEBUG_SYMBOLS=0
 CACHE_ARGS=()
 PYTHON_ARGS_FOR_INSTALL=(
     "-m"
@@ -277,6 +278,9 @@ fi
 if hasArg --host-lineinfo; then
     HOST_LINEINFO=1
 fi
+if hasArg --export-debug-symbols; then
+    EXPORT_DEBUG_SYMBOLS=1
+fi
 if hasArg --split-compile; then
     # nvcc split compilation can produce nondeterministic cuOpt builds, so keep it opt-in.
     echo "WARNING: nvcc split compilation may produce nondeterministic cuOpt builds."
@@ -417,6 +421,7 @@ if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
           -DSKIP_GRPC_BUILD=${SKIP_GRPC_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
           -DHOST_LINEINFO=${HOST_LINEINFO} \
+          -DEXPORT_DEBUG_SYMBOLS=${EXPORT_DEBUG_SYMBOLS} \
           -DPARALLEL_LEVEL="${PARALLEL_LEVEL}" \
           -DINSTALL_TARGET="${INSTALL_TARGET}" \
           "${CACHE_ARGS[@]}" \
