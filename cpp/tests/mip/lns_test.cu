@@ -758,11 +758,13 @@ TEST(Lns, MainWorkersStopWithoutBranchAndBoundOnSmallTeams)
         {
           dm.ls.start_cpufj_scratch_threads(dm.population);
           dm.ls.start_cpufj_lns_improvement_thread(dm.population);
-          EXPECT_EQ(dm.ls.scratch_cpu_fj_lns != nullptr, team_size >= 7);
-          EXPECT_EQ(dm.ls.repair_lns != nullptr, team_size >= 7);
-          // The low-thread configurations retain unconstructed scratch slots.
+          const int lns_workers = mip::lns_worker_count(team_size, false);
+          EXPECT_EQ(dm.ls.scratch_cpu_fj_lns != nullptr, lns_workers > 0);
+          EXPECT_EQ(dm.ls.repair_lns != nullptr, lns_workers > 0);
+          // Disabled LNS workers return their slots to the feasibility portfolio.
           for (const auto& worker : dm.ls.scratch_cpu_fj)
-            EXPECT_EQ(worker != nullptr, team_size >= 10);
+            EXPECT_EQ(worker != nullptr,
+                      team_size - lns_workers >= CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT);
 
           dm.ls.stop_cpufj_scratch_threads();
           bool stopped = true;
