@@ -375,22 +375,22 @@ if (DEFINED ENV{CONDA_PREFIX} AND NOT "$ENV{CONDA_PREFIX}" STREQUAL "")
     list(APPEND NCCL_HINT_PREFIXES "$ENV{CONDA_PREFIX}")
 endif ()
 find_path(NCCL_INCLUDE_DIR
-        NAMES nccl.h
-        HINTS ${NCCL_HINT_PREFIXES}
-        PATH_SUFFIXES include
+    NAMES nccl.h
+    HINTS ${NCCL_HINT_PREFIXES}
+    PATH_SUFFIXES include
 )
 find_library(NCCL_LIBRARY
-        NAMES nccl
-        HINTS ${NCCL_HINT_PREFIXES}
-        PATH_SUFFIXES lib lib64
+    NAMES nccl
+    HINTS ${NCCL_HINT_PREFIXES}
+    PATH_SUFFIXES lib lib64
 )
 if (NOT NCCL_INCLUDE_DIR OR NOT NCCL_LIBRARY)
     message(FATAL_ERROR "NCCL not found. Looked in ${NCCL_HINT_PREFIXES}. Install nccl-dev / libnccl-dev in the active env.")
 endif ()
 add_library(nccl_external UNKNOWN IMPORTED GLOBAL)
 set_target_properties(nccl_external PROPERTIES
-        IMPORTED_LOCATION "${NCCL_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${NCCL_INCLUDE_DIR}"
+    IMPORTED_LOCATION "${NCCL_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${NCCL_INCLUDE_DIR}"
 )
 message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
 
@@ -736,9 +736,9 @@ execute_process(
         RESULT_VARIABLE _git_hash_result
         ERROR_QUIET
 )
-if (NOT _git_hash_result EQUAL 0 OR GIT_COMMIT_HASH STREQUAL "")
+if(NOT _git_hash_result EQUAL 0 OR GIT_COMMIT_HASH STREQUAL "")
     set(GIT_COMMIT_HASH "unknown")
-endif ()
+endif()
 message("-- Building with GIT_COMMIT_HASH = '${GIT_COMMIT_HASH}'")
 
 configure_file(
@@ -902,7 +902,7 @@ endif ()
 #
 # OBJECT library first, mirroring cuopt_client_objs, so cuopt_static links the same compiled
 # objects instead of recompiling routing a second time.
-if (NOT SKIP_ROUTING_BUILD)
+if(NOT SKIP_ROUTING_BUILD)
     add_library(cuopt_routing_objs OBJECT ${CUOPT_ROUTING_SRC_FILES})
     set_target_properties(cuopt_routing_objs
             PROPERTIES POSITION_INDEPENDENT_CODE ON
@@ -960,7 +960,7 @@ if (NOT SKIP_ROUTING_BUILD)
             PRIVATE simde::simde OpenMP::OpenMP_CXX OpenMP::OpenMP_CUDA
     )
     add_library(cuopt::routing ALIAS cuopt_routing)
-endif ()
+endif()
 
 # cuopt_mathopt: LP / MIP / numerical optimization engine
 #
@@ -1104,9 +1104,9 @@ endif ()
 if (BUILD_TESTS OR (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY) OR CUOPT_BUILD_STATIC_LIB)
     # Embeds the *_objs directly rather than linking the shared component libraries: internal
     # tests and the Java classifier JAR reach internals the shared libraries don't export.
-    if (NOT SKIP_ROUTING_BUILD)
+    if(NOT SKIP_ROUTING_BUILD)
         set(_cuopt_static_routing_objs $<TARGET_OBJECTS:cuopt_routing_objs>)
-    endif ()
+    endif()
     add_library(cuopt_static STATIC
             $<TARGET_OBJECTS:cuopt_client_objs>
             $<TARGET_OBJECTS:cuopt_mathopt_objs>
@@ -1171,9 +1171,9 @@ endif (BUILD_TESTS)
 # parsers, the host problem representation, the gRPC client -- fails to link with
 # "DSO missing from command line".
 set(CUOPT_LINKER_SCRIPT_INPUTS "libcuopt_mathopt.so libcuopt_client.so")
-if (NOT SKIP_ROUTING_BUILD)
+if(NOT SKIP_ROUTING_BUILD)
     string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_routing.so")
-endif ()
+endif()
 
 set(CUOPT_LINKER_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/libcuopt.so")
 configure_file(
@@ -1210,12 +1210,12 @@ if (WRITE_FATBIN)
     # Applies to the components that actually carry CUDA fatbins. Before the split this
     # was set on libcuopt.so, which held all the device code; it now holds none.
     set(_CUOPT_FATBIN_TARGETS cuopt_mathopt)
-    if (NOT SKIP_ROUTING_BUILD)
+    if(NOT SKIP_ROUTING_BUILD)
         list(APPEND _CUOPT_FATBIN_TARGETS cuopt_routing)
-    endif ()
-    foreach (_target ${_CUOPT_FATBIN_TARGETS})
+    endif()
+    foreach(_target ${_CUOPT_FATBIN_TARGETS})
         target_link_options(${_target} PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
-    endforeach ()
+    endforeach()
 endif ()
 
 # ##################################################################################################
@@ -1229,12 +1229,12 @@ set(CPACK_DEB_COMPONENT_INSTALL ON)
 # `cuopt` is rapids_export's own component, holding cuopt-config.cmake and the export
 # set. It is easy to miss because it is named after the project rather than a library.
 set(CPACK_COMPONENTS_ALL runtime dev cuopt client mathopt client-dev mathopt-dev)
-if (NOT SKIP_ROUTING_BUILD)
+if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CPACK_COMPONENTS_ALL routing routing-dev)
-endif ()
-if (NOT SKIP_GRPC_BUILD)
+endif()
+if(NOT SKIP_GRPC_BUILD)
     list(APPEND CPACK_COMPONENTS_ALL grpc-server)
-endif ()
+endif()
 set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/local")
 
 #If using cpack to create a deb package
@@ -1251,18 +1251,18 @@ else ()
 endif ()
 
 set(CUOPT_COMPONENT_TARGETS cuopt_mathopt cuopt_client)
-if (NOT SKIP_ROUTING_BUILD)
+if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CUOPT_COMPONENT_TARGETS cuopt_routing)
-endif ()
+endif()
 
 # Export as cuopt::routing / cuopt::mathopt, matching the
 # build-tree aliases.
 set(CUOPT_COMPONENT_EXPORT_NAMES "")
-foreach (_component ${CUOPT_COMPONENT_TARGETS})
+foreach(_component ${CUOPT_COMPONENT_TARGETS})
     string(REPLACE "cuopt_" "" _export_name "${_component}")
     set_target_properties(${_component} PROPERTIES EXPORT_NAME ${_export_name})
     list(APPEND CUOPT_COMPONENT_EXPORT_NAMES ${_export_name})
-endforeach ()
+endforeach()
 
 # One install component per library, so the per-solver packages in #1635 can stage
 # them separately. A plain `cmake --install` still installs everything.
@@ -1270,7 +1270,7 @@ endforeach ()
 # component and each computes _IMPORT_PREFIX from its own install location. A single
 # shared set hardcodes one prefix for all three, which only resolves while they sit in
 # the same tree -- splitting them across wheels then breaks find_package (#1635).
-foreach (_component ${CUOPT_COMPONENT_TARGETS})
+foreach(_component ${CUOPT_COMPONENT_TARGETS})
     string(REPLACE "cuopt_" "" _install_component "${_component}")
     install(TARGETS ${_component}
             DESTINATION ${_LIB_DEST}
@@ -1287,10 +1287,10 @@ foreach (_component ${CUOPT_COMPONENT_TARGETS})
     # share one FINAL_CODE_BLOCK, which includes these by name; without this a build-tree
     # or CPM consumer gets cuopt::cuopt defined, found, and linking nothing.
     export(EXPORT ${_component}-exports
-            FILE "${CMAKE_CURRENT_BINARY_DIR}/${_component}-targets.cmake"
-            NAMESPACE cuopt::
+           FILE "${CMAKE_CURRENT_BINARY_DIR}/${_component}-targets.cmake"
+           NAMESPACE cuopt::
     )
-endforeach ()
+endforeach()
 
 # cuopt::cuopt carries no artifact; it is exported only so the export set exists and
 # find_package(cuopt) has something to define. Its component links are BUILD_INTERFACE
@@ -1354,17 +1354,17 @@ install(DIRECTORY include/cuopt/linear_programming/
         COMPONENT mathopt-dev
 )
 
-if (NOT SKIP_ROUTING_BUILD)
+if(NOT SKIP_ROUTING_BUILD)
     install(DIRECTORY include/cuopt/routing/
             DESTINATION ${_INCLUDE_DEST}/routing
             COMPONENT routing-dev
     )
-endif ()
+endif()
 
 # logger_macros.hpp is installed again here on purpose: create_logger_macros installs
 # it with no COMPONENT, so no --component install would otherwise pick it up.
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/version_config.hpp
-        ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/logger_macros.hpp
+              ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/logger_macros.hpp
         DESTINATION ${_INCLUDE_DEST}
         COMPONENT client-dev
 )
@@ -1393,13 +1393,13 @@ It pulls both solver engines whether or not you use them, so prefer a component 
 # CUOPT_HAS_GRPC_ROUTING is reported separately rather than inferred from cuopt::routing:
 # it is CUOPT_ENABLE_GRPC_ROUTING that gates cython_grpc_client_vrp.cpp, and the two would
 # diverge the moment the VRP arm gains an option of its own.
-if (SKIP_GRPC_BUILD)
+if(SKIP_GRPC_BUILD)
     set(cuopt_code_string "set(CUOPT_HAS_GRPC OFF)\nset(CUOPT_HAS_GRPC_ROUTING OFF)")
-elseif (CUOPT_ENABLE_GRPC_ROUTING)
+elseif(CUOPT_ENABLE_GRPC_ROUTING)
     set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)\nset(CUOPT_HAS_GRPC_ROUTING ON)")
-else ()
+else()
     set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)\nset(CUOPT_HAS_GRPC_ROUTING OFF)")
-endif ()
+endif()
 
 # Each component installs its own targets file, so the umbrella has to pull them in. They
 # sit beside this config when everything shares a prefix, and are found through
@@ -1725,14 +1725,14 @@ set(CPACK_DEBIAN_RUNTIME_PACKAGE_FILE_NAME "cuopt_${PROJECT_VERSION}_${DEB_ARCH}
 
 # Grouped so the output stays two .debs. CPack uppercases the component name
 # verbatim, so the hyphens have to survive the lookup.
-foreach (_runtime_component client mathopt routing grpc-server)
+foreach(_runtime_component client mathopt routing grpc-server)
     string(TOUPPER "${_runtime_component}" _uc)
     set(CPACK_COMPONENT_${_uc}_GROUP "Runtime")
-endforeach ()
-foreach (_dev_component client-dev mathopt-dev routing-dev cuopt)
+endforeach()
+foreach(_dev_component client-dev mathopt-dev routing-dev cuopt)
     string(TOUPPER "${_dev_component}" _uc)
     set(CPACK_COMPONENT_${_uc}_GROUP "Development")
-endforeach ()
+endforeach()
 
 # Dev package metadata
 set(CPACK_COMPONENT_DEV_DESCRIPTION "cuOpt development files (headers, symlinks, etc.)")
