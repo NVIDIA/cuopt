@@ -1000,8 +1000,13 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
 
 }  // namespace
 
+enum class inequality_sense_t { LESS_EQUAL, GREATER_EQUAL };
+
 template <typename i_t, typename f_t>
 bool rational_coefficients(const std::vector<variable_type_t>& var_types,
+                           const std::vector<f_t>& lower_bounds,
+                           const std::vector<f_t>& upper_bounds,
+                           inequality_sense_t sense,
                            const inequality_t<i_t, f_t>& inequality,
                            inequality_t<i_t, f_t>& rational_inequality);
 
@@ -1605,7 +1610,14 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   for (i_t i = 0; i < lp.num_rows; i++) {
     inequality_t<i_t, f_t> inequality(Arow, i, lp.rhs[i]);
     inequality_t<i_t, f_t> rational_inequality = inequality;
-    if (!rational_coefficients(var_types, inequality, rational_inequality)) { continue; }
+    if (!rational_coefficients(var_types,
+                               lp.lower,
+                               lp.upper,
+                               inequality_sense_t::LESS_EQUAL,
+                               inequality,
+                               rational_inequality)) {
+      continue;
+    }
     inequality = rational_inequality;
 
     const i_t row_len = rational_inequality.size();
@@ -2575,7 +2587,12 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   // Get the row associated with the knapsack constraint
   inequality_t<i_t, f_t> knapsack_inequality(Arow, knapsack_row, lp.rhs[knapsack_row]);
   inequality_t<i_t, f_t> rational_knapsack_inequality = knapsack_inequality;
-  if (!rational_coefficients(var_types, knapsack_inequality, rational_knapsack_inequality)) {
+  if (!rational_coefficients(var_types,
+                             lp.lower,
+                             lp.upper,
+                             inequality_sense_t::LESS_EQUAL,
+                             knapsack_inequality,
+                             rational_knapsack_inequality)) {
     return -1;
   }
   knapsack_inequality = rational_knapsack_inequality;
@@ -4702,7 +4719,10 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_A_float);
 
       inequality_t<i_t, f_t> cut_A(lp.num_cols);
-      if (cut_ok) { cut_ok = rational_coefficients(var_types, cut_A_float, cut_A); }
+      if (cut_ok) {
+        cut_ok = rational_coefficients(
+          var_types, lp.lower, lp.upper, inequality_sense_t::GREATER_EQUAL, cut_A_float, cut_A);
+      }
 
       // See if the inequality is violated by the original relaxation solution
       f_t cut_A_violation = complemented_mir.compute_violation(cut_A, xstar);
@@ -4739,7 +4759,10 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_B_float);
 
       inequality_t<i_t, f_t> cut_B(lp.num_cols);
-      if (cut_ok) { cut_ok = rational_coefficients(var_types, cut_B_float, cut_B); }
+      if (cut_ok) {
+        cut_ok = rational_coefficients(
+          var_types, lp.lower, lp.upper, inequality_sense_t::GREATER_EQUAL, cut_B_float, cut_B);
+      }
 
       bool B_valid        = false;
       f_t cut_B_distance  = 0.0;
@@ -4920,6 +4943,9 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
 
 template <typename i_t, typename f_t>
 bool rational_coefficients(const std::vector<variable_type_t>& var_types,
+                           const std::vector<f_t>& lower_bounds,
+                           const std::vector<f_t>& upper_bounds,
+                           inequality_sense_t sense,
                            const inequality_t<i_t, f_t>& input_inequality,
                            inequality_t<i_t, f_t>& rational_inequality)
 {
@@ -4947,13 +4973,35 @@ bool rational_coefficients(const std::vector<variable_type_t>& var_types,
   int64_t lcm_denominators = lcm(denominators);
 
   f_t scalar = static_cast<f_t>(lcm_denominators) / static_cast<f_t>(gcd_numerators);
-  if (scalar < 0) { return false; }
-  if (std::abs(scalar) > 1000) { return false; }
+  if (!std::isfinite(scalar) || scalar <= 0.0 || scalar > 1000.0) { return false; }
 
   // The scaled product can land an ulp off the integer it represents.
   rational_inequality.scale(scalar);
 
-  return true;
+  // Suppose sum_j a_j * x_j <= beta, and we compute a scaling s such that
+  // A_j = s*a_j + delta_j, with A_j integer. Here delta_j is the error when
+  // rationalizing the coefficient. We modify the rhs of the inequality as
+  // follows to account for this error. We then have
+  // sum_j A_j * x_j <= s*beta
+  //                   + sum_{j : delta_j > 0} delta_j * u_j
+  //                   + sum_{j : delta_j < 0} delta_j * l_j.
+  // For a >= inequality, exchange the upper and lower bounds.
+  const i_t sz = indices.size();
+  for (i_t k = 0; k < sz; k++) {
+    const i_t index = indices[k];
+    const i_t j     = input_inequality.index(index);
+    const f_t coeff = input_inequality.coeff(index);
+    const f_t delta = rational_inequality.coeff(index) - scalar * coeff;
+    if (delta == 0.0) { continue; }
+
+    const bool use_upper_bound =
+      sense == inequality_sense_t::LESS_EQUAL ? delta > 0.0 : delta < 0.0;
+    const f_t bound = use_upper_bound ? upper_bounds[j] : lower_bounds[j];
+    if (!std::isfinite(bound)) { return false; }
+    rational_inequality.rhs += delta * bound;
+  }
+
+  return std::isfinite(rational_inequality.rhs);
 }
 
 int64_t gcd(const std::vector<int64_t>& integers)
