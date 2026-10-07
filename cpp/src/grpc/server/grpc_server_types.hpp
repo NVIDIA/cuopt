@@ -127,6 +127,7 @@ enum class JobStatus { QUEUED, PROCESSING, COMPLETED, FAILED, NOT_FOUND, CANCELL
 
 struct IncumbentEntry {
   double objective = 0.0;
+  double bound     = 0.0;
   std::vector<double> assignment;
 };
 

@@ -794,16 +794,26 @@ def test_incumbents_cursor_and_sentinel(proxy):
     req_id = res.json()["reqId"]
     assert fake.submitted[0]["enable_incumbents"] is True
     fake._incumbents[req_id] = [
-        {"index": 0, "objective": 2.0, "assignment": [1.0, 1.0]},
-        {"index": 1, "objective": 1.0, "assignment": [0.0, 1.0]},
+        {
+            "index": 0,
+            "objective": 2.0,
+            "bound": 1.5,
+            "assignment": [1.0, 1.0],
+        },
+        {
+            "index": 1,
+            "objective": 1.0,
+            "bound": 0.5,
+            "assignment": [0.0, 1.0],
+        },
     ]
     first = requests.get(
         url + f"/cuopt/solution/{req_id}/incumbents", headers=_JSON_ACCEPT
     )
     assert first.status_code == 200
     assert first.json() == [
-        {"solution": [1.0, 1.0], "cost": 2.0, "bound": None},
-        {"solution": [0.0, 1.0], "cost": 1.0, "bound": None},
+        {"solution": [1.0, 1.0], "cost": 2.0, "bound": 1.5},
+        {"solution": [0.0, 1.0], "cost": 1.0, "bound": 0.5},
     ]
     second = requests.get(
         url + f"/cuopt/solution/{req_id}/incumbents", headers=_JSON_ACCEPT

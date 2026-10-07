@@ -499,8 +499,9 @@ void incumbent_retrieval_thread()
 
       std::string job_id;
       double objective = 0.0;
+      double bound     = 0.0;
       std::vector<double> assignment;
-      if (!parse_incumbent_proto(data.data(), data.size(), job_id, objective, assignment)) {
+      if (!parse_incumbent_proto(data.data(), data.size(), job_id, objective, bound, assignment)) {
         SERVER_LOG_ERROR("[Server] Failed to parse incumbent payload");
         continue;
       }
@@ -509,6 +510,7 @@ void incumbent_retrieval_thread()
 
       IncumbentEntry entry;
       entry.objective  = objective;
+      entry.bound      = bound;
       size_t num_vars  = assignment.size();
       entry.assignment = std::move(assignment);
 

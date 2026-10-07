@@ -898,7 +898,7 @@ def getincumbent(
                 {
                     "solution": e.get("assignment", []),
                     "cost": e.get("objective"),
-                    "bound": None,
+                    "bound": e.get("bound"),
                 }
                 for e in entries
             ]
