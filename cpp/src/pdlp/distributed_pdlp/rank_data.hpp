@@ -9,7 +9,7 @@
 #include <vector>
 
 namespace cuopt::mathematical_optimization::pdlp {
-// Pure data class representing most of the per-rank data needed for multi-GPU operations
+// Pure data class representing most of the distributed data needed for mGPU operatiosn
 template <typename i_t, typename f_t>
 struct rank_data_t {
   rank_data_t(std::size_t nb_parts)
