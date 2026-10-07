@@ -2505,7 +2505,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.folding                 = 1;
   orig.augmented               = 1;
   orig.dualize                 = 1;
-  orig.ordering                = 2;
+  orig.ordering                = 1;
   orig.barrier_dual_initial_point =
     cuopt::mathematical_optimization::barrier_dual_initial_point_t::LustigMarstenShanno;
   orig.eliminate_dense_columns      = true;
@@ -2550,7 +2550,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.folding, 1);
   EXPECT_EQ(restored.augmented, 1);
   EXPECT_EQ(restored.dualize, 1);
-  EXPECT_EQ(restored.ordering, 2);
+  EXPECT_EQ(restored.ordering, 1);
   EXPECT_EQ(restored.barrier_dual_initial_point,
             cuopt::mathematical_optimization::barrier_dual_initial_point_t::LustigMarstenShanno);
   EXPECT_EQ(restored.eliminate_dense_columns, true);
