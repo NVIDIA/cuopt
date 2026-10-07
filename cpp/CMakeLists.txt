@@ -57,6 +57,7 @@ option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
 option(CUOPT_BUILD_STATIC_LIB "Build libcuopt_static.a for embedding into a self-contained consumer" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
 option(HOST_LINEINFO "Build with debug line information for host code" OFF)
+option(EXPORT_DEBUG_SYMBOLS "Expose internal symbols for debugging and profiling" OFF)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
@@ -67,6 +68,15 @@ message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
 message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
 message(VERBOSE "cuOpt: Skip mathopt build: ${SKIP_MATHOPT_BUILD}")
 message(VERBOSE "cuOpt: Build with debug line information for host code: ${HOST_LINEINFO}")
+message(VERBOSE "cuOpt: Export debug symbols: ${EXPORT_DEBUG_SYMBOLS}")
+
+if (EXPORT_DEBUG_SYMBOLS)
+    set(CUOPT_SYMBOL_VISIBILITY default)
+    set(CUOPT_VISIBILITY_INLINES_HIDDEN OFF)
+else ()
+    set(CUOPT_SYMBOL_VISIBILITY hidden)
+    set(CUOPT_VISIBILITY_INLINES_HIDDEN ON)
+endif ()
 message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 
 # ##################################################################################################
@@ -140,6 +150,11 @@ if (BUILD_MSAN)
     list(APPEND CUOPT_CXX_FLAGS -fsanitize=memory -fno-omit-frame-pointer -g -fsanitize-memory-track-origins=1)
     add_link_options(-fsanitize=memory)
 endif (BUILD_MSAN)
+
+if (EXPORT_DEBUG_SYMBOLS)
+    list(APPEND CUOPT_CXX_FLAGS -g)
+    list(APPEND CUOPT_CUDA_FLAGS -g)
+endif (EXPORT_DEBUG_SYMBOLS)
 
 # Note: -UNDEBUG is applied via CUOPT_CXX_FLAGS / CUOPT_CUDA_FLAGS (not add_definitions)
 # to avoid leaking into dependencies that are built in-tree.
@@ -691,9 +706,9 @@ function(cuopt_configure_component target)
             BUILD_RPATH_USE_ORIGIN TRUE
             INSTALL_RPATH "\$ORIGIN"
             # Same hidden-by-default visibility that #1625 applies to the *_objs libraries.
-            CXX_VISIBILITY_PRESET hidden
-            CUDA_VISIBILITY_PRESET hidden
-            VISIBILITY_INLINES_HIDDEN ON
+            CXX_VISIBILITY_PRESET ${CUOPT_SYMBOL_VISIBILITY}
+            CUDA_VISIBILITY_PRESET ${CUOPT_SYMBOL_VISIBILITY}
+            VISIBILITY_INLINES_HIDDEN ${CUOPT_VISIBILITY_INLINES_HIDDEN}
     )
     target_compile_options(${target}
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -783,9 +798,9 @@ set_target_properties(cuopt_client_objs
         # rather than on the cuopt_client library built from them. Without it the client
         # exported cuopt::default_logger() and cuopt::global_log_buffer(), which collapses
         # the per-component loggers into one -- the case ci/check_symbols.sh rejects.
-        CXX_VISIBILITY_PRESET hidden
-        CUDA_VISIBILITY_PRESET hidden
-        VISIBILITY_INLINES_HIDDEN ON
+        CXX_VISIBILITY_PRESET ${CUOPT_SYMBOL_VISIBILITY}
+        CUDA_VISIBILITY_PRESET ${CUOPT_SYMBOL_VISIBILITY}
+        VISIBILITY_INLINES_HIDDEN ${CUOPT_VISIBILITY_INLINES_HIDDEN}
 )
 
 add_library(cuopt_client SHARED $<TARGET_OBJECTS:cuopt_client_objs>)
@@ -915,9 +930,9 @@ if(NOT SKIP_ROUTING_BUILD AND NOT (CUOPT_FIND_ROUTING_EXTERNALLY AND TARGET cuop
     set_target_properties(cuopt_routing_objs
             PROPERTIES POSITION_INDEPENDENT_CODE ON
             CXX_SCAN_FOR_MODULES OFF
-            CXX_VISIBILITY_PRESET hidden
-            CUDA_VISIBILITY_PRESET hidden
-            VISIBILITY_INLINES_HIDDEN ON
+            CXX_VISIBILITY_PRESET ${CUOPT_SYMBOL_VISIBILITY}
+            CUDA_VISIBILITY_PRESET ${CUOPT_SYMBOL_VISIBILITY}
+            VISIBILITY_INLINES_HIDDEN ${CUOPT_VISIBILITY_INLINES_HIDDEN}
     )
     target_compile_options(cuopt_routing_objs
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -978,9 +993,9 @@ add_library(cuopt_mathopt_objs OBJECT ${CUOPT_MATHOPT_SRC_FILES})
 set_target_properties(cuopt_mathopt_objs
         PROPERTIES POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
-        CXX_VISIBILITY_PRESET hidden
-        CUDA_VISIBILITY_PRESET hidden
-        VISIBILITY_INLINES_HIDDEN ON
+        CXX_VISIBILITY_PRESET ${CUOPT_SYMBOL_VISIBILITY}
+        CUDA_VISIBILITY_PRESET ${CUOPT_SYMBOL_VISIBILITY}
+        VISIBILITY_INLINES_HIDDEN ${CUOPT_VISIBILITY_INLINES_HIDDEN}
 )
 target_compile_options(cuopt_mathopt_objs
         PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
