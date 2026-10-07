@@ -47,7 +47,7 @@ void multi_gpu_engine_t<i_t, f_t>::gather_potential_next_solutions_to_master()
   });
 }
 
-// -------- Distributed bound / objective rescaling -------------------------
+// -------- Multi-GPU bound / objective rescaling ---------------------------
 // compute and apply_bound_objective_rescaling_to_problem, unfused because we need a
 // raw squared-sum on device to reduce and the base version comptues
 // tranform->reduce->transform in one cub call for efficiency
@@ -112,7 +112,7 @@ void multi_gpu_engine_t<i_t, f_t>::refresh_halo_cummulative_scalings()
   });
 }
 
-// -------- Distributed Curtis-Reid scaling ---------------------------------
+// -------- Multi-GPU Curtis-Reid scaling -----------------------------------
 // Owned rows of A and owned columns of A_T are complete, so each log-mean is
 // local. The other axis's log-scale is read at halo indices, so it is exchanged
 // between the row pass and the column pass.
@@ -149,7 +149,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_curtis_reid_scaling(int num_iter,
   synchronize_shards();
 }
 
-// -------- Distributed Ruiz inf-scaling ------------------------------------
+// -------- Multi-GPU Ruiz inf-scaling --------------------------------------
 // Each shard owns its rows AND its columns and stores both complete (h_A =
 // owned rows, h_A_t = owned columns)
 template <typename i_t, typename f_t>
@@ -176,8 +176,8 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_ruiz_inf_scaling(int num_iter, i_
   synchronize_shards();
 }
 
-// -------- Distributed Pock-Chambolle scaling ------------------------------
-// Distributed Pock-Chambolle: one pass, mirroring single-GPU
+// -------- Multi-GPU Pock-Chambolle scaling --------------------------------
+// Multi-GPU Pock-Chambolle: one pass, mirroring single-GPU
 // pock_chambolle_scaling. Row sum-of-powers come from the row-major matrix
 // (owned rows) and column sum-of-powers from A_T (owned columns).
 template <typename i_t, typename f_t>
@@ -198,7 +198,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha,
   synchronize_shards();
 }
 
-// -------- Distributed scaling orchestration ------------------------------
+// -------- Multi-GPU scaling orchestration --------------------------------
 // Mirrors single GPU scaling
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const& hyper_params,
@@ -236,7 +236,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const
   }
 }
 
-// -------- Distributed sigma_max(A)^2 via power iteration ------------------
+// -------- Multi-GPU sigma_max(A)^2 via power iteration --------------------
 // Owns per-shard scratch (q / z / atq / scalar reductions) and drives the
 // iteration; every cross-shard operation goes through multi_gpu_engine_t's
 // *_bufs helpers (halo_exchange_{cstr,var}_bufs, distributed_l2_norm_bufs,
@@ -385,7 +385,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
   return sigma_sq_h;
 }
 
-// -------- Distributed initial step size ---------------------------------
+// -------- Multi-GPU initial step size -----------------------------------
 // Sigma_max(A) via the shared power-iteration primitive.
 //
 // This function mirrors single-GPU's compute_initial_step_size exactly
@@ -416,8 +416,8 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
   set_scalar_on_master_and_shards(h_step_size, [](auto& sp) { return sp.get_step_size().data(); });
 }
 
-// -------- Distributed initial primal weight ------------------------------
-// Distributed PDLP is currently restricted to the Stable3-shaped hyper-param
+// -------- Multi-GPU initial primal weight --------------------------------
+// Multi-GPU PDLP is currently restricted to the Stable3-shaped hyper-param
 // profile. Single-GPU compute_initial_primal_weight
 // short-circuits to primal_weight = 1 without touching the norms (see
 // pdlp.cu:

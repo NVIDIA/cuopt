@@ -660,7 +660,7 @@ pdlp_settings:
       description: >-
         Number of GPUs used for the solve. Relevant to LP in concurrent mode
         (up to 2 GPUs), where PDLP and barrier run on separate GPUs rather than
-        sharing one. For distributed PDLP, -1 selects all visible devices.
+        sharing one. For multi-GPU PDLP, -1 selects all visible devices.
       default: "1"
       field_num: 19
       type: int32

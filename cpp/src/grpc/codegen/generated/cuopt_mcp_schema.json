@@ -109,7 +109,7 @@
         },
         "num_gpus": {
           "type": "integer",
-          "description": "Number of GPUs used for the solve. Relevant to LP in concurrent mode (up to 2 GPUs), where PDLP and barrier run on separate GPUs rather than sharing one. For distributed PDLP, -1 selects all visible devices. Default: 1."
+          "description": "Number of GPUs used for the solve. Relevant to LP in concurrent mode (up to 2 GPUs), where PDLP and barrier run on separate GPUs rather than sharing one. For multi-GPU PDLP, -1 selects all visible devices. Default: 1."
         },
         "per_constraint_residual": {
           "type": "boolean",

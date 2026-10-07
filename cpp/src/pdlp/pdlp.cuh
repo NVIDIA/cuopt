@@ -61,14 +61,14 @@ class pdlp_solver_t {
    * @param[in] op_problem An mip::problem_t<i_t, f_t> object with a
    * representation of a linear program
    * @param[in] is_distributed_sub_pdlp true when constructed as a shard of a
-   * distributed solve.
+   * multi-GPU solve.
    */
   pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                 pdlp_solver_settings_t<i_t, f_t> const& settings,
                 bool is_batch_mode           = false,
                 bool is_distributed_sub_pdlp = false);
 
-  // Distributed Solver Constructor
+  // Multi-GPU solver constructor
   pdlp_solver_t(mip::problem_t<i_t, f_t>& placeholder_problem,
                 cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
                 pdlp_solver_settings_t<i_t, f_t> const& settings);
@@ -108,7 +108,7 @@ class pdlp_solver_t {
 
   void compute_initial_step_size();
   void compute_initial_primal_weight();
-  // Thin dispatch wrappers used by run_solver so single-GPU and distributed
+  // Thin dispatch wrappers used by run_solver so single-GPU and multi-GPU
   // callers hit the same call sites.
   void scale_problem();
   void create_spmv_op_plans();
@@ -224,7 +224,7 @@ class pdlp_solver_t {
   // Inner solver
   pdlp::pdhg_solver_t<i_t, f_t> pdhg_solver_;
 
-  // This solver is the distributed-PDLP master orchestrator iff it owns the
+  // This solver is the multi-GPU PDLP master orchestrator iff it owns the
   // multi-GPU engine. Shards (sub-solvers) leave the optional empty -> false.
   // Single-GPU PDLP reports false.
   bool is_distributed_master() const;

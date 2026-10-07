@@ -2097,7 +2097,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 // Map a "presolve concluded a terminal status" outcome to the corresponding
 // LP-solution object. Returns nullopt when presolve did not conclude
 // (i.e. produced a reduced problem to be solved). Used by both the single-GPU
-// (op_problem-driven) and distributed (mps-driven) presolve paths.
+// (op_problem-driven) and multi-GPU (mps-driven) presolve paths.
 template <typename i_t, typename f_t>
 static std::optional<optimization_problem_solution_t<i_t, f_t>>
 terminal_solution_from_presolve_status(mip::third_party_presolve_status_t status,
@@ -2614,16 +2614,16 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
   cuopt_expects(settings_resolved.method == method_t::PDLP,
                 error_type_t::ValidationError,
-                "Distributed MPS solve currently supports only method_t::PDLP");
+                "Multi-GPU MPS solve currently supports only method_t::PDLP");
   // Gate both the mode-check and the preset overwrite behind use_pdlp_solver_mode
   // so a caller supplying hand-tuned hyper_params (use_pdlp_solver_mode=false)
   // isn't silently overwritten.
   if (use_pdlp_solver_mode) {
     cuopt_expects(settings_resolved.pdlp_solver_mode == pdlp_solver_mode_t::Stable3,
                   error_type_t::ValidationError,
-                  "Distributed PDLP currently only supports pdlp_solver_mode_t::Stable3 "
+                  "Multi-GPU PDLP currently only supports pdlp_solver_mode_t::Stable3 "
                   "(the default). Other modes produce hyper-param profiles that the "
-                  "distributed setup does not implement.");
+                  "multi-GPU setup does not implement.");
     set_pdlp_solver_mode(settings_resolved);
   }
 
@@ -2631,29 +2631,29 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   if (settings_resolved.num_gpus == -1) { settings_resolved.num_gpus = visible_device_count; }
   cuopt_expects(settings_resolved.num_gpus >= 1,
                 error_type_t::ValidationError,
-                "Distributed PDLP requires num_gpus >= 1.");
+                "Multi-GPU PDLP requires num_gpus >= 1.");
   cuopt_expects(settings_resolved.num_gpus <= visible_device_count,
                 error_type_t::ValidationError,
-                "Distributed PDLP num_gpus exceeds the number of visible CUDA devices.");
-  // PDLP precision validations (mirror the checks in run_pdlp; distributed
+                "Multi-GPU PDLP num_gpus exceeds the number of visible CUDA devices.");
+  // PDLP precision validations (mirror the checks in run_pdlp; multi-GPU
   // path only supports the default-precision, non-batch double config).
   cuopt_expects(settings_resolved.pdlp_precision == pdlp_precision_t::DefaultPrecision,
                 error_type_t::ValidationError,
-                "Distributed PDLP only supports DefaultPrecision (double).");
+                "Multi-GPU PDLP only supports DefaultPrecision (double).");
   cuopt_expects(!settings_resolved.inside_mip,
                 error_type_t::ValidationError,
-                "Distributed PDLP is not yet supported from inside MIP.");
-  // Reject initial solution and warm starts as they are not supported yes for distributed PDLP
+                "Multi-GPU PDLP is not yet supported from inside MIP.");
+  // Reject initial solution and warm starts as they are not supported yet for multi-GPU PDLP
   cuopt_expects(!settings_resolved.has_initial_primal_solution() &&
                   !settings_resolved.has_initial_dual_solution() &&
                   !settings_resolved.get_pdlp_warm_start_data().is_populated(),
                 error_type_t::ValidationError,
-                "Distributed PDLP does not support initial primal/dual solutions or warm-start "
+                "Multi-GPU PDLP does not support initial primal/dual solutions or warm-start "
                 "data.");
   cuopt_expects(!settings_resolved.save_best_primal_so_far,
                 error_type_t::ValidationError,
-                "Distributed PDLP does not support save_best_primal_so_far.");
-  // Distributed PDLP today only supports the Stable3-shaped hyper-param profile:
+                "Multi-GPU PDLP does not support save_best_primal_so_far.");
+  // Multi-GPU PDLP today only supports the Stable3-shaped hyper-param profile:
   //   - initial_step_size_max_singular_value = true  (matches the sigma_max seeding
   //     driven by distributed_max_singular_value_squared in the setup),
   //   - initial_primal_weight_combined_bounds = false and bound_objective_rescaling = true
@@ -2665,7 +2665,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
       !settings_resolved.hyper_params.initial_primal_weight_combined_bounds &&
       settings_resolved.hyper_params.bound_objective_rescaling,
     error_type_t::ValidationError,
-    "Distributed PDLP currently only supports the Stable3-shaped hyper-param profile "
+    "Multi-GPU PDLP currently only supports the Stable3-shaped hyper-param profile "
     "(initial_step_size_max_singular_value=true, initial_primal_weight_combined_bounds=false, "
     "bound_objective_rescaling=true). Set pdlp_solver_mode = Stable3 (the default) or adjust "
     "the hyper-params to match.");
@@ -2757,7 +2757,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                    presolve_time);
   }
 
-  // mps_for_solver is what the distributed solver actually sees.
+  // mps_for_solver is what the multi-GPU solver actually sees.
   // the reduced
   // problem when we ran presolve, the original otherwise. No data transits through device
   const auto& mps_for_solver = run_presolve ? host_res->reduced_problem : mps_data_model;
