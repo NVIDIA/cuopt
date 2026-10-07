@@ -25,6 +25,7 @@
 #include <cub/device/device_transform.cuh>
 
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -1653,6 +1654,71 @@ TEST(barrier, cached_solve_can_enable_iterative_refinement)
       EXPECT_NEAR(solution.x[0], rhs / 2, 1e-4);
       EXPECT_NEAR(solution.x[1], rhs / 2, 1e-4);
       EXPECT_NEAR(solution.objective, rhs * rhs / 4, 1e-4);
+    }
+  }
+}
+
+double gmres_update_basis_value(int i, int j, bool cancellation)
+{
+  if (!cancellation) { return ((3 * i + 7 * j) % 37 - 18) / 16.0; }
+  // Adjacent terms nearly cancel, with a small, exactly representable remainder.
+  double value = 1048576.0 + ((i + j / 2) % 17) / 8.0;
+  if (j % 2 != 0) { value += (1 + i % 13 + j) / 1024.0; }
+  return i % 2 == 0 ? value : -value;
+}
+
+TEST(barrier, gmres_update_handles_all_counts_and_in_place_reuse)
+{
+  raft::handle_t handle;
+  const auto stream       = handle.get_stream();
+  constexpr int dimension = barrier::gmres_workspace_t<double>::dimension;
+  for (int n : {0, 1, 31, 33, 257, 4096}) {
+    barrier::gmres_workspace_t<double> workspace(n, stream);
+    rmm::device_uvector<double> d_x(n, stream);
+    std::vector<double> h_initial(n), h_actual(n);
+    for (int i = 0; i < n; ++i) {
+      h_initial[i] = (i % 19 - 9) / 8.0;
+    }
+    for (bool cancellation : {false, true}) {
+      for (int count = 0; count <= dimension; ++count) {
+        SCOPED_TRACE(::testing::Message()
+                     << "n=" << n << " count=" << count << " cancellation=" << cancellation);
+        std::vector<double> h_coefficients(count), h_delta(n, 0.0), h_abs_sum(n, 0.0);
+        std::vector<std::vector<double>> h_basis(
+          dimension, std::vector<double>(n, std::numeric_limits<double>::quiet_NaN()));
+        for (int j = 0; j < count; ++j) {
+          h_coefficients[j] = (j % 2 == 0 ? 1.0 : -1.0) * (j / 2 + 1) / 8.0;
+          for (int i = 0; i < n; ++i) {
+            h_basis[j][i]     = gmres_update_basis_value(i, j, cancellation);
+            const double term = h_coefficients[j] * h_basis[j][i];
+            // These dyadic products and their short sums are exact in double.
+            h_delta[i] += term;
+            h_abs_sum[i] += std::abs(term);
+          }
+        }
+        if (n > 0) {
+          raft::copy(d_x.data(), h_initial.data(), n, stream);
+          for (int j = 0; j < dimension; ++j) {
+            // Poison inactive columns so accidentally using them cannot pass silently.
+            raft::copy(workspace.Z[j].data(), h_basis[j].data(), n, stream);
+          }
+        }
+        for (int update = 1; update <= 2; ++update) {
+          SCOPED_TRACE(::testing::Message() << "update=" << update);
+          workspace.update(d_x, h_coefficients, count);
+          RAFT_CUDA_TRY(cudaGetLastError());
+          if (n > 0) { raft::copy(h_actual.data(), d_x.data(), n, stream); }
+          stream.sync();
+          for (int i = 0; i < n; ++i) {
+            const double expected = h_initial[i] + update * h_delta[i];
+            // Bound by input magnitudes, not the potentially tiny cancellation result.
+            const double tolerance = 32 * std::numeric_limits<double>::epsilon() *
+                                     (std::abs(h_initial[i]) + update * h_abs_sum[i]);
+            ASSERT_TRUE(std::isfinite(h_actual[i])) << "i=" << i;
+            EXPECT_NEAR(h_actual[i], expected, tolerance) << "i=" << i;
+          }
+        }
+      }
     }
   }
 }

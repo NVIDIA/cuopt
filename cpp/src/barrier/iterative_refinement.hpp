@@ -42,10 +42,11 @@ struct gmres_update_op {
   __device__ f_t operator()(size_t i) const
   {
     f_t delta = 0;
-    // Neighboring threads read neighboring entries of each basis vector. The short
-    // sequential sum preserves the accumulation order without a basis transpose.
-    for (int j = 0; j < count; ++j) {
-      delta += coefficients[j] * basis[j][i];
+    // Fixed indices let the compiler unroll the basis loads while preserving
+    // coalesced reads and the accumulation order of the active terms.
+#pragma unroll
+    for (int j = 0; j < dimension; ++j) {
+      if (j < count) { delta += coefficients[j] * basis[j][i]; }
     }
     return x[i] + delta;
   }
