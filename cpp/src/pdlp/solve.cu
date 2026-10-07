@@ -2311,6 +2311,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       result->reduced_problem.write_to_mps(settings.presolve_file);
     }
 
+    // problem owns the presolved device data. Release the staging buffers after
+    // optional MPS output, but retain metadata referenced by original_problem_ptr.
+    // FP32 PDLP still converts that data in run_pdlp_solver_in_fp32.
+    if (run_presolve && settings.pdlp_precision != pdlp_precision_t::SinglePrecision) {
+      result->reduced_problem.clear();
+    }
+
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
 

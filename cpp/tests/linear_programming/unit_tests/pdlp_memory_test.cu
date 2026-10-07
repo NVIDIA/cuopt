@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/solve.cuh>
@@ -13,11 +14,16 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
+
+#include <unistd.h>
 
 namespace cuopt::mathematical_optimization::test {
 namespace {
@@ -41,6 +47,189 @@ optimization_problem_t<int, double> make_memory_test_problem(const raft::handle_
 
 using memory_test_params = std::tuple<pdlp_solver_mode_t, bool>;
 
+TEST(PdlpMemoryProblem, ClearPresolvedProblemPreservesSolverCopyAndMetadata)
+{
+  raft::handle_t handle;
+  auto op = make_memory_test_problem(handle);
+  mip::problem_t<int, double> problem(op);
+  const auto values  = host_copy(problem.coefficients, handle.get_stream());
+  const auto columns = host_copy(problem.variables, handle.get_stream());
+  const auto offsets = host_copy(problem.offsets, handle.get_stream());
+  op.clear();
+  EXPECT_EQ(op.get_constraint_matrix_values().capacity(), 0);
+  EXPECT_EQ(op.get_constraint_matrix_indices().capacity(), 0);
+  EXPECT_EQ(op.get_constraint_matrix_offsets().capacity(), 0);
+  EXPECT_EQ(problem.original_problem_ptr, &op);
+  EXPECT_EQ(op.get_n_variables(), 3);
+  EXPECT_EQ(op.get_n_constraints(), 2);
+  EXPECT_EQ(op.get_objective_coefficients().capacity(), 0);
+  EXPECT_EQ(op.get_variable_lower_bounds().capacity(), 0);
+  EXPECT_EQ(op.get_variable_upper_bounds().capacity(), 0);
+  EXPECT_EQ(op.get_constraint_lower_bounds().capacity(), 0);
+  EXPECT_EQ(op.get_constraint_upper_bounds().capacity(), 0);
+  EXPECT_EQ(host_copy(problem.objective_coefficients, handle.get_stream()),
+            (std::vector<double>{1, 2, 3}));
+  EXPECT_EQ(host_copy(problem.coefficients, handle.get_stream()), values);
+  EXPECT_EQ(host_copy(problem.variables, handle.get_stream()), columns);
+  EXPECT_EQ(host_copy(problem.offsets, handle.get_stream()), offsets);
+  auto settings            = pdlp_solver_settings_t<int, double>{};
+  settings.iteration_limit = 2000;
+  settings.set_optimality_tolerance(1e-6);
+  set_pdlp_solver_mode(settings);
+  pdlp::pdlp_solver_t<int, double> solver(problem, settings);
+  auto result = solver.run_solver(timer_t(30));
+  EXPECT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(result.get_objective_value(), 2.0, 1e-5);
+  handle.sync_stream();
+}
+
+TEST(PdlpMemoryProblem, ClearReleasesAllDeviceCapacityAndIsIdempotent)
+{
+  raft::handle_t handle;
+  auto op = make_memory_test_problem(handle);
+  const std::vector<double> rhs{2, 3};
+  const std::vector<char> row_types{'E', 'E'};
+  const std::vector<var_t> variable_types(3, var_t::CONTINUOUS);
+  const std::vector<std::string> variable_names{"x", "y", "z"}, row_names{"a", "b"};
+  op.set_constraint_bounds(rhs.data(), rhs.size());
+  op.set_row_types(row_types.data(), row_types.size());
+  op.set_variable_types(variable_types.data(), variable_types.size());
+  op.set_variable_names(variable_names);
+  op.set_row_names(row_names);
+  op.set_objective_offset(4);
+  op.set_objective_scaling_factor(2);
+  op.set_batch_objective_offsets({4, 5});
+  op.set_objective_name("cost");
+  op.set_problem_name("presolved");
+  op.set_maximize(true);
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    op.clear();
+    EXPECT_EQ(op.get_constraint_matrix_values().capacity(), 0);
+    EXPECT_EQ(op.get_constraint_matrix_indices().capacity(), 0);
+    EXPECT_EQ(op.get_constraint_matrix_offsets().capacity(), 0);
+    EXPECT_EQ(op.get_constraint_bounds().capacity(), 0);
+    EXPECT_EQ(op.get_objective_coefficients().capacity(), 0);
+    EXPECT_EQ(op.get_variable_lower_bounds().capacity(), 0);
+    EXPECT_EQ(op.get_variable_upper_bounds().capacity(), 0);
+    EXPECT_EQ(op.get_constraint_lower_bounds().capacity(), 0);
+    EXPECT_EQ(op.get_constraint_upper_bounds().capacity(), 0);
+    EXPECT_EQ(op.get_row_types().capacity(), 0);
+    EXPECT_EQ(op.get_variable_types().capacity(), 0);
+    EXPECT_EQ(op.get_handle_ptr(), &handle);
+    EXPECT_EQ(op.get_n_variables(), 3);
+    EXPECT_EQ(op.get_n_constraints(), 2);
+    EXPECT_EQ(op.get_objective_offset(), 4);
+    EXPECT_EQ(op.get_objective_scaling_factor(), 2);
+    EXPECT_EQ(op.get_batch_objective_offsets(), (std::vector<double>{4, 5}));
+    EXPECT_EQ(op.get_objective_name(), "cost");
+    EXPECT_EQ(op.get_problem_name(), "presolved");
+    EXPECT_EQ(op.get_variable_names(), variable_names);
+    EXPECT_EQ(op.get_row_names(), row_names);
+    EXPECT_TRUE(op.get_sense());
+  }
+  handle.sync_stream();
+}
+
+optimization_problem_t<int, double> make_presolved_csr_test_problem(const raft::handle_t& handle)
+{
+  optimization_problem_t<int, double> op(&handle);
+  const std::vector<double> values{1, 1, 1, 1, 1, 1, 1};
+  const std::vector<int> columns{0, 1, 3, 1, 2, 0, 2}, offsets{0, 3, 5, 7};
+  const std::vector<double> objective{1, 1, 1, 3}, lower{0, 0, 0, 2}, upper{1, 1, 1, 2};
+  const std::vector<double> row_lower{3, 1, 1};
+  const std::vector<double> row_upper(3, std::numeric_limits<double>::infinity());
+  op.set_csr_constraint_matrix(
+    values.data(), values.size(), columns.data(), columns.size(), offsets.data(), offsets.size());
+  op.set_objective_coefficients(objective.data(), objective.size());
+  op.set_variable_lower_bounds(lower.data(), lower.size());
+  op.set_variable_upper_bounds(upper.data(), upper.size());
+  op.set_constraint_lower_bounds(row_lower.data(), row_lower.size());
+  op.set_constraint_upper_bounds(row_upper.data(), row_upper.size());
+  return op;
+}
+
+class PdlpMemoryPresolvedCsr : public testing::TestWithParam<std::tuple<presolver_t, method_t>> {
+ protected:
+  void SetUp() override
+  {
+    char path[]  = "/tmp/cuopt-presolved-csr-XXXXXX.mps";
+    const int fd = mkstemps(path, 4);
+    ASSERT_GE(fd, 0);
+    close(fd);
+    presolve_file_ = path;
+  }
+
+  void TearDown() override
+  {
+    if (!presolve_file_.empty()) { std::remove(presolve_file_.c_str()); }
+  }
+
+  std::string presolve_file_;
+};
+
+TEST_P(PdlpMemoryPresolvedCsr, PostsolveAndMpsOutputPreserveCallerMatrix)
+{
+  raft::handle_t handle;
+  auto op                  = make_presolved_csr_test_problem(handle);
+  const auto values        = op.get_constraint_matrix_values_host();
+  const auto columns       = op.get_constraint_matrix_indices_host();
+  const auto offsets       = op.get_constraint_matrix_offsets_host();
+  auto settings            = pdlp_solver_settings_t<int, double>{};
+  settings.presolver       = std::get<0>(GetParam());
+  settings.method          = std::get<1>(GetParam());
+  settings.presolve_file   = presolve_file_;
+  settings.crossover       = false;
+  settings.time_limit      = 30;
+  settings.iteration_limit = 5000;
+  settings.set_optimality_tolerance(1e-6);
+  // Reusing the same caller model also checks that only solver-owned CSR is released.
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    auto result = solve_lp(op, settings);
+    ASSERT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
+    EXPECT_NEAR(result.get_objective_value(), 7.5, 1e-5);
+    const auto primal = host_copy(result.get_primal_solution(), handle.get_stream());
+    ASSERT_EQ(primal.size(), 4);
+    EXPECT_NEAR(primal[0], 0.5, 1e-5);
+    EXPECT_NEAR(primal[1], 0.5, 1e-5);
+    EXPECT_NEAR(primal[2], 0.5, 1e-5);
+    EXPECT_NEAR(primal[3], 2.0, 1e-5);
+    EXPECT_EQ(op.get_constraint_matrix_values_host(), values);
+    EXPECT_EQ(op.get_constraint_matrix_indices_host(), columns);
+    EXPECT_EQ(op.get_constraint_matrix_offsets_host(), offsets);
+    const auto presolved = io::read<int, double>(presolve_file_);
+    // The fixed variable is removed, but a nonempty CSR must reach the solver.
+    EXPECT_EQ(presolved.get_objective_coefficients().size(), 3);
+    EXPECT_GT(presolved.get_constraint_matrix_values().size(), 0);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(PresolversAndMethods,
+                         PdlpMemoryPresolvedCsr,
+                         testing::Combine(testing::Values(presolver_t::PSLP, presolver_t::Papilo),
+                                          testing::Values(method_t::PDLP,
+                                                          method_t::Concurrent,
+                                                          method_t::DualSimplex,
+                                                          method_t::Barrier,
+                                                          method_t::Primal)));
+
+TEST(PdlpMemoryProblem, PresolvedCsrRemainsAvailableForFp32Conversion)
+{
+  raft::handle_t handle;
+  auto op                  = make_presolved_csr_test_problem(handle);
+  auto settings            = pdlp_solver_settings_t<int, double>{};
+  settings.method          = method_t::PDLP;
+  settings.presolver       = presolver_t::PSLP;
+  settings.pdlp_precision  = pdlp_precision_t::SinglePrecision;
+  settings.crossover       = false;
+  settings.time_limit      = 30;
+  settings.iteration_limit = 5000;
+  settings.set_optimality_tolerance(1e-5);
+  auto result = solve_lp(op, settings);
+  ASSERT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(result.get_objective_value(), 7.5, 1e-4);
+  EXPECT_EQ(result.get_primal_solution().size(), 4);
+  EXPECT_EQ(op.get_nnz(), 7);
+}
 class PdlpMemory : public testing::TestWithParam<memory_test_params> {};
 
 TEST_P(PdlpMemory, OnlyAllocateWorkspacesUsedBySelectedMode)
