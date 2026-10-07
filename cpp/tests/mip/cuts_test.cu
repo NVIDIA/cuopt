@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuts/cuts.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
@@ -441,6 +442,19 @@ void disable_all_cuts(mip_solver_settings_t<int, double>& settings)
   settings.knapsack_cuts              = 0;
   settings.mir_cuts                   = 0;
   settings.strong_chvatal_gomory_cuts = 0;
+}
+
+void disable_non_knapsack_cuts(mip_solver_settings_t<int, double>& settings)
+{
+  settings.max_cut_passes             = 10;
+  settings.knapsack_cuts              = 1;
+  settings.clique_cuts                = 0;
+  settings.zero_half_cuts             = 0;
+  settings.mixed_integer_gomory_cuts  = 0;
+  settings.mir_cuts                   = 0;
+  settings.strong_chvatal_gomory_cuts = 0;
+  settings.flow_cover_cuts            = 0;
+  settings.implied_bound_cuts         = 0;
 }
 
 bool cut_is_invalid_for_incumbent(const std::vector<int>& cut_vars,
@@ -935,6 +949,62 @@ TEST(cuts, test_cuts_2)
   EXPECT_EQ(solution.get_num_nodes(), 0);
 }
 
+io::mps_data_model_t<int, double> create_knapsack_cover_floor_problem()
+{
+  // The odd cycle over z1, z2, z3 makes z = (0.5, 0.5, 0.5), w = 0 the unique LP optimum, which
+  // puts y at 0.412078. Integrality moves the optimum to w = 1 with y = 0 and objective 3.
+  //
+  // The capacity coefficients are load bearing: scaling that row to integers multiplies by 100,
+  // and 135.45 and 135.42 do not land on integers when scaled, which is what the knapsack
+  // separator needs them to do.
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 2 y + z1 + z2 + z3 + 3 w
+Subject To
+  capacity: -450 y + 135.45 z1 + 135.42 z2 + 100 z3 <= 0
+  tri12: z1 + z2 + w >= 1
+  tri13: z1 + z3 + w >= 1
+  tri23: z2 + z3 + w >= 1
+Binaries
+  y
+  z1
+  z2
+  z3
+  w
+End
+)LP");
+}
+
+TEST(cuts, knapsack_cover_floor_regression)
+{
+  const raft::handle_t handle_{};
+  auto problem = create_knapsack_cover_floor_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.;
+  disable_non_knapsack_cuts(settings);
+  settings.presolver = presolver_t::None;
+
+  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(3.0, solution.get_objective_value(), 1e-6);
+}
+
+TEST(cuts, knapsack_cover_floor_regression_reference)
+{
+  const raft::handle_t handle_{};
+  auto problem = create_knapsack_cover_floor_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.;
+  disable_all_cuts(settings);
+  settings.presolver = presolver_t::None;
+
+  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(3.0, solution.get_objective_value(), 1e-6);
+}
+
 TEST(cuts, test_duplicate_cuts_detection)
 {
   simplex::simplex_solver_settings_t<int, double> settings;
@@ -983,6 +1053,66 @@ TEST(cuts, test_duplicate_cuts_detection)
 
   cut_pool.check_for_duplicate_cuts();
   EXPECT_EQ(cut_pool.pool_size(), 5);
+}
+
+TEST(cuts, mir_candidate_search_stops_inside_dense_row)
+{
+  // Every scaling and complement produces an integral RHS, so no candidate cuts off xstar.
+  // Without an inner deadline, 4096 complements x 4097 scales each copy this dense row.
+  constexpr int n = 4096;
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.inside_submip = true;
+  simplex::lp_problem_t<int, double> lp(nullptr, 0, n, 0);
+  lp.lower.assign(n, 0.0);
+  lp.upper.assign(n, 1.0);
+  std::vector<simplex::variable_type_t> types(n, simplex::variable_type_t::INTEGER);
+  std::vector<int> slacks;
+  csr_matrix_t<int, double> rows(0, n, 0);
+  mip::variable_bounds_t<int, double> bounds(lp, settings, types, rows, slacks);
+  mip::complemented_mixed_integer_rounding_cut_t<int, double> mir(lp, settings, slacks);
+  std::vector<double> xstar(n, 0.5), transformed_xstar;
+  mir.bound_substitution(lp, bounds, types, xstar, transformed_xstar);
+  mip::inequality_t<int, double> inequality, cut;
+  for (int j = 0; j < n; ++j) {
+    inequality.push_back(j, 1.0);
+  }
+  inequality.rhs     = n / 2.0;
+  double work        = 0.0;
+  const double start = tic();
+  EXPECT_FALSE(
+    mir.cut_generation_heuristic(inequality, types, transformed_xstar, cut, work, start, 0.001));
+  EXPECT_LT(toc(start), 1.0);
+}
+
+TEST(cuts, mir_candidate_search_preserves_live_cut)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.inside_submip = true;
+  simplex::lp_problem_t<int, double> lp(nullptr, 0, 1, 0);
+  lp.lower = {0.0};
+  lp.upper = {1.0};
+  std::vector<simplex::variable_type_t> types{simplex::variable_type_t::INTEGER};
+  std::vector<int> slacks;
+  csr_matrix_t<int, double> rows(0, 1, 0);
+  mip::variable_bounds_t<int, double> bounds(lp, settings, types, rows, slacks);
+  mip::complemented_mixed_integer_rounding_cut_t<int, double> mir(lp, settings, slacks);
+  std::vector<double> xstar{0.0}, transformed_xstar;
+  mir.bound_substitution(lp, bounds, types, xstar, transformed_xstar);
+  mip::inequality_t<int, double> inequality, cut;
+  inequality.push_back(0, 1.0);
+  inequality.rhs = 0.5;
+  double work    = 0.0;
+  EXPECT_FALSE(
+    mir.cut_generation_heuristic(inequality, types, transformed_xstar, cut, work, tic(), 0.0));
+  EXPECT_TRUE(mir.cut_generation_heuristic(inequality,
+                                           types,
+                                           transformed_xstar,
+                                           cut,
+                                           work,
+                                           tic(),
+                                           std::numeric_limits<double>::infinity()));
+  EXPECT_GT(mir.compute_violation(cut, transformed_xstar), 0.0);
+  EXPECT_GE(cut.vector.dot(std::vector<double>{1.0}), cut.rhs);
 }
 
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)

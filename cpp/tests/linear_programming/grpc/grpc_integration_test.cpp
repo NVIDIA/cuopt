@@ -12,10 +12,10 @@
  *
  * Fixture layout:
  *   NoServerTests          - Tests that don't need a server
- *   DefaultServerTests     - Shared server with default config (~21 tests)
+ *   DefaultServerTests     - Shared server with default config (~22 tests)
  *   ChunkedUploadTests     - Shared server with --max-message-mb 256 (4 tests)
- *   PathSelectionTests     - Shared server with --max-message-bytes 4096 --verbose (4 tests)
- *   ErrorRecoveryTests     - Per-test server lifecycle (4 tests)
+ *   PathSelectionTests     - Shared server with --max-message-bytes 12288 --verbose (4 tests)
+ *   ErrorRecoveryTests     - Per-test server lifecycle (GPU health + respawn timeout)
  *   TlsServerTests         - Shared TLS server (2 tests)
  *   MtlsServerTests        - Shared mTLS server (2 tests)
  *
@@ -43,6 +43,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
 #include <cuopt/routing/cpu_routing_problem.hpp>
 #include <cuopt/routing/solver_settings.hpp>
@@ -53,7 +54,9 @@
 #include "grpc_test_log_capture.hpp"
 
 #include <cuopt_remote_service.grpc.pb.h>
+#include <grpcpp/generic/generic_stub.h>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/support/byte_buffer.h>
 
 #include "grpc_service_mapper.hpp"
 
@@ -90,7 +93,7 @@ namespace {
 
 class ServerProcess {
  public:
-  ServerProcess() : pid_(-1), pgid_(-1), port_(0) {}
+  ServerProcess() : pid_(-1), pgid_(-1), port_(0), exit_code_(-1) {}
   ServerProcess(const ServerProcess&)            = delete;
   ServerProcess& operator=(const ServerProcess&) = delete;
   ~ServerProcess()
@@ -107,7 +110,9 @@ class ServerProcess {
     tls_client_key_  = client_key;
   }
 
-  bool start(int port, const std::vector<std::string>& extra_args = {})
+  bool start(int port,
+             const std::vector<std::string>& extra_args                                = {},
+             const std::vector<std::pair<std::string, std::string>>& extra_environment = {})
   {
     if (pid_ > 0) {
       std::cerr << "Cannot reuse a ServerProcess while it still owns a process lifecycle\n";
@@ -124,8 +129,9 @@ class ServerProcess {
     // onto this test process so stop() can reap it without relying on init.
     prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
 
-    port_ = port;
-    pid_  = fork();
+    port_      = port;
+    exit_code_ = -1;
+    pid_       = fork();
     if (pid_ < 0) {
       std::cerr << "fork() failed\n";
       return false;
@@ -133,6 +139,10 @@ class ServerProcess {
 
     if (pid_ == 0) {
       setpgid(0, 0);  // child leads its own group; parent mirrors this below
+
+      for (const auto& [name, value] : extra_environment) {
+        setenv(name.c_str(), value.c_str(), 1);
+      }
 
       std::vector<const char*> args;
       args.push_back(server_path.c_str());
@@ -196,6 +206,8 @@ class ServerProcess {
 
   pid_t pid() const { return pid_; }
 
+  int exit_code() const { return exit_code_; }
+
   bool is_running() const
   {
     if (pid_ <= 0) return false;
@@ -216,6 +228,7 @@ class ServerProcess {
       int status = 0;
       pid_t ret  = waitpid(pid_, &status, WNOHANG);
       if (ret == pid_ || (ret < 0 && errno == ECHILD)) {
+        if (ret == pid_) { exit_code_ = WIFEXITED(status) ? WEXITSTATUS(status) : -1; }
         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
           deadline - std::chrono::steady_clock::now());
         if (remaining > std::chrono::milliseconds(2000)) {
@@ -341,6 +354,7 @@ class ServerProcess {
 
       int status = 0;
       if (waitpid(pid_, &status, WNOHANG) == pid_) {
+        exit_code_ = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
         std::cerr << "Server process died during startup\n";
         return false;
       }
@@ -352,6 +366,7 @@ class ServerProcess {
   pid_t pid_;
   pid_t pgid_;
   int port_;
+  int exit_code_;
   std::string tls_root_certs_;
   std::string tls_client_cert_;
   std::string tls_client_key_;
@@ -513,26 +528,144 @@ End
     }
   }
 
+  // Result of warm_up_worker. Callers ASSERT on ok so a failure stops the test.
+  // detail is set only on failure and includes the last job status plus a tail
+  // of the server log.
+  struct worker_warmup_result_t {
+    bool ok = false;
+    std::string detail;
+  };
+
   // Prove the shared worker is idle and warm before a timed test begins,
   // instead of trusting whatever the previous test left behind. DefaultServerTests
   // shares one worker across the whole suite, and a prior test's SIGKILL can leave it
-  // mid-respawn (paying for a fresh CUDA context init); untimed here, that debt can't
-  // leak into this test's own timing assertions -- see #1814.
-  // ASSERT_* inside this helper only returns from here, not from the calling
-  // TEST_F -- return the result so callers can ASSERT_TRUE it themselves and
-  // actually stop the test on a warm-up failure instead of continuing on a
-  // worker that was never confirmed ready.
-  bool warm_up_worker(grpc_client_t* client)
+  // mid-respawn (paying for a fresh CUDA context and RMM pool); that debt is absorbed
+  // here so it cannot leak into the caller's timing assertions -- see #1814.
+  //
+  // The job stays QUEUED until the replacement worker finishes init, which can
+  // exceed 60s on a busy runner. Allow 3 minutes for that. Once the worker claims
+  // the job, allow 30s more for this 5s MIP. delete_job of a PROCESSING job
+  // SIGKILLs the worker, so a probe that is still solving is left in place.
+  // A QUEUED probe was never claimed and can be deleted.
+  worker_warmup_result_t warm_up_worker(grpc_client_t* client, const std::string& server_log_path)
   {
-    mip_solver_settings_t<int32_t, double> warmup_settings;
-    warmup_settings.time_limit = 5.0;
-    auto warmup                = client->submit_mip(create_simple_mip(), warmup_settings);
-    if (!warmup.success) { return false; }
-    wait_for_job_done(client, warmup.job_id, 90);
-    auto warmup_status = client->check_status(warmup.job_id);
-    bool completed     = warmup_status.status == job_status_t::COMPLETED;
-    bool deleted       = client->delete_job(warmup.job_id);
-    return completed && deleted;
+    worker_warmup_result_t result;
+
+    auto fail = [&](const std::string& why, const job_status_result_t& status) {
+      std::ostringstream out;
+      out << "Worker warm-up failed: " << why << ", status=" << job_status_to_string(status.status);
+      if (!status.message.empty()) { out << ", message=" << status.message; }
+      if (!status.error_message.empty()) { out << ", error=" << status.error_message; }
+      out << tail_server_log(server_log_path);
+      result.ok     = false;
+      result.detail = out.str();
+      return result;
+    };
+
+    solver_settings_t<int32_t, double> warmup_settings;
+    warmup_settings.set_parameter(CUOPT_TIME_LIMIT, 5.0);
+    auto warmup = client->submit_mip(create_simple_mip(), warmup_settings);
+    if (!warmup.success) {
+      job_status_result_t submit_status;
+      submit_status.error_message = warmup.error_message;
+      return fail("submit failed", submit_status);
+    }
+
+    constexpr auto queued_budget     = std::chrono::seconds(180);
+    constexpr auto processing_budget = std::chrono::seconds(30);
+    const auto start                 = std::chrono::steady_clock::now();
+    bool saw_processing              = false;
+    auto processing_since            = start;
+    job_status_result_t last_status;
+
+    for (;;) {
+      last_status         = client->check_status(warmup.job_id);
+      const bool terminal = last_status.success && (last_status.status == job_status_t::COMPLETED ||
+                                                    last_status.status == job_status_t::FAILED ||
+                                                    last_status.status == job_status_t::CANCELLED);
+      if (terminal || (last_status.success && last_status.status == job_status_t::NOT_FOUND)) {
+        break;
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      if (last_status.success && last_status.status == job_status_t::PROCESSING) {
+        if (!saw_processing) {
+          saw_processing   = true;
+          processing_since = now;
+        }
+        if (now - processing_since >= processing_budget) { break; }
+      } else if (now - start >= queued_budget) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    const bool terminal = last_status.success && (last_status.status == job_status_t::COMPLETED ||
+                                                  last_status.status == job_status_t::FAILED ||
+                                                  last_status.status == job_status_t::CANCELLED);
+    const bool queued_unclaimed = last_status.success && last_status.status == job_status_t::QUEUED;
+    if (terminal || queued_unclaimed) {
+      if (!client->delete_job(warmup.job_id)) { return fail("delete_job failed", last_status); }
+    }
+
+    if (last_status.success && last_status.status == job_status_t::COMPLETED) {
+      result.ok = true;
+      return result;
+    }
+
+    std::string why = "job ended without COMPLETED";
+    if (last_status.success && last_status.status == job_status_t::PROCESSING) {
+      why = "still PROCESSING after 30s (left running; delete would SIGKILL the worker)";
+    } else if (last_status.success && last_status.status == job_status_t::QUEUED) {
+      why = "still QUEUED after 180s";
+    } else if (!last_status.success) {
+      why = "status check failed";
+    }
+    return fail(why, last_status);
+  }
+
+  static std::string tail_server_log(const std::string& path)
+  {
+    constexpr std::streamoff kTailBytes = 4096;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) { return "\n(server log unavailable: " + path + ")\n"; }
+    in.seekg(0, std::ios::end);
+    const auto size = in.tellg();
+    if (size > kTailBytes) {
+      in.seekg(-kTailBytes, std::ios::end);
+    } else {
+      in.seekg(0);
+    }
+    std::ostringstream out;
+    out << "\n--- server log tail (" << path << ") ---\n"
+        << in.rdbuf() << "\n--- end server log tail ---\n";
+    return out.str();
+  }
+
+  // Shared by the unary and chunked incumbent-set tests. EXPECT_* here still
+  // fail the calling TEST_F; early returns only skip later checks after a
+  // hard setup failure (ASSERT in a helper would not stop the test).
+  void expect_incumbent_set_callback_registered(grpc_client_config_t config,
+                                                const std::string& log_path)
+  {
+    GrpcTestLogCapture log_capture;
+    log_capture.set_server_log_path(log_path);
+    log_capture.mark_test_start();
+
+    auto client = create_client(config);
+    EXPECT_NE(client, nullptr);
+    if (client == nullptr) { return; }
+
+    solver_settings_t<int32_t, double> settings;
+    settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+    auto submission = client->submit_mip(create_simple_mip(), settings, false, true);
+    EXPECT_TRUE(submission.success) << submission.error_message;
+    if (!submission.success) { return; }
+
+    wait_for_job_done(client.get(), submission.job_id);
+    EXPECT_EQ(client->check_status(submission.job_id).status, job_status_t::COMPLETED);
+    EXPECT_TRUE(log_capture.wait_for_server_log("Registered incumbent set callback", 5000))
+      << log_capture.get_server_logs();
   }
 
   int port_ = 0;
@@ -673,6 +806,42 @@ TEST_F(DefaultServerTests, ServerAcceptsConnections)
     << log_capture.get_client_logs();
 }
 
+// Kubelet grpc probes call grpc.health.v1.Health/Check with an empty service
+// name. The request has to be a real empty buffer: a default ByteBuffer is
+// null, and the health service rejects that as "could not parse request".
+// HealthCheckResponse{status: SERVING} is field 1, varint 1.
+TEST_F(DefaultServerTests, StandardHealthCheckServing)
+{
+  auto channel =
+    grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+  grpc::GenericStub stub(channel);
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  grpc::Slice empty_request;
+  grpc::ByteBuffer request(&empty_request, 1);
+  grpc::ByteBuffer response;
+  grpc::Status status;
+  grpc::CompletionQueue cq;
+  auto call = stub.PrepareUnaryCall(&ctx, "/grpc.health.v1.Health/Check", request, &cq);
+  ASSERT_NE(call, nullptr);
+  call->StartCall();
+  call->Finish(&response, &status, reinterpret_cast<void*>(1));
+  void* tag = nullptr;
+  bool ok   = false;
+  ASSERT_TRUE(cq.Next(&tag, &ok));
+  EXPECT_TRUE(ok);
+  EXPECT_EQ(tag, reinterpret_cast<void*>(1));
+  EXPECT_TRUE(status.ok()) << status.error_code() << " " << status.error_message();
+
+  std::vector<grpc::Slice> slices;
+  ASSERT_TRUE(response.Dump(&slices).ok());
+  std::string payload;
+  for (const auto& slice : slices) {
+    payload.append(reinterpret_cast<const char*>(slice.begin()), slice.size());
+  }
+  EXPECT_EQ(payload, std::string("\x08\x01", 2));
+}
+
 // -- Status / Cancel / Delete on nonexistent jobs --
 
 TEST_F(DefaultServerTests, CheckStatusNotFound)
@@ -735,8 +904,8 @@ TEST_F(DefaultServerTests, SolveLPPolling)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto submit_result = client->submit_lp(problem, settings);
   ASSERT_TRUE(submit_result.success) << submit_result.error_message;
@@ -768,8 +937,8 @@ TEST_F(DefaultServerTests, SolveLPWaitRPC)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -796,8 +965,8 @@ TEST_F(DefaultServerTests, SolveInfeasibleLP)
   problem.set_constraint_lower_bounds(nullptr, 0);
   problem.set_constraint_upper_bounds(nullptr, 0);
 
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
   ASSERT_TRUE(result.success) << result.error_message;
@@ -805,6 +974,64 @@ TEST_F(DefaultServerTests, SolveInfeasibleLP)
   auto status = result.solution->get_termination_status();
   EXPECT_NE(status, pdlp_termination_status_t::Optimal)
     << "Expected non-optimal termination for infeasible problem";
+}
+
+// A bad parameter map fails that job. The worker then completes a normal job.
+TEST_F(DefaultServerTests, BadParameterFailsJobAndWorkerContinues)
+{
+  cpu_optimization_problem_t<int32_t, double> problem;
+  std::vector<double> var_lb   = {0.0};
+  std::vector<double> var_ub   = {1.0};
+  std::vector<double> obj      = {1.0};
+  std::vector<int32_t> offsets = {0};
+  problem.set_variable_lower_bounds(var_lb.data(), 1);
+  problem.set_variable_upper_bounds(var_ub.data(), 1);
+  problem.set_objective_coefficients(obj.data(), 1);
+  problem.set_maximize(false);
+  problem.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, offsets.data(), 1);
+  problem.set_constraint_lower_bounds(nullptr, 0);
+  problem.set_constraint_upper_bounds(nullptr, 0);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto request = build_lp_submit_request(problem, settings);
+  (*request.mutable_lp_request()->mutable_settings()->mutable_parameters())["not_a_parameter"] =
+    "1";
+
+  auto channel =
+    grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+  auto stub = cuopt::remote::CuOptRemoteService::NewStub(channel);
+  cuopt::remote::SubmitJobResponse response;
+  {
+    grpc::ClientContext context;
+    auto rpc = stub->SubmitJob(&context, request, &response);
+    ASSERT_TRUE(rpc.ok()) << rpc.error_message();
+  }
+  ASSERT_FALSE(response.job_id().empty());
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  job_status_t final_status = job_status_t::QUEUED;
+  std::string message;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(response.job_id());
+    ASSERT_TRUE(status.success) << status.error_message;
+    final_status = status.status;
+    message      = status.message;
+    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED ||
+        final_status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  EXPECT_EQ(final_status, job_status_t::FAILED) << message;
+  EXPECT_NE(message.find("Invalid solver parameter"), std::string::npos) << message;
+
+  auto good = client->solve_lp(problem, settings);
+  EXPECT_TRUE(good.success) << good.error_message;
+  ASSERT_NE(good.solution, nullptr);
 }
 
 // -- MIP Solve --
@@ -815,8 +1042,8 @@ TEST_F(DefaultServerTests, SolveMIPBlocking)
   ASSERT_NE(client, nullptr);
   auto problem = create_simple_mip();
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -901,8 +1128,8 @@ TEST_F(DefaultServerTests, ExplicitAsyncLPFlow)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto submit_result = client->submit_lp(problem, settings);
   ASSERT_TRUE(submit_result.success) << submit_result.error_message;
@@ -932,9 +1159,9 @@ TEST_F(DefaultServerTests, ServerLogsJobProcessing)
   ASSERT_NE(client, nullptr);
 
   auto problem = create_simple_mip();
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
-  auto result         = client->solve_mip(problem, settings, false);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+  auto result = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result.success) << result.error_message;
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -952,8 +1179,8 @@ TEST_F(DefaultServerTests, ClientDebugLogsSubmission)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -975,8 +1202,8 @@ TEST_F(DefaultServerTests, MultipleSequentialSolves)
   for (int i = 0; i < 3; ++i) {
     std::string mps_path = get_test_lp_path("afiro_original.mps");
     auto problem         = load_problem_from_file(mps_path);
-    pdlp_solver_settings_t<int32_t, double> settings;
-    settings.time_limit = 10.0;
+    solver_settings_t<int32_t, double> settings;
+    settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
     auto result = client->solve_lp(problem, settings);
     EXPECT_TRUE(result.success) << "Solve #" << i << " failed: " << result.error_message;
@@ -994,8 +1221,8 @@ TEST_F(DefaultServerTests, ConcurrentJobSubmission)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   std::vector<std::pair<grpc_client_t*, std::string>> jobs;
 
@@ -1052,8 +1279,8 @@ TEST_F(DefaultServerTests, VerifyUnaryUploadSmallProblem)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1076,8 +1303,8 @@ TEST_F(DefaultServerTests, VerifyUnaryDownloadSmallResult)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1097,8 +1324,8 @@ TEST_F(DefaultServerTests, SolveLPReturnsWarmStartData)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1128,6 +1355,75 @@ TEST_F(DefaultServerTests, SolveLPReturnsWarmStartData)
   EXPECT_GE(ws.total_pdhg_iterations_, 0) << "total_pdhg_iterations should be non-negative";
 }
 
+// A one-step cap makes a resumed solve and a cold solve disagree. PDLP copies
+// total_pdlp_iterations_ out of the supplied warm start, and the solution's
+// warm-start blob reports that live counter. get_num_iterations() is only the
+// steps taken in this run, so it stays near 1 for both and is not the signal.
+// Stable2 is required; the default Stable3 rejects warm start. Presolve stays
+// off so the vectors match the original problem: a later solve skips presolve
+// whenever total_pdlp_iterations_ != -1.
+TEST_F(DefaultServerTests, SolveLPWarmStartIsApplied)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  // solver_settings_t is neither copyable nor movable, so each solve fills its
+  // own object. Shared names go through set_parameter so the LP and MIP
+  // registrations stay equal.
+  auto configure = [](solver_settings_t<int32_t, double>& settings) {
+    settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+    settings.set_parameter(CUOPT_METHOD, CUOPT_METHOD_PDLP);
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, CUOPT_PDLP_SOLVER_MODE_STABLE2);
+    settings.set_parameter(CUOPT_PRESOLVE, CUOPT_PRESOLVE_OFF);
+  };
+
+  solver_settings_t<int32_t, double> full_settings;
+  configure(full_settings);
+  auto full = client->solve_lp(problem, full_settings);
+  ASSERT_TRUE(full.success) << full.error_message;
+  ASSERT_NE(full.solution, nullptr);
+  ASSERT_TRUE(full.solution->has_warm_start_data());
+  const auto seeded_iterations =
+    full.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+  ASSERT_GT(seeded_iterations, 1) << "full solve must take more than one PDLP iteration so a "
+                                     "one-step cap can tell the runs apart";
+  const auto full_objective = full.solution->get_objective_value();
+
+  solver_settings_t<int32_t, double> warm_settings;
+  configure(warm_settings);
+  warm_settings.get_pdlp_settings().iteration_limit = 1;
+  warm_settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data() =
+    full.solution->get_cpu_pdlp_warm_start_data();
+  auto warm = client->solve_lp(problem, warm_settings);
+  ASSERT_TRUE(warm.success) << warm.error_message;
+  ASSERT_NE(warm.solution, nullptr);
+  ASSERT_TRUE(warm.solution->has_warm_start_data());
+  const auto warm_iterations = warm.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  solver_settings_t<int32_t, double> cold_settings;
+  configure(cold_settings);
+  cold_settings.get_pdlp_settings().iteration_limit = 1;
+  auto cold                                         = client->solve_lp(problem, cold_settings);
+  ASSERT_TRUE(cold.success) << cold.error_message;
+  ASSERT_NE(cold.solution, nullptr);
+  ASSERT_TRUE(cold.solution->has_warm_start_data());
+  const auto cold_iterations = cold.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  EXPECT_GE(warm_iterations, seeded_iterations)
+    << "resumed solve should keep the seeded PDLP iteration counter";
+  EXPECT_LT(cold_iterations, seeded_iterations)
+    << "one-step cold solve should not reach the full-solve iteration count";
+
+  const auto warm_obj_gap = std::abs(warm.solution->get_objective_value() - full_objective);
+  const auto cold_obj_gap = std::abs(cold.solution->get_objective_value() - full_objective);
+  EXPECT_LT(warm_obj_gap, cold_obj_gap)
+    << "warm objective " << warm.solution->get_objective_value() << " cold objective "
+    << cold.solution->get_objective_value() << " full objective " << full_objective;
+}
+
 // -- MIP Log Callback --
 
 TEST_F(DefaultServerTests, SolveMIPWithLogCallback)
@@ -1149,9 +1445,9 @@ TEST_F(DefaultServerTests, SolveMIPWithLogCallback)
   std::string mps_path = get_test_mip_path("bb_optimality.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit     = 10.0;
-  settings.log_to_console = true;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+  settings.get_mip_settings().log_to_console = true;
 
   auto result = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1178,8 +1474,8 @@ TEST_F(DefaultServerTests, IncumbentCallbacksMIP)
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_mip(problem, settings, true);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1189,6 +1485,13 @@ TEST_F(DefaultServerTests, IncumbentCallbacksMIP)
       EXPECT_LE(incumbent_objectives[i], incumbent_objectives[i - 1] + 1e-6);
     }
   }
+}
+
+TEST_F(DefaultServerTests, IncumbentSetFlagReachesUnaryWorker)
+{
+  grpc_client_config_t config;
+  config.chunked_array_threshold_bytes = 100 * 1024 * 1024;
+  expect_incumbent_set_callback_registered(config, server_log_path());
 }
 
 TEST_F(DefaultServerTests, IncumbentCallbackCancelsSolve)
@@ -1207,8 +1510,8 @@ TEST_F(DefaultServerTests, IncumbentCallbackCancelsSolve)
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto start  = std::chrono::steady_clock::now();
   auto result = client->solve_mip(problem, settings, true);
@@ -1228,8 +1531,8 @@ TEST_F(DefaultServerTests, CancelRunningJob)
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 120.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
 
   auto submit_result = client->submit_mip(problem, settings);
   ASSERT_TRUE(submit_result.success);
@@ -1245,9 +1548,13 @@ TEST_F(DefaultServerTests, CancelRunningJob)
     << "Unexpected job_status=" << static_cast<int>(cancel_result.job_status)
     << " message=" << cancel_result.message;
 
-  // Wait for worker to free up before next test
+  // Cancel marks the job CANCELLED as soon as the worker is signaled, which is
+  // before the replacement worker finishes CUDA and RMM init. Warm up here so
+  // the next test inherits a worker that has already completed a job (#1814).
   wait_for_job_done(client.get(), job_id, 15);
   client->delete_job(job_id);
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
 }
 
 // -- Delete should cancel queued / running jobs --
@@ -1256,13 +1563,14 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
-  ASSERT_TRUE(warm_up_worker(client.get())) << "Worker warm-up failed";
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 120.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
 
   // Occupy the single worker with a long solve. Poll for PROCESSING rather than
   // a fixed sleep: a plain delay doesn't guarantee the worker claimed this job
@@ -1307,9 +1615,9 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
   // assert the worker stays functional instead.
   client->cancel_job(running.job_id);
 
-  mip_solver_settings_t<int32_t, double> probe_settings;
-  probe_settings.time_limit = 10.0;
-  auto probe                = client->submit_mip(problem, probe_settings);
+  solver_settings_t<int32_t, double> probe_settings;
+  probe_settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+  auto probe = client->submit_mip(problem, probe_settings);
   ASSERT_TRUE(probe.success);
 
   // 90s: this probe follows a worker respawn (SIGKILL above), which pays for a fresh CUDA
@@ -1327,13 +1635,14 @@ TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
-  ASSERT_TRUE(warm_up_worker(client.get())) << "Worker warm-up failed";
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 120.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
 
   auto submit_result = client->submit_mip(problem, settings);
   ASSERT_TRUE(submit_result.success);
@@ -1369,9 +1678,9 @@ TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
 
   // Prove the killed worker was actually replaced: a probe job must be picked
   // up (reach PROCESSING) and run to completion within a bounded interval.
-  mip_solver_settings_t<int32_t, double> probe_settings;
-  probe_settings.time_limit = 10.0;
-  auto probe                = client->submit_mip(problem, probe_settings);
+  solver_settings_t<int32_t, double> probe_settings;
+  probe_settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+  auto probe = client->submit_mip(problem, probe_settings);
   ASSERT_TRUE(probe.success);
 
   bool probe_started = false;
@@ -1419,6 +1728,8 @@ class ChunkedUploadTests : public GrpcIntegrationTestBase {
     port_ = s_port_;
   }
 
+  std::string server_log_path() const { return s_server_->log_path(); }
+
   void TearDown() override
   {
     if (HasFailure() && s_server_) {
@@ -1452,8 +1763,8 @@ TEST_F(ChunkedUploadTests, ChunkedUploadLP)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1474,11 +1785,20 @@ TEST_F(ChunkedUploadTests, ChunkedUploadMIP)
   std::string mps_path = get_test_mip_path("sudoku.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result.success) << result.error_message;
+}
+
+TEST_F(ChunkedUploadTests, IncumbentSetFlagReachesChunkedWorker)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunk_size_bytes              = 4 * 1024;
+  config.chunked_array_threshold_bytes = 0;
+  expect_incumbent_set_callback_registered(config, server_log_path());
 }
 
 TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
@@ -1498,8 +1818,8 @@ TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   std::atomic<int> success_count{0};
 
@@ -1572,8 +1892,8 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsUnaryNonZeroRhs)
   ASSERT_TRUE(problem.has_quadratic_constraints());
   EXPECT_EQ(problem.get_quadratic_constraints().size(), 2u);
 
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
   // QC_Test_1 has rhs = 5 / rhs = 10. The general convex quadratic path
@@ -1615,8 +1935,8 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedNonZeroRhs)
   auto problem         = load_problem_from_file(mps_path);
   ASSERT_TRUE(problem.has_quadratic_constraints());
 
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
   // QC_Test_1 has nonzero RHS, now handled by the general convex quadratic path.
@@ -1658,8 +1978,8 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsEndToEndSocp)
   ASSERT_TRUE(problem.has_quadratic_constraints());
   EXPECT_EQ(problem.get_quadratic_constraints().size(), 2u);
 
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_lp(problem, settings);
   ASSERT_TRUE(result.success) << result.error_message;
@@ -1694,8 +2014,8 @@ TEST_F(ChunkedUploadTests, UnaryFallbackSmallProblem)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1706,9 +2026,11 @@ TEST_F(ChunkedUploadTests, UnaryFallbackSmallProblem)
 // =============================================================================
 // Path Selection Tests (unary vs chunked IPC and result retrieval)
 //
-// Uses --max-message-bytes to set a very low logical threshold so that even
-// small test problems exercise both unary and chunked code paths.
-// Uses --verbose so the server emits IPC path tags we can verify in logs.
+// Uses --max-message-bytes so small problems exercise both unary and chunked
+// paths, and --verbose so the server emits IPC path tags we can verify.
+// 12288 is above a submit that carries the full parameter map (afiro unary
+// is about 7 KB) and below the 50v-10 solution array (2013 doubles, 16104
+// bytes), so uploads are accepted and that result still downloads in chunks.
 // =============================================================================
 
 class PathSelectionTests : public GrpcIntegrationTestBase {
@@ -1717,9 +2039,7 @@ class PathSelectionTests : public GrpcIntegrationTestBase {
   {
     s_port_   = get_test_port();
     s_server_ = std::make_unique<ServerProcess>();
-    // Small threshold (clamped to 4 KiB) forces chunked result downloads for
-    // anything larger than ~4 KB, exercising the chunked download path.
-    ASSERT_TRUE(s_server_->start(s_port_, {"--max-message-bytes", "4096", "--verbose"}))
+    ASSERT_TRUE(s_server_->start(s_port_, {"--max-message-bytes", "12288", "--verbose"}))
       << "Failed to start path-selection server";
   }
 
@@ -1747,7 +2067,7 @@ int PathSelectionTests::s_port_ = 0;
 // Unary upload for a small LP (afiro). The result is small enough that
 // the server returns it via unary GetResult. We verify the upload and
 // result paths in the server logs but don't assert the download method
-// since the result size may or may not exceed the 4 KiB threshold.
+// since the result size may or may not exceed the message limit.
 TEST_F(PathSelectionTests, UnaryUploadLPWithPathLogging)
 {
   GrpcTestLogCapture log_capture;
@@ -1764,8 +2084,8 @@ TEST_F(PathSelectionTests, UnaryUploadLPWithPathLogging)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1803,8 +2123,8 @@ TEST_F(PathSelectionTests, ChunkedUploadLPWithPathLogging)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1825,8 +2145,8 @@ TEST_F(PathSelectionTests, ChunkedUploadLPWithPathLogging)
 }
 
 // Chunked upload + chunked result download for MIP.
-// sudoku.mps produces ~5.8 KB result which exceeds the 4 KB threshold,
-// so the client should use chunked download.
+// 50v-10-free-bound.mps has 2013 variables, so the solution array is 16104
+// bytes and exceeds the 12288-byte message limit.
 TEST_F(PathSelectionTests, ChunkedUploadAndChunkedDownloadMIP)
 {
   GrpcTestLogCapture log_capture;
@@ -1842,10 +2162,10 @@ TEST_F(PathSelectionTests, ChunkedUploadAndChunkedDownloadMIP)
   auto client = create_client(config);
   ASSERT_NE(client, nullptr);
 
-  std::string mps_path = get_test_mip_path("sudoku.mps");
+  std::string mps_path = get_test_mip_path("50v-10-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1857,7 +2177,7 @@ TEST_F(PathSelectionTests, ChunkedUploadAndChunkedDownloadMIP)
     << "Expected CHUNKED upload path in server log.\nServer log:\n"
     << log_capture.get_server_logs();
 
-  // Client should have used chunked download (result > 4096 bytes)
+  // Client should have used chunked download (result > 12288 bytes)
   EXPECT_TRUE(log_capture.client_log_contains("chunked download") ||
               log_capture.client_log_contains("ChunkedDownload"))
     << "Expected chunked download in client log.\nClient log:\n"
@@ -1885,8 +2205,8 @@ TEST_F(PathSelectionTests, UnaryUploadMIPWithPathLogging)
 
   std::string mps_path = get_test_mip_path("bb_optimality.mps");
   auto problem         = load_problem_from_file(mps_path);
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result.success) << result.error_message;
@@ -1911,13 +2231,161 @@ class ErrorRecoveryTests : public GrpcIntegrationTestBase {
   void SetUp() override { port_ = get_test_port(); }
   void TearDown() override { EXPECT_TRUE(server_.stop()); }
 
-  bool start_server(const std::vector<std::string>& extra_args = {})
+  bool start_server(const std::vector<std::string>& extra_args                                = {},
+                    const std::vector<std::pair<std::string, std::string>>& extra_environment = {})
   {
-    return server_.start(port_, extra_args);
+    return server_.start(port_, extra_args, extra_environment);
   }
 
   ServerProcess server_;
 };
+
+TEST_F(ErrorRecoveryTests, PreJobGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server({}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "before-job"}}));
+  const std::string log_path = server_.log_path();
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 5.0);
+  auto submitted = client->submit_mip(create_simple_mip(), settings);
+  ASSERT_TRUE(submitted.success);
+
+  // start_server() returns when the parent accepts RPCs, not when the worker
+  // finishes CUDA/RMM init. That init can exceed 60s on a busy runner;
+  // warm_up_worker() allows 180s for it. The injected failure is logged only
+  // after init, and the server logger flushes on info. The 15s budget is
+  // shutdown only.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(
+    log_capture.wait_for_server_log("Injected before-job GPU liveness probe failure", 180000))
+    << "Injected pre-job GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the pre-job GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during pre-job probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+TEST_F(ErrorRecoveryTests, IdleGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server(
+    {}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "idle"}, {"CUOPT_GRPC_TEST_GPU_IDLE_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  // Same split as the pre-job test: 180s covers CUDA/RMM init plus the 3s idle
+  // interval. The 15s budget starts only after the injected failure is logged.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("Injected idle GPU liveness probe failure", 180000))
+    << "Injected idle GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the idle GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during idle probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+// Original worker never publishes ready. Short ready timeout forces the same
+// fatal shutdown as a hung replacement, without waiting for a respawn.
+TEST_F(ErrorRecoveryTests, InitialWorkerReadyTimeoutShutsDown)
+{
+  ASSERT_TRUE(start_server({},
+                           {{"CUOPT_GRPC_TEST_WORKER_READY_HANG", "initial"},
+                            {"CUOPT_GRPC_TEST_INITIAL_READY_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("never became ready", 30000))
+    << "Initial ready-timeout shutdown was not logged\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the initial ready timeout\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("never became ready"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+// Replacement never publishes ready: SIGKILL the warm worker, then hang the
+// respawn after init/probe. The short timeout applies only to the replacement;
+// the original worker keeps the 180s budget so CUDA init can finish.
+TEST_F(ErrorRecoveryTests, RespawnedWorkerReadyTimeoutShutsDown)
+{
+  ASSERT_TRUE(start_server({},
+                           {{"CUOPT_GRPC_TEST_WORKER_READY_HANG", "respawn"},
+                            {"CUOPT_GRPC_TEST_RESPAWN_READY_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  // Initial worker must finish CUDA/RMM init before we kill it; hang applies
+  // only to replacements.
+  auto warmup = warm_up_worker(client.get(), log_path);
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success) << submit_result.error_message;
+  const std::string job_id = submit_result.job_id;
+
+  bool processing = false;
+  for (int i = 0; i < 120; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.success && status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before worker kill";
+
+  // delete of a PROCESSING job SIGKILLs the worker and triggers respawn.
+  ASSERT_TRUE(client->delete_job(job_id));
+
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("Restarted worker", 30000))
+    << "Monitor did not respawn after SIGKILL\n"
+    << log_capture.get_server_logs();
+
+  // READY_MS=3000 starts at Restarted worker. Replacement may still be in
+  // CUDA init; either hang-after-probe or mid-init timeout both log this.
+  ASSERT_TRUE(log_capture.wait_for_server_log("never became ready", 30000))
+    << "Ready-timeout shutdown was not logged\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after replacement ready timeout\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("Restarted worker"), std::string::npos) << logs;
+  EXPECT_NE(logs.find("never became ready"), std::string::npos) << logs;
+}
 
 TEST_F(ErrorRecoveryTests, ClientReconnectsAfterServerRestart)
 {
@@ -1949,8 +2417,8 @@ TEST_F(ErrorRecoveryTests, ClientHandlesServerCrashDuringSolve)
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 120.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
 
   auto submit_result = client->submit_mip(problem, settings);
   ASSERT_TRUE(submit_result.success);
@@ -1972,8 +2440,8 @@ TEST_F(ErrorRecoveryTests, SigintDuringRunningJobShutsDownPromptly)
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 120.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
 
   auto submit_result = client->submit_mip(problem, settings);
   ASSERT_TRUE(submit_result.success);
@@ -2024,8 +2492,8 @@ TEST_F(ErrorRecoveryTests, ClientTimeoutConfiguration)
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 60.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 60.0);
 
   auto submit_result = client->submit_mip(problem, settings);
   ASSERT_TRUE(submit_result.success);
@@ -2061,8 +2529,8 @@ TEST_F(ErrorRecoveryTests, ChunkedUploadAfterServerRestart)
 
   std::string mps_path = get_test_mip_path("sudoku.mps");
   auto problem         = load_problem_from_file(mps_path);
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result1 = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result1.success) << result1.error_message;
@@ -2165,8 +2633,8 @@ TEST_F(TlsServerTests, SolveLP)
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
   auto problem         = load_problem_from_file(mps_path);
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;

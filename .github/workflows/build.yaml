@@ -67,7 +67,7 @@ jobs:
   java-static-build-matrix:
     permissions:
       contents: read
-    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@release/26.10
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       matrix_name: conda-cpp-build
@@ -82,7 +82,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.10
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
@@ -208,7 +208,8 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    needs: [build-details]
+    # Links against the client/mathopt/routing wheels' installed .so's instead of recompiling them.
+    needs: [build-details, wheel-build-libcuopt-client, wheel-build-libcuopt-mathopt, wheel-build-libcuopt-routing]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
     with:
@@ -222,7 +223,8 @@ jobs:
       package-type: cpp
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt:
-    needs: wheel-build-libcuopt
+    # Gated on the whole libcuopt/cuopt family building.
+    needs: [wheel-build-libcuopt-suite]
     permissions:
       actions: read
       contents: read
@@ -265,7 +267,8 @@ jobs:
       # One build per arch: the client has no CUDA dimension.
       matrix_filter: group_by(.ARCH) | map(max_by([(.CUDA_VER|split(".")|map(tonumber)), (.PY_VER|split(".")|map(tonumber))]))
   wheel-publish-libcuopt-client:
-    needs: wheel-build-libcuopt-client
+    # Gated on the whole libcuopt/cuopt family building.
+    needs: [wheel-build-libcuopt-suite]
     permissions:
       actions: read
       contents: read
@@ -291,7 +294,8 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    needs: [build-details]
+    # Links against the client wheel's installed libcuopt_client.so instead of recompiling it.
+    needs: [build-details, wheel-build-libcuopt-client]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
     with:
@@ -305,10 +309,8 @@ jobs:
       package-type: cpp
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt-mathopt:
-    # Waits on the client's publication as well: this wheel declares
-    # libcuopt-client as a dependency, so publishing first would leave a clean
-    # install unable to resolve it.
-    needs: [wheel-build-libcuopt-mathopt, wheel-publish-libcuopt-client]
+    # Gated on the whole libcuopt/cuopt family building.
+    needs: [wheel-build-libcuopt-suite]
     permissions:
       actions: read
       contents: read
@@ -334,7 +336,8 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    needs: [build-details]
+    # Links against the client wheel's installed libcuopt_client.so instead of recompiling it.
+    needs: [build-details, wheel-build-libcuopt-client]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
     with:
@@ -348,10 +351,8 @@ jobs:
       package-type: cpp
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt-routing:
-    # Waits on the client's publication as well: this wheel declares
-    # libcuopt-client as a dependency, so publishing first would leave a clean
-    # install unable to resolve it.
-    needs: [wheel-build-libcuopt-routing, wheel-publish-libcuopt-client]
+    # Gated on the whole libcuopt/cuopt family building.
+    needs: [wheel-build-libcuopt-suite]
     permissions:
       actions: read
       contents: read
@@ -371,7 +372,12 @@ jobs:
       package-type: cpp
       publish-wheel-search-key: cuopt_wheel_cpp_libcuopt_routing
   wheel-build-cuopt:
-    needs: [build-details, wheel-build-libcuopt]
+    needs:
+      - build-details
+      - wheel-build-libcuopt
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
     permissions:
       actions: read
       contents: read
@@ -391,8 +397,17 @@ jobs:
       package-type: python
       # Build a wheel for each CUDA x ARCH x minimum supported Python version
       matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
-  wheel-publish-cuopt:
+  # Gate for every wheel-publish-* job below: blocks publishing unless the whole family built.
+  wheel-build-libcuopt-suite:
     needs: wheel-build-cuopt
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "cuopt, libcuopt, libcuopt-client, libcuopt-mathopt and libcuopt-routing all built successfully"
+  wheel-publish-cuopt:
+    # Gated on the whole libcuopt/cuopt family building.
+    needs: [wheel-build-libcuopt-suite]
     permissions:
       actions: read
       contents: read

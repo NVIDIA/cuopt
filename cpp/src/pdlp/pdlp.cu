@@ -37,7 +37,8 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_reduce.cuh>
+#include <cub/device/device_transform.cuh>
 
 #include <thrust/count.h>
 #include <thrust/extrema.h>
@@ -474,18 +475,18 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // parameter-set layer (int_parameters min/max), so we only need to map
   // the three known values to the backend selector.
   partitioner_kind_t kind;
-  switch (settings.distributed_pdlp_partitioner) {
-    case distributed_pdlp_partitioner_t::Auto:
+  switch (settings.multigpu_pdlp_partitioner) {
+    case multigpu_pdlp_partitioner_t::Auto:
       kind = (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::RoundRobin
                                               : partitioner_kind_t::KaMinPar;
       break;
-    case distributed_pdlp_partitioner_t::KaMinPar: kind = partitioner_kind_t::KaMinPar; break;
-    case distributed_pdlp_partitioner_t::RoundRobin: kind = partitioner_kind_t::RoundRobin; break;
+    case multigpu_pdlp_partitioner_t::KaMinPar: kind = partitioner_kind_t::KaMinPar; break;
+    case multigpu_pdlp_partitioner_t::RoundRobin: kind = partitioner_kind_t::RoundRobin; break;
     default:
       cuopt_expects(false,
                     error_type_t::ValidationError,
-                    "Unknown distributed_pdlp_partitioner value %d",
-                    static_cast<int>(settings.distributed_pdlp_partitioner));
+                    "Unknown multigpu_pdlp_partitioner value %d",
+                    static_cast<int>(settings.multigpu_pdlp_partitioner));
       kind = partitioner_kind_t::RoundRobin;  // unreachable; silences -Wmaybe-uninitialized
   }
   // csr_host_view_t members are std::span<const i_t>, an owning
@@ -529,10 +530,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
   sub_pdlp_settings.num_gpus                         = 1;
-  sub_pdlp_settings.use_distributed_pdlp             = false;
-  // Disable automatic ruiz and pock-chambolle in the initial_scaling ctor: the
-  // distributed pipeline computes them via distributed_scaling using the
-  // GLOBAL problem.
+  // Disable automatic matrix scaling in the initial_scaling ctor: the
+  // distributed pipeline computes Curtis-Reid, Ruiz, and Pock-Chambolle via
+  // distributed_scaling using the global problem.
+  sub_pdlp_settings.hyper_params.do_curtis_reid_scaling    = false;
   sub_pdlp_settings.hyper_params.do_ruiz_scaling           = false;
   sub_pdlp_settings.hyper_params.do_pock_chambolle_scaling = false;
 
@@ -2603,7 +2604,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   // mixed precision and cusparse structure redirection are not supported in distributed
   // as memory footprint is not currently a bottleneck in distributed
-  if (!settings_.use_distributed_pdlp) {
+  if (!is_distributed_master()) {
     // Update FP32 matrix copies for mixed precision SpMV after scaling
     pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
 
@@ -2625,7 +2626,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     compute_initial_primal_weight();
 
   // Distributed counterpart of the single-GPU, happens later in the single-GPU path.
-  if (settings_.use_distributed_pdlp) {
+  if (is_distributed_master()) {
     step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
     multi_gpu_engine->for_each_shard([&](auto& shard) {
       auto& sub = *shard.sub_pdlp;
@@ -2637,11 +2638,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   }
 
   // Everything below (seed-from-settings, initial_k, get_primal_and_dual_stepsizes,
-  // initial primal/dual, projection, transpose, verbose prints, log header)
+  // initial primal/dual, projection, transpose, verbose prints)
   // still runs single-GPU only.  Distributed rejects
   // has_initial_{primal,dual}_solution() and warm-start data up front, and
   // its per-shard primal/dual step sizes were derived above
-  if (!settings_.use_distributed_pdlp) {
+  if (!is_distributed_master()) {
 #ifdef PDLP_DEBUG_MODE
     std::cout << "Initial Scaling done" << std::endl;
 #endif
@@ -2842,11 +2843,10 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     raft::print_device_vector(
       "Initial primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
 #endif
-
-    if (!inside_mip_) {
-      CUOPT_LOG_INFO(
-        "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
-    }
+  }
+  if (!inside_mip_) {
+    CUOPT_LOG_INFO(
+      "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
   }
   while (true) {
 #ifdef CUPDLP_DEBUG_MODE

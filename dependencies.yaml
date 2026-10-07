@@ -136,9 +136,13 @@ files:
       key: requires
     includes:
       - build_common
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
+  # Thin metapackage: depends on the three component wheels instead of bundling them.
   py_run_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -148,7 +152,9 @@ files:
     extras:
       table: project
     includes:
-      - cuda_wheels
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
@@ -204,6 +210,7 @@ files:
       key: requires
     includes:
       - build_common
+      - depends_on_libcuopt_client
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
@@ -239,6 +246,7 @@ files:
       key: requires
     includes:
       - build_common
+      - depends_on_libcuopt_client
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
@@ -276,6 +284,10 @@ files:
       - build_common
       - build_python_common
       - depends_on_libcuopt
+      # needed for find_package(cuopt) to resolve cuopt::client/mathopt/routing
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
       - depends_on_rapids_logger
       - depends_on_cupy
       - depends_on_pylibraft
@@ -607,21 +619,11 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - libcuopt-client==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
   depends_on_libcuopt_mathopt:
     common:
       - output_types: conda
         packages:
           - &libcuopt_mathopt_unsuffixed libcuopt-mathopt==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -644,11 +646,6 @@ dependencies:
       - output_types: conda
         packages:
           - &libcuopt_routing_unsuffixed libcuopt-routing==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -671,11 +668,6 @@ dependencies:
       - output_types: conda
         packages:
           - &libcuopt_unsuffixed libcuopt==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -698,11 +690,6 @@ dependencies:
       - output_types: conda
         packages:
           - &cuopt_unsuffixed cuopt==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -725,11 +712,6 @@ dependencies:
       - output_types: conda
         packages:
           - &cuopt_server_unsuffixed cuopt-server==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -752,25 +734,36 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - cuopt-sh-client==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+  # cuopt/routing/data_model_view.hpp is a public header and includes raft/core/handle.hpp
+  # and raft/core/device_span.hpp, so anything compiling against cuOpt needs raft's headers.
+  # The wheel that carries them is named libraft; the conda package is libraft-headers.
   depends_on_libraft_headers:
     common:
       - output_types: conda
         packages:
           - libraft-headers==26.10.*,>=0.0.0a0
+    specific:
+      - output_types: [requirements, pyproject]
+        matrices:
+          - matrix:
+              cuda: "12.*"
+              cuda_suffixed: "true"
+            packages:
+              - libraft-cu12==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - libraft-cu13==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - libraft==26.10.*,>=0.0.0a0
   depends_on_librmm:
     common:
       - output_types: conda
         packages:
           - &librmm_unsuffixed librmm==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -834,20 +827,11 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - rapids-logger==0.3.*
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          # This index is needed for rapids_logger
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
   depends_on_rmm:
     common:
       - output_types: conda
         packages:
           - &rmm_unsuffixed rmm==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -871,9 +855,6 @@ dependencies:
       - output_types: conda
         packages:
           - &cudf_unsuffixed cudf==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -897,9 +878,6 @@ dependencies:
       - output_types: conda
         packages:
           - &pylibraft_unsuffixed pylibraft==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -1036,12 +1014,14 @@ dependencies:
               cuda: "12.*"
               use_cuda_wheels: "true"
             packages:
-              - cuda-toolkit[cublas,cudart]==12.*
+              - cuda-toolkit[cublas,cudart,cusparse]==12.*
+              - nvidia-nvjitlink-cu12>=12.9,<13
           - matrix:
               cuda: "13.*"
               use_cuda_wheels: "true"
             packages:
-              - &ctk_routing_cu13 cuda-toolkit[cublas,cudart]==13.*
+              - &ctk_routing_cu13 cuda-toolkit[cublas,cudart,cusparse]==13.*
+              - &nvjitlink_routing_cu13 nvidia-nvjitlink>=13.3,<14
           # No cuda selector: this is what the pyproject file keys resolve against, and it
           # is what populates pyproject.toml in source control. use_cuda_wheels is named
           # explicitly so the entry still reads as a CUDA-wheel set.
@@ -1049,6 +1029,7 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - *ctk_routing_cu13
+              - *nvjitlink_routing_cu13
   cuda_wheels:
     specific:
       # cuOpt needs 'nvJitLink>={whatever-cuopt-was-built-against}' at runtime, and mixing

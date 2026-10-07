@@ -209,13 +209,20 @@ class FakeClient:
         if getattr(self, "unhealthy", False):
             raise RuntimeError("gRPC server unavailable")
 
-    def submit(self, problem, settings, enable_incumbents=None):
+    def submit(
+        self,
+        problem,
+        settings,
+        enable_incumbents=None,
+        enable_set_incumbent=False,
+    ):
         job_id = str(uuid.uuid4())
         self.jobs[job_id] = FakeJobStatus.COMPLETED
         self.submitted.append(
             {
                 "id": job_id,
                 "enable_incumbents": enable_incumbents,
+                "enable_set_incumbent": enable_set_incumbent,
                 "problem": problem,
                 "settings": settings,
             }
@@ -375,7 +382,7 @@ def proxy(proxy_server, monkeypatch):
 
 def test_parse_args_defaults():
     args = parse_args([])
-    assert args.port == 8000
+    assert args.port == 5000
     assert args.grpc_host == "127.0.0.1"
     assert args.grpc_port == 5001
 
@@ -804,6 +811,52 @@ def test_incumbents_cursor_and_sentinel(proxy):
     assert second.json() == [{"solution": [], "cost": None, "bound": None}]
 
 
+def test_incumbent_set_solutions_is_forwarded(proxy):
+    url, fake = proxy
+    lp = _lp()
+    lp["variable_types"] = ["I", "I"]
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={
+            "incumbent_solutions": True,
+            "incumbent_set_solutions": True,
+        },
+        json=lp,
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_incumbents"] is True
+    assert fake.submitted[0]["enable_set_incumbent"] is True
+
+
+@pytest.mark.parametrize("variable_type", ["I", "B", "S"])
+def test_incumbent_set_solutions_without_incumbents(proxy, variable_type):
+    url, fake = proxy
+    lp = _lp()
+    lp["variable_types"] = [variable_type, variable_type]
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={"incumbent_set_solutions": True},
+        json=lp,
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_incumbents"] is False
+    assert fake.submitted[0]["enable_set_incumbent"] is True
+
+
+def test_lp_does_not_enable_set_incumbent(proxy):
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={"incumbent_set_solutions": True},
+        json=_lp(),
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_set_incumbent"] is False
+
+
 def test_logs_and_log_delete_noop(proxy):
     url, fake = proxy
     lp = _lp()
@@ -917,7 +970,6 @@ def test_validation_only_skips_submit(proxy):
         ({"cache": True}, "cache"),
         ({"reqId": str(uuid.uuid4())}, "reqId"),
         ({"initialId": str(uuid.uuid4())}, "initialId"),
-        ({"incumbent_set_solutions": True}, "incumbent_set_solutions"),
     ],
 )
 def test_dropped_query_params_are_501(proxy, params, feature):

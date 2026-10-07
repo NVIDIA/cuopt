@@ -320,7 +320,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       if (std::isfinite(initial_upper_bound)) {
         early_cpufj->set_best_objective(problem.get_solver_obj_from_user_obj(initial_upper_bound));
       }
-      early_cpufj->start();
+      early_cpufj->start(omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS);
       solver.context.early_cpufj_ptr = early_cpufj.get();
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
 
@@ -567,8 +567,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       if (pre_solve_heuristics && pre_solve_heuristics->solution_found()) {
         early_cpufj->set_best_objective(pre_solve_heuristics->get_best_objective());
       }
-      early_cpufj->start();
-      CUOPT_LOG_DEBUG("Started early CPUFJ on original problem");
+      // Papilo runs on its own threads, so the team is otherwise idle here.
+      early_cpufj->start(omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS);
+      CUOPT_LOG_DEBUG("Started early CPUFJ on original problem with %d lanes",
+                      early_cpufj->lane_count());
     }
 
     auto early_cpufj_guard = cuopt::scope_guard([&]() {
@@ -635,7 +637,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
                                            ? std::numeric_limits<double>::infinity()
                                            : timer.remaining_time();
 
-      presolver   = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
+      presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
+      presolver->set_indicator_strengthening(settings.indicator_strengthening);
       auto result = presolver->apply_presolve_from_op_problem(
         op_problem,
         cuopt::mathematical_optimization::problem_category_t::MIP,
@@ -900,6 +903,10 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                    mip_solver_settings_t<i_t, f_t> const& settings_const)
 {
+  cuopt_expects(!op_problem.has_quadratic_objective() && !op_problem.has_quadratic_constraints(),
+                error_type_t::ValidationError,
+                "Mixed-integer quadratic problems (MIQP/MIQCP) are not supported.");
+
   std::exception_ptr exception;
   i_t num_threads = 0;
   if (settings_const.num_cpu_threads < 0) {
@@ -965,7 +972,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
           std::chrono::duration<double>(std::chrono::steady_clock::now() - probe_start).count());
       },
       mip::derive_seed(settings_const.seed, mip::rng_id_t::early_cpufj));
-    pre_solve_heuristics->start(/*low_latency=*/true);
+    pre_solve_heuristics->start(1, /*low_latency=*/true);
   }
   cuopt::scope_guard release_probe([&pre_solve_heuristics] {
     if (pre_solve_heuristics) { pre_solve_heuristics->stop(); }
@@ -1056,14 +1063,13 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 template <typename i_t, typename f_t>
 std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   optimization_problem_interface_t<i_t, f_t>* problem_interface,
-  mip_solver_settings_t<i_t, f_t> const& settings)
+  solver_settings_t<i_t, f_t>& settings)
 {
   cuopt_expects(problem_interface != nullptr,
                 error_type_t::ValidationError,
                 "problem_interface cannot be null");
 
   try {
-    // Check if remote execution is enabled (always uses CPU backend)
     if (is_remote_execution_enabled()) {
       auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
       cuopt_expects(cpu_prob != nullptr,
@@ -1078,14 +1084,15 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 #endif
     }
 
-    // Local execution - dispatch to appropriate overload based on problem type
-    auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
+    // Local execution. The GPU solver takes the nested MIP settings.
+    auto& mip_settings = settings.get_mip_settings();
+    auto* cpu_prob     = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
     if (cpu_prob != nullptr) {
       cuopt_expects(is_remote_execution_enabled(),
                     error_type_t::ValidationError,
                     "A CPU-memory problem requires remote execution. Set CUOPT_REMOTE_HOST and "
                     "CUOPT_REMOTE_PORT to solve on a remote GPU server.");
-      return solve_mip(*cpu_prob, settings);
+      return solve_mip(*cpu_prob, mip_settings);
     }
 
     // GPU problem: call GPU solver directly
@@ -1093,7 +1100,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
     cuopt_expects(gpu_prob != nullptr,
                   error_type_t::ValidationError,
                   "problem_interface must be either a CPU or GPU optimization problem");
-    auto gpu_solution = solve_mip<i_t, f_t>(*gpu_prob, settings);
+    auto gpu_solution = solve_mip<i_t, f_t>(*gpu_prob, mip_settings);
     return std::make_unique<gpu_mip_solution_t<i_t, f_t>>(std::move(gpu_solution));
   } catch (const cuopt::logic_error& e) {
     CUOPT_LOG_ERROR("Error in solve_mip (interface): %s", e.what());
@@ -1118,7 +1125,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
     cpu_optimization_problem_t<int, F_TYPE>&, mip_solver_settings_t<int, F_TYPE> const&);      \
                                                                                                \
   template CUOPT_EXPORT std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(      \
-    optimization_problem_interface_t<int, F_TYPE>*, mip_solver_settings_t<int, F_TYPE> const&);
+    optimization_problem_interface_t<int, F_TYPE>*, solver_settings_t<int, F_TYPE>&);
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)

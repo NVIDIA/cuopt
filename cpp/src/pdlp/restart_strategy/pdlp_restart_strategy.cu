@@ -47,7 +47,8 @@
 #include <thrust/sort.h>
 #include <thrust/tuple.h>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_segmented_reduce.cuh>
+#include <cub/device/device_transform.cuh>
 
 #include <cooperative_groups.h>
 

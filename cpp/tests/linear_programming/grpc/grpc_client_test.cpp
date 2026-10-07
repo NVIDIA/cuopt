@@ -18,12 +18,14 @@
 
 #include <utilities/inline_lp_test_utils.hpp>
 
+#include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 #include "grpc_client.hpp"
@@ -39,7 +41,9 @@
 #include <cuopt_remote_service.pb.h>
 #include <grpcpp/grpcpp.h>
 
+#include <limits>
 #include <map>
+#include <stdexcept>
 
 using namespace cuopt::mathematical_optimization;
 using namespace ::testing;
@@ -1207,8 +1211,8 @@ TEST_F(GrpcClientTest, SubmitLP_Success)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client_->submit_lp(problem, settings);
 
@@ -1225,7 +1229,7 @@ TEST_F(GrpcClientTest, SubmitLP_NotConnected)
   grpc_client_t disconnected_client(config);
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = disconnected_client.submit_lp(problem, settings);
 
@@ -1243,7 +1247,7 @@ TEST_F(GrpcClientTest, SubmitLP_RpcFailure)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client_->submit_lp(problem, settings);
 
@@ -1262,7 +1266,7 @@ TEST_F(GrpcClientTest, SubmitLP_EmptyJobId)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client_->submit_lp(problem, settings);
 
@@ -1282,13 +1286,55 @@ TEST_F(GrpcClientTest, SubmitMIP_Success)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client_->submit_mip(problem, settings);
 
   EXPECT_TRUE(result.success);
   EXPECT_EQ(result.job_id, "mip-job-001");
+}
+
+TEST_F(GrpcClientTest, SubmitMIP_UnaryPreservesIncumbentSetFlag)
+{
+  EXPECT_CALL(*mock_stub_, SubmitJob(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::SubmitJobRequest& req,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      EXPECT_TRUE(req.has_mip_request());
+      EXPECT_TRUE(req.mip_request().enable_incumbents());
+      EXPECT_TRUE(req.mip_request().enable_set_incumbent());
+      resp->set_job_id("mip-incumbent-set-unary");
+      return grpc::Status::OK;
+    });
+
+  auto problem = create_test_mip_problem();
+  solver_settings_t<int32_t, double> settings;
+
+  auto result = client_->submit_mip(problem, settings, true, true);
+
+  EXPECT_TRUE(result.success);
+}
+
+TEST_F(GrpcClientTest, SubmitMIP_UnaryPreservesSetIncumbentWithoutIncumbents)
+{
+  EXPECT_CALL(*mock_stub_, SubmitJob(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::SubmitJobRequest& req,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      EXPECT_TRUE(req.has_mip_request());
+      EXPECT_FALSE(req.mip_request().enable_incumbents());
+      EXPECT_TRUE(req.mip_request().enable_set_incumbent());
+      resp->set_job_id("mip-set-incumbent-only-unary");
+      return grpc::Status::OK;
+    });
+
+  auto problem = create_test_mip_problem();
+  solver_settings_t<int32_t, double> settings;
+
+  auto result = client_->submit_mip(problem, settings, false, true);
+
+  EXPECT_TRUE(result.success);
 }
 
 TEST_F(GrpcClientTest, SubmitMIP_RpcFailure)
@@ -1301,7 +1347,7 @@ TEST_F(GrpcClientTest, SubmitMIP_RpcFailure)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client_->submit_mip(problem, settings);
 
@@ -1316,8 +1362,8 @@ TEST_F(GrpcClientTest, SolveLP_SuccessWithPolling)
 {
   // 1. SubmitJob succeeds
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   grpc_client_config_t cfg;
   cfg.server_address   = "mock://test";
@@ -1409,8 +1455,8 @@ TEST_F(GrpcClientTest, SolveLP_SuccessWithWait)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
 
@@ -1447,8 +1493,8 @@ TEST_F(GrpcClientTest, SolveLP_JobFails)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
 
@@ -1475,7 +1521,7 @@ TEST_F(GrpcClientTest, SolveLP_SubmitFails)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client->solve_lp(problem, settings);
 
@@ -1493,7 +1539,7 @@ TEST_F(GrpcClientTest, SolveLP_NotConnected)
   // Don't inject mock or mark as connected
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client.solve_lp(problem, settings);
 
@@ -1544,8 +1590,8 @@ TEST_F(GrpcClientTest, SolveMIP_Success)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_mip(problem, settings);
 
@@ -1833,13 +1879,123 @@ TEST_F(GrpcClientTest, SubmitLP_ChunkedUploadForLargePayload)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->submit_lp(problem, settings);
 
   EXPECT_TRUE(result.success) << "Error: " << result.error_message;
   EXPECT_EQ(result.job_id, "chunked-job-001");
+  EXPECT_GT(chunk_count, 0) << "Should have sent at least one array chunk";
+}
+
+TEST_F(GrpcClientTest, SubmitMIP_ChunkedPreservesIncumbentSetFlag)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address                = "mock://test";
+  cfg.chunked_array_threshold_bytes = 0;
+  cfg.chunk_size_bytes              = 4 * 1024;
+
+  auto client = std::make_unique<grpc_client_t>(cfg);
+  auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedUploadRequest& req,
+                 cuopt::remote::StartChunkedUploadResponse* resp) {
+      EXPECT_TRUE(req.has_problem_header());
+      EXPECT_TRUE(req.problem_header().enable_incumbents());
+      EXPECT_TRUE(req.problem_header().enable_set_incumbent());
+      resp->set_upload_id("mip-incumbent-set-chunked");
+      resp->set_max_message_bytes(4 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  int chunk_count = 0;
+  EXPECT_CALL(*mock, SendArrayChunk(_, _, _))
+    .WillRepeatedly([&chunk_count](grpc::ClientContext*,
+                                   const cuopt::remote::SendArrayChunkRequest& req,
+                                   cuopt::remote::SendArrayChunkResponse* resp) {
+      EXPECT_EQ(req.upload_id(), "mip-incumbent-set-chunked");
+      EXPECT_TRUE(req.has_chunk());
+      chunk_count++;
+      resp->set_upload_id("mip-incumbent-set-chunked");
+      resp->set_chunks_received(chunk_count);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock, FinishChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedUploadRequest& req,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      EXPECT_EQ(req.upload_id(), "mip-incumbent-set-chunked");
+      resp->set_job_id("mip-incumbent-set-chunked-job");
+      return grpc::Status::OK;
+    });
+
+  auto problem = create_test_mip_problem();
+  solver_settings_t<int32_t, double> settings;
+
+  auto result = client->submit_mip(problem, settings, true, true);
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_EQ(result.job_id, "mip-incumbent-set-chunked-job");
+  EXPECT_GT(chunk_count, 0) << "Should have sent at least one array chunk";
+}
+
+TEST_F(GrpcClientTest, SubmitMIP_ChunkedPreservesSetIncumbentWithoutIncumbents)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address                = "mock://test";
+  cfg.chunked_array_threshold_bytes = 0;
+  cfg.chunk_size_bytes              = 4 * 1024;
+
+  auto client = std::make_unique<grpc_client_t>(cfg);
+  auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedUploadRequest& req,
+                 cuopt::remote::StartChunkedUploadResponse* resp) {
+      EXPECT_TRUE(req.has_problem_header());
+      EXPECT_FALSE(req.problem_header().enable_incumbents());
+      EXPECT_TRUE(req.problem_header().enable_set_incumbent());
+      resp->set_upload_id("mip-set-incumbent-only-chunked");
+      resp->set_max_message_bytes(4 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  int chunk_count = 0;
+  EXPECT_CALL(*mock, SendArrayChunk(_, _, _))
+    .WillRepeatedly([&chunk_count](grpc::ClientContext*,
+                                   const cuopt::remote::SendArrayChunkRequest& req,
+                                   cuopt::remote::SendArrayChunkResponse* resp) {
+      EXPECT_EQ(req.upload_id(), "mip-set-incumbent-only-chunked");
+      EXPECT_TRUE(req.has_chunk());
+      chunk_count++;
+      resp->set_upload_id("mip-set-incumbent-only-chunked");
+      resp->set_chunks_received(chunk_count);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock, FinishChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedUploadRequest& req,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      EXPECT_EQ(req.upload_id(), "mip-set-incumbent-only-chunked");
+      resp->set_job_id("mip-set-incumbent-only-chunked-job");
+      return grpc::Status::OK;
+    });
+
+  auto problem = create_test_mip_problem();
+  solver_settings_t<int32_t, double> settings;
+
+  auto result = client->submit_mip(problem, settings, false, true);
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_EQ(result.job_id, "mip-set-incumbent-only-chunked-job");
   EXPECT_GT(chunk_count, 0) << "Should have sent at least one array chunk";
 }
 
@@ -1854,13 +2010,91 @@ TEST_F(GrpcClientTest, SubmitLP_UnaryForSmallPayload)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client_->submit_lp(problem, settings);
 
   EXPECT_TRUE(result.success) << "Error: " << result.error_message;
   EXPECT_EQ(result.job_id, "unary-lp-001");
+}
+
+// A warm start stays in the settings message after the problem arrays are
+// chunked, so a small problem plus a warm start that crosses the threshold
+// takes the chunked path.
+TEST_F(GrpcClientTest, SubmitLP_WarmStartPushesSmallProblemToChunkedUpload)
+{
+  auto problem             = create_test_lp_problem();
+  const auto problem_bytes = estimate_problem_proto_size(problem);
+
+  grpc_client_config_t cfg;
+  cfg.server_address                = "mock://test";
+  cfg.chunked_array_threshold_bytes = static_cast<int64_t>(problem_bytes);
+  cfg.chunk_size_bytes              = 4 * 1024;
+
+  auto client = std::make_unique<grpc_client_t>(cfg);
+  auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedUploadRequest& req,
+                 cuopt::remote::StartChunkedUploadResponse* resp) {
+      EXPECT_TRUE(req.problem_header().lp_settings().has_warm_start_data());
+      resp->set_upload_id("warm-chunked-001");
+      resp->set_max_message_bytes(4 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, SendArrayChunk(_, _, _))
+    .WillRepeatedly([](grpc::ClientContext*,
+                       const cuopt::remote::SendArrayChunkRequest&,
+                       cuopt::remote::SendArrayChunkResponse* resp) {
+      resp->set_upload_id("warm-chunked-001");
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, FinishChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedUploadRequest&,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      resp->set_job_id("warm-chunked-job");
+      return grpc::Status::OK;
+    });
+
+  solver_settings_t<int32_t, double> settings;
+  auto& ws = settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data();
+  ws.last_restart_duality_gap_dual_solution_ = {1.0, 2.0};
+  ws.current_primal_solution_                = {0.1, 0.2};
+
+  auto result = client->submit_lp(problem, settings);
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_EQ(result.job_id, "warm-chunked-job");
+}
+
+// Chunking cannot move the warm start out of the header, so a payload larger
+// than the client message cap fails before any RPC.
+TEST_F(GrpcClientTest, SubmitLP_WarmStartLargerThanMessageCapFails)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address    = "mock://test";
+  cfg.max_message_bytes = 4 * 1024 * 1024;
+
+  auto client = std::make_unique<grpc_client_t>(cfg);
+  auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+  EXPECT_CALL(*mock, SubmitJob(_, _, _)).Times(0);
+  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _)).Times(0);
+
+  auto problem = create_test_lp_problem();
+  solver_settings_t<int32_t, double> settings;
+  settings.get_pdlp_settings()
+    .get_cpu_pdlp_warm_start_data()
+    .last_restart_duality_gap_dual_solution_.assign((4 * 1024 * 1024) / sizeof(double) + 1, 1.0);
+
+  auto result = client->submit_lp(problem, settings);
+
+  EXPECT_FALSE(result.success);
+  EXPECT_NE(result.error_message.find("warm start"), std::string::npos);
 }
 
 // =============================================================================
@@ -1898,14 +2132,14 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
 
   // Branching
   orig.reliability_branching           = 32;
-  orig.mip_batch_pdlp_strong_branching = 16;
+  orig.mip_batch_pdlp_strong_branching = 2;
 
   // Cut configuration
   orig.max_cut_passes             = 20;
   orig.mir_cuts                   = 1;
-  orig.mixed_integer_gomory_cuts  = 2;
+  orig.mixed_integer_gomory_cuts  = 1;
   orig.knapsack_cuts              = 0;
-  orig.clique_cuts                = 3;
+  orig.clique_cuts                = 0;
   orig.strong_chvatal_gomory_cuts = -1;
   orig.reduced_cost_strengthening = 1;
   orig.cut_change_threshold       = 0.05;
@@ -1934,14 +2168,15 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   orig.heuristic_params.enabled_recombiners                = 7;      // default 15 (bitmask)
   orig.heuristic_params.cycle_detection_length             = 40;     // default 30
   orig.heuristic_params.relaxed_lp_time_limit              = 2.5;    // default 1.0
-  orig.heuristic_params.related_vars_time_limit            = 45.0;   // default 30.0
+  orig.heuristic_params.related_vars_time_limit            = 45.0;   // default 2.0
 
   // Roundtrip: C++ -> proto -> C++
   cuopt::remote::MIPSolverSettings pb;
   map_mip_settings_to_proto(orig, &pb);
 
-  mip_solver_settings_t<int32_t, double> restored;
-  map_proto_to_mip_settings(pb, restored);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_mip_settings(pb, restored_settings);
+  auto& restored = restored_settings.get_mip_settings();
 
   // Limits
   EXPECT_DOUBLE_EQ(restored.time_limit, 42.5);
@@ -1970,14 +2205,14 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
 
   // Branching
   EXPECT_EQ(restored.reliability_branching, 32);
-  EXPECT_EQ(restored.mip_batch_pdlp_strong_branching, 16);
+  EXPECT_EQ(restored.mip_batch_pdlp_strong_branching, 2);
 
   // Cut configuration
   EXPECT_EQ(restored.max_cut_passes, 20);
   EXPECT_EQ(restored.mir_cuts, 1);
-  EXPECT_EQ(restored.mixed_integer_gomory_cuts, 2);
+  EXPECT_EQ(restored.mixed_integer_gomory_cuts, 1);
   EXPECT_EQ(restored.knapsack_cuts, 0);
-  EXPECT_EQ(restored.clique_cuts, 3);
+  EXPECT_EQ(restored.clique_cuts, 0);
   EXPECT_EQ(restored.strong_chvatal_gomory_cuts, -1);
   EXPECT_EQ(restored.reduced_cost_strengthening, 1);
   EXPECT_DOUBLE_EQ(restored.cut_change_threshold, 0.05);
@@ -2007,19 +2242,19 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   EXPECT_DOUBLE_EQ(restored.heuristic_params.related_vars_time_limit, 45.0);
 }
 
-TEST(MapperRoundtrip, MIPSettingsSymmetryClampsOutOfRange)
+TEST(MapperRoundtrip, MIPSettingsSymmetryRejectsOutOfRange)
 {
-  // The local-solve binding (solver_settings.cu) restricts symmetry to [-1, 2].
-  // The mapper applies the same range to defend against buggy/untrusted clients.
+  // set_parameter() rejects a symmetry value outside [-1, 2] and does not
+  // write it.
   for (int bad_value : {-2, 3, 99, std::numeric_limits<int32_t>::min()}) {
     cuopt::remote::MIPSolverSettings pb;
     pb.set_symmetry(bad_value);
 
-    mip_solver_settings_t<int32_t, double> restored;
-    restored.symmetry = 0;  // confirm clamp actively overwrites
-    map_proto_to_mip_settings(pb, restored);
-
-    EXPECT_EQ(restored.symmetry, -1) << "symmetry=" << bad_value << " should clamp to -1 (default)";
+    solver_settings_t<int32_t, double> restored_settings;
+    restored_settings.get_mip_settings().symmetry = 0;
+    EXPECT_THROW(map_proto_to_mip_settings(pb, restored_settings), std::invalid_argument);
+    EXPECT_EQ(restored_settings.get_mip_settings().symmetry, 0)
+      << "symmetry=" << bad_value << " should be rejected before it is stored";
   }
 
   // In-range values pass through unchanged.
@@ -2027,10 +2262,10 @@ TEST(MapperRoundtrip, MIPSettingsSymmetryClampsOutOfRange)
     cuopt::remote::MIPSolverSettings pb;
     pb.set_symmetry(good_value);
 
-    mip_solver_settings_t<int32_t, double> restored;
-    map_proto_to_mip_settings(pb, restored);
+    solver_settings_t<int32_t, double> restored_settings;
+    map_proto_to_mip_settings(pb, restored_settings);
 
-    EXPECT_EQ(restored.symmetry, good_value)
+    EXPECT_EQ(restored_settings.get_mip_settings().symmetry, good_value)
       << "symmetry=" << good_value << " should round-trip unchanged";
   }
 }
@@ -2044,9 +2279,10 @@ TEST(MapperRoundtrip, MIPSettingsNodeLimitSentinel)
   map_mip_settings_to_proto(orig, &pb);
   EXPECT_EQ(pb.node_limit(), -1) << "max() should map to -1 sentinel in proto";
 
-  mip_solver_settings_t<int32_t, double> restored;
+  solver_settings_t<int32_t, double> restored_settings;
+  auto& restored      = restored_settings.get_mip_settings();
   restored.node_limit = 0;
-  map_proto_to_mip_settings(pb, restored);
+  map_proto_to_mip_settings(pb, restored_settings);
   EXPECT_EQ(restored.node_limit, 0) << "Negative sentinel should leave node_limit unchanged";
 }
 
@@ -2269,7 +2505,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.folding                 = 1;
   orig.augmented               = 1;
   orig.dualize                 = 1;
-  orig.ordering                = 2;
+  orig.ordering                = 1;
   orig.barrier_dual_initial_point =
     cuopt::mathematical_optimization::barrier_dual_initial_point_t::LustigMarstenShanno;
   orig.eliminate_dense_columns      = true;
@@ -2285,8 +2521,9 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   cuopt::remote::PDLPSolverSettings pb;
   map_pdlp_settings_to_proto(orig, &pb);
 
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings);
+  auto& restored = restored_settings.get_pdlp_settings();
 
   EXPECT_DOUBLE_EQ(restored.tolerances.absolute_gap_tolerance, 1e-7);
   EXPECT_DOUBLE_EQ(restored.tolerances.relative_gap_tolerance, 1e-6);
@@ -2313,7 +2550,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.folding, 1);
   EXPECT_EQ(restored.augmented, 1);
   EXPECT_EQ(restored.dualize, 1);
-  EXPECT_EQ(restored.ordering, 2);
+  EXPECT_EQ(restored.ordering, 1);
   EXPECT_EQ(restored.barrier_dual_initial_point,
             cuopt::mathematical_optimization::barrier_dual_initial_point_t::LustigMarstenShanno);
   EXPECT_EQ(restored.eliminate_dense_columns, true);
@@ -2326,6 +2563,294 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.hyper_params.do_curtis_reid_scaling, false);
 }
 
+TEST(MapperRoundtrip, SettingsWarmStartRoundTrip)
+{
+  pdlp_solver_settings_t<int32_t, double> empty;
+  EXPECT_EQ(estimate_pdlp_warm_start_proto_size(empty), 0u);
+
+  pdlp_solver_settings_t<int32_t, double> orig;
+  auto& ws                                     = orig.get_cpu_pdlp_warm_start_data();
+  ws.current_primal_solution_                  = {0.1, 0.2};
+  ws.current_dual_solution_                    = {0.3};
+  ws.initial_primal_average_                   = {0.1, 0.2};
+  ws.initial_dual_average_                     = {0.3};
+  ws.current_ATY_                              = {0.4, 0.5};
+  ws.sum_primal_solutions_                     = {0.1, 0.2};
+  ws.sum_dual_solutions_                       = {0.3};
+  ws.last_restart_duality_gap_primal_solution_ = {0.1, 0.2};
+  ws.last_restart_duality_gap_dual_solution_   = {0.3};
+  ws.initial_primal_weight_                    = 1.25;
+  ws.initial_step_size_                        = 0.5;
+  ws.total_pdlp_iterations_                    = 7;
+  ws.total_pdhg_iterations_                    = 8;
+  ws.last_candidate_kkt_score_                 = 0.01;
+  ws.last_restart_kkt_score_                   = 0.02;
+  ws.sum_solution_weight_                      = 3.0;
+  ws.iterations_since_last_restart_            = 4;
+
+  cuopt::remote::PDLPSolverSettings pb;
+  map_pdlp_settings_to_proto(orig, &pb);
+  ASSERT_TRUE(pb.has_warm_start_data());
+  EXPECT_DOUBLE_EQ(pb.warm_start_data().current_primal_solution(0), 0.1);
+  EXPECT_DOUBLE_EQ(pb.warm_start_data().current_dual_solution(0), 0.3);
+  EXPECT_DOUBLE_EQ(pb.warm_start_data().initial_primal_weight(), 1.25);
+  EXPECT_EQ(pb.warm_start_data().total_pdlp_iterations(), 7);
+
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings, 2, 1);
+  const auto& got = restored_settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data();
+  ASSERT_TRUE(got.is_populated());
+  EXPECT_DOUBLE_EQ(got.current_primal_solution_[0], 0.1);
+  EXPECT_DOUBLE_EQ(got.current_dual_solution_[0], 0.3);
+  EXPECT_DOUBLE_EQ(got.initial_primal_weight_, 1.25);
+  EXPECT_EQ(got.total_pdlp_iterations_, 7);
+  EXPECT_EQ(got.iterations_since_last_restart_, 4);
+  EXPECT_GE(estimate_pdlp_warm_start_proto_size(orig), pb.warm_start_data().ByteSizeLong());
+
+  cuopt::remote::ChunkedProblemHeader header;
+  cpu_optimization_problem_t<int32_t, double> problem;
+  populate_chunked_header_lp(problem, orig, &header);
+  ASSERT_TRUE(header.lp_settings().has_warm_start_data());
+  EXPECT_DOUBLE_EQ(header.lp_settings().warm_start_data().initial_step_size(), 0.5);
+}
+
+TEST(MapperRoundtrip, SettingsWarmStartRejectsBadPayload)
+{
+  pdlp_solver_settings_t<int32_t, double> orig;
+  auto& ws                                     = orig.get_cpu_pdlp_warm_start_data();
+  ws.current_primal_solution_                  = {0.1, 0.2};
+  ws.current_dual_solution_                    = {0.3};
+  ws.initial_primal_average_                   = {0.1, 0.2};
+  ws.initial_dual_average_                     = {0.3};
+  ws.current_ATY_                              = {0.4, 0.5};
+  ws.sum_primal_solutions_                     = {0.1, 0.2};
+  ws.sum_dual_solutions_                       = {0.3};
+  ws.last_restart_duality_gap_primal_solution_ = {0.1, 0.2};
+  ws.last_restart_duality_gap_dual_solution_   = {0.3};
+  ws.total_pdlp_iterations_                    = 7;
+
+  cuopt::remote::PDLPSolverSettings pb;
+  map_pdlp_settings_to_proto(orig, &pb);
+
+  solver_settings_t<int32_t, double> restored;
+  EXPECT_THROW(map_proto_to_pdlp_settings(pb, restored, 3, 1), std::invalid_argument);
+  EXPECT_FALSE(restored.get_pdlp_settings().get_cpu_pdlp_warm_start_data().is_populated());
+
+  pb.mutable_warm_start_data()->set_initial_primal_weight(std::numeric_limits<double>::quiet_NaN());
+  EXPECT_THROW(map_proto_to_pdlp_settings(pb, restored, 2, 1), std::invalid_argument);
+
+  pb.mutable_warm_start_data()->set_initial_primal_weight(1.25);
+  pb.mutable_warm_start_data()->set_total_pdlp_iterations(-2);
+  EXPECT_THROW(map_proto_to_pdlp_settings(pb, restored, 2, 1), std::invalid_argument);
+
+  pb.mutable_warm_start_data()->set_total_pdlp_iterations(-1);
+  EXPECT_NO_THROW(map_proto_to_pdlp_settings(pb, restored, 2, 1));
+  EXPECT_EQ(restored.get_pdlp_settings().get_cpu_pdlp_warm_start_data().total_pdlp_iterations_, -1);
+}
+
+TEST(MapperRoundtrip, ParameterMapEmptyLeavesTypedField)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pb.set_time_limit(3.5);
+
+  solver_settings_t<int32_t, double> settings;
+  map_proto_to_pdlp_settings(pb, settings);
+  apply_parameter_overrides(settings, pb.parameters());
+
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().time_limit, 3.5);
+}
+
+TEST(MapperRoundtrip, ParameterMapOverridesDeprecatedFields)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pb.set_time_limit(3.5);
+  (*pb.mutable_parameters())[CUOPT_TIME_LIMIT] = "9.25";
+
+  solver_settings_t<int32_t, double> settings;
+  map_proto_to_pdlp_settings(pb, settings);
+  // The typed field is ignored while the map is non-empty.
+  pdlp_solver_settings_t<int32_t, double> fresh;
+  EXPECT_EQ(settings.get_pdlp_settings().time_limit, fresh.time_limit);
+  apply_parameter_overrides(settings, pb.parameters());
+
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().time_limit, 9.25);
+}
+
+// A map that names one parameter leaves every other parameter at the C++
+// default, including a deprecated field set on the same message. Warm start
+// and presolve_absolute_tolerance still apply.
+TEST(MapperRoundtrip, PartialParameterMapSetsOnlyNamedKeys)
+{
+  cuopt::remote::PDLPSolverSettings lp;
+  lp.set_time_limit(3.5);
+  lp.set_detect_infeasibility(true);
+  (*lp.mutable_parameters())[CUOPT_SEQUENCE_SOLVE] = "true";
+  auto* ws                                         = lp.mutable_warm_start_data();
+  ws->add_last_restart_duality_gap_dual_solution(0.3);
+  ws->set_initial_step_size(0.5);
+
+  solver_settings_t<int32_t, double> settings;
+  pdlp_solver_settings_t<int32_t, double> fresh_lp;
+  map_proto_to_pdlp_settings(lp, settings);
+  apply_parameter_overrides(settings, lp.parameters());
+
+  EXPECT_TRUE(settings.get_pdlp_settings().sequence_solve);
+  EXPECT_EQ(settings.get_pdlp_settings().time_limit, fresh_lp.time_limit);
+  EXPECT_EQ(settings.get_pdlp_settings().detect_infeasibility, fresh_lp.detect_infeasibility);
+  ASSERT_TRUE(settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data().is_populated());
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data().initial_step_size_,
+                   0.5);
+
+  cuopt::remote::MIPSolverSettings mip;
+  mip.set_time_limit(3.5);
+  mip.set_presolve_absolute_tolerance(5e-7);
+  (*mip.mutable_parameters())[CUOPT_MIP_FLOW_COVER_CUTS] = "1";
+
+  solver_settings_t<int32_t, double> mip_settings;
+  mip_solver_settings_t<int32_t, double> fresh_mip;
+  map_proto_to_mip_settings(mip, mip_settings);
+  apply_parameter_overrides(mip_settings, mip.parameters());
+
+  EXPECT_EQ(mip_settings.get_mip_settings().flow_cover_cuts, 1);
+  EXPECT_EQ(mip_settings.get_mip_settings().time_limit, fresh_mip.time_limit);
+  EXPECT_DOUBLE_EQ(mip_settings.get_mip_settings().tolerances.presolve_absolute_tolerance, 5e-7);
+}
+
+TEST(MapperRoundtrip, ParameterMapRejectsUnknownName)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  (*pb.mutable_parameters())["not_a_parameter"] = "1";
+
+  solver_settings_t<int32_t, double> settings;
+  EXPECT_THROW(apply_parameter_overrides(settings, pb.parameters()), std::invalid_argument);
+}
+
+TEST(MapperRoundtrip, ParameterMapRejectsOutOfRangeValue)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  (*pb.mutable_parameters())[CUOPT_METHOD] = "99";
+
+  solver_settings_t<int32_t, double> settings;
+  EXPECT_THROW(apply_parameter_overrides(settings, pb.parameters()), std::invalid_argument);
+}
+
+TEST(MapperRoundtrip, ParameterMapRejectsTooManyEntries)
+{
+  solver_settings_t<int32_t, double> settings;
+  const std::size_t registered =
+    settings.get_float_parameters().size() + settings.get_int_parameters().size() +
+    settings.get_bool_parameters().size() + settings.get_string_parameters().size();
+  const std::size_t cap = registered * 2;
+
+  cuopt::remote::PDLPSolverSettings pb;
+  for (std::size_t i = 0; i < cap + 1; ++i) {
+    (*pb.mutable_parameters())["extra_" + std::to_string(i)] = "1";
+  }
+
+  try {
+    apply_parameter_overrides(settings, pb.parameters());
+    FAIL() << "Expected too many solver parameters";
+  } catch (const std::invalid_argument& e) {
+    EXPECT_NE(std::string(e.what()).find("Too many solver parameters"), std::string::npos);
+  }
+}
+
+TEST(MapperRoundtrip, ParameterMapRoundTripsSolverSettings)
+{
+  using settings_t = solver_settings_t<int32_t, double>;
+  settings_t src;
+  const double precise = 1.2345678901234567e-4;
+  src.set_parameter(CUOPT_TIME_LIMIT, 4.5);
+  src.set_parameter(CUOPT_ABSOLUTE_DUAL_TOLERANCE, precise);
+  src.set_parameter(CUOPT_SEQUENCE_SOLVE, true);
+  src.set_parameter(CUOPT_MIP_FLOW_COVER_CUTS, 1);
+
+  cuopt::remote::PDLPSolverSettings lp_pb;
+  map_pdlp_settings_to_proto(src.get_pdlp_settings(), &lp_pb);
+  append_solver_parameters(src, lp_pb.mutable_parameters());
+
+  EXPECT_EQ(lp_pb.parameters().at(CUOPT_SEQUENCE_SOLVE), "true");
+  // Ignored: the map is non-empty, so deprecated typed fields are not copied.
+  lp_pb.set_time_limit(1.0);
+
+  settings_t dst;
+  pdlp_solver_settings_t<int32_t, double> fresh;
+  map_proto_to_pdlp_settings(lp_pb, dst);
+  EXPECT_EQ(dst.get_pdlp_settings().time_limit, fresh.time_limit);
+  apply_parameter_overrides(dst, lp_pb.parameters());
+  EXPECT_DOUBLE_EQ(dst.get_pdlp_settings().time_limit, 4.5);
+  EXPECT_DOUBLE_EQ(dst.get_pdlp_settings().tolerances.absolute_dual_tolerance, precise);
+  EXPECT_TRUE(dst.get_pdlp_settings().sequence_solve);
+
+  cuopt::remote::MIPSolverSettings mip_pb;
+  map_mip_settings_to_proto(src.get_mip_settings(), &mip_pb);
+  append_solver_parameters(src, mip_pb.mutable_parameters());
+  EXPECT_EQ(mip_pb.parameters().at(CUOPT_MIP_FLOW_COVER_CUTS), "1");
+
+  settings_t mip_dst;
+  map_proto_to_mip_settings(mip_pb, mip_dst);
+  apply_parameter_overrides(mip_dst, mip_pb.parameters());
+  EXPECT_EQ(mip_dst.get_mip_settings().flow_cover_cuts, 1);
+
+  settings_t defaults;
+  cuopt::remote::PDLPSolverSettings inf_pb;
+  append_solver_parameters(defaults, inf_pb.mutable_parameters());
+  EXPECT_EQ(inf_pb.parameters().at(CUOPT_TIME_LIMIT), "inf");
+}
+
+// The live client sends set_parameter() values only in the map. Warm start and
+// presolve_absolute_tolerance still travel as ordinary fields.
+TEST(MapperRoundtrip, ClientRequestOmitsDeprecatedParameterFields)
+{
+  using settings_t = solver_settings_t<int32_t, double>;
+  settings_t settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 4.5);
+  settings.get_mip_settings().tolerances.presolve_absolute_tolerance = 5e-7;
+  auto& ws = settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data();
+  ws.last_restart_duality_gap_dual_solution_ = {0.3};
+  ws.initial_step_size_                      = 0.5;
+
+  auto lp_problem         = create_test_lp_problem();
+  auto lp                 = build_lp_submit_request(lp_problem, settings);
+  const auto& lp_settings = lp.lp_request().settings();
+  EXPECT_FALSE(lp_settings.has_time_limit());
+  EXPECT_EQ(lp_settings.parameters().at(CUOPT_TIME_LIMIT), "4.5");
+  ASSERT_TRUE(lp_settings.has_warm_start_data());
+  EXPECT_DOUBLE_EQ(lp_settings.warm_start_data().initial_step_size(), 0.5);
+
+  auto mip_problem         = create_test_mip_problem();
+  auto mip                 = build_mip_submit_request(mip_problem, settings);
+  const auto& mip_settings = mip.mip_request().settings();
+  EXPECT_FALSE(mip_settings.has_time_limit());
+  EXPECT_TRUE(mip_settings.has_presolve_absolute_tolerance());
+  EXPECT_DOUBLE_EQ(mip_settings.presolve_absolute_tolerance(), 5e-7);
+  EXPECT_EQ(mip_settings.parameters().at(CUOPT_TIME_LIMIT), "4.5");
+
+  cuopt::remote::ChunkedProblemHeader lp_header;
+  populate_chunked_header_lp(lp_problem, settings.get_pdlp_settings(), &lp_header);
+  EXPECT_FALSE(lp_header.lp_settings().has_time_limit());
+  ASSERT_TRUE(lp_header.lp_settings().has_warm_start_data());
+
+  cuopt::remote::ChunkedProblemHeader mip_header;
+  populate_chunked_header_mip(mip_problem, settings.get_mip_settings(), false, false, &mip_header);
+  EXPECT_FALSE(mip_header.mip_settings().has_time_limit());
+  EXPECT_TRUE(mip_header.mip_settings().has_presolve_absolute_tolerance());
+  EXPECT_DOUBLE_EQ(mip_header.mip_settings().presolve_absolute_tolerance(), 5e-7);
+}
+
+// A shared name has to agree on both nested settings before it can be sent.
+TEST(MapperRoundtrip, ParameterMapRejectsDivergentSharedTimeLimit)
+{
+  using settings_t = solver_settings_t<int32_t, double>;
+
+  settings_t settings;
+  settings.get_mip_settings().time_limit  = 10.0;
+  settings.get_pdlp_settings().time_limit = 30.0;
+
+  cuopt::remote::MIPSolverSettings pb;
+  EXPECT_THROW(append_solver_parameters(settings, pb.mutable_parameters()), std::invalid_argument);
+}
+
 TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
 {
   pdlp_solver_settings_t<int32_t, double> orig;
@@ -2335,9 +2860,10 @@ TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
   map_pdlp_settings_to_proto(orig, &pb);
   EXPECT_EQ(pb.iteration_limit(), -1) << "max() should map to -1 sentinel";
 
-  pdlp_solver_settings_t<int32_t, double> restored;
+  solver_settings_t<int32_t, double> restored_settings;
+  auto& restored     = restored_settings.get_pdlp_settings();
   auto default_limit = restored.iteration_limit;
-  map_proto_to_pdlp_settings(pb, restored);
+  map_proto_to_pdlp_settings(pb, restored_settings);
   EXPECT_EQ(restored.iteration_limit, default_limit) << "Negative sentinel should keep default";
 }
 
@@ -2356,16 +2882,18 @@ TEST(MapperRoundtrip, MIPSettingsProbingOmittedPreservesDefault)
 {
   cuopt::remote::MIPSolverSettings pb;  // default-constructed: probing absent
 
-  mip_solver_settings_t<int32_t, double> restored;
+  solver_settings_t<int32_t, double> restored_settings;
+  auto& restored = restored_settings.get_mip_settings();
   ASSERT_TRUE(restored.probing) << "C++ default is expected to be true";
   restored.probing = false;  // confirm the guard actively skips the assignment
-  map_proto_to_mip_settings(pb, restored);
+  map_proto_to_mip_settings(pb, restored_settings);
   EXPECT_FALSE(restored.probing)
     << "Omitted optional bool must not overwrite the existing struct value; "
        "the in-class default would be restored only if the struct was fresh";
 
-  mip_solver_settings_t<int32_t, double> fresh;
-  map_proto_to_mip_settings(pb, fresh);
+  solver_settings_t<int32_t, double> fresh_settings;
+  map_proto_to_mip_settings(pb, fresh_settings);
+  auto& fresh = fresh_settings.get_mip_settings();
   EXPECT_TRUE(fresh.probing) << "Omitted optional bool must preserve the C++ default `true`";
 }
 
@@ -2375,18 +2903,19 @@ TEST(MapperRoundtrip, MIPSettingsProbingExplicitFalseRoundtrips)
   pb.set_probing(false);
   ASSERT_TRUE(pb.has_probing()) << "set_probing must mark presence on optional field";
 
-  mip_solver_settings_t<int32_t, double> restored;
-  map_proto_to_mip_settings(pb, restored);
-  EXPECT_FALSE(restored.probing) << "Explicit false must apply";
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_mip_settings(pb, restored_settings);
+  EXPECT_FALSE(restored_settings.get_mip_settings().probing) << "Explicit false must apply";
 }
 
 TEST(MapperRoundtrip, PDLPSettingsDualPostsolveOmittedPreservesDefault)
 {
   cuopt::remote::PDLPSolverSettings pb;  // default-constructed
 
-  pdlp_solver_settings_t<int32_t, double> fresh;
+  solver_settings_t<int32_t, double> fresh_settings;
+  auto& fresh = fresh_settings.get_pdlp_settings();
   ASSERT_TRUE(fresh.dual_postsolve) << "C++ default is expected to be true";
-  map_proto_to_pdlp_settings(pb, fresh);
+  map_proto_to_pdlp_settings(pb, fresh_settings);
   EXPECT_TRUE(fresh.dual_postsolve) << "Omitted optional bool must preserve the C++ default `true`";
 }
 
@@ -2396,18 +2925,19 @@ TEST(MapperRoundtrip, PDLPSettingsDualPostsolveExplicitFalseRoundtrips)
   pb.set_dual_postsolve(false);
   ASSERT_TRUE(pb.has_dual_postsolve());
 
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored);
-  EXPECT_FALSE(restored.dual_postsolve);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings);
+  EXPECT_FALSE(restored_settings.get_pdlp_settings().dual_postsolve);
 }
 
 TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementOmittedPreservesDefault)
 {
   cuopt::remote::PDLPSolverSettings pb;
 
-  pdlp_solver_settings_t<int32_t, double> fresh;
+  solver_settings_t<int32_t, double> fresh_settings;
+  auto& fresh = fresh_settings.get_pdlp_settings();
   ASSERT_TRUE(fresh.barrier_iterative_refinement);
-  map_proto_to_pdlp_settings(pb, fresh);
+  map_proto_to_pdlp_settings(pb, fresh_settings);
   EXPECT_TRUE(fresh.barrier_iterative_refinement)
     << "Omitted optional bool must preserve the C++ default `true`";
 }
@@ -2418,18 +2948,19 @@ TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementExplicitFalseRoundtr
   pb.set_barrier_iterative_refinement(false);
   ASSERT_TRUE(pb.has_barrier_iterative_refinement());
 
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored);
-  EXPECT_FALSE(restored.barrier_iterative_refinement);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings);
+  EXPECT_FALSE(restored_settings.get_pdlp_settings().barrier_iterative_refinement);
 }
 
 TEST(MapperRoundtrip, PDLPSettingsCurtisReidScalingOmittedPreservesDefault)
 {
   cuopt::remote::PDLPSolverSettings pb;
 
-  pdlp_solver_settings_t<int32_t, double> fresh;
+  solver_settings_t<int32_t, double> fresh_settings;
+  auto& fresh = fresh_settings.get_pdlp_settings();
   ASSERT_TRUE(fresh.hyper_params.do_curtis_reid_scaling);
-  map_proto_to_pdlp_settings(pb, fresh);
+  map_proto_to_pdlp_settings(pb, fresh_settings);
   EXPECT_TRUE(fresh.hyper_params.do_curtis_reid_scaling)
     << "Omitted optional bool must preserve the C++ default `true`";
 }
@@ -2440,9 +2971,9 @@ TEST(MapperRoundtrip, PDLPSettingsCurtisReidScalingExplicitFalseRoundtrips)
   pb.set_do_curtis_reid_scaling(false);
   ASSERT_TRUE(pb.has_do_curtis_reid_scaling());
 
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored);
-  EXPECT_FALSE(restored.hyper_params.do_curtis_reid_scaling);
+  solver_settings_t<int32_t, double> restored_settings;
+  map_proto_to_pdlp_settings(pb, restored_settings);
+  EXPECT_FALSE(restored_settings.get_pdlp_settings().hyper_params.do_curtis_reid_scaling);
 }
 
 // Wide-coverage sanity: a default-constructed proto (no fields touched on the
@@ -2456,9 +2987,11 @@ TEST(MapperRoundtrip, PDLPSettingsCurtisReidScalingExplicitFalseRoundtrips)
 TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
 {
   cuopt::remote::PDLPSolverSettings pb;
-  pdlp_solver_settings_t<int32_t, double> fresh;
-  pdlp_solver_settings_t<int32_t, double> after = fresh;
-  map_proto_to_pdlp_settings(pb, after);
+  solver_settings_t<int32_t, double> fresh_settings;
+  solver_settings_t<int32_t, double> after_settings;
+  map_proto_to_pdlp_settings(pb, after_settings);
+  auto& fresh = fresh_settings.get_pdlp_settings();
+  auto& after = after_settings.get_pdlp_settings();
 
   // Tolerances (all 1e-4 / 1e-10 by C++ default).
   EXPECT_DOUBLE_EQ(after.tolerances.absolute_gap_tolerance,
@@ -2493,9 +3026,9 @@ TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_EQ(after.ordering, fresh.ordering);
   EXPECT_EQ(after.barrier_dual_initial_point, fresh.barrier_dual_initial_point);
   EXPECT_DOUBLE_EQ(after.barrier_step_scale, fresh.barrier_step_scale);
-  // Enum-int32 fields (post-decode clamping defends out-of-range; default `0`
-  // on the wire is in-range so the clamp does not fire, but the `optional`
-  // guard prevents the assignment entirely and the C++ default survives).
+  // Enum-int32 fields. An omitted optional field is not passed to
+  // set_parameter(), so the C++ default survives. An out-of-range value
+  // throws instead of being clamped.
   EXPECT_EQ(static_cast<int>(after.presolver), static_cast<int>(fresh.presolver));
   EXPECT_EQ(static_cast<int>(after.pdlp_precision), static_cast<int>(fresh.pdlp_precision));
   // True-enum field: the proto3 enum zero is `Stable1` (first listed value)
@@ -2510,9 +3043,11 @@ TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
 TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
 {
   cuopt::remote::MIPSolverSettings pb;
-  mip_solver_settings_t<int32_t, double> fresh;
-  mip_solver_settings_t<int32_t, double> after = fresh;
-  map_proto_to_mip_settings(pb, after);
+  solver_settings_t<int32_t, double> fresh_settings;
+  solver_settings_t<int32_t, double> after_settings;
+  map_proto_to_mip_settings(pb, after_settings);
+  auto& fresh = fresh_settings.get_mip_settings();
+  auto& after = after_settings.get_mip_settings();
 
   // Tolerances.
   EXPECT_DOUBLE_EQ(after.tolerances.absolute_mip_gap, fresh.tolerances.absolute_mip_gap);
@@ -2533,7 +3068,7 @@ TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_EQ(after.num_cpu_threads, fresh.num_cpu_threads);
   EXPECT_EQ(after.num_gpus, fresh.num_gpus);
   EXPECT_EQ(after.reliability_branching, fresh.reliability_branching);
-  EXPECT_EQ(after.symmetry, fresh.symmetry);  // clamp-defended; default -1
+  EXPECT_EQ(after.symmetry, fresh.symmetry);  // omitted optional; default -1
   EXPECT_EQ(after.max_cut_passes, fresh.max_cut_passes);
   EXPECT_EQ(after.mir_cuts, fresh.mir_cuts);
   EXPECT_EQ(after.mixed_integer_gomory_cuts, fresh.mixed_integer_gomory_cuts);

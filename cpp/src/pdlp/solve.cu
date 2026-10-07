@@ -61,6 +61,7 @@
 #include <rmm/cuda_stream.hpp>
 
 #include <thrust/iterator/counting_iterator.h>
+#include <cub/device/device_transform.cuh>
 
 #include <omp.h>
 
@@ -519,6 +520,16 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
                                   method);
 }
 
+// Bounding free variables writes presolve state the reuse path cannot replay, so the automatic
+// (-1) choice resolves to 0 for a sequence solve. An explicit 1 is honored and forgoes reuse.
+template <typename i_t, typename f_t>
+i_t effective_bound_free_variables(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return (settings.sequence_solve && settings.barrier_presolve_bound_free_variables < 0)
+           ? 0
+           : settings.barrier_presolve_bound_free_variables;
+}
+
 template <typename i_t, typename f_t>
 std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_barrier(
   const simplex::user_problem_t<i_t, f_t>& user_problem,
@@ -531,37 +542,39 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> barrier_settings;
-  barrier_settings.num_gpus                   = settings.num_gpus;
-  barrier_settings.time_limit                 = settings.time_limit;
-  barrier_settings.iteration_limit            = settings.iteration_limit;
-  barrier_settings.concurrent_halt            = settings.concurrent_halt;
-  barrier_settings.initial_perturbation       = settings.initial_perturbation;
-  barrier_settings.remove_perturbation        = settings.remove_perturbation;
-  barrier_settings.primal_pricing             = settings.primal_pricing;
-  barrier_settings.folding                    = settings.folding;
-  barrier_settings.augmented                  = settings.augmented;
-  barrier_settings.dualize                    = settings.dualize;
-  barrier_settings.ordering                   = settings.ordering;
-  barrier_settings.barrier_dual_initial_point = settings.barrier_dual_initial_point;
-  barrier_settings.postsolve_info             = settings.postsolve_info;
-  barrier_settings.barrier_presolve_bound_free_variables =
-    settings.barrier_presolve_bound_free_variables;
-  barrier_settings.barrier_initial_point_safeguard = settings.barrier_initial_point_safeguard;
-  barrier_settings.barrier                         = true;
-  barrier_settings.barrier_presolve                = true;
-  barrier_settings.crossover                       = settings.crossover;
-  barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
-  barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
-  barrier_settings.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
-  barrier_settings.barrier_primal_regularization   = settings.barrier_primal_regularization;
-  barrier_settings.barrier_dual_regularization     = settings.barrier_dual_regularization;
-  barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
-  barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
-  barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;
-  barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
+  barrier_settings.num_gpus                              = settings.num_gpus;
+  barrier_settings.time_limit                            = settings.time_limit;
+  barrier_settings.iteration_limit                       = settings.iteration_limit;
+  barrier_settings.concurrent_halt                       = settings.concurrent_halt;
+  barrier_settings.initial_perturbation                  = settings.initial_perturbation;
+  barrier_settings.remove_perturbation                   = settings.remove_perturbation;
+  barrier_settings.primal_pricing                        = settings.primal_pricing;
+  barrier_settings.folding                               = settings.folding;
+  barrier_settings.augmented                             = settings.augmented;
+  barrier_settings.dualize                               = settings.dualize;
+  barrier_settings.ordering                              = settings.ordering;
+  barrier_settings.barrier_dual_initial_point            = settings.barrier_dual_initial_point;
+  barrier_settings.postsolve_info                        = settings.postsolve_info;
+  barrier_settings.barrier_presolve_bound_free_variables = effective_bound_free_variables(settings);
+  barrier_settings.barrier_initial_point_safeguard       = settings.barrier_initial_point_safeguard;
+  barrier_settings.barrier                               = true;
+  barrier_settings.barrier_presolve                      = true;
+  barrier_settings.crossover                             = settings.crossover;
+  barrier_settings.eliminate_dense_columns               = settings.eliminate_dense_columns;
+  barrier_settings.barrier_iterative_refinement          = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_adaptive_regularization       = settings.barrier_adaptive_regularization;
+  barrier_settings.barrier_primal_regularization         = settings.barrier_primal_regularization;
+  barrier_settings.barrier_dual_regularization           = settings.barrier_dual_regularization;
+  barrier_settings.barrier_soc_threshold                 = settings.barrier_soc_threshold;
+  barrier_settings.barrier_step_scale                    = settings.barrier_step_scale;
+  barrier_settings.qcqp_ruiz_equilibration               = settings.qcqp_ruiz_equilibration;
+  barrier_settings.gpu_ruiz_nnz_threshold                = settings.gpu_ruiz_nnz_threshold;
+  barrier_settings.cudss_deterministic                   = settings.cudss_deterministic;
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;
+  barrier_settings.barrier_relaxed_relative_objective_gap_tol =
+    settings.tolerances.relative_gap_tolerance;
   if (barrier_settings.concurrent_halt != nullptr) {
     // Don't show the barrier log in concurrent mode. Show the PDLP log instead
     barrier_settings.log.log = false;
@@ -866,15 +879,18 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
 template <typename i_t, typename f_t>
 static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   mip::problem_t<i_t, f_t>& problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  pdlp_solver_settings_t<i_t, f_t> const& settings_in,
   const timer_t& timer,
   bool is_batch_mode)
 {
-  cuopt_expects(!settings.use_distributed_pdlp,
-                error_type_t::ValidationError,
-                "Distributed PDLP must be entered via solve_lp(mps_data_model, ...) "
-                "so the master GPU never materializes the full problem. Call sites "
-                "with a problem_t cannot dispatch to distributed mode.");
+  // Multi-GPU PDLP is only reachable via solve_lp(mps_data_model, ...), so the master
+  // never materializes the full problem. Any problem_t-based call (batch, MIP-internal
+  // relaxations, or an ordinary problem-object solve) already has the problem materialized
+  // here, so it runs single-GPU regardless of the requested num_gpus.
+  pdlp_solver_settings_t<i_t, f_t> settings = settings_in;
+  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
+    settings.num_gpus = 1;
+  }
 
   if (problem.n_constraints == 0) {
     CUOPT_LOG_CONDITIONAL_INFO(
@@ -1977,14 +1993,15 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     auto qcqp_timer = cuopt::timer_t(settings.time_limit);
 
     auto* cache    = settings.barrier_cache;
-    auto const* xf = (cache != nullptr && cache->c_dirty()) ? cache->transform() : nullptr;
-    const bool reuse_from_cache =
-      settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
-      settings.barrier_presolve_bound_free_variables == 0 && op_problem.has_quadratic_objective() &&
-      !op_problem.has_quadratic_constraints() && xf->second_order_cone_dims.empty() &&
-      static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
-      op_problem.get_n_variables() == xf->user_num_cols &&
-      op_problem.get_n_constraints() == xf->user_num_rows;
+    auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
+    const bool reuse_from_cache = settings.user_problem_file.empty() &&
+                                  !op_problem.has_quadratic_constraints() &&
+                                  can_reuse_barrier_cache(xf,
+                                                          effective_bound_free_variables(settings),
+                                                          op_problem.get_n_variables(),
+                                                          op_problem.get_n_constraints(),
+                                                          op_problem.has_quadratic_objective(),
+                                                          false);
 
     if (problem_checking && !reuse_from_cache) {
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
@@ -2027,6 +2044,9 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                                         qcqp_timer,
                                         op_problem.get_handle_ptr(),
                                         settings.barrier_cache);
+    // A full solve creates the transform inside run_barrier. Record the model sense afterward,
+    // before a later update_linear_objective needs to map raw user c into barrier minimization
+    // space. Reuse keeps the sense of the workspace (and Q) built by that full solve.
     if (!reuse_from_cache && cache != nullptr && cache->transform() != nullptr) {
       cache->transform()->maximize = op_problem.get_sense();
     }
@@ -2564,16 +2584,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  if (settings.use_distributed_pdlp) {
+  // method=PDLP with num_gpus>1 (or -1 for all visible GPUs) requests multi-GPU PDLP.
+  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, settings, use_pdlp_solver_mode);
-  }
-  // method=PDLP with num_gpus>1 (or -1 for all visible GPUs) requests distributed PDLP.
-  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
-    pdlp_solver_settings_t<i_t, f_t> distributed_settings = settings;
-    distributed_settings.use_distributed_pdlp             = true;
-    return solve_lp_distributed_from_mps(
-      handle_ptr, mps_data_model, distributed_settings, use_pdlp_solver_mode);
   }
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode, false);
@@ -2589,9 +2603,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   cuopt_expects(handle_ptr != nullptr,
                 error_type_t::ValidationError,
                 "solve_lp_distributed_from_mps: handle_ptr must not be null");
-  cuopt_expects(settings.use_distributed_pdlp,
+  cuopt_expects(settings.num_gpus == -1 || settings.num_gpus > 1,
                 error_type_t::ValidationError,
-                "solve_lp_distributed_from_mps: settings.use_distributed_pdlp must be true");
+                "solve_lp_distributed_from_mps requires num_gpus == -1 or num_gpus > 1");
+  cuopt_expects(
+    !mps_data_model.has_quadratic_objective() && !mps_data_model.has_quadratic_constraints(),
+    error_type_t::ValidationError,
+    "Multi-GPU PDLP does not support QP/QCQP models; use the barrier method or a "
+    "single GPU instead.");
   pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
   cuopt_expects(settings_resolved.method == method_t::PDLP,
                 error_type_t::ValidationError,
@@ -2863,7 +2882,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   optimization_problem_interface_t<i_t, f_t>* problem_interface,
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  solver_settings_t<i_t, f_t>& settings,
   bool problem_checking,
   bool use_pdlp_solver_mode,
   bool is_batch_mode)
@@ -2872,7 +2891,6 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                 error_type_t::ValidationError,
                 "problem_interface cannot be null");
 
-  // Check if remote execution is enabled (always uses CPU backend)
   if (is_remote_execution_enabled()) {
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
@@ -2890,14 +2908,15 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
 #endif
   }
 
-  // Local execution - dispatch to appropriate overload based on problem type
-  auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
+  // Local execution. The GPU solver takes the nested PDLP settings.
+  auto& lp_settings = settings.get_pdlp_settings();
+  auto* cpu_prob    = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
   if (cpu_prob != nullptr) {
     cuopt_expects(is_remote_execution_enabled(),
                   error_type_t::ValidationError,
                   "A CPU-memory problem requires remote execution. Set CUOPT_REMOTE_HOST and "
                   "CUOPT_REMOTE_PORT to solve on a remote GPU server.");
-    return solve_lp(*cpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+    return solve_lp(*cpu_prob, lp_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   }
 
   // GPU problem: call GPU solver directly
@@ -2905,8 +2924,19 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   cuopt_expects(gpu_prob != nullptr,
                 error_type_t::ValidationError,
                 "problem_interface must be either a CPU or GPU optimization problem");
-  auto gpu_solution =
-    solve_lp<i_t, f_t>(*gpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+  // Handle multi-GPU problems
+  // TODO: handle problems that don't fit on a single GPU by not loading problem in memory at the
+  // beginning.
+  if (!is_batch_mode && lp_settings.method == method_t::PDLP &&
+      (lp_settings.num_gpus == -1 || lp_settings.num_gpus > 1)) {
+    cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> mps =
+      op_problem_to_mps_data_model(*gpu_prob);
+    auto gpu_solution = solve_lp(
+      gpu_prob->get_handle_ptr(), mps, lp_settings, problem_checking, use_pdlp_solver_mode);
+    return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
+  }
+  auto gpu_solution = solve_lp<i_t, f_t>(
+    *gpu_prob, lp_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
 }
 
@@ -2934,7 +2964,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                                                                                                  \
   template CUOPT_EXPORT std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(          \
     optimization_problem_interface_t<int, F_TYPE>*,                                              \
-    pdlp_solver_settings_t<int, F_TYPE> const&,                                                  \
+    solver_settings_t<int, F_TYPE>&,                                                             \
     bool,                                                                                        \
     bool,                                                                                        \
     bool);                                                                                       \

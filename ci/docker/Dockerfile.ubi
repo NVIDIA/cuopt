@@ -72,6 +72,9 @@ RUN dnf install -y java-21-openjdk-devel cmake gcc-c++ make && dnf clean all
 COPY --from=cuda-headers /usr/local/cuda /usr/local/cuda
 ENV PATH="/usr/local/cuda/bin:${PATH}"
 
+# raft needs headers from nvidia-cuda-cccl; the cuXY-suffixed packages pulled in transitively are too old.
+RUN python -m pip install --no-cache-dir --upgrade nvidia-cuda-cccl
+
 COPY ./repo /build/repo
 COPY ./build_java_dynamic.sh /build/build_java_dynamic.sh
 RUN bash /build/build_java_dynamic.sh /build/repo \
@@ -133,4 +136,4 @@ COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
 COPY ./entrypoint.sh /opt/cuopt/entrypoint.sh
 ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
-CMD ["python", "-m", "cuopt_server.cuopt_service"]
+CMD ["proxy"]

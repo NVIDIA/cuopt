@@ -102,8 +102,6 @@ jobs:
           - '!.github/workflows/build_images.yaml'
           - '!.github/workflows/build_test_publish_images.yaml'
           - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/inactivity_reminder.yaml'
-          - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/kitmaker_portal.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
@@ -168,8 +166,6 @@ jobs:
           - '!.github/workflows/build_images.yaml'
           - '!.github/workflows/build_test_publish_images.yaml'
           - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/inactivity_reminder.yaml'
-          - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/kitmaker_portal.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
@@ -254,8 +250,6 @@ jobs:
           - '!.github/workflows/build_images.yaml'
           - '!.github/workflows/build_test_publish_images.yaml'
           - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/inactivity_reminder.yaml'
-          - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/kitmaker_portal.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
@@ -328,8 +322,6 @@ jobs:
           - '!.github/workflows/build_images.yaml'
           - '!.github/workflows/build_test_publish_images.yaml'
           - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/inactivity_reminder.yaml'
-          - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/kitmaker_portal.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
@@ -497,7 +489,7 @@ jobs:
     needs: changed-files
     permissions:
       contents: read
-    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@release/26.10
     if: >-
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
@@ -515,7 +507,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.10
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
@@ -553,7 +545,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.10
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
@@ -595,25 +587,6 @@ jobs:
       script: "ci/test_java.sh"
       artifact-name: "cuopt-java"
       file_to_upload: "java/cuopt/target/"
-  wheel-build-libcuopt:
-    needs: [build-details, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-      packages: read
-      pull-requests: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
-    with:
-      # build for every combination of arch and CUDA version, but only for the latest Python
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
-      package-type: cpp
-      package-name: libcuopt
-      build_type: pull-request
-      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
-      script: ci/build_wheel_libcuopt.sh
   wheel-build-libcuopt-client:
     needs: [build-details, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
@@ -635,7 +608,7 @@ jobs:
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt_client.sh
   wheel-build-libcuopt-mathopt:
-    needs: [build-details, compute-matrix-filters, changed-files]
+    needs: [build-details, compute-matrix-filters, changed-files, wheel-build-libcuopt-client]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read
@@ -654,7 +627,7 @@ jobs:
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt_mathopt.sh
   wheel-build-libcuopt-routing:
-    needs: [build-details, compute-matrix-filters, changed-files]
+    needs: [build-details, compute-matrix-filters, changed-files, wheel-build-libcuopt-client]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read
@@ -672,8 +645,40 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt_routing.sh
+  wheel-build-libcuopt:
+    needs:
+      - build-details
+      - compute-matrix-filters
+      - changed-files
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
+    with:
+      # build for every combination of arch and CUDA version, but only for the latest Python
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
+      package-type: cpp
+      package-name: libcuopt
+      build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      script: ci/build_wheel_libcuopt.sh
   wheel-build-cuopt:
-    needs: [build-details, wheel-build-libcuopt, compute-matrix-filters, changed-files]
+    needs:
+      - build-details
+      - wheel-build-libcuopt
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
+      - compute-matrix-filters
+      - changed-files
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read

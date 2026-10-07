@@ -8,4 +8,10 @@
 namespace cuopt::mathematical_optimization::mip {
 template <typename i_t, typename f_t>
 void perturb(fj_cpu_climber_t<i_t, f_t>&);
+template <typename i_t, typename f_t>
+void reset_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>&);
+template <typename i_t, typename f_t>
+void infeasible_kick(fj_cpu_climber_t<i_t, f_t>&);
+template <typename i_t, typename f_t>
+void track_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>&);
 }  // namespace cuopt::mathematical_optimization::mip

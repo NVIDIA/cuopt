@@ -1183,7 +1183,9 @@ class complemented_mixed_integer_rounding_cut_t {
                                 const std::vector<simplex::variable_type_t>& var_types,
                                 const std::vector<f_t>& transformed_xstar,
                                 inequality_t<i_t, f_t>& transformed_cut,
-                                f_t& work_estimate);
+                                f_t& work_estimate,
+                                f_t start_time,
+                                f_t time_limit);
 
   bool scale_uncomplement_and_generate_cut(const std::vector<simplex::variable_type_t>& var_types,
                                            const std::vector<f_t>& transformed_xstar,

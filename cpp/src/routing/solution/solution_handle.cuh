@@ -72,7 +72,7 @@ class solution_handle_t {
   mutable bool device_prop_initialized_{false};
 
   mutable bool shared_attr_initialized_{false};
-  cuda::stream_ref stream_view_{};
+  cuda::stream_ref stream_view_{cudaStream_t{cudaStreamDefault}};
   // this is a shared pointer to be able to copy construct and keep a copy of a solution
   std::shared_ptr<rmm::exec_policy> thrust_policy_{nullptr};
 };

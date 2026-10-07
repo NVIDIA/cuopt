@@ -7,6 +7,7 @@
 
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <utilities/logger.hpp>
 #include "grpc_problem_mapper.hpp"
 #include "grpc_service_mapper.hpp"
@@ -633,61 +634,63 @@ bool grpc_client_t::submit_unary(const cuopt::remote::SubmitJobRequest& request,
 
 template <typename i_t, typename f_t>
 submit_result_t grpc_client_t::submit_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                                         const pdlp_solver_settings_t<i_t, f_t>& settings)
+                                         solver_settings_t<i_t, f_t>& settings)
 {
   submit_result_t result;
-
-  GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] submit_lp: starting submission");
-
   if (!is_connected()) {
     result.error_message = "Not connected to server";
-    GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] submit_lp: not connected to server");
     return result;
   }
 
-  // Check if chunked array upload should be used
+  // Warm start stays in PDLPSolverSettings on both the unary request and the
+  // chunked header, so it counts toward the message the server has to accept
+  // in one piece. A payload larger than the client message cap cannot be sent.
+  constexpr int64_t kChunkedHeaderSlack = 64 * 1024;
+  const size_t warm_bytes = estimate_pdlp_warm_start_proto_size(settings.get_pdlp_settings());
+  if (warm_bytes > 0 &&
+      static_cast<int64_t>(warm_bytes) + kChunkedHeaderSlack > config_.max_message_bytes) {
+    result.error_message = "PDLP warm start exceeds the maximum message size";
+    return result;
+  }
+
   bool use_chunked = false;
   if (chunked_array_threshold_bytes_ >= 0) {
-    size_t est  = estimate_problem_proto_size(problem);
-    use_chunked = (static_cast<int64_t>(est) > chunked_array_threshold_bytes_);
-    GRPC_CLIENT_DEBUG_LOG(config_,
-                          "[grpc_client] submit_lp: estimated_size="
-                            << est << " threshold=" << chunked_array_threshold_bytes_
-                            << " use_chunked=" << use_chunked);
+    use_chunked = static_cast<int64_t>(estimate_problem_proto_size(problem) + warm_bytes) >
+                  chunked_array_threshold_bytes_;
   }
 
-  if (use_chunked) {
-    cuopt::remote::ChunkedProblemHeader header;
-    populate_chunked_header_lp(problem, settings, &header);
-    if (!upload_chunked_arrays(problem, header, result.job_id)) {
-      result.error_message = last_error_;
-      return result;
+  try {
+    if (use_chunked) {
+      cuopt::remote::ChunkedProblemHeader header;
+      populate_chunked_header_lp(problem, settings.get_pdlp_settings(), &header);
+      append_solver_parameters(settings, header.mutable_lp_settings()->mutable_parameters());
+      if (!upload_chunked_arrays(problem, header, result.job_id)) {
+        result.error_message = last_error_;
+        return result;
+      }
+    } else {
+      auto submit_request = build_lp_submit_request(problem, settings);
+      if (!submit_unary(submit_request, result.job_id)) {
+        result.error_message = last_error_;
+        return result;
+      }
     }
-  } else {
-    auto submit_request = build_lp_submit_request(problem, settings);
-    if (!submit_unary(submit_request, result.job_id)) {
-      result.error_message = last_error_;
-      return result;
-    }
+  } catch (const std::exception& e) {
+    result.error_message = e.what();
+    return result;
   }
 
-  GRPC_CLIENT_DEBUG_LOG(config_,
-                        "[grpc_client] submit_lp: job submitted, job_id=" << result.job_id);
   result.success = true;
   return result;
 }
 
 template <typename i_t, typename f_t>
 submit_result_t grpc_client_t::submit_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                                          const mip_solver_settings_t<i_t, f_t>& settings,
-                                          bool enable_incumbents)
+                                          solver_settings_t<i_t, f_t>& settings,
+                                          bool enable_incumbents,
+                                          bool enable_set_incumbent)
 {
   submit_result_t result;
-
-  GRPC_CLIENT_DEBUG_LOG(config_,
-                        "[grpc_client] submit_mip: starting submission"
-                          << (enable_incumbents ? " (incumbents enabled)" : ""));
-
   if (!is_connected()) {
     result.error_message = "Not connected to server";
     return result;
@@ -695,31 +698,33 @@ submit_result_t grpc_client_t::submit_mip(const cpu_optimization_problem_t<i_t, 
 
   bool use_chunked = false;
   if (chunked_array_threshold_bytes_ >= 0) {
-    size_t est  = estimate_problem_proto_size(problem);
-    use_chunked = (static_cast<int64_t>(est) > chunked_array_threshold_bytes_);
-    GRPC_CLIENT_DEBUG_LOG(config_,
-                          "[grpc_client] submit_mip: estimated_size="
-                            << est << " threshold=" << chunked_array_threshold_bytes_
-                            << " use_chunked=" << use_chunked);
+    use_chunked =
+      static_cast<int64_t>(estimate_problem_proto_size(problem)) > chunked_array_threshold_bytes_;
   }
 
-  if (use_chunked) {
-    cuopt::remote::ChunkedProblemHeader header;
-    populate_chunked_header_mip(problem, settings, enable_incumbents, &header);
-    if (!upload_chunked_arrays(problem, header, result.job_id)) {
-      result.error_message = last_error_;
-      return result;
+  try {
+    if (use_chunked) {
+      cuopt::remote::ChunkedProblemHeader header;
+      populate_chunked_header_mip(
+        problem, settings.get_mip_settings(), enable_incumbents, enable_set_incumbent, &header);
+      append_solver_parameters(settings, header.mutable_mip_settings()->mutable_parameters());
+      if (!upload_chunked_arrays(problem, header, result.job_id)) {
+        result.error_message = last_error_;
+        return result;
+      }
+    } else {
+      auto submit_request =
+        build_mip_submit_request(problem, settings, enable_incumbents, enable_set_incumbent);
+      if (!submit_unary(submit_request, result.job_id)) {
+        result.error_message = last_error_;
+        return result;
+      }
     }
-  } else {
-    auto submit_request = build_mip_submit_request(problem, settings, enable_incumbents);
-    if (!submit_unary(submit_request, result.job_id)) {
-      result.error_message = last_error_;
-      return result;
-    }
+  } catch (const std::exception& e) {
+    result.error_message = e.what();
+    return result;
   }
 
-  GRPC_CLIENT_DEBUG_LOG(
-    config_, "[grpc_client] submit_mip: job submitted successfully, job_id=" << result.job_id);
   result.success = true;
   return result;
 }
@@ -931,8 +936,7 @@ grpc_client_t::poll_result_t grpc_client_t::poll_for_completion(const std::strin
 
 template <typename i_t, typename f_t>
 remote_lp_result_t<i_t, f_t> grpc_client_t::solve_lp(
-  const cpu_optimization_problem_t<i_t, f_t>& problem,
-  const pdlp_solver_settings_t<i_t, f_t>& settings)
+  const cpu_optimization_problem_t<i_t, f_t>& problem, solver_settings_t<i_t, f_t>& settings)
 {
   auto solve_t0 = std::chrono::steady_clock::now();
 
@@ -941,8 +945,6 @@ remote_lp_result_t<i_t, f_t> grpc_client_t::solve_lp(
 
   start_log_streaming(sub.job_id);
   auto poll = poll_for_completion(sub.job_id);
-  // On success, wait for the server to send the job_complete sentinel so all
-  // final log lines are received before the stream is torn down.
   if (poll.completed) {
     drain_log_streaming();
   } else {
@@ -962,7 +964,7 @@ remote_lp_result_t<i_t, f_t> grpc_client_t::solve_lp(
 template <typename i_t, typename f_t>
 remote_mip_result_t<i_t, f_t> grpc_client_t::solve_mip(
   const cpu_optimization_problem_t<i_t, f_t>& problem,
-  const mip_solver_settings_t<i_t, f_t>& settings,
+  solver_settings_t<i_t, f_t>& settings,
   bool enable_incumbents)
 {
   auto solve_t0 = std::chrono::steady_clock::now();
@@ -1311,19 +1313,20 @@ bool grpc_client_t::download_chunked_result(const std::string& job_id,
 
 // Explicit template instantiations
 #if CUOPT_INSTANTIATE_FLOAT
-template remote_lp_result_t<int32_t, float> grpc_client_t::solve_lp(
-  const cpu_optimization_problem_t<int32_t, float>& problem,
-  const pdlp_solver_settings_t<int32_t, float>& settings);
-template remote_mip_result_t<int32_t, float> grpc_client_t::solve_mip(
-  const cpu_optimization_problem_t<int32_t, float>& problem,
-  const mip_solver_settings_t<int32_t, float>& settings,
-  bool enable_incumbents);
 template submit_result_t grpc_client_t::submit_lp(
   const cpu_optimization_problem_t<int32_t, float>& problem,
-  const pdlp_solver_settings_t<int32_t, float>& settings);
+  solver_settings_t<int32_t, float>& settings);
+template remote_lp_result_t<int32_t, float> grpc_client_t::solve_lp(
+  const cpu_optimization_problem_t<int32_t, float>& problem,
+  solver_settings_t<int32_t, float>& settings);
 template submit_result_t grpc_client_t::submit_mip(
   const cpu_optimization_problem_t<int32_t, float>& problem,
-  const mip_solver_settings_t<int32_t, float>& settings,
+  solver_settings_t<int32_t, float>& settings,
+  bool enable_incumbents,
+  bool enable_set_incumbent);
+template remote_mip_result_t<int32_t, float> grpc_client_t::solve_mip(
+  const cpu_optimization_problem_t<int32_t, float>& problem,
+  solver_settings_t<int32_t, float>& settings,
   bool enable_incumbents);
 template remote_lp_result_t<int32_t, float> grpc_client_t::get_lp_result(const std::string& job_id);
 template remote_mip_result_t<int32_t, float> grpc_client_t::get_mip_result(
@@ -1336,19 +1339,20 @@ template bool grpc_client_t::upload_chunked_arrays(
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
-template remote_lp_result_t<int32_t, double> grpc_client_t::solve_lp(
-  const cpu_optimization_problem_t<int32_t, double>& problem,
-  const pdlp_solver_settings_t<int32_t, double>& settings);
-template remote_mip_result_t<int32_t, double> grpc_client_t::solve_mip(
-  const cpu_optimization_problem_t<int32_t, double>& problem,
-  const mip_solver_settings_t<int32_t, double>& settings,
-  bool enable_incumbents);
 template submit_result_t grpc_client_t::submit_lp(
   const cpu_optimization_problem_t<int32_t, double>& problem,
-  const pdlp_solver_settings_t<int32_t, double>& settings);
+  solver_settings_t<int32_t, double>& settings);
+template remote_lp_result_t<int32_t, double> grpc_client_t::solve_lp(
+  const cpu_optimization_problem_t<int32_t, double>& problem,
+  solver_settings_t<int32_t, double>& settings);
 template submit_result_t grpc_client_t::submit_mip(
   const cpu_optimization_problem_t<int32_t, double>& problem,
-  const mip_solver_settings_t<int32_t, double>& settings,
+  solver_settings_t<int32_t, double>& settings,
+  bool enable_incumbents,
+  bool enable_set_incumbent);
+template remote_mip_result_t<int32_t, double> grpc_client_t::solve_mip(
+  const cpu_optimization_problem_t<int32_t, double>& problem,
+  solver_settings_t<int32_t, double>& settings,
   bool enable_incumbents);
 template remote_lp_result_t<int32_t, double> grpc_client_t::get_lp_result(
   const std::string& job_id);

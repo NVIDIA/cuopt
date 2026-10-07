@@ -206,6 +206,7 @@ inline char feasible_solution_symbol(search_strategy_t strategy, bool show_divin
     case search_strategy_t::VECTOR_LENGTH_DIVING: return 'V';
     case search_strategy_t::RINS: return 'S';
     case search_strategy_t::RENS: return 'S';
+    case search_strategy_t::MUTATION: return 'S';
   }
 
   return 'U';
@@ -529,6 +530,19 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
     mutex_repair_.unlock();
   }
 
+  if (success) {
+    f_t lower_bound = get_lower_bound();
+    f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
+    f_t user_obj    = compute_user_objective(original_lp_, obj);
+    f_t abs_gap     = compute_user_abs_gap(original_lp_, obj, lower_bound);
+    f_t rel_gap     = user_relative_gap(user_obj, user_lower);
+
+    if (rel_gap <= settings_.relative_mip_gap_tol || abs_gap <= settings_.absolute_mip_gap_tol) {
+      solver_status_        = mip_status_t::OPTIMAL;
+      node_concurrent_halt_ = true;
+    }
+  }
+
   return success;
 }
 
@@ -655,9 +669,11 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
 
   lp_solution_t<i_t, f_t> lp_solution(original_lp_.num_rows, original_lp_.num_cols);
 
-  i_t iter                               = 0;
-  f_t lp_start_time                      = tic();
-  simplex_solver_settings_t lp_settings  = settings_;
+  i_t iter                              = 0;
+  f_t lp_start_time                     = tic();
+  simplex_solver_settings_t lp_settings = settings_;
+  lp_settings.time_limit                = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (lp_settings.time_limit <= 0.0) { return false; }
   lp_settings.concurrent_halt            = &node_concurrent_halt_;
   std::vector<variable_status_t> vstatus = root_vstatus_;
   lp_settings.set_log(false);
@@ -898,7 +914,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
   }
   mutex_original_lp_.unlock();
 
-  bool send_solution = false;
+  bool success = false;
   settings_.log.debug("%c found a feasible solution with obj=%.10e.\n",
                       feasible_solution_symbol(thread_type, settings_.diving_settings.show_type),
                       compute_user_objective(lp, leaf_objective));
@@ -906,19 +922,32 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
   mutex_upper_.lock();
   if (!incumbent_.has_incumbent || leaf_objective < incumbent_.objective) {
     incumbent_.set_incumbent_solution(leaf_objective, sol.empty() ? leaf_solution : sol);
-    upper_bound_ = std::min(upper_bound_.load(), leaf_objective);
+    fetch_min(upper_bound_, leaf_objective);
 
     char symbol = feasible_solution_symbol(thread_type, settings_.diving_settings.show_type);
     report(lp, symbol, leaf_objective, get_lower_bound(), leaf_depth, 0);
-    send_solution = true;
-  }
+    success = true;
 
-  if (send_solution && settings_.solution_callback != nullptr) {
-    std::vector<f_t> original_x;
-    uncrush_primal_solution(original_problem_, lp, incumbent_.x, original_x);
-    settings_.solution_callback(original_x, leaf_objective);
+    if (settings_.solution_callback != nullptr) {
+      std::vector<f_t> original_x;
+      uncrush_primal_solution(original_problem_, lp, incumbent_.x, original_x);
+      settings_.solution_callback(original_x, leaf_objective);
+    }
   }
   mutex_upper_.unlock();
+
+  if (success) {
+    f_t lower_bound = get_lower_bound();
+    f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
+    f_t user_obj    = compute_user_objective(original_lp_, leaf_objective);
+    f_t abs_gap     = compute_user_abs_gap(original_lp_, leaf_objective, lower_bound);
+    f_t rel_gap     = user_relative_gap(user_obj, user_lower);
+
+    if (rel_gap <= settings_.relative_mip_gap_tol || abs_gap <= settings_.absolute_mip_gap_tol) {
+      solver_status_        = mip_status_t::OPTIMAL;
+      node_concurrent_halt_ = true;
+    }
+  }
 }
 
 // Martin's criteria for the preferred rounding direction (see [1])
@@ -1008,6 +1037,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
     case search_strategy_t::RINS:  // This is used for solving the DFS of the sub-MIP.
     case search_strategy_t::RENS:
+    case search_strategy_t::MUTATION:
       branch_var = worker->pseudo_costs.variable_selection(fractional, solution);
       round_dir  = martin_criteria(solution[branch_var], worker->root_solution[branch_var]);
       return {branch_var, round_dir};
@@ -1603,6 +1633,9 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     feasible = apply_symmetry_reductions(node_ptr, worker, stats);
 
     if (feasible) {
+      lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+      if (lp_settings.time_limit <= 0.0) { return dual_status_t::TIME_LIMIT; }
+
       i_t node_iter          = 0;
       f_t lp_start_time      = tic();
       f_t node_work_estimate = 0.0;
@@ -1748,22 +1781,23 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
     f_t now = toc(exploration_stats_.start_time);
 
-    if (worker->worker_id == 0) {
-      f_t time_since_last_log =
-        exploration_stats_.last_log == 0 ? 1.0 : toc(exploration_stats_.last_log);
-      i_t nodes_since_last_log = exploration_stats_.nodes_since_last_log;
+    f_t time_since_last_log =
+      exploration_stats_.last_log == 0 ? 1.0 : toc(exploration_stats_.last_log);
+    i_t nodes_since_last_log = exploration_stats_.nodes_since_last_log;
 
-      if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
-           time_since_last_log >= 1) ||
-          (time_since_last_log > 30) || now > settings_.time_limit) {
+    if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
+         time_since_last_log >= 1) ||
+        (time_since_last_log > 30) || now > settings_.time_limit) {
+      if (exploration_stats_.report_solver_progress.exchange(false)) {
         report(worker->leaf_problem,
                ' ',
                upper_bound_,
                lower_bound,
                node_ptr->depth,
                node_ptr->integer_infeasible);
-        exploration_stats_.last_log             = tic();
-        exploration_stats_.nodes_since_last_log = 0;
+        exploration_stats_.last_log               = tic();
+        exploration_stats_.nodes_since_last_log   = 0;
+        exploration_stats_.report_solver_progress = true;
       }
     }
 
@@ -2005,12 +2039,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       break;
     }
 
-    if (received_halt_signal()) {
-      solver_status_        = mip_status_t::HALT;
-      node_concurrent_halt_ = true;
-      break;
-    }
-
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
     // re-enable as soon as a new incumbent is found.
     if (diving_worker_pool_.size() > 0 && settings_.diving_settings.guided_diving != 0 &&
@@ -2181,7 +2209,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
   // This is called from the RINS method which already handle the return to the
   // pool part. Besides, they do not share the same pool.
   if (worker->search_strategy != search_strategy_t::RINS &&
-      worker->search_strategy != search_strategy_t::RENS && !settings.inside_root_node) {
+      worker->search_strategy != search_strategy_t::RENS &&
+      worker->search_strategy != search_strategy_t::MUTATION && !settings.inside_root_node) {
     diving_worker_pool_.return_worker_to_pool(worker);
   }
 }
@@ -2247,19 +2276,30 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& sol)
 {
+  bool enable_rins     = settings_.submip_settings.rins != 0;
+  bool enable_rens     = settings_.submip_settings.rens != 0;
+  bool enable_mutation = settings_.submip_settings.mutation != 0 && !settings_.inside_submip;
+
   if (solver_status_ != mip_status_t::UNSET) return false;
   if (node_concurrent_halt_.load(std::memory_order::acquire)) return false;
-  if (settings_.submip_settings.rins == 0 && settings_.submip_settings.rens == 0) return false;
-  if (settings_.submip_settings.rens == 0 && !incumbent_.has_incumbent) return false;
+  if (!enable_rins && !enable_rens && !enable_mutation) return false;
+  if (!enable_rens && !incumbent_.has_incumbent) return false;
   if (submip_worker_pool_.num_idle() == 0) return false;
 
   diving_worker_t<i_t, f_t>* worker = submip_worker_pool_.pop_idle_worker();
   if (!worker) return false;
 
   mutex_upper_.lock();
-  bool use_rins = incumbent_.has_incumbent && settings_.submip_settings.rins != 0;
-  if (use_rins) worker->current_incumbent = incumbent_.x;
+  bool has_incumbent = incumbent_.has_incumbent;
+  bool use_mutation  = has_incumbent && enable_mutation && worker->worker_id == 0;
+  bool use_rins      = has_incumbent && enable_rins && !use_mutation;
+  if (use_mutation || use_rins) worker->current_incumbent = incumbent_.x;
   mutex_upper_.unlock();
+
+  if (!use_mutation && !use_rins && !enable_rens) {
+    submip_worker_pool_.return_worker_to_pool(worker);
+    return false;
+  }
 
   // Note that this node does not have the vstatus (it was cleared at the start of B&B exploration)
   worker->start_node         = mip_node_t<i_t, f_t>(root_objective_, root_vstatus_);
@@ -2272,6 +2312,13 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
 
   simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
   submip_settings.concurrent_halt                     = &node_concurrent_halt_;
+
+  if (use_mutation) {
+    worker->search_strategy = search_strategy_t::MUTATION;
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) firstprivate(worker)
+    mutation(worker, submip_settings);
+    return true;
+  }
 
   if (settings_.inside_submip) {
     // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
@@ -2408,6 +2455,12 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                submip_problem.A.nnz());
 
   probing_implied_bound_t<i_t, f_t> empty_probing(submip_problem.num_cols);
+  submip_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (submip_settings.time_limit <= 0.0) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    return;
+  }
+
   branch_and_bound_t submip_bnb(submip_problem, submip_settings, tic(), empty_probing);
   mip_solution_t<i_t, f_t> submip_solution(submip_problem.num_cols);
 
@@ -2539,16 +2592,18 @@ f_t submip_get_max_fixrate(const submip_stats_t& stats,
 
   if (stats.total_infeasible > 0) {
     f_t infeasible_avg_fixrate = stats.average_infeasible_fixrate();
-    high                       = 0.9 * infeasible_avg_fixrate;
+    high                       = 0.8 * infeasible_avg_fixrate;
     low                        = std::min(low, high);
   }
 
   if (stats.total_success > 0) {
     f_t success_avg_fixrate = stats.average_success_fixrate();
-    low                     = std::min(low, 0.9 * success_avg_fixrate);
-    high                    = std::max(high, 1.1 * success_avg_fixrate);
+    low                     = std::min(low, 0.8 * success_avg_fixrate);
+    high                    = std::max(high, 1.05 * success_avg_fixrate);
   }
 
+  high        = std::min(high, 0.9);
+  low         = std::max(low, 0.1);
   f_t fixrate = high > low ? rng.uniform(low, high) : low;
   return fixrate;
 }
@@ -2580,6 +2635,30 @@ void fix_variable(i_t j,
   lower[j]          = fixed_val;
   upper[j]          = fixed_val;
   bounds_changed[j] = true;
+}
+
+template <typename i_t, typename f_t>
+i_t apply_mutation(const simplex_solver_settings_t<i_t, f_t>& settings,
+                   const std::vector<f_t>& incumbent,
+                   const std::vector<i_t>& integer_list,
+                   f_t target_fixrate,
+                   std::vector<f_t>& lower,
+                   std::vector<f_t>& upper,
+                   std::vector<bool>& bounds_changed)
+{
+  i_t num_fixed         = 0;
+  i_t num_bound_changed = 0;
+  i_t target_num_fixed  = target_fixrate * integer_list.size();
+
+  for (i_t j : integer_list) {
+    if (num_fixed >= target_num_fixed) break;
+    if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) continue;
+    fix_variable(j, lower, upper, bounds_changed, std::round(incumbent[j]));
+    num_bound_changed += bounds_changed[j];
+    ++num_fixed;
+  }
+
+  return num_bound_changed;
 }
 
 template <typename i_t, typename f_t>
@@ -2702,6 +2781,130 @@ f_t calculate_fixrate(const std::vector<i_t>& integer_list,
   }
 
   return (f_t)num_fixed / integer_list.size();
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
+                                            simplex_solver_settings_t<i_t, f_t> submip_settings)
+{
+  raft::common::nvtx::range scope("BB::mutation_thread");
+  if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
+
+  i_t submip_level = settings_.submip_settings.level + 1;
+  submip_settings.log.log_prefix =
+    std::format("[{} {}] ", search_strategy_to_string(worker->search_strategy), submip_level);
+
+  assert((worker->search_strategy == search_strategy_t::MUTATION) &&
+         "Sub-MIP worker must be set to MUTATION type");
+
+  ++mutation_stats_.total_calls;
+
+  branch_and_bound_stats_t<i_t, f_t> stats;
+  mip_node_t<i_t, f_t>& node        = worker->start_node;
+  std::vector<f_t>& lower           = worker->leaf_problem.lower;
+  std::vector<f_t>& upper           = worker->leaf_problem.upper;
+  std::vector<bool>& bounds_changed = worker->bounds_changed;
+
+  std::fill(bounds_changed.begin(), bounds_changed.end(), false);
+
+  std::vector<i_t> integer_list;
+  get_unfixed_integer_variables(
+    lower, upper, worker->var_types, submip_settings.fixed_tol, integer_list);
+  worker->rng.shuffle(integer_list);
+
+  f_t target_fixrate =
+    submip_get_max_fixrate(mutation_stats_, submip_settings.submip_settings, worker->rng);
+  f_t fixrate = 0;
+
+  apply_mutation(submip_settings,
+                 worker->current_incumbent,
+                 integer_list,
+                 target_fixrate,
+                 lower,
+                 upper,
+                 bounds_changed);
+  bool is_feasible =
+    worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
+  fixrate = calculate_fixrate(integer_list, lower, upper, settings_.fixed_tol);
+
+  DEBUG_SUBMIP("{} fixed variables = {:.0f} ({:.2f}), target fixrate = {} ({:.2f})",
+               submip_settings.log.log_prefix,
+               fixrate * integer_list.size(),
+               fixrate,
+               target_fixrate,
+               target_fixrate * integer_list.size());
+
+  if (!is_feasible) {
+    DEBUG_SUBMIP("{}bound strengthening detected infeasibility.", submip_settings.log.log_prefix)
+
+    // If the pool is uninitialized (i.e., in the root node), then this just inactivate the worker.
+    if (!submip_settings.inside_root_node) {
+      submip_worker_pool_.return_worker_to_pool(worker);
+    } else {
+      worker->set_inactive();
+    }
+    return;
+  }
+
+  // If not enough variables was fixed (the neighbourhood is too loose) or the sub-MIP already
+  // found a solution that improved the incumbent, then do a DFS with a backtrack_limit of 5
+  // levels up to try to find a feasible solution quickly from the neighbourhood.
+  if (fixrate < settings_.submip_settings.min_fixrate_cap ||
+      (settings_.inside_submip && mutation_stats_.total_success != 0)) {
+    worker->start_node.packed_vstatus = simplex::compress_vstatus(worker->leaf_vstatus);
+    worker->start_lower               = lower;
+    worker->start_upper               = upper;
+
+    fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
+    if (settings_.submip_settings.enable_cpufj) {
+      submip_fj_cpu_worker.improvement_callback =
+        [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
+          this->set_solution_from_cpu_fj(obj, assignment, work_units);
+        };
+
+      f_t time_limit = std::max<f_t>(settings_.time_limit - toc(exploration_stats_.start_time), 0);
+      f_t work_limit = 1.0;
+      submip_fj_cpu_worker.create_worker(worker->leaf_problem,
+                                         worker->var_types,
+                                         original_problem_.num_cols,
+                                         worker->leaf_solution.x,
+                                         settings_,
+                                         std::format("{} [CPU FJ]", submip_settings.log.log_prefix),
+                                         worker->rng.next_i64());
+      submip_fj_cpu_worker.run_sync(time_limit, work_limit);
+    }
+
+    DEBUG_SUBMIP("{}Running a quick DFS. fixrate={:.4g} ({}/{})",
+                 submip_settings.log.log_prefix,
+                 fixrate,
+                 fixrate * integer_list.size(),
+                 integer_list.size());
+
+    simplex_solver_settings_t<i_t, f_t> dfs_settings = submip_settings;
+    dfs_settings.diving_settings.backtrack_limit     = settings_.submip_settings.dfs_max_backtrack;
+    dive_with(worker, dfs_settings);
+
+  } else {
+    solve_submip(worker, mutation_stats_, fixrate, stats.total_simplex_iters, submip_settings);
+  }
+
+  DEBUG_SUBMIP(
+    "{}success={}, infeasible={}, calls={}, fixrate={:.4g} ({:.0f}/{}), max_fixrate={:.4g}\n",
+    submip_settings.log.log_prefix,
+    mutation_stats_.total_success.load(),
+    mutation_stats_.total_infeasible.load(),
+    mutation_stats_.total_calls.load(),
+    fixrate,
+    fixrate * integer_list.size(),
+    integer_list.size(),
+    target_fixrate);
+
+  // If the pool is uninitialized (i.e., in the root node), then this just inactivate the worker.
+  if (!submip_settings.inside_root_node) {
+    submip_worker_pool_.return_worker_to_pool(worker);
+  } else {
+    worker->set_inactive();
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -3024,19 +3227,38 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   current_heuristic->initialize_pseudocost(
     lp, root_vstatus_, fractional, lp_solution, basic_list, nonbasic_list, basis_factor);
 
-  constexpr bool is_cpufj_enabled = true;
+  const bool is_cpufj_enabled = omp_in_parallel();
   if (is_cpufj_enabled) {
     root_heuristics.stop_old_workers(cut_pass, 1);
 
     f_t work_limit = std::numeric_limits<f_t>::infinity();
     f_t time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
 
+    // Odd passes start from the incumbent, even ones from the relaxation. The size guard covers a
+    // concurrent pass having grown the LP past the crush the incumbent was last taken through.
+    std::vector<f_t> fj_seed;
+    if (cut_pass % 2 == 1) {
+      mutex_upper_.lock();
+      if (incumbent_.has_incumbent && incumbent_.x.size() == (size_t)lp.num_cols) {
+        fj_seed = incumbent_.x;
+      }
+      mutex_upper_.unlock();
+    }
+    if (fj_seed.empty()) { fj_seed = lp_solution.x; }
+
     current_heuristic->fj_cpu_worker_.improvement_callback =
       [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
         set_solution_from_cpu_fj(obj, assignment, work_units);
       };
     current_heuristic->fj_cpu_worker_.create_worker(
-      lp, var_types_, original_problem_.num_cols, lp_solution.x, settings_, "[RootCut CPUFJ] ");
+      lp,
+      var_types_,
+      original_problem_.num_cols,
+      fj_seed,
+      settings_,
+      "[RootCut CPUFJ " + std::to_string(cut_pass) + "] ",
+      root_heuristics.next_seed(),
+      /*lane=*/cut_pass);
     ++(*worker_count);
     ++current_heuristic->active_workers_;
 
@@ -3051,9 +3273,10 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   }
 
   mutex_upper_.lock();
-  bool use_rins = settings_.submip_settings.rins != 0 && incumbent_.has_incumbent;
+  bool has_incumbent = incumbent_.has_incumbent;
   mutex_upper_.unlock();
 
+  bool use_rins = has_incumbent && settings_.submip_settings.rins != 0;
   if (use_rins || settings_.submip_settings.rens != 0) {
     root_heuristics.stop_old_workers(cut_pass, 1);
 
@@ -3089,6 +3312,35 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     }
   }
 
+  if (has_incumbent && settings_.submip_settings.mutation != 0) {
+    root_heuristics.stop_old_workers(cut_pass, 1);
+    diving_worker_t<i_t, f_t>* worker = current_heuristic->create_mutation_worker(
+      cut_pass, lp, settings_, root_objective_, root_vstatus_, lp_solution.x);
+    mutex_upper_.lock();
+    worker->current_incumbent = incumbent_.x;
+    mutex_upper_.unlock();
+
+    simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
+    submip_settings.concurrent_halt                     = &current_heuristic->halt_;
+    submip_settings.inside_root_node                    = true;
+
+    if (settings_.inside_submip) {
+      // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
+      // function for included tasks.
+      mutation(worker, submip_settings);
+    } else {
+      ++current_heuristic->active_workers_;
+      ++(*worker_count);
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
+  firstprivate(current_heuristic, worker_count, submip_settings) depend(out : *worker)
+      {
+        mutation(worker, submip_settings);
+        --(*worker_count);
+        --current_heuristic->active_workers_;
+      }
+    }
+  }
+
   constexpr bool use_diving = true;
   if (use_diving) {
     mip_diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
@@ -3112,9 +3364,11 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     std::vector<search_strategy_t> diving_heuristics;
     get_diving_heuristic_list(diving_settings, diving_heuristics);
 
-    i_t available          = cut_pass == 0 ? settings_.num_threads - 3 : settings_.num_threads - 2;
-    i_t num_diving_workers = std::min<i_t>(diving_heuristics.size(), available);
-    root_heuristics.stop_old_workers(cut_pass, num_diving_workers);
+    const i_t available = root_heuristics.available_worker_slots(cut_pass);
+    const i_t stopped_workers =
+      root_heuristics.stop_old_workers(cut_pass, diving_heuristics.size());
+    const i_t num_diving_workers =
+      std::min<i_t>(diving_heuristics.size(), available + stopped_workers);
 
     mip_node_t<i_t, f_t> root_node(root_objective_, root_vstatus_);
 
@@ -3811,6 +4065,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       omp_get_num_threads() >= CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT &&
       !settings_.deterministic) {
     signal_extend_cliques_.store(false, std::memory_order_release);
+    mip::clique_config_t clique_config;
+    clique_table_ =
+      std::make_shared<mip::clique_table_t<i_t, f_t>>(2 * original_problem_.num_cols,
+                                                      clique_config.min_clique_size,
+                                                      clique_config.max_clique_size_for_extension);
+    auto* initial_clique_table = clique_table_.get();
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_for_clique{};
     tolerances_for_clique.presolve_absolute_tolerance = settings_.primal_tol;
     tolerances_for_clique.absolute_tolerance          = settings_.primal_tol;
@@ -3820,12 +4080,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     tolerances_for_clique.relative_mip_gap            = settings_.relative_mip_gap_tol;
 
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *clique_signal) \
-  firstprivate(tolerances_for_clique)
+  firstprivate(tolerances_for_clique, initial_clique_table)
     {
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
       mip::find_initial_cliques(
-        problem_copy, tolerances_for_clique, clique_table_, timer, clique_signal);
+        problem_copy, tolerances_for_clique, *initial_clique_table, timer, clique_signal);
     }
   }
 
@@ -3843,6 +4103,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   basis_update_mpf_t<i_t, f_t> basis_update(original_lp_.num_rows, settings_.refactor_frequency);
   lp_status_t root_status  = lp_status_t::UNSET;
   solving_root_relaxation_ = true;
+
+  // Started here so the lanes run through the root LP and every cut pass. No relaxation exists
+  // yet, so they seed from the anchor.
+  root_heuristics_t<i_t, f_t> root_heuristics(settings_.num_threads, settings_.random_seed);
+  const f_t root_fj_time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (!settings_.deterministic && omp_in_parallel() && root_fj_time_limit > 0) {
+    root_heuristics.start_persistent_lanes(
+      original_lp_,
+      var_types_,
+      original_problem_.num_cols,
+      {},
+      settings_,
+      root_fj_time_limit,
+      [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
+        cuopt_assert(assignment.size() == (size_t)original_problem_.num_cols,
+                     "root CPU FJ lanes must report a slack-free assignment");
+        set_solution_from_cpu_fj(obj, assignment, work_units);
+      });
+  }
 
   f_t root_relax_start_time = tic();
   root_relax_work_estimate_ = 0.0;
@@ -4106,12 +4385,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       compute_user_objective(original_lp_, root_relax_objective);
   }
 
-  root_heuristics_t<i_t, f_t> root_heuristics(settings_.num_threads - 1);
-
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;
-  lp_settings.concurrent_halt   = settings_.concurrent_halt;
-  lp_settings.inside_mip        = 2;
+  lp_settings.concurrent_halt =
+    settings_.concurrent_halt ? settings_.concurrent_halt : &node_concurrent_halt_;
+  lp_settings.inside_mip = 1;
 
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
@@ -4124,14 +4402,33 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
 
     if (num_fractional == 0) {
-      // LP relaxation is already integer-feasible — solved at the root
-      // by the cuts added so far (possibly zero). Publish the with-cuts
-      // value so the gap-closed line still has a non-NaN dual bound.
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->root_lp_with_cuts =
           compute_user_objective(original_lp_, root_objective_);
       }
+
       set_solution_at_root(solution, cut_info);
+
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
+      }
+      return mip_status_t::OPTIMAL;
+    }
+
+    f_t user_obj   = compute_user_objective(original_lp_, upper_bound_.load());
+    f_t user_lower = compute_user_objective(original_lp_, root_objective_);
+    f_t abs_gap    = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
+    f_t rel_gap    = user_relative_gap(user_obj, user_lower);
+
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->root_lp_with_cuts =
+          compute_user_objective(original_lp_, root_objective_);
+      }
+
+      solver_status_ = mip_status_t::OPTIMAL;
+      set_final_solution(solution, root_objective_);
+
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
       }
@@ -4211,6 +4508,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   // Stops the root heuristics and clear the associated data
   root_heuristics.stop_and_sync();
+
+  if (toc(exploration_stats_.start_time) > settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return solver_status_;
+  }
+
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);
@@ -4331,7 +4635,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     i_t removed =
       symmetry_->generators.template prune_by_bounds<f_t>(original_lp_.lower, original_lp_.upper);
     if (removed > 0) {
-      symmetry_->num_generators = static_cast<int>(symmetry_->generators.num_generators());
+      symmetry_->num_generators = symmetry_->generators.num_generators();
       settings_.log.printf(
         "Pruned %d generators invalidated by root-level bound tightening, %d remain\n",
         removed,
@@ -4341,11 +4645,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   settings_.log.printf("Exploring the B&B tree using %d threads\n\n", settings_.num_threads);
 
-  exploration_stats_.nodes_explored       = 0;
-  exploration_stats_.nodes_unexplored     = 2;
-  exploration_stats_.nodes_since_last_log = 0;
-  exploration_stats_.last_log             = tic();
-  min_node_queue_size_                    = 20;
+  exploration_stats_.nodes_explored         = 0;
+  exploration_stats_.nodes_unexplored       = 2;
+  exploration_stats_.nodes_since_last_log   = 0;
+  exploration_stats_.last_log               = tic();
+  exploration_stats_.report_solver_progress = true;
+  min_node_queue_size_                      = 20;
 
   print_table_header();
 
@@ -4380,19 +4685,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                new_slacks_,
                                num_bfs_workers);
 
-      if (num_diving_workers > 0) {
-        diving_worker_pool_.init(num_diving_workers,
-                                 original_lp_,
-                                 Arow_,
-                                 var_types_,
-                                 symmetry_,
-                                 settings_,
-                                 pc_,
-                                 root_relax_soln_.x,
-                                 edge_norms_,
-                                 new_slacks_,
-                                 num_bfs_workers + num_submip_workers);
-      }
+      diving_worker_pool_.init(num_diving_workers,
+                               original_lp_,
+                               Arow_,
+                               var_types_,
+                               symmetry_,
+                               settings_,
+                               pc_,
+                               root_relax_soln_.x,
+                               edge_norms_,
+                               new_slacks_,
+                               num_bfs_workers + num_submip_workers);
 
       active_submip_solvers_mutex_.lock();
       active_submip_solvers_.assign(num_submip_workers, nullptr);
@@ -4999,8 +5302,10 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   // Solve LP relaxation
   worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
   decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols, worker.leaf_vstatus);
+  f_t lp_start_time      = tic();
+  lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (lp_settings.time_limit <= 0.0) { return node_status_t::PENDING; }
   i_t node_iter                    = 0;
-  f_t lp_start_time                = tic();
   std::vector<f_t> leaf_edge_norms = edge_norms_;
   f_t dual_work_estimate           = 0.0;
   dual_status_t lp_status          = dual_phase2_with_advanced_basis(2,
@@ -5616,8 +5921,10 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 
     // Solve LP relaxation
     worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
+    f_t lp_start_time      = tic();
+    lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+    if (lp_settings.time_limit <= 0.0) { break; }
     i_t node_iter                    = 0;
-    f_t lp_start_time                = tic();
     f_t dual_work_estimate           = 0.0;
     std::vector<f_t> leaf_edge_norms = edge_norms_;
 

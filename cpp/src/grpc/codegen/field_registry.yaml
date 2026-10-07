@@ -467,6 +467,19 @@ chunked_result_header:
 pdlp_settings:
   cpp_type: "pdlp_solver_settings_t<i_t, f_t>"
   proto_type: "cuopt::remote::PDLPSolverSettings"
+  # parameter_map deprecates every typed field that set_parameter() accepts.
+  # Those fields stay in the message so a server can still read a client that
+  # sends them. The current client writes set_parameter() values only in
+  # `parameters` and needs a server that applies that map. New parameters are
+  # not added here. All or nothing is a property of the serialized map, not of
+  # set_parameter() on the settings object. A non-empty map skips every
+  # deprecated typed field and applies only the keys it contains. An empty map
+  # is an older client, and those typed fields are applied. An old client that
+  # calls set_parameter() still sends an empty map unless its serializer writes
+  # one. Warm start is an embed and is always applied.
+  parameter_map:
+    name: parameters
+    field_num: 60
   # Submessages embedded as fields in PDLPSolverSettings. See lp_solution.embeds.
   embeds:
     - name: warm_start_data
@@ -809,6 +822,7 @@ pdlp_settings:
     # cpp/include/cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh.
   - hyper_params:
     - do_curtis_reid_scaling:
+        param_name: pdlp_hyper_enable_curtis_reid_scaling
         description: >-
           Whether Curtis-Reid prescaling runs before Ruiz/Pock-Chambolle
           matrix scaling.
@@ -823,6 +837,11 @@ pdlp_settings:
 mip_settings:
   cpp_type: "mip_solver_settings_t<i_t, f_t>"
   proto_type: "cuopt::remote::MIPSolverSettings"
+  # See pdlp_settings.parameter_map. presolve_absolute_tolerance is not a
+  # set_parameter() setting (param_name: null) and stays a typed field.
+  parameter_map:
+    name: parameters
+    field_num: 60
 
   fields:
     # Limits
@@ -948,8 +967,8 @@ mip_settings:
       param_name: mip_symmetry
       # Symmetry-detection level (dejavu). Valid: -1 (default), 0 (off),
       # 1 (orbital fixing), 2 (orbital fixing + lexical reduction). The
-      # mapper clamps out-of-range values to -1 to match the local-solve
-      # range check in cpp/src/math_optimization/solver_settings.cu.
+      # deprecated path calls set_parameter(), which rejects a value outside
+      # the range registered in cpp/src/math_optimization/solver_settings.cu.
       description: >-
         Symmetry detection and handling. -1 automatic, 0 disabled, 1 orbital
         fixing, 2 orbital fixing plus lexical reduction.
@@ -1299,7 +1318,7 @@ mip_settings:
         param_name: mip_hyper_heuristic_related_vars_time_limit
         description: >-
           Time in seconds allowed for building the related-variable structure.
-        default: "30.0"
+        default: "2.0"
         field_num: 51
         optional: true
     - presolve_max_rounds:

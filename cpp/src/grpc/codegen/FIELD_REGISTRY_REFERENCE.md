@@ -391,6 +391,7 @@ Unique to settings:
 | Key | Description |
 |---|---|
 | `fields:` | List of settings fields. Supports nested sub-structs (see below). Used instead of `scalars:` because settings need to express the C++ struct's nesting hierarchy. |
+| `parameter_map:` | `{name, field_num}` for the `map<string, string>` that carries `set_parameter()` bindings. Its presence deprecates every typed field that `set_parameter()` accepts. A field with `param_name: null` is not a string parameter and stays a normal field. Warm start stays an embed, not a deprecated field. The live client writes `set_parameter()` values only in this map and needs a server that applies it. All or nothing is decided by the serialized map, not by `set_parameter()` on the settings object. A non-empty map skips every deprecated typed field; `set_parameter_from_string()` runs only for keys present in the map, and every other parameter stays at its C++ default. An empty map is an older client: the deprecated typed fields are applied and the map changes nothing. Calling `set_parameter()` does not fill the map. A published client that only writes typed fields still has an empty map. A message that contains both a non-empty map and deprecated typed fields is a custom serializer; the bundled client writes the map and does not write those fields. Warm start and fields with `param_name: null` are applied either way. New parameters are registered on `solver_settings_t` only — not as proto fields. |
 
 #### Nested sub-structs
 

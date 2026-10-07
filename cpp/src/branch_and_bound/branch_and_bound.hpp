@@ -275,6 +275,7 @@ class branch_and_bound_t {
   omp_mutex_t active_submip_solvers_mutex_;
   submip_stats_t rins_stats_;
   submip_stats_t rens_stats_;
+  submip_stats_t mutation_stats_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -288,7 +289,7 @@ class branch_and_bound_t {
   // In case, a best-first thread encounters a numerical issue when solving a node,
   // its blocks the progression of the lower bound as it cannot explore the
   // corresponding subtree.
-  omp_atomic_t<f_t> lower_bound_numerical_;
+  omp_atomic_t<f_t> lower_bound_numerical_{std::numeric_limits<f_t>::infinity()};
   std::function<void(f_t)> user_bound_callback_;
 
   void print_table_header();
@@ -394,6 +395,8 @@ class branch_and_bound_t {
                     i_t simplex_iter_used,
                     simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
+  void mutation(diving_worker_t<i_t, f_t>* worker,
+                simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
   // Creates and solves the RINS/RENS sub-MIP.
   void recursive_submip(diving_worker_t<i_t, f_t>* worker,
                         simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);

@@ -235,6 +235,7 @@ struct PendingChunkedUpload {
 // =============================================================================
 
 inline std::atomic<bool> keep_running{true};
+inline std::atomic<bool> fatal_gpu_failure{false};
 inline std::map<std::string, JobInfo> job_tracker;
 inline std::mutex tracker_mutex;
 inline std::condition_variable result_cv;
@@ -245,6 +246,10 @@ inline std::mutex waiters_mutex;
 inline JobQueueEntry* job_queue       = nullptr;
 inline ResultQueueEntry* result_queue = nullptr;
 inline SharedMemoryControl* shm_ctrl  = nullptr;
+// Per-slot ready flags: child sets after CUDA/RMM init and the startup GPU
+// probe. Parent clears before a respawn and waits for the new child to publish.
+// Sized to config.num_workers; do not use active_workers (SIGKILL leaves it stale).
+inline std::atomic<bool>* worker_ready_flags = nullptr;
 
 inline std::vector<pid_t> worker_pids;
 inline std::mutex worker_pids_mutex;
@@ -277,11 +282,16 @@ inline std::string make_shm_name(const char* base)
 inline std::string SHM_JOB_QUEUE    = make_shm_name("/cuopt_job_queue");
 inline std::string SHM_RESULT_QUEUE = make_shm_name("/cuopt_result_queue");
 inline std::string SHM_CONTROL      = make_shm_name("/cuopt_control");
+inline std::string SHM_WORKER_READY = make_shm_name("/cuopt_worker_ready");
 
 inline const std::string LOG_DIR = "/tmp/cuopt_logs";
 
 constexpr int64_t kMiB = 1024LL * 1024;
 constexpr int64_t kGiB = 1024LL * 1024 * 1024;
+
+// Distinguishes a fatal CUDA/RMM health failure from ordinary worker exits
+// such as the SIGKILL used to cancel a running job.
+constexpr int kGpuUnhealthyExitCode = 86;
 
 // Floor: 4 KiB is enough for basic gRPC control messages. Values below this
 // would risk rejecting even metadata-only RPCs like CheckStatus.
@@ -362,7 +372,7 @@ bool recv_job_data_pipe(int fd, uint64_t expected_size, std::vector<uint8_t>& da
 bool send_incumbent_pipe(int fd, const std::vector<uint8_t>& data);
 bool recv_incumbent_pipe(int fd, std::vector<uint8_t>& data);
 
-void worker_process(int worker_id);
+void worker_process(int worker_id, bool is_replacement);
 pid_t spawn_single_worker(int worker_id);
 void mark_worker_jobs_failed(pid_t dead_worker_pid);
 

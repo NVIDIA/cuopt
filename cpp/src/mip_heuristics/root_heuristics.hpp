@@ -9,7 +9,17 @@
 
 #include <branch_and_bound/worker.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <mip_heuristics/mip_constants.hpp>
+#include <utilities/macros.cuh>
+#include <utilities/splitmix64.hpp>
 #include "feasibility_jump/fj_cpu_worker.cuh"
+
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -25,6 +35,7 @@ struct cut_pass_heuristics_t {
   std::atomic<int> halt_;
 
   std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
+  std::unique_ptr<diving_worker_t<i_t, f_t>> mutation_worker_;
   std::vector<std::unique_ptr<diving_worker_t<i_t, f_t>>> diving_workers_;
   fj_cpu_worker_t<i_t, f_t> fj_cpu_worker_;
 
@@ -66,6 +77,12 @@ struct cut_pass_heuristics_t {
       submip_worker_.reset();
     }
 
+    if (mutation_worker_) {
+      diving_worker_t<i_t, f_t>* worker = mutation_worker_.get();
+#pragma omp taskwait depend(in : *worker)
+      mutation_worker_.reset();
+    }
+
     for (auto& worker : diving_workers_) {
       diving_worker_t<i_t, f_t>* w = worker.get();
 #pragma omp taskwait depend(in : *w)
@@ -84,7 +101,7 @@ struct cut_pass_heuristics_t {
     const std::vector<f_t>& sol,
     search_strategy_t type)
   {
-    submip_worker_                   = std::make_unique<diving_worker_t<i_t, f_t>>(id,
+    submip_worker_                  = std::make_unique<diving_worker_t<i_t, f_t>>(id,
                                                                  lp,
                                                                  Arow_,
                                                                  var_types_,
@@ -93,15 +110,38 @@ struct cut_pass_heuristics_t {
                                                                  root_solution_,
                                                                  root_edge_norm_,
                                                                  new_slacks_);
-    submip_worker_->start_node       = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
-    submip_worker_->leaf_vstatus     = root_vstatus;
-    submip_worker_->leaf_solution.x  = sol;
-    submip_worker_->recompute_bounds = false;
-    submip_worker_->recompute_basis  = true;
-    submip_worker_->search_strategy  = type;
+    submip_worker_->start_node      = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
+    submip_worker_->leaf_vstatus    = root_vstatus;
+    submip_worker_->leaf_solution.x = sol;
+    submip_worker_->search_strategy = type;
     submip_worker_->set_active();
 
     return submip_worker_.get();
+  }
+
+  diving_worker_t<i_t, f_t>* create_mutation_worker(
+    i_t id,
+    const simplex::lp_problem_t<i_t, f_t>& lp,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    f_t root_obj,
+    const std::vector<simplex::variable_status_t>& root_vstatus,
+    const std::vector<f_t>& sol)
+  {
+    mutation_worker_                  = std::make_unique<diving_worker_t<i_t, f_t>>(id,
+                                                                   lp,
+                                                                   Arow_,
+                                                                   var_types_,
+                                                                   settings,
+                                                                   pseudo_costs_,
+                                                                   root_solution_,
+                                                                   root_edge_norm_,
+                                                                   new_slacks_);
+    mutation_worker_->start_node      = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
+    mutation_worker_->leaf_vstatus    = root_vstatus;
+    mutation_worker_->leaf_solution.x = sol;
+    mutation_worker_->search_strategy = search_strategy_t::MUTATION;
+    mutation_worker_->set_active();
+    return mutation_worker_.get();
   }
 
   void initialize_pseudocost(const simplex::lp_problem_t<i_t, f_t>& lp,
@@ -158,26 +198,74 @@ struct root_heuristics_t {
   // Count the number of active workers. Same reason as above.
   std::shared_ptr<omp_atomic_t<i_t>> worker_count_;
   i_t max_workers_;
+  i_t persistent_lane_count_;
+  cuopt::splitmix64_t seed_rng_;
 
   // Keep track of the last diving heuristic used (so we can cycle between them in low thread
   // count systems)
   i_t next_diving_type_;
 
-  root_heuristics_t(i_t max_workers)
+  // CPU FJ lanes that outlive a single cut pass.
+  std::vector<std::unique_ptr<fj_cpu_worker_t<i_t, f_t>>> persistent_lanes_;
+  // Shared by every CPU FJ lane of the root phase, persistent and per-cut-pass alike.
+  std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent_;
+
+  root_heuristics_t(i_t num_threads, int64_t base_seed)
     : worker_count_(std::make_shared<omp_atomic_t<i_t>>(0)),
-      max_workers_(max_workers),
-      next_diving_type_(0)
+
+      max_workers_(std::max(num_threads - 1, 0)),
+      persistent_lane_count_(std::clamp<i_t>(num_threads / 4, 0, CUOPT_MIP_ROOT_CPUFJ_MAX_LANES)),
+      seed_rng_(base_seed),
+      next_diving_type_(0),
+      shared_incumbent_(make_fj_cpu_shared_incumbent<i_t, f_t>())
   {
   }
 
   ~root_heuristics_t() { stop_and_sync(); }
 
+  // Must be called from the same task region as stop_and_sync: run_async's task dependence is
+  // matched only by a taskwait in the encountering region.
+  void start_persistent_lanes(const simplex::lp_problem_t<i_t, f_t>& lp,
+                              const std::vector<simplex::variable_type_t>& var_types,
+                              i_t n_structural,
+                              const std::vector<f_t>& start_assignment,
+                              const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                              f_t time_limit,
+                              std::function<void(f_t, const std::vector<f_t>&, double)> callback)
+  {
+    persistent_lanes_.reserve(persistent_lane_count_);
+    for (i_t k = 0; k < persistent_lane_count_; ++k) {
+      auto lane                  = std::make_unique<fj_cpu_worker_t<i_t, f_t>>();
+      lane->improvement_callback = callback;
+      lane->shared_incumbent     = shared_incumbent_;
+      lane->create_worker(lp,
+                          var_types,
+                          n_structural,
+                          start_assignment,
+                          settings,
+                          "[Root FJ lane " + std::to_string(k) + "] ",
+                          seed_rng_.next_i32(),
+                          k);
+      lane->run_async(time_limit);
+      persistent_lanes_.push_back(std::move(lane));
+    }
+  }
+
+  int64_t next_seed() { return seed_rng_.next_i32(); }
+
   void stop_and_sync()
   {
+    for (auto& lane : persistent_lanes_) {
+      lane->send_stop_signal();
+    }
     for (auto& heuristic : cut_passes_heuristics_) {
       heuristic->send_stop_signal();
     }
 
+    for (auto& lane : persistent_lanes_) {
+      lane->stop();
+    }
+    persistent_lanes_.clear();
     for (auto& heuristic : cut_passes_heuristics_) {
       heuristic->stop_and_sync();
     }
@@ -185,15 +273,14 @@ struct root_heuristics_t {
     cut_passes_heuristics_.clear();
   }
 
-  void stop_old_workers(i_t cut_pass, i_t new_workers)
+  i_t stop_old_workers(i_t cut_pass, i_t new_workers)
   {
-    if (new_workers <= 0) return;
+    if (new_workers <= 0) return 0;
 
-    // On the first pass we use a thread to generate the clique table
-    i_t cut_generation = cut_pass == 0 ? 2 : 1;
-    i_t total_workers  = new_workers + worker_count_->load() + cut_generation;
-    if (total_workers <= max_workers_) { return; }
+    const i_t workers_to_stop = new_workers - available_worker_slots(cut_pass);
+    if (workers_to_stop <= 0) return 0;
 
+    i_t stopped_workers = 0;
     for (auto& heuristic : cut_passes_heuristics_) {
       // Skip the current heuristic entry
       if (&heuristic == &cut_passes_heuristics_.back()) { break; }
@@ -201,10 +288,20 @@ struct root_heuristics_t {
       i_t active = heuristic->active_workers_;
       if (active > 0 && !heuristic->halt_.load(std::memory_order_acquire)) {
         heuristic->send_stop_signal();
-        new_workers -= active;
-        if (new_workers <= 0) return;
+        stopped_workers += active;
+        if (stopped_workers >= workers_to_stop) break;
       }
     }
+    return stopped_workers;
+  }
+
+  i_t available_worker_slots(i_t cut_pass) const
+  {
+    // On the first pass we use a thread to generate the clique table
+    const i_t cut_generation     = cut_pass == 0 ? 2 : 1;
+    const i_t persistent_workers = persistent_lanes_.size();
+    return std::max(i_t{0},
+                    max_workers_ - worker_count_->load() - persistent_workers - cut_generation);
   }
 
   std::shared_ptr<cut_pass_heuristics_t<i_t, f_t>> create_new_cut_pass_heuristic(
@@ -215,8 +312,12 @@ struct root_heuristics_t {
     const std::vector<i_t>& new_slacks,
     const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    return cut_passes_heuristics_.emplace_back(std::make_shared<cut_pass_heuristics_t<i_t, f_t>>(
-      Arow, var_types, root_solution, root_edge_norm, new_slacks, settings));
+    auto& heuristic =
+      cut_passes_heuristics_.emplace_back(std::make_shared<cut_pass_heuristics_t<i_t, f_t>>(
+        Arow, var_types, root_solution, root_edge_norm, new_slacks, settings));
+    // Read by create_worker, so it has to be in place before the caller builds the climber.
+    heuristic->fj_cpu_worker_.shared_incumbent = shared_incumbent_;
+    return heuristic;
   }
 };
 

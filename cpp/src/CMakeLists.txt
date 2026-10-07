@@ -17,10 +17,7 @@ add_subdirectory(math_optimization)
 add_subdirectory(mip_heuristics)
 add_subdirectory(io)
 
-# Only build routing for full builds, not LP-only builds
-if(NOT SKIP_ROUTING_BUILD)
-  add_subdirectory(routing)
-endif()
+add_subdirectory(routing)
 
 add_subdirectory(dual_simplex)
 add_subdirectory(barrier)

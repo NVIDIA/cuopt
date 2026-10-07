@@ -90,6 +90,7 @@
 #define CUOPT_MIP_DUAL_DEGENERATE_PIVOTS            "mip_dual_degenerate_pivots"
 #define CUOPT_MIP_RINS                              "mip_rins"
 #define CUOPT_MIP_RENS                              "mip_rens"
+#define CUOPT_MIP_MUTATION                          "mip_mutation"
 #define CUOPT_MIP_OBJECTIVE_STEP                    "mip_objective_step"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD              "mip_cut_change_threshold"
 #define CUOPT_MIP_CUT_MIN_ORTHOGONALITY             "mip_cut_min_orthogonality"
@@ -98,16 +99,15 @@
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
 
-#define CUOPT_SOLUTION_FILE                "solution_file"
-#define CUOPT_NUM_CPU_THREADS              "num_cpu_threads"
-#define CUOPT_NUM_GPUS                     "num_gpus"
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER "distributed_pdlp_partitioner"
-#define CUOPT_USE_DISTRIBUTED_PDLP         "use_distributed_pdlp"
-#define CUOPT_USER_PROBLEM_FILE            "user_problem_file"
-#define CUOPT_PRESOLVE_FILE                "presolve_file"
-#define CUOPT_RANDOM_SEED                  "random_seed"
-#define CUOPT_PDLP_PRECISION               "pdlp_precision"
-#define CUOPT_MIP_SEMICONTINUOUS_BIG_M     "mip_semi_continuous_big_m"
+#define CUOPT_SOLUTION_FILE             "solution_file"
+#define CUOPT_NUM_CPU_THREADS           "num_cpu_threads"
+#define CUOPT_NUM_GPUS                  "num_gpus"
+#define CUOPT_MULTIGPU_PDLP_PARTITIONER "multigpu_pdlp_partitioner"
+#define CUOPT_USER_PROBLEM_FILE         "user_problem_file"
+#define CUOPT_PRESOLVE_FILE             "presolve_file"
+#define CUOPT_RANDOM_SEED               "random_seed"
+#define CUOPT_PDLP_PRECISION            "pdlp_precision"
+#define CUOPT_MIP_SEMICONTINUOUS_BIG_M  "mip_semi_continuous_big_m"
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
@@ -162,8 +162,15 @@
 /* @brief Block bounded-variable-elimination step of cuOpt's internal MIP presolve */
 #define CUOPT_MIP_HYPER_BLOCK_BVE "mip_hyper_block_bve"
 
+/* @brief Indicator-strengthening step that runs before Papilo presolve on MIPs */
+#define CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING \
+  "mip_hyper_presolve_indicator_strengthening"
+
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
+
+/* @brief Barrier scaling hyper-parameter: CPU/GPU Ruiz crossover */
+#define CUOPT_BARRIER_HYPER_GPU_RUIZ_NNZ_THRESHOLD "barrier_hyper_gpu_ruiz_nnz_threshold"
 
 /* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
 #define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
@@ -239,27 +246,21 @@
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0
 
-/* @brief Status codes constants */
-#define CUOPT_SUCCESS          0
-#define CUOPT_INVALID_ARGUMENT 1
-#define CUOPT_MPS_FILE_ERROR   2
-#define CUOPT_MPS_PARSE_ERROR  3
-#define CUOPT_VALIDATION_ERROR 4
-#define CUOPT_OUT_OF_MEMORY    5
-#define CUOPT_RUNTIME_ERROR    6
+/* @brief Status codes constants -- shared with cuopt::client, defined in status_codes.h */
+#include "cuopt/status_codes.h"
 
 #define CUOPT_PRESOLVE_DEFAULT -1
 #define CUOPT_PRESOLVE_OFF     0
 #define CUOPT_PRESOLVE_PAPILO  1
 #define CUOPT_PRESOLVE_PSLP    2
 
-/* @brief distributed_pdlp_partitioner values.
+/* @brief multigpu_pdlp_partitioner values.
  * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
  * KaMinPar: multi-threaded KaMinPar graph partitioner.
  * RoundRobin: round-robin assignment, no graph. */
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO        0
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR    1
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN 2
+#define CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO        0
+#define CUOPT_MULTIGPU_PDLP_PARTITIONER_KAMINPAR    1
+#define CUOPT_MULTIGPU_PDLP_PARTITIONER_ROUND_ROBIN 2
 
 /* @brief MIP scaling mode constants */
 #define CUOPT_MIP_SCALING_OFF          0

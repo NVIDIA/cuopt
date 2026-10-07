@@ -105,16 +105,16 @@ enum pdlp_precision_t : int {
 };
 
 /**
- * @brief Which graph partitioner distributed PDLP uses.
+ * @brief Which graph partitioner multi-GPU PDLP uses.
  *
  * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
  * KaMinPar: multi-threaded KaMinPar graph partitioner.
  * RoundRobin: round-robin assignment, no graph.
  */
-enum distributed_pdlp_partitioner_t : int {
-  Auto       = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO,
-  KaMinPar   = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR,
-  RoundRobin = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN,
+enum multigpu_pdlp_partitioner_t : int {
+  Auto       = CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO,
+  KaMinPar   = CUOPT_MULTIGPU_PDLP_PARTITIONER_KAMINPAR,
+  RoundRobin = CUOPT_MULTIGPU_PDLP_PARTITIONER_ROUND_ROBIN,
 };
 
 template <typename i_t, typename f_t>
@@ -313,6 +313,9 @@ class pdlp_solver_settings_t {
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.
   i_t qcqp_ruiz_equilibration{-1};
+  // nnz(A)+nnz(Q) at or above which the barrier path runs Ruiz equilibration on GPU instead
+  // of CPU. Below it the upload costs more than the scaling saves.
+  i_t gpu_ruiz_nnz_threshold{500000};
   // Margin used to push the barrier method's initial iterate into the interior of the
   // nonnegative orthant / SOC (values are shifted to be at least this far from the boundary).
   f_t barrier_initial_point_safeguard{10.0};
@@ -349,15 +352,13 @@ class pdlp_solver_settings_t {
   bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
-  // Concurrent LP/MIP: 1–2 GPUs. Distributed PDLP (method=PDLP): up to the visible device
-  // count; -1 selects all visible GPUs. See use_distributed_pdlp.
+  // Concurrent LP/MIP: 1–2 GPUs. Multi-GPU PDLP (method=PDLP): up to the visible device
+  // count; -1 selects all visible GPUs, which dispatches to the multi-GPU PDLP engine
+  // whenever num_gpus == -1 or num_gpus > 1.
   int num_gpus{1};
-  // Dispatch the LP to the multi-GPU distributed PDLP engine (typically set when
-  // method=PDLP and num_gpus>1, or num_gpus=-1).
-  bool use_distributed_pdlp{false};
-  // Which graph partitioner distributed PDLP uses. See
-  // distributed_pdlp_partitioner_t for the meaning of each value.
-  distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};
+  // Which graph partitioner multi-GPU PDLP uses. See
+  // multigpu_pdlp_partitioner_t for the meaning of each value.
+  multigpu_pdlp_partitioner_t multigpu_pdlp_partitioner{multigpu_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
   // TODO: Remove this cutoff once concurrent CPU solver memory usage and cuDSS long running kernels
   // are resolved. -1 disables the cutoff regardless of the reduced problem's NNZ.

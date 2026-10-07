@@ -28,7 +28,6 @@ pip wheel \
 echo "installing 'cvxpy' with cuopt"
 python -m pip install \
     --constraint "${PIP_CONSTRAINT}" \
-    --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
     'pytest-error-for-skips>=2.0.2' \
     "$(echo ./dist/cvxpy*.whl)[CUOPT,testing]"
 

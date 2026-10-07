@@ -15,6 +15,7 @@
 
 #include <numeric>
 
+#include <cub/device/device_transform.cuh>
 #include <utilities/logger.hpp>
 
 namespace cuopt::mathematical_optimization::pdlp {

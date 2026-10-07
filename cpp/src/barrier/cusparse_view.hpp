@@ -30,6 +30,13 @@ class cusparse_view_t {
   // TMP matrix data should already be on the GPU and in CSR not CSC
   cusparse_view_t(raft::handle_t const* handle_ptr, const csc_matrix_t<i_t, f_t>& A);
 
+  // Borrowing overload: the descriptors point at caller-owned device buffers, which must outlive
+  // this view, and the A_* / A_T_* members below stay empty. A_csc supplies the transpose view
+  // (CSC(A) is CSR(A^T)) and AT_csc the forward view (CSC(A^T) is CSR(A)).
+  cusparse_view_t(raft::handle_t const* handle_ptr,
+                  device_csc_matrix_t<i_t, f_t>& A_csc,
+                  device_csc_matrix_t<i_t, f_t>& AT_csc);
+
   pdlp::cusparse_dn_vec_uptr create_vector(rmm::device_uvector<f_t> const& vec);
 
   template <typename AllocatorA, typename AllocatorB>
@@ -63,7 +70,7 @@ class cusparse_view_t {
                                        cusparseDnVecDescr_t x,
                                        cusparseDnVecDescr_t y,
                                        rmm::device_buffer& buffer,
-                                       i_t rows);
+                                       bool beta_bug_possible);
 
   rmm::device_uvector<i_t> A_offsets_;
   rmm::device_uvector<i_t> A_indices_;
@@ -78,6 +85,7 @@ class cusparse_view_t {
   rmm::device_scalar<f_t> d_one_;
   rmm::device_scalar<f_t> d_minus_one_;
   rmm::device_scalar<f_t> d_zero_;
-  i_t rows_{0};
+  bool beta_bug_possible_{false};
+  bool beta_bug_possible_transpose_{false};
 };
 }  // namespace cuopt::mathematical_optimization::barrier

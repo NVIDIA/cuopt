@@ -9,9 +9,71 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
+namespace {
+
+// How long the monitor waits for a worker to publish ready after CUDA/RMM init
+// and the startup GPU probe. Normal busy-runner init can pass 60s; the
+// integration warm-up already allows 180s. Tests shorten one side at a time:
+// CUOPT_GRPC_TEST_INITIAL_READY_MS for the original spawn, and
+// CUOPT_GRPC_TEST_RESPAWN_READY_MS for a replacement.
+std::chrono::milliseconds worker_ready_timeout(const char* test_env_name)
+{
+  constexpr auto kDefault = std::chrono::milliseconds(180000);
+#ifdef CUOPT_GRPC_TESTING
+  if (const char* env = std::getenv(test_env_name)) {
+    char* end         = nullptr;
+    errno             = 0;
+    const long parsed = std::strtol(env, &end, 10);
+    if (errno == 0 && end != env && *end == '\0' && parsed > 0) {
+      return std::chrono::milliseconds(parsed);
+    }
+  }
+#else
+  (void)test_env_name;
+#endif
+  return kDefault;
+}
+
+// Same path as a failed GPU probe: mark fatal and wake the sigwait thread.
+void request_fatal_gpu_shutdown(const char* reason)
+{
+  fatal_gpu_failure.store(true, std::memory_order_release);
+  SERVER_LOG_ERROR("[Server] %s; shutting down", reason);
+  // SIGINT/SIGTERM are blocked process-wide. Sending SIGTERM to ourselves
+  // wakes the existing sigwait shutdown thread and keeps one shutdown path.
+  if (kill(getpid(), SIGTERM) != 0) {
+    SERVER_LOG_ERROR("[Server] Failed to request shutdown after %s: %s", reason, strerror(errno));
+    keep_running = false;
+    if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
+  }
+}
+
+constexpr int kWorkerSpawnRetries = 3;
+
+}  // namespace
+
 void worker_monitor_thread()
 {
   SERVER_LOG_INFO("[Server] Worker monitor thread started");
+
+  // Epoch means "not waiting for ready". Set for the original spawn and again
+  // after each successful respawn; cleared once that worker publishes ready.
+  std::vector<std::chrono::steady_clock::time_point> worker_ready_deadline(
+    static_cast<size_t>(std::max(1, config.num_workers)));
+
+  {
+    const auto initial_deadline =
+      std::chrono::steady_clock::now() + worker_ready_timeout("CUOPT_GRPC_TEST_INITIAL_READY_MS");
+    std::lock_guard<std::mutex> lock(worker_pids_mutex);
+    for (size_t i = 0; i < worker_pids.size() && i < worker_ready_deadline.size(); ++i) {
+      if (worker_pids[i] <= 0) { continue; }
+      if (worker_ready_flags != nullptr && i < static_cast<size_t>(config.num_workers) &&
+          worker_ready_flags[i].load(std::memory_order_acquire)) {
+        continue;
+      }
+      worker_ready_deadline[i] = initial_deadline;
+    }
+  }
 
   while (keep_running) {
     // Snapshot which slots need attention under the pid-list lock, then do
@@ -22,6 +84,7 @@ void worker_monitor_thread()
       bool was_clean_shutdown_exit;
     };
     std::vector<DeadWorker> dead;
+    bool gpu_failure_detected = false;
 
     {
       std::lock_guard<std::mutex> lock(worker_pids_mutex);
@@ -37,8 +100,13 @@ void worker_monitor_thread()
         bool signaled                = WIFSIGNALED(status);
         int signal_num               = signaled ? WTERMSIG(status) : 0;
         bool was_clean_shutdown_exit = false;
+        bool was_gpu_failure         = exit_code == kGpuUnhealthyExitCode;
 
-        if (signaled) {
+        if (was_gpu_failure) {
+          gpu_failure_detected = true;
+          SERVER_LOG_ERROR("[Server] Worker %d reported fatal GPU health failure; shutting down",
+                           pid);
+        } else if (signaled) {
           SERVER_LOG_ERROR("[Server] Worker %d killed by signal %d", pid, signal_num);
         } else if (exit_code != 0) {
           SERVER_LOG_ERROR("[Server] Worker %d exited with code %d", pid, exit_code);
@@ -49,8 +117,18 @@ void worker_monitor_thread()
         }
 
         worker_pids[i] = 0;
+        if (i < worker_ready_deadline.size()) {
+          worker_ready_deadline[i] = std::chrono::steady_clock::time_point{};
+        }
         dead.push_back({i, pid, was_clean_shutdown_exit});
       }
+    }
+
+    if (gpu_failure_detected) {
+      for (auto& deadline : worker_ready_deadline) {
+        deadline = std::chrono::steady_clock::time_point{};
+      }
+      request_fatal_gpu_shutdown("GPU health failure");
     }
 
     for (const auto& dw : dead) {
@@ -58,9 +136,25 @@ void worker_monitor_thread()
 
       mark_worker_jobs_failed(dw.pid);
 
-      if (!(keep_running && shm_ctrl && !shm_ctrl->shutdown_requested)) { continue; }
+      if (gpu_failure_detected || fatal_gpu_failure.load(std::memory_order_acquire) ||
+          !(keep_running && shm_ctrl && !shm_ctrl->shutdown_requested)) {
+        continue;
+      }
 
-      pid_t new_pid = spawn_single_worker(static_cast<int>(dw.index));
+      if (worker_ready_flags && dw.index < static_cast<size_t>(config.num_workers)) {
+        worker_ready_flags[dw.index].store(false, std::memory_order_release);
+      }
+
+      pid_t new_pid = -1;
+      for (int attempt = 1; attempt <= kWorkerSpawnRetries; ++attempt) {
+        new_pid = spawn_single_worker(static_cast<int>(dw.index));
+        if (new_pid > 0) { break; }
+        SERVER_LOG_ERROR("[Server] Failed to restart worker %zu (attempt %d/%d)",
+                         dw.index,
+                         attempt,
+                         kWorkerSpawnRetries);
+      }
+
       {
         std::lock_guard<std::mutex> lock(worker_pids_mutex);
         if (dw.index < worker_pids.size() && worker_pids[dw.index] == 0) {
@@ -69,8 +163,35 @@ void worker_monitor_thread()
       }
       if (new_pid > 0) {
         SERVER_LOG_INFO("[Server] Restarted worker %zu with PID %d", dw.index, new_pid);
+        if (dw.index < worker_ready_deadline.size()) {
+          worker_ready_deadline[dw.index] =
+            std::chrono::steady_clock::now() +
+            worker_ready_timeout("CUOPT_GRPC_TEST_RESPAWN_READY_MS");
+        }
       } else {
-        SERVER_LOG_ERROR("[Server] Failed to restart worker %zu", dw.index);
+        request_fatal_gpu_shutdown("replacement worker spawn failed after retries");
+      }
+    }
+
+    // A worker that never publishes ready (stuck in CUDA/RMM init) must take the
+    // server down. Kill-and-respawn does not recover a hung driver.
+    if (!fatal_gpu_failure.load(std::memory_order_acquire) && worker_ready_flags) {
+      const auto now = std::chrono::steady_clock::now();
+      for (size_t i = 0; i < worker_ready_deadline.size(); ++i) {
+        if (worker_ready_deadline[i] == std::chrono::steady_clock::time_point{}) { continue; }
+        if (i < static_cast<size_t>(config.num_workers) &&
+            worker_ready_flags[i].load(std::memory_order_acquire)) {
+          worker_ready_deadline[i] = std::chrono::steady_clock::time_point{};
+          continue;
+        }
+        if (now >= worker_ready_deadline[i]) {
+          SERVER_LOG_ERROR("[Server] Worker %zu never became ready within the ready timeout", i);
+          for (auto& deadline : worker_ready_deadline) {
+            deadline = std::chrono::steady_clock::time_point{};
+          }
+          request_fatal_gpu_shutdown("worker never became ready");
+          break;
+        }
       }
     }
 
