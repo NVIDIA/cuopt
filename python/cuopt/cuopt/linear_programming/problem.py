@@ -1086,17 +1086,35 @@ class LinearExpression:
     def __len__(self):
         return len(self.vars)
 
-    def __neg__(self):
-        return self * -1.0
+    def __neg__(self) -> "LinearExpression":
+        """
+        Returns the negation of the linear expression (-self).
 
-    def __pos__(self):
+        Returns
+        -------
+        LinearExpression
+            A new linear expression with inverted sign on all coefficients
+            and the constant.
+        """
+        return LinearExpression(
+            list(self.vars),
+            [-coeff for coeff in self.coefficients],
+            -self.constant,
+        )
+
+    def __pos__(self) -> "LinearExpression":
+        """
+        Returns a shallow copy of the linear expression (+self).
+
+        Returns
+        -------
+        LinearExpression
+            A new linear expression with the same variables, coefficients,
+            and constant.
+        """
         return LinearExpression(
             list(self.vars), list(self.coefficients), self.constant
         )
-
-    def __abs__(self):
-        val = self.getValue()
-        return val if val >= 0.0 else -val
 
     def __iadd__(self, other):
         # Compute expr1 += expr2
@@ -1261,7 +1279,7 @@ class LinearExpression:
             case int() | float():
                 coeffs = [coeff * float(other) for coeff in self.coefficients]
                 constant = self.constant * float(other)
-                return LinearExpression(self.vars, coeffs, constant)
+                return LinearExpression(list(self.vars), coeffs, constant)
             case Variable():
                 return other * self
             case LinearExpression():

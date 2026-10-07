@@ -923,20 +923,43 @@ def test_quadratic_matrix_2():
 
 
 def test_linear_expression_unary_ops():
+    """
+    Test unary negation and unary plus for LinearExpression, verify that
+    mutating a negated or positively signed expression does not alias or
+    corrupt the original expression, and verify that abs() raises TypeError.
+    """
     p = Problem("test_unary")
     x = p.addVariable(lb=0, ub=5, vtype=CONTINUOUS, name="x")
     y = p.addVariable(lb=0, ub=5, vtype=CONTINUOUS, name="y")
+    z = p.addVariable(lb=0, ub=5, vtype=CONTINUOUS, name="z")
     e = 2 * x + 3 * y + 4.0
 
     neg_e = -e
     assert neg_e.coefficients == [-2.0, -3.0]
     assert neg_e.constant == -4.0
 
+    # Ensure mutating neg_e does not mutate e (no aliasing)
+    neg_e += z
+    assert z in neg_e.vars
+    assert z not in e.vars
+    assert len(e.vars) == 2
+
     pos_e = +e
     assert pos_e.coefficients == [2.0, 3.0]
     assert pos_e.constant == 4.0
 
-    x.Value = 1.0
-    y.Value = 2.0
-    assert abs(e) == 12.0
-    assert abs(-e) == 12.0
+    # Ensure mutating pos_e does not mutate e
+    pos_e += z
+    assert z in pos_e.vars
+    assert z not in e.vars
+    assert len(e.vars) == 2
+
+    # Verify scalar multiplication float branch also avoids aliasing
+    mul_e = e * -1.0
+    mul_e += z
+    assert z in mul_e.vars
+    assert z not in e.vars
+
+    # Ensure abs() is not supported on LinearExpression
+    with pytest.raises(TypeError):
+        abs(e)
