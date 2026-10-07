@@ -831,7 +831,7 @@ static void publish_result(const SolveResult& sr, const std::string& job_id, int
 // stage functions above.
 // ---------------------------------------------------------------------------
 
-void worker_process(int worker_id)
+void worker_process(int worker_id, bool is_replacement)
 {
   SERVER_LOG_INFO("[Worker %d] Started (PID: %d)", worker_id, getpid());
 
@@ -851,6 +851,30 @@ void worker_process(int worker_id)
       "[Worker %d] CUDA/RMM environment initialization failed: %s", worker_id, e.what());
     exit_gpu_unhealthy(worker_id, "initialization");
   }
+
+#ifdef CUOPT_GRPC_TESTING
+  // Hang after a successful startup probe but before publishing ready, so the
+  // parent ready timeout can be exercised without a stuck CUDA driver.
+  // "initial" hangs the original spawn. "respawn" hangs replacements.
+  if (const char* hang = std::getenv("CUOPT_GRPC_TEST_WORKER_READY_HANG")) {
+    const bool hang_this_worker = (is_replacement && std::strcmp(hang, "respawn") == 0) ||
+                                  (!is_replacement && std::strcmp(hang, "initial") == 0);
+    if (hang_this_worker) {
+      SERVER_LOG_ERROR("[Worker %d] Injected worker-ready hang", worker_id);
+      while (!shm_ctrl->shutdown_requested) {
+        sleep(1);
+      }
+      _exit(0);
+    }
+  }
+#else
+  (void)is_replacement;
+#endif
+
+  // Publish ready only after init + startup probe. The monitor waits on this
+  // for the original spawn and for respawns. active_workers is not reliable
+  // after SIGKILL.
+  if (worker_ready_flags) { worker_ready_flags[worker_id].store(true, std::memory_order_release); }
 
   shm_ctrl->active_workers++;
   auto last_idle_probe = std::chrono::steady_clock::now();

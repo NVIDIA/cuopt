@@ -93,6 +93,7 @@ RUN \
 FROM install-env AS java-build
 
 ARG PYTHON_SHORT_VER
+ARG CUDA_VER
 
 # g++-12: Ubuntu 22.04's default gcc (11) fails to compile raft's std::atomic<std::shared_ptr<T>>
 # usage ("static assertion failed: std::atomic requires a trivially copyable type") -- libstdc++
@@ -105,6 +106,14 @@ RUN apt-get update \
         cmake \
     && rm -rf /var/lib/apt/lists/*
 ENV CXX=/usr/bin/g++-12
+
+# raft needs <cuda/std/mdspan> and <cuda/stream>, which ship in nvidia-cuda-cccl rather than
+# libraft itself. Unpinned (header-only). cu13 dropped the cuXY package suffix other majors
+# still use.
+RUN cuda_major=$(echo "${CUDA_VER}" | cut -d'.' -f1) \
+    && if [ "${cuda_major}" = "13" ]; then cccl_pkg="nvidia-cuda-cccl"; \
+       else cccl_pkg="nvidia-cuda-cccl-cu${cuda_major}"; fi \
+    && python -m pip install --no-cache-dir "${cccl_pkg}"
 
 # CMake's find_package(CUDAToolkit REQUIRED) needs nvcc on PATH; reuse cuda-headers instead of
 # installing the toolkit again via apt.

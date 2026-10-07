@@ -619,21 +619,11 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - libcuopt-client==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
   depends_on_libcuopt_mathopt:
     common:
       - output_types: conda
         packages:
           - &libcuopt_mathopt_unsuffixed libcuopt-mathopt==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -656,11 +646,6 @@ dependencies:
       - output_types: conda
         packages:
           - &libcuopt_routing_unsuffixed libcuopt-routing==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -683,11 +668,6 @@ dependencies:
       - output_types: conda
         packages:
           - &libcuopt_unsuffixed libcuopt==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -710,11 +690,6 @@ dependencies:
       - output_types: conda
         packages:
           - &cuopt_unsuffixed cuopt==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -737,11 +712,6 @@ dependencies:
       - output_types: conda
         packages:
           - &cuopt_server_unsuffixed cuopt-server==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -764,11 +734,6 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - cuopt-sh-client==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
   # cuopt/routing/data_model_view.hpp is a public header and includes raft/core/handle.hpp
   # and raft/core/device_span.hpp, so anything compiling against cuOpt needs raft's headers.
   # The wheel that carries them is named libraft; the conda package is libraft-headers.
@@ -777,10 +742,6 @@ dependencies:
       - output_types: conda
         packages:
           - libraft-headers==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -803,10 +764,6 @@ dependencies:
       - output_types: conda
         packages:
           - &librmm_unsuffixed librmm==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -870,20 +827,11 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - rapids-logger==0.3.*
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          # This index is needed for rapids_logger
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
   depends_on_rmm:
     common:
       - output_types: conda
         packages:
           - &rmm_unsuffixed rmm==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -907,9 +855,6 @@ dependencies:
       - output_types: conda
         packages:
           - &cudf_unsuffixed cudf==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -933,9 +878,6 @@ dependencies:
       - output_types: conda
         packages:
           - &pylibraft_unsuffixed pylibraft==26.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
       - output_types: [requirements, pyproject]
         matrices:
