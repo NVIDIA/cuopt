@@ -3,9 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # In-container worker for prepare_maven_bundle.sh.
-#
-# Vendored from rapidsai/shared-workflows (ci/maven-publish/) for this release
-# stability -- see TODO in build.yaml's java-maven-publish job.
+# Vendored from rapidsai/shared-workflows.
 
 set -euo pipefail
 

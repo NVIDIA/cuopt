@@ -144,14 +144,9 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
-  # Release path only (vYY.MM.PP tags); does not publish nightlies. Matches cudf's
-  # release/26.10 java-publish job, but calls a vendored copy of the workflow
-  # (./.github/workflows/maven-publish.yaml) instead of rapidsai/shared-workflows
-  # directly -- a 26.10 release build must not depend on a non-release branch of an
-  # external repo. TODO: once rapidsai/shared-workflows#652 merges to main and ships
-  # in a shared-workflows release branch cuOpt tracks, drop the vendored copy and
-  # java/cuopt/ci/maven-publish/, and call rapidsai/shared-workflows directly again
-  # (also add nightly Sonatype snapshot publishing once that happens).
+  # Release path only (vYY.MM.PP tags). Calls a vendored copy of the workflow
+  # (TODO: drop java/cuopt/ci/maven-publish/ and this file once
+  # rapidsai/shared-workflows#652 merges and ships in a branch cuOpt tracks).
   java-maven-publish:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [java-static-gather]
@@ -167,8 +162,7 @@ jobs:
       publication-type: 'rc'
       artifact-name: cuopt_java_maven_repo
       source-git-sha: ${{ inputs.sha }}
-      # com.nvidia.cuopt is a verified namespace under com.nvidia on Sonatype, not a
-      # separately-verified namespace of its own -- see rapidsai/shared-workflows#652.
+      # com.nvidia.cuopt isn't its own verified Sonatype namespace; com.nvidia is.
       profile-id: com.nvidia
       # false = validate + drop (safe). true = stage PENDING for manual publish.
       stage-for-maven-central-publish: true

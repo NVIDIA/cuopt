@@ -7,9 +7,8 @@
 # Publisher Portal until the deployment passes validation.
 # Never calls the /publish endpoint: publication always requires a human click.
 #
-# Vendored from rapidsai/shared-workflows (ci/maven-publish/) with the
-# --profile-id decoupling from rapidsai/shared-workflows#652, for this release
-# stability -- see TODO in build.yaml's java-maven-publish job.
+# Vendored from rapidsai/shared-workflows, with the --profile-id decoupling
+# from rapidsai/shared-workflows#652.
 
 set -euo pipefail
 

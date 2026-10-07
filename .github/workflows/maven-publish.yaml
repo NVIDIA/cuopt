@@ -7,12 +7,9 @@
 # Sonatype's OSSRH staging compatibility API for validation and human-gated
 # publication.
 #
-# Vendored from rapidsai/shared-workflows (.github/workflows/maven-publish.yaml)
-# for 26.10 release stability, so cuOpt's release path does not pin to a
-# non-release branch of an external repo. TODO: once rapidsai/shared-workflows#652
-# merges to main and ships in a shared-workflows release branch cuOpt tracks,
-# drop this file and java/cuopt/ci/maven-publish/ and go back to calling
-# rapidsai/shared-workflows/.github/workflows/maven-publish.yaml directly.
+# Vendored from rapidsai/shared-workflows. TODO: drop this file and
+# java/cuopt/ci/maven-publish/ once rapidsai/shared-workflows#652 ships in a
+# branch cuOpt tracks, and call that workflow directly again.
 name: Java Maven publish (vendored)
 
 on:
