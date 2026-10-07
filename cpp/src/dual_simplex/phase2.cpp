@@ -3430,6 +3430,10 @@ static dual_status_t dual_phase2_with_advanced_basis(
       }
     }
     timers.pricing_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
+    if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual_status_t::CONCURRENT_LIMIT;
+    }
     if (leaving_index == -1) {
 #ifdef CHECK_BASIS_UPDATE
       for (i_t k = 0; k < basic_list.size(); k++) {
@@ -3693,6 +3697,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
     timers.btran_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     solve_work += (ft.work_estimate() - btran_start_work);
 
+    if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual_status_t::CONCURRENT_LIMIT;
     }
