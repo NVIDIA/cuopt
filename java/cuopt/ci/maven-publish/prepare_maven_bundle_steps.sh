@@ -3,15 +3,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Step functions used by prepare_maven_bundle_in_container.sh.
-# Vendored from rapidsai/shared-workflows.
 
 install_container_deps() {
-  if command -v gpg >/dev/null; then
+  if command -v gpg >/dev/null && command -v zip >/dev/null; then
     return 0
   fi
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -qq -y --no-install-recommends gnupg
+  apt-get install -qq -y --no-install-recommends gnupg zip
 }
 
 remove_generated_sidecars() {

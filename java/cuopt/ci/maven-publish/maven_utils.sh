@@ -27,6 +27,13 @@ require_release_version() {
   fi
 }
 
+require_snapshot_version() {
+  local version=$1
+  if [[ ${version} != *-SNAPSHOT ]]; then
+    fatal "snapshot version (ending in '-SNAPSHOT') required, got '${version}'"
+  fi
+}
+
 require_maven_coordinates() {
   local group_id=$1 artifact_id=$2 version=$3
   local coordinate_pattern='^[A-Za-z0-9][A-Za-z0-9_.+-]*$'

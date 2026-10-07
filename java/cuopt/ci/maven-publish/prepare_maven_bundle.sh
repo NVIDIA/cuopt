@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Host wrapper that prepares a signed Maven repository tree in a container.
-# Vendored from rapidsai/shared-workflows.
 
 set -euo pipefail
 
@@ -16,22 +15,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 INPUT_DIR=""
 OUTPUT_DIR=""
-PUBLICATION_TYPE=""
 IMAGE="maven:3-eclipse-temurin-17"
 
 print_help() {
   cat << EOF
 
-Usage: prepare_maven_bundle.sh --input <path> --output <path> \\
-                               --publication-type rc
+Usage: prepare_maven_bundle.sh --input <path> --output <path>
 
 Copies a Maven repository directory into a clean output tree and GPG-signs
 every publishable file. The input tree is mounted read-only and is not changed.
+Both release and -SNAPSHOT versions are accepted. The destination check
+(Maven Central vs Sonatype snapshots) happens in the publish scripts.
 
 REQUIRED:
     -i, --input                Maven repository directory to sign.
     -o, --output               Empty directory for the signed Maven tree.
-    -t, --publication-type     Only "rc" is currently supported.
 
 ENVIRONMENT VARIABLES:
     GPG_PRIVATE_KEY            Armored GPG private key (required).
@@ -58,11 +56,6 @@ parse_args() {
         OUTPUT_DIR=$2
         shift 2
         ;;
-      -t|--publication-type)
-        require_value "$1" "${2:-}"
-        PUBLICATION_TYPE=$2
-        shift 2
-        ;;
       *)
         echo "Error: Unknown argument $1"
         print_help
@@ -76,11 +69,7 @@ parse_args "$@"
 
 require_arg --input "${INPUT_DIR}"
 require_arg --output "${OUTPUT_DIR}"
-require_arg --publication-type "${PUBLICATION_TYPE}"
 
-if [[ ${PUBLICATION_TYPE} != "rc" ]]; then
-  fatal "only --publication-type rc is supported for now (got '${PUBLICATION_TYPE}')"
-fi
 if [[ ! -d ${INPUT_DIR} ]]; then
   fatal "--input '${INPUT_DIR}' does not exist or is not a directory"
 fi
@@ -103,10 +92,9 @@ METADATA_SCRATCH="$(mktemp -d)"
 trap 'rm -rf "${METADATA_SCRATCH}"' EXIT
 
 echo "Prepare signed Maven bundle"
-echo "  image:            ${IMAGE}"
-echo "  publication type: ${PUBLICATION_TYPE}"
-echo "  input dir:        ${INPUT_DIR}"
-echo "  output dir:       ${OUTPUT_DIR}"
+echo "  image:      ${IMAGE}"
+echo "  input dir:  ${INPUT_DIR}"
+echo "  output dir: ${OUTPUT_DIR}"
 
 DOCKER_ARGS=(
   --rm

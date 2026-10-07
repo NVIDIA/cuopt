@@ -6,9 +6,6 @@
 # files through Sonatype's OSSRH staging compatibility API, and polls the
 # Publisher Portal until the deployment passes validation.
 # Never calls the /publish endpoint: publication always requires a human click.
-#
-# Vendored from rapidsai/shared-workflows, with the --profile-id decoupling
-# from rapidsai/shared-workflows#652.
 
 set -euo pipefail
 

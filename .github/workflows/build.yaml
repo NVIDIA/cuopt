@@ -159,7 +159,6 @@ jobs:
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       MAVEN_DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
     with:
-      publication-type: 'rc'
       artifact-name: cuopt_java_maven_repo
       source-git-sha: ${{ inputs.sha }}
       # com.nvidia.cuopt isn't its own verified Sonatype namespace; com.nvidia is.

@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # In-container worker for prepare_maven_bundle.sh.
-# Vendored from rapidsai/shared-workflows.
 
 set -euo pipefail
 
@@ -38,7 +37,6 @@ ARTIFACT_ID=""
 VERSION=""
 read_pom_coordinates "${POM_FILE}" GROUP_ID ARTIFACT_ID VERSION
 require_maven_coordinates "${GROUP_ID}" "${ARTIFACT_ID}" "${VERSION}"
-require_release_version "${VERSION}"
 
 EXPECTED_ARTIFACT_DIR="${BUNDLE_DIR}/$(maven_group_path "${GROUP_ID}")/${ARTIFACT_ID}/${VERSION}"
 if [[ ${ARTIFACT_DIR} != "${EXPECTED_ARTIFACT_DIR}" ]]; then
