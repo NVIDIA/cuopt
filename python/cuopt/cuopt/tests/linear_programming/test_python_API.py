@@ -940,8 +940,8 @@ def test_linear_expression_unary_ops():
 
     # Ensure mutating neg_e does not mutate e (no aliasing)
     neg_e += z
-    assert z in neg_e.vars
-    assert z not in e.vars
+    assert any(var is z for var in neg_e.vars)
+    assert all(var is not z for var in e.vars)
     assert len(e.vars) == 2
 
     pos_e = +e
@@ -950,15 +950,15 @@ def test_linear_expression_unary_ops():
 
     # Ensure mutating pos_e does not mutate e
     pos_e += z
-    assert z in pos_e.vars
-    assert z not in e.vars
+    assert any(var is z for var in pos_e.vars)
+    assert all(var is not z for var in e.vars)
     assert len(e.vars) == 2
 
     # Verify scalar multiplication float branch also avoids aliasing
     mul_e = e * -1.0
     mul_e += z
-    assert z in mul_e.vars
-    assert z not in e.vars
+    assert any(var is z for var in mul_e.vars)
+    assert all(var is not z for var in e.vars)
 
     # Ensure abs() is not supported on LinearExpression
     with pytest.raises(TypeError):
