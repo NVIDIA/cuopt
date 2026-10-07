@@ -8,12 +8,89 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
+#include <spawn.h>
+
+#include <dirent.h>
 #include <cctype>
+#include <climits>
 #include <cstdio>
+#include <cstdlib>
+
+extern char** environ;
 
 namespace {
 
-// GPU discovery for startup logging only. Avoids CUDA calls in the parent before fork().
+// GPU discovery for startup logging only. The parent must not call CUDA;
+// each worker initializes its own context after exec.
+
+// Descriptors the exec'd worker keeps. File actions dup2 the pipe ends onto
+// these, then close every other inherited descriptor at or above this bound.
+constexpr int kSpawnedJobReadFd        = 3;
+constexpr int kSpawnedResultWriteFd    = 4;
+constexpr int kSpawnedIncumbentWriteFd = 5;
+constexpr int kSpawnedKeepBelowFd      = 6;
+
+int dup_above_kept_fds(int fd)
+{
+  if (fd < 0) return -1;
+  return fcntl(fd, F_DUPFD_CLOEXEC, kSpawnedKeepBelowFd);
+}
+
+void close_if_open(int fd)
+{
+  if (fd >= 0) close(fd);
+}
+
+std::string current_executable_path()
+{
+  char buf[4096];
+  const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (n <= 0) return {};
+  buf[n] = '\0';
+  return std::string(buf, static_cast<size_t>(n));
+}
+
+void* map_existing_shared_memory(const char* name, size_t size)
+{
+  const int fd = shm_open(name, O_RDWR, 0600);
+  if (fd < 0) return MAP_FAILED;
+  void* ptr       = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  const int saved = errno;
+  close(fd);
+  errno = saved;
+  return ptr;
+}
+
+const char* next_arg(int argc, char** argv, int& i)
+{
+  if (i + 1 >= argc) return nullptr;
+  return argv[++i];
+}
+
+// Snapshot of fds the child must not keep. closefrom() is absent from the
+// glibc 2.28 headers this build uses; addclose of each open fd is the
+// portable equivalent. The directory fd is omitted because it is closed
+// before spawn. Returns false when /proc/self/fd cannot be read.
+bool inherited_fds_to_close(std::vector<int>& fds)
+{
+  fds.clear();
+  DIR* dir = opendir("/proc/self/fd");
+  if (dir == nullptr) return false;
+  const int dir_fd = dirfd(dir);
+  while (dirent* ent = readdir(dir)) {
+    char* end         = nullptr;
+    errno             = 0;
+    const long parsed = std::strtol(ent->d_name, &end, 10);
+    if (errno != 0 || end == ent->d_name || *end != '\0') continue;
+    if (parsed < kSpawnedKeepBelowFd || parsed > INT_MAX) continue;
+    const int fd = static_cast<int>(parsed);
+    if (fd == dir_fd) continue;
+    fds.push_back(fd);
+  }
+  closedir(dir);
+  return true;
+}
+
 int count_cuda_visible_devices()
 {
   const char* visible = std::getenv("CUDA_VISIBLE_DEVICES");
@@ -184,44 +261,253 @@ pid_t spawn_worker(int worker_id, bool is_replacement)
 {
   std::lock_guard<std::mutex> lock(worker_pipes_mutex);
 
+  const char* which = is_replacement ? "replacement worker " : "worker ";
+
   if (is_replacement) { close_worker_pipes_server(worker_id); }
 
   if (!create_worker_pipes(worker_id)) {
-    SERVER_LOG_ERROR("[Server] Failed to create pipes for %s%d",
-                     is_replacement ? "replacement worker " : "worker ",
-                     worker_id);
+    SERVER_LOG_ERROR("[Server] Failed to create pipes for %s%d", which, worker_id);
     return -1;
   }
 
-  pid_t pid = fork();
-  if (pid < 0) {
-    SERVER_LOG_ERROR("[Server] Failed to fork %s%d",
-                     is_replacement ? "replacement worker " : "worker ",
-                     worker_id);
-    close_all_worker_pipes(worker_pipes[worker_id]);
+  WorkerPipes& wp = worker_pipes[worker_id];
+
+  // posix_spawn + exec, not fork. The server is multithreaded. fork() would
+  // copy it with the other threads' mutexes still locked, and the worker's
+  // first log call deadlocks before CUDA init. exec starts one thread; the
+  // solve creates its OpenMP team later.
+  const int hold_read  = dup_above_kept_fds(wp.worker_read_fd);
+  const int hold_write = dup_above_kept_fds(wp.worker_write_fd);
+  const int hold_inc   = dup_above_kept_fds(wp.worker_incumbent_write_fd);
+  if (hold_read < 0 || hold_write < 0 || hold_inc < 0) {
+    SERVER_LOG_ERROR(
+      "[Server] Failed to dup pipe ends for %s%d: %s", which, worker_id, strerror(errno));
+    close_if_open(hold_read);
+    close_if_open(hold_write);
+    close_if_open(hold_inc);
+    close_all_worker_pipes(wp);
     return -1;
-  } else if (pid == 0) {
-    // Child: close all fds belonging to other workers.
-    for (int j = 0; j < static_cast<int>(worker_pipes.size()); ++j) {
-      if (j != worker_id) { close_all_worker_pipes(worker_pipes[j]); }
+  }
+
+  const std::string exe = current_executable_path();
+  if (exe.empty()) {
+    SERVER_LOG_ERROR("[Server] Failed to resolve /proc/self/exe for %s%d", which, worker_id);
+    close_if_open(hold_read);
+    close_if_open(hold_write);
+    close_if_open(hold_inc);
+    close_all_worker_pipes(wp);
+    return -1;
+  }
+
+  const std::string id_str      = std::to_string(worker_id);
+  const std::string workers_str = std::to_string(config.num_workers);
+  std::vector<std::string> arg_storage;
+  arg_storage.push_back(exe);
+  arg_storage.push_back("--worker");
+  arg_storage.push_back("--worker-id");
+  arg_storage.push_back(id_str);
+  arg_storage.push_back("--workers");
+  arg_storage.push_back(workers_str);
+  arg_storage.push_back("--shm-job");
+  arg_storage.push_back(SHM_JOB_QUEUE);
+  arg_storage.push_back("--shm-result");
+  arg_storage.push_back(SHM_RESULT_QUEUE);
+  arg_storage.push_back("--shm-control");
+  arg_storage.push_back(SHM_CONTROL);
+  arg_storage.push_back("--shm-ready");
+  arg_storage.push_back(SHM_WORKER_READY);
+  arg_storage.push_back(config.verbose ? "--verbose" : "--quiet");
+  if (is_replacement) { arg_storage.push_back("--replacement"); }
+  if (config.log_to_console) { arg_storage.push_back("--log-to-console"); }
+  if (!config.server_log_file.empty()) {
+    arg_storage.push_back("--server-log");
+    arg_storage.push_back(config.server_log_file);
+  }
+
+  std::vector<char*> argv;
+  argv.reserve(arg_storage.size() + 1);
+  for (std::string& arg : arg_storage) {
+    argv.push_back(arg.data());
+  }
+  argv.push_back(nullptr);
+
+  // Another thread can close an fd between the /proc snapshot and posix_spawn,
+  // and addclose of a missing fd fails the spawn. Retry that race only.
+  constexpr int kSpawnAttempts = 5;
+  pid_t pid                    = -1;
+  int spawn_rc                 = EAGAIN;
+  for (int attempt = 0; attempt < kSpawnAttempts; ++attempt) {
+    std::vector<int> close_fds;
+    if (!inherited_fds_to_close(close_fds)) {
+      spawn_rc = errno != 0 ? errno : EIO;
+      break;
     }
-    // Close the server-side ends of this worker's pipes (child uses the other ends).
-    close_and_reset(worker_pipes[worker_id].to_worker_fd);
-    close_and_reset(worker_pipes[worker_id].from_worker_fd);
-    close_and_reset(worker_pipes[worker_id].incumbent_from_worker_fd);
-    worker_process(worker_id, is_replacement);
-    _exit(0);
+    posix_spawn_file_actions_t actions;
+    if (posix_spawn_file_actions_init(&actions) != 0) {
+      spawn_rc = errno;
+      break;
+    }
+
+    int action_rc = posix_spawn_file_actions_adddup2(&actions, hold_read, kSpawnedJobReadFd);
+    if (action_rc == 0) {
+      action_rc = posix_spawn_file_actions_adddup2(&actions, hold_write, kSpawnedResultWriteFd);
+    }
+    if (action_rc == 0) {
+      action_rc = posix_spawn_file_actions_adddup2(&actions, hold_inc, kSpawnedIncumbentWriteFd);
+    }
+    for (int fd : close_fds) {
+      if (action_rc != 0) break;
+      action_rc = posix_spawn_file_actions_addclose(&actions, fd);
+    }
+
+    spawn_rc = action_rc;
+    if (action_rc == 0) {
+      spawn_rc = posix_spawn(&pid, exe.c_str(), &actions, nullptr, argv.data(), environ);
+    }
+    posix_spawn_file_actions_destroy(&actions);
+    if (spawn_rc == 0) break;
+    if (spawn_rc != EBADF) break;
+  }
+
+  close_if_open(hold_read);
+  close_if_open(hold_write);
+  close_if_open(hold_inc);
+
+  if (spawn_rc != 0) {
+    SERVER_LOG_ERROR("[Server] Failed to spawn %s%d: %s", which, worker_id, strerror(spawn_rc));
+    close_all_worker_pipes(wp);
+    return -1;
   }
 
   close_worker_pipes_child_ends(worker_id);
   return pid;
 }
 
+int run_spawned_worker(int argc, char** argv)
+{
+  int worker_id           = -1;
+  int num_workers         = -1;
+  const char* shm_job     = nullptr;
+  const char* shm_result  = nullptr;
+  const char* shm_control = nullptr;
+  const char* shm_ready   = nullptr;
+  const char* server_log  = nullptr;
+  bool verbose            = true;
+  bool log_to_console     = false;
+  bool is_replacement     = false;
+
+  for (int i = 1; i < argc; ++i) {
+    const char* arg = argv[i];
+    if (std::strcmp(arg, "--worker") == 0) {
+      continue;
+    } else if (std::strcmp(arg, "--verbose") == 0) {
+      verbose = true;
+    } else if (std::strcmp(arg, "--quiet") == 0) {
+      verbose = false;
+    } else if (std::strcmp(arg, "--log-to-console") == 0) {
+      log_to_console = true;
+    } else if (std::strcmp(arg, "--replacement") == 0) {
+      is_replacement = true;
+    } else if (std::strcmp(arg, "--worker-id") == 0 || std::strcmp(arg, "--workers") == 0) {
+      const char* value = next_arg(argc, argv, i);
+      if (value == nullptr) {
+        std::cerr << "cuopt_grpc_server --worker: missing value for " << arg << "\n";
+        return 1;
+      }
+      char* end         = nullptr;
+      errno             = 0;
+      const long parsed = std::strtol(value, &end, 10);
+      if (errno != 0 || end == value || *end != '\0' || parsed < 0 || parsed > INT_MAX) {
+        std::cerr << "cuopt_grpc_server --worker: invalid " << arg << "\n";
+        return 1;
+      }
+      if (std::strcmp(arg, "--worker-id") == 0) {
+        worker_id = static_cast<int>(parsed);
+      } else {
+        num_workers = static_cast<int>(parsed);
+      }
+    } else if (std::strcmp(arg, "--shm-job") == 0 || std::strcmp(arg, "--shm-result") == 0 ||
+               std::strcmp(arg, "--shm-control") == 0 || std::strcmp(arg, "--shm-ready") == 0 ||
+               std::strcmp(arg, "--server-log") == 0) {
+      const char* value = next_arg(argc, argv, i);
+      if (value == nullptr || value[0] == '\0') {
+        std::cerr << "cuopt_grpc_server --worker: missing value for " << arg << "\n";
+        return 1;
+      }
+      if (std::strcmp(arg, "--shm-job") == 0) {
+        shm_job = value;
+      } else if (std::strcmp(arg, "--shm-result") == 0) {
+        shm_result = value;
+      } else if (std::strcmp(arg, "--shm-control") == 0) {
+        shm_control = value;
+      } else if (std::strcmp(arg, "--shm-ready") == 0) {
+        shm_ready = value;
+      } else {
+        server_log = value;
+      }
+    } else {
+      std::cerr << "cuopt_grpc_server --worker: unknown argument " << arg << "\n";
+      return 1;
+    }
+  }
+
+  if (worker_id < 0 || num_workers < 1 || worker_id >= num_workers || shm_job == nullptr ||
+      shm_result == nullptr || shm_control == nullptr || shm_ready == nullptr) {
+    std::cerr << "cuopt_grpc_server --worker: incomplete arguments\n";
+    return 1;
+  }
+
+  config.num_workers    = num_workers;
+  config.verbose        = verbose;
+  config.log_to_console = log_to_console;
+  if (server_log != nullptr) { config.server_log_file = server_log; }
+  init_server_logger(config.server_log_file, /*to_console=*/true, config.verbose);
+
+  // Map the parent's segments. Do not construct the entries: the parent
+  // placement-new'd them, and a job may already be published.
+  void* job_map = map_existing_shared_memory(shm_job, sizeof(JobQueueEntry) * MAX_JOBS);
+  if (job_map == MAP_FAILED) {
+    SERVER_LOG_ERROR("[Worker] Failed to map job queue: %s", strerror(errno));
+    return 1;
+  }
+  void* result_map = map_existing_shared_memory(shm_result, sizeof(ResultQueueEntry) * MAX_RESULTS);
+  if (result_map == MAP_FAILED) {
+    SERVER_LOG_ERROR("[Worker] Failed to map result queue: %s", strerror(errno));
+    return 1;
+  }
+  void* ctrl_map = map_existing_shared_memory(shm_control, sizeof(SharedMemoryControl));
+  if (ctrl_map == MAP_FAILED) {
+    SERVER_LOG_ERROR("[Worker] Failed to map control block: %s", strerror(errno));
+    return 1;
+  }
+  void* ready_map = map_existing_shared_memory(
+    shm_ready, sizeof(std::atomic<bool>) * static_cast<size_t>(num_workers));
+  if (ready_map == MAP_FAILED) {
+    SERVER_LOG_ERROR("[Worker] Failed to map worker-ready flags: %s", strerror(errno));
+    return 1;
+  }
+  job_queue          = static_cast<JobQueueEntry*>(job_map);
+  result_queue       = static_cast<ResultQueueEntry*>(result_map);
+  shm_ctrl           = static_cast<SharedMemoryControl*>(ctrl_map);
+  worker_ready_flags = static_cast<std::atomic<bool>*>(ready_map);
+
+  while (static_cast<int>(worker_pipes.size()) <= worker_id) {
+    worker_pipes.push_back({-1, -1, -1, -1, -1, -1});
+  }
+  WorkerPipes& pipes              = worker_pipes[worker_id];
+  pipes.worker_read_fd            = kSpawnedJobReadFd;
+  pipes.worker_write_fd           = kSpawnedResultWriteFd;
+  pipes.worker_incumbent_write_fd = kSpawnedIncumbentWriteFd;
+
+  worker_process(worker_id, is_replacement);
+  _exit(0);
+}
+
 void spawn_workers()
 {
   std::lock_guard<std::mutex> lock(worker_pids_mutex);
   // Index i is worker_id: keep failed startups as 0 so monitor/respawn and
-  // pipe tables stay aligned even when some initial forks fail.
+  // pipe tables stay aligned even when some initial spawns fail.
   worker_pids.assign(static_cast<size_t>(config.num_workers), 0);
   for (int i = 0; i < config.num_workers; ++i) {
     pid_t pid = spawn_worker(i, false);

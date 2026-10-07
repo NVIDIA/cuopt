@@ -373,6 +373,8 @@ bool send_incumbent_pipe(int fd, const std::vector<uint8_t>& data);
 bool recv_incumbent_pipe(int fd, std::vector<uint8_t>& data);
 
 void worker_process(int worker_id, bool is_replacement);
+// Entry point for a worker created by posix_spawn/exec. Not a server.
+int run_spawned_worker(int argc, char** argv);
 pid_t spawn_single_worker(int worker_id);
 void mark_worker_jobs_failed(pid_t dead_worker_pid);
 

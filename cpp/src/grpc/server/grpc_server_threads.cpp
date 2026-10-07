@@ -77,7 +77,7 @@ void worker_monitor_thread()
 
   while (keep_running) {
     // Snapshot which slots need attention under the pid-list lock, then do
-    // mark/respawn work without holding it across fork().
+    // mark/respawn work without holding it across posix_spawn().
     struct DeadWorker {
       size_t index;
       pid_t pid;

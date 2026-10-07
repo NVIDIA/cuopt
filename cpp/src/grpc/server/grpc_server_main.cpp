@@ -7,7 +7,7 @@
  * @file grpc_server_main.cpp
  * @brief gRPC-based remote solve server entry point
  *
- * This server uses gRPC for client communication with fork-based worker
+ * This server uses gRPC for client communication with exec'd worker
  * process infrastructure:
  * - Worker processes with shared memory job queues
  * - Pipe-based IPC for problem/result data
@@ -25,6 +25,7 @@
 #include <grpcpp/health_check_service_interface.h>
 
 #include <pthread.h>
+#include <cstring>
 
 // Defined in grpc_service_impl.cpp
 std::unique_ptr<grpc::Service> create_cuopt_grpc_service();
@@ -63,6 +64,11 @@ static void* create_shared_memory(const char* name, size_t size)
 
 int main(int argc, char** argv)
 {
+  // Workers are a fresh exec of this binary, not a fork of the running server.
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--worker") == 0) { return run_spawned_worker(argc, argv); }
+  }
+
   const std::string version_string =
     std::string("cuOpt gRPC Server ") + std::to_string(CUOPT_VERSION_MAJOR) + "." +
     std::to_string(CUOPT_VERSION_MINOR) + "." + std::to_string(CUOPT_VERSION_PATCH);
