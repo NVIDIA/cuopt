@@ -88,6 +88,31 @@ class c_set_solution_callback_t : public cuopt::internals::set_solution_callback
   cuOptMIPSetSolutionCallback callback_;
 };
 
+class c_get_solution_callback_with_data_t
+  : public cuopt::internals::get_solution_callback_with_data_t {
+ public:
+  explicit c_get_solution_callback_with_data_t(cuOptMIPGetSolutionCallbackWithData callback)
+    : callback_(callback)
+  {
+  }
+
+  void get_solution_with_data(void* data,
+                              void* objective_value,
+                              void* solution_bound,
+                              void* user_data,
+                              const cuOptMIPCallbackData& callback_data) override
+  {
+    callback_(static_cast<const cuopt_float_t*>(data),
+              static_cast<const cuopt_float_t*>(objective_value),
+              static_cast<const cuopt_float_t*>(solution_bound),
+              &callback_data,
+              user_data);
+  }
+
+ private:
+  cuOptMIPGetSolutionCallbackWithData callback_;
+};
+
 // Owns solver settings and C callback wrappers for C API lifetime.
 struct solver_settings_handle_t {
   solver_settings_handle_t() : settings(new solver_settings_t<cuopt_int_t, cuopt_float_t>()) {}
@@ -1043,6 +1068,18 @@ cuopt_int_t cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings,
   if (callback == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_handle_t* settings_handle = get_settings_handle(settings);
   auto callback_wrapper                     = std::make_unique<c_set_solution_callback_t>(callback);
+  settings_handle->settings->set_mip_callback(callback_wrapper.get(), user_data);
+  settings_handle->callbacks.push_back(std::move(callback_wrapper));
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptSetMIPGetSolutionCallbackWithData(cuOptSolverSettings settings,
+                                                   cuOptMIPGetSolutionCallbackWithData callback,
+                                                   void* user_data)
+{
+  if (settings == nullptr || callback == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  solver_settings_handle_t* settings_handle = get_settings_handle(settings);
+  auto callback_wrapper = std::make_unique<c_get_solution_callback_with_data_t>(callback);
   settings_handle->settings->set_mip_callback(callback_wrapper.get(), user_data);
   settings_handle->callbacks.push_back(std::move(callback_wrapper));
   return CUOPT_SUCCESS;

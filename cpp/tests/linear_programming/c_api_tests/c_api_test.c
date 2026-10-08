@@ -133,6 +133,7 @@ DONE:
 typedef struct mip_callback_context_t {
   cuopt_int_t n_variables;
   int get_calls;
+  int get_with_data_calls;
   int set_calls;
   int error;
   cuopt_float_t last_objective;
@@ -172,6 +173,24 @@ static void mip_set_solution_callback(cuopt_float_t* solution,
   if (context->last_solution == NULL) { return; }
   memcpy(solution, context->last_solution, context->n_variables * sizeof(cuopt_float_t));
   memcpy(objective_value, &context->last_objective, sizeof(cuopt_float_t));
+}
+
+static void mip_get_solution_callback_with_data(const cuopt_float_t* solution,
+                                                const cuopt_float_t* objective_value,
+                                                const cuopt_float_t* solution_bound,
+                                                const cuOptMIPCallbackData* callback_data,
+                                                void* user_data)
+{
+  mip_callback_context_t* context = (mip_callback_context_t*)user_data;
+  if (context == NULL) { return; }
+  context->get_with_data_calls += 1;
+  if (callback_data == NULL || (callback_data->from_lns != 0 && callback_data->from_lns != 1) ||
+      context->last_solution == NULL ||
+      memcmp(solution, context->last_solution, context->n_variables * sizeof(cuopt_float_t)) != 0 ||
+      *objective_value != context->last_objective ||
+      *solution_bound != context->last_solution_bound) {
+    context->error = 1;
+  }
 }
 
 static cuopt_int_t test_mip_callbacks_internal(int include_set_callback)
@@ -243,6 +262,20 @@ static cuopt_int_t test_mip_callbacks_internal(int include_set_callback)
     goto DONE;
   }
 
+  if (cuOptSetMIPGetSolutionCallbackWithData(NULL, mip_get_solution_callback_with_data, &context) !=
+        CUOPT_INVALID_ARGUMENT ||
+      cuOptSetMIPGetSolutionCallbackWithData(settings, NULL, &context) != CUOPT_INVALID_ARGUMENT) {
+    printf("Expected invalid callback registrations to fail\n");
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+  status =
+    cuOptSetMIPGetSolutionCallbackWithData(settings, mip_get_solution_callback_with_data, &context);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting get-solution callback with metadata\n");
+    goto DONE;
+  }
+
   if (include_set_callback) {
     status = cuOptSetMIPSetSolutionCallback(settings, mip_set_solution_callback, &context);
     if (status != CUOPT_SUCCESS) {
@@ -271,6 +304,11 @@ static cuopt_int_t test_mip_callbacks_internal(int include_set_callback)
 
   if (context.get_calls < 1) {
     printf("Expected get-solution callback to be called at least once\n");
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+  if (context.get_with_data_calls != context.get_calls) {
+    printf("Expected both callback interfaces to receive every incumbent\n");
     status = CUOPT_INVALID_ARGUMENT;
     goto DONE;
   }

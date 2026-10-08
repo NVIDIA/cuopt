@@ -35,7 +35,57 @@ void init_population_test_problem(opt::optimization_problem_t<int, double>& op)
   op.set_constraint_upper_bounds(row_upper.data(), 1);
 }
 
+class origin_callback_t : public cuopt::internals::get_solution_callback_with_data_t {
+ public:
+  void get_solution_with_data(void* data,
+                              void* objective_value,
+                              void* solution_bound,
+                              void* user_data,
+                              const cuOptMIPCallbackData& callback_data) override
+  {
+    EXPECT_EQ(user_data, this);
+    const auto* assignment = static_cast<double*>(data);
+    EXPECT_DOUBLE_EQ(assignment[0] + 2 * assignment[1], *static_cast<double*>(objective_value));
+    origins.push_back(callback_data.from_lns);
+  }
+
+  std::vector<int> origins;
+};
+
 }  // namespace
+
+TEST(Population, ExplicitLnsOriginSurvivesPublicationAndQueueDrain)
+{
+  raft::handle_t handle;
+  opt::optimization_problem_t<int, double> op(&handle);
+  init_population_test_problem(op);
+  opt::mip_solver_settings_t<int, double> settings;
+  origin_callback_t callback;
+  settings.set_mip_callback(&callback, &callback);
+  mip::problem_t<int, double> problem(op, settings.get_tolerances());
+  problem.preprocess_problem();
+  mip::mip_solver_context_t<int, double> context(&handle, &problem, settings);
+  mip::diversity_manager_t<int, double> dm(context);
+  dm.population.initialize_population();
+  dm.population.allocate_solutions();
+
+  // Identical queue origins still distinguish LNS from ordinary CPUFJ. All four
+  // callbacks run on this thread, independently of its name or which worker drains the queue.
+  dm.population.add_external_solution({0.75, 0}, 0.75, mip::solution_origin_t::CPUFJ, true);
+  dm.population.add_external_solution({0.5, 0}, 0.5, mip::solution_origin_t::CPUFJ);
+  dm.population.add_external_solution({0.25, 0}, 0.25, mip::solution_origin_t::CPUFJ, true);
+  dm.population.add_external_solution({0.125, 0}, 0.125, mip::solution_origin_t::CPUFJ);
+  EXPECT_EQ(callback.origins, (std::vector<int>{1, 0, 1, 0}));
+  dm.population.add_external_solutions_to_population();
+  EXPECT_EQ(callback.origins, (std::vector<int>{1, 0, 1, 0}));
+
+  // A subsequent population improvement must not inherit an earlier LNS label.
+  mip::solution_t<int, double> improved(problem);
+  improved.copy_new_assignment(std::vector<double>{0, 0});
+  ASSERT_TRUE(improved.compute_feasibility());
+  dm.population.add_solution(std::move(improved));
+  EXPECT_EQ(callback.origins, (std::vector<int>{1, 0, 1, 0, 0}));
+}
 
 TEST(Population, ExternalQueueKeepsGlobalBestFiftyAcrossOrigins)
 {

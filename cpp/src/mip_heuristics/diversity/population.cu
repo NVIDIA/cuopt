@@ -145,10 +145,13 @@ size_t population_t<i_t, f_t>::get_external_solution_size()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solution,
                                                    f_t objective,
-                                                   solution_origin_t origin)
+                                                   solution_origin_t origin,
+                                                   bool from_lns)
 {
   if (!std::isfinite(objective)) return;
-  context.solution_publication.publish_if_better(problem_ptr, solution, objective);
+  // Publish with producer metadata before queueing. Later population callbacks are
+  // suppressed by the publication objective floor; new descendants have their own origin.
+  context.solution_publication.publish_if_better(problem_ptr, solution, objective, from_lns);
   std::lock_guard<std::mutex> lock(solution_mutex);
 
   const bool full = external_solution_queue.size() == max_external_solutions;

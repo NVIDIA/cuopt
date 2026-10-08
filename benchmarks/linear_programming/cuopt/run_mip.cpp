@@ -10,7 +10,6 @@
 #include "miplib2017_bks.hpp"
 
 #include <cuopt/mathematical_optimization/cuopt_c.h>
-#include <pthread.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
@@ -234,25 +233,27 @@ struct incumbent_record_t {
   bool from_lns;
 };
 
-class incumbent_tracker_t : public cuopt::internals::get_solution_callback_t {
+class incumbent_tracker_t : public cuopt::internals::get_solution_callback_with_data_t {
  public:
   incumbent_tracker_t(std::chrono::steady_clock::time_point start_time, size_t num_variables)
     : start_time_(start_time), num_variables_(num_variables)
   {
   }
 
-  void get_solution(void* data, void* cost, void* /*solution_bound*/, void* /*user_data*/) override
+  void get_solution_with_data(void* data,
+                              void* cost,
+                              void* /*solution_bound*/,
+                              void* /*user_data*/,
+                              const cuOptMIPCallbackData& callback_data) override
   {
-    record_solution(static_cast<double*>(data), *static_cast<double*>(cost));
+    record_solution(
+      static_cast<double*>(data), *static_cast<double*>(cost), callback_data.from_lns != 0);
   }
 
-  void record_solution(const double* solution, double objective)
+  void record_solution(const double* solution, double objective, bool from_lns)
   {
     std::lock_guard<std::mutex> lock(records_mutex_);
-    char thread_name[16]{};
-    pthread_getname_np(pthread_self(), thread_name, sizeof(thread_name));
-    const bool from_lns = std::string(thread_name) == "cuopt-hive-lns";
-    const auto now      = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
     records_.push_back({std::vector<double>(solution, solution + num_variables_),
                         objective,
                         0.0,
@@ -310,9 +311,11 @@ class incumbent_tracker_t : public cuopt::internals::get_solution_callback_t {
 static void c_api_incumbent_callback(const cuopt_float_t* solution,
                                      const cuopt_float_t* objective_value,
                                      const cuopt_float_t* /*solution_bound*/,
+                                     const cuOptMIPCallbackData* callback_data,
                                      void* user_data)
 {
-  static_cast<incumbent_tracker_t*>(user_data)->record_solution(solution, *objective_value);
+  static_cast<incumbent_tracker_t*>(user_data)->record_solution(
+    solution, *objective_value, callback_data->from_lns != 0);
 }
 
 static void write_incumbent_trace(
@@ -469,9 +472,9 @@ int run_single_file(std::string file_path,
       start_run_solver = std::chrono::steady_clock::now();
       incumbent_tracker =
         std::make_unique<incumbent_tracker_t>(start_run_solver, mps_data_model.get_n_variables());
-      cuopt_bench::check_c_api(cuOptSetMIPGetSolutionCallback(
+      cuopt_bench::check_c_api(cuOptSetMIPGetSolutionCallbackWithData(
                                  c_api.settings, c_api_incumbent_callback, incumbent_tracker.get()),
-                               "cuOptSetMIPGetSolutionCallback");
+                               "cuOptSetMIPGetSolutionCallbackWithData");
       cuopt_bench::check_c_api(cuOptSolve(c_api.problem, c_api.settings, &c_api.solution),
                                "cuOptSolve");
       cuopt_bench::check_c_api(

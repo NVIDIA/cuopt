@@ -13,6 +13,7 @@
 #include <type_traits>
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/cuopt_c.h>
 namespace cuopt {
 namespace internals {
 
@@ -54,6 +55,38 @@ class get_solution_callback_t : public base_solution_callback_t {
     return base_solution_callback_type::GET_SOLUTION;
   }
 };
+
+// Optional extension: keep the existing callback interface and its user data unchanged.
+class get_solution_callback_with_data_t : public get_solution_callback_t {
+ public:
+  void get_solution(void* data,
+                    void* objective_value,
+                    void* solution_bound,
+                    void* user_data) override
+  {
+    get_solution_with_data(data, objective_value, solution_bound, user_data, {});
+  }
+
+  virtual void get_solution_with_data(void* data,
+                                      void* objective_value,
+                                      void* solution_bound,
+                                      void* user_data,
+                                      const cuOptMIPCallbackData& callback_data) = 0;
+};
+
+inline void invoke_get_solution_callback(get_solution_callback_t* callback,
+                                         void* data,
+                                         void* objective_value,
+                                         void* solution_bound,
+                                         const cuOptMIPCallbackData& callback_data = {})
+{
+  if (auto* extended = dynamic_cast<get_solution_callback_with_data_t*>(callback)) {
+    extended->get_solution_with_data(
+      data, objective_value, solution_bound, callback->get_user_data(), callback_data);
+  } else {
+    callback->get_solution(data, objective_value, solution_bound, callback->get_user_data());
+  }
+}
 
 class set_solution_callback_t : public base_solution_callback_t {
  public:

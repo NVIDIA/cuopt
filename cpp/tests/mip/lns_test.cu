@@ -248,6 +248,68 @@ void init_test_problem(opt::optimization_problem_t<int, double>& op,
   op.set_constraint_upper_bounds(row_upper.data(), 1);
 }
 
+class lns_origin_callback_t : public cuopt::internals::get_solution_callback_with_data_t {
+ public:
+  void get_solution_with_data(void* data,
+                              void* objective_value,
+                              void* solution_bound,
+                              void* user_data,
+                              const cuOptMIPCallbackData& callback_data) override
+  {
+    EXPECT_EQ(user_data, this);
+    const auto* assignment = static_cast<double*>(data);
+    EXPECT_DOUBLE_EQ(assignment[0] + 2 * assignment[1], *static_cast<double*>(objective_value));
+    origins.push_back(callback_data.from_lns);
+  }
+
+  std::vector<int> origins;
+};
+
+TEST(Lns, ActiveWorkerCallbackPublishesExplicitOrigin)
+{
+  raft::handle_t handle;
+  opt::optimization_problem_t<int, double> op(&handle);
+  init_test_problem(op, true);
+  opt::mip_solver_settings_t<int, double> settings;
+  lns_origin_callback_t callback;
+  settings.set_mip_callback(&callback, &callback);
+  mip::problem_t<int, double> problem(op, settings.get_tolerances());
+  problem.preprocess_problem();
+  mip::mip_solver_context_t<int, double> context(&handle, &problem, settings);
+  std::exception_ptr task_exception;
+  context.task_exception = &task_exception;
+  // Install the production callback, but stop the task before it can search or publish.
+  context.preempt_heuristic_solver_ = true;
+  mip::diversity_manager_t<int, double> dm(context);
+  dm.population.initialize_population();
+  dm.population.allocate_solutions();
+
+#pragma omp parallel num_threads(7)
+  {
+#pragma omp masked
+    {
+#pragma omp taskgroup
+      {
+        dm.ls.start_cpufj_lns_improvement_thread(dm.population);
+      }
+    }
+  }
+  ASSERT_FALSE(task_exception);
+  ASSERT_NE(dm.ls.scratch_cpu_fj_lns, nullptr);
+  ASSERT_TRUE(dm.ls.scratch_cpu_fj_lns->improvement_callback);
+  EXPECT_TRUE(callback.origins.empty());
+
+  // Invoke the installed producer only after its task has joined, on the same thread
+  // as ordinary CPUFJ publication. A missing producer flag must fail this test.
+  dm.ls.scratch_cpu_fj_lns->improvement_callback(3, {1, 1}, 0);
+  dm.population.add_external_solution({0, 1}, 2, mip::solution_origin_t::CPUFJ);
+  dm.ls.scratch_cpu_fj_lns->improvement_callback(1, {1, 0}, 0);
+  dm.population.add_external_solution({0, 0}, 0, mip::solution_origin_t::CPUFJ);
+  EXPECT_EQ(callback.origins, (std::vector<int>{1, 0, 1, 0}));
+  dm.population.add_external_solutions_to_population();
+  EXPECT_EQ(callback.origins, (std::vector<int>{1, 0, 1, 0}));
+}
+
 TEST(Lns, OptionalClimberDoesNotAdvanceFeasibilityRng)
 {
   raft::handle_t handle;

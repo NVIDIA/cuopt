@@ -113,7 +113,8 @@ class population_t {
   std::pair<i_t, bool> add_solution(solution_t<i_t, f_t>&& sol);
   void add_external_solution(const std::vector<f_t>& solution,
                              f_t objective,
-                             solution_origin_t origin);
+                             solution_origin_t origin,
+                             bool from_lns = false);
   static constexpr size_t max_external_solutions = 50;
   std::vector<solution_t<i_t, f_t>> get_external_solutions();
   void add_external_solutions_to_population();
