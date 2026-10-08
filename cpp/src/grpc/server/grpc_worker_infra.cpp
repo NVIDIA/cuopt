@@ -15,6 +15,7 @@
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 
 extern char** environ;
 
@@ -460,7 +461,16 @@ int run_spawned_worker(int argc, char** argv)
   config.verbose        = verbose;
   config.log_to_console = log_to_console;
   if (server_log != nullptr) { config.server_log_file = server_log; }
-  init_server_logger(config.server_log_file, /*to_console=*/true, config.verbose);
+  // A throw here leaves the process. The monitor treats a signal death as a
+  // crash and respawns. Opening the log file cannot succeed on retry, so this
+  // is the same fatal attach path as a missing shared-memory segment.
+  try {
+    init_server_logger(config.server_log_file, /*to_console=*/true, config.verbose);
+  } catch (const std::exception& e) {
+    std::cerr << "cuopt_grpc_server --worker: failed to initialize server logger: " << e.what()
+              << "\n";
+    return kWorkerAttachFailedExitCode;
+  }
 
   // Map the parent's segments. Do not construct the entries: the parent
   // placement-new'd them, and a job may already be published.

@@ -78,7 +78,10 @@ ServerExit run_server(const std::vector<std::string>& args)
   }
 
   close(pipe_fds[1]);
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  // Passing runs return as soon as the child exits. The deadline only bounds a
+  // hang, and loading the server's shared libraries can exceed a few seconds
+  // on a cold CI runner.
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
   std::string err;
   bool child_done = false;
   int status      = 0;
