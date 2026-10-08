@@ -22,9 +22,7 @@ namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
 // Forward declared, not included: these structs are also compiled into cuopt_client, which
 // is CPU-only and cannot link the GPU-side barrier_cache_t destructor.
-template <typename i_t, typename f_t>
-class barrier_cache;
-using barrier_cache_t = barrier_cache<int, double>;
+class barrier_cache_t;
 }  // namespace CUOPT_EXPORT mathematical_optimization
 
 namespace CUOPT_EXPORT cython {

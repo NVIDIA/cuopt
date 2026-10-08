@@ -18,9 +18,7 @@ struct work_limit_context_t;
 }
 
 namespace cuopt::mathematical_optimization {
-template <typename i_t, typename f_t>
-class barrier_cache;
-using barrier_cache_t = barrier_cache<int, double>;
+class barrier_cache_t;
 }  // namespace cuopt::mathematical_optimization
 
 namespace cuopt::mathematical_optimization::simplex {

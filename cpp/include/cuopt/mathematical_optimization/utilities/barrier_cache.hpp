@@ -40,14 +40,13 @@ struct barrier_transform_t;
  * The update APIs crush new user data into that workspace and marks the cache dirty so the
  * next solve reuses it (skip convert/presolve/scaling).
  */
-template <typename i_t, typename f_t>
-class barrier_cache {
+class barrier_cache_t {
  public:
-  static std::unique_ptr<barrier_cache> create(unsigned stream_flags);
+  static std::unique_ptr<barrier_cache_t> create(unsigned stream_flags);
 
-  barrier_cache(barrier_cache&&) noexcept;
-  barrier_cache& operator=(barrier_cache&&) noexcept;
-  ~barrier_cache();
+  barrier_cache_t(barrier_cache_t&&) noexcept;
+  barrier_cache_t& operator=(barrier_cache_t&&) noexcept;
+  ~barrier_cache_t();
 
   [[nodiscard]] raft::handle_t* handle_ptr();
   [[nodiscard]] raft::handle_t const* handle_ptr() const;
@@ -58,16 +57,16 @@ class barrier_cache {
   /**
    * @brief Take ownership of barrier iteration workspace. @p data may be null (clears).
    */
-  void store_iteration_data(barrier::iteration_data_t<i_t, f_t>* data);
+  void store_iteration_data(barrier::iteration_data_t<int, double>* data);
 
   /**
    * @brief Release ownership of cached iteration workspace; caller must delete or wrap it.
    */
-  barrier::iteration_data_t<i_t, f_t>* release_iteration_data();
+  barrier::iteration_data_t<int, double>* release_iteration_data();
 
-  void store_transform(std::unique_ptr<barrier_transform_t<i_t, f_t>> transform);
-  [[nodiscard]] barrier_transform_t<i_t, f_t>* transform();
-  [[nodiscard]] barrier_transform_t<i_t, f_t> const* transform() const;
+  void store_transform(std::unique_ptr<barrier_transform_t<int, double>> transform);
+  [[nodiscard]] barrier_transform_t<int, double>* transform();
+  [[nodiscard]] barrier_transform_t<int, double> const* transform() const;
   /** True when an update API has staged new data that the next solve should reuse. */
   [[nodiscard]] bool dirty() const;
   void mark_clean();
@@ -79,23 +78,20 @@ class barrier_cache {
    * Crush the input linear objective into cached iteration_data_t.c / d_c_ and mark dirty.
    * Requires a stored transform and iteration_data from an Optimal solve.
    */
-  void update_linear_objective(f_t const* c, i_t n);
+  void update_linear_objective(double const* c, int n);
 
   /**
    * Crush the input constraint RHS into cached iteration_data_t.b / d_b_ and mark dirty.
    * Requires a stored transform and iteration_data from an Optimal solve.
    */
-  void update_rhs(f_t const* b, i_t m);
+  void update_rhs(double const* b, int m);
 
  private:
-  barrier_cache(std::unique_ptr<rmm::cuda_stream> stream, std::unique_ptr<raft::handle_t> handle);
+  barrier_cache_t(std::unique_ptr<rmm::cuda_stream> stream, std::unique_ptr<raft::handle_t> handle);
 
   struct impl;
   std::unique_ptr<impl> impl_;
 };
-
-// Sequence-solve cache used by the solver and the Python capsule. One instantiation.
-using barrier_cache_t = barrier_cache<int, double>;
 
 }  // namespace CUOPT_EXPORT mathematical_optimization
 }  // namespace cuopt
