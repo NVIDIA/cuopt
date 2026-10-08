@@ -449,7 +449,7 @@ int main(int argc, char** argv)
   shutdown_watchdog_cancelled->store(true, std::memory_order_release);
 
   SERVER_LOG_INFO("[Server] Shutdown complete");
-  return fatal_gpu_failure.load(std::memory_order_acquire) ? 1 : 0;
+  return fatal_worker_failure.load(std::memory_order_acquire) ? 1 : 0;
 }
 
 #else  // !CUOPT_ENABLE_GRPC

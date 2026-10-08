@@ -250,7 +250,7 @@ struct SolveResult {
 // via a pipe.  A fresh instance is created per solve (as a unique_ptr scoped
 // to run_mip_solve) and registered with mip_settings.set_mip_callback().
 // The solver calls get_solution() every time it finds a better integer-feasible
-// solution; we serialize the objective + variable assignment into a protobuf
+// solution; we serialize the objective, bound, and variable assignment into a protobuf
 // and push it down the incumbent pipe FD.  The server thread reads the other
 // end to serve GetIncumbents RPCs.
 // ---------------------------------------------------------------------------
@@ -266,11 +266,11 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
   }
 
   // Called by the MIP solver each time a new incumbent is found.
-  // data/objective_value arrive as raw void* whose actual type depends on
-  // isFloat; we normalize everything to double before serializing.
+  // data/objective_value/solution_bound arrive as raw void* whose actual type
+  // depends on isFloat; we normalize everything to double before serializing.
   void get_solution(void* data,
                     void* objective_value,
-                    void* /*solution_bound*/,
+                    void* solution_bound,
                     void* /*user_data*/) override
   {
     if (n_variables == 0) { return; }
@@ -280,6 +280,7 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
     if (fd_ < 0) { return; }
 
     double objective = 0.0;
+    double bound     = 0.0;
     std::vector<double> assignment;
     assignment.resize(n_variables);
 
@@ -289,13 +290,15 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
         assignment[i] = static_cast<double>(float_data[i]);
       }
       objective = static_cast<double>(*static_cast<const float*>(objective_value));
+      bound     = static_cast<double>(*static_cast<const float*>(solution_bound));
     } else {
       const double* double_data = static_cast<const double*>(data);
       std::copy(double_data, double_data + n_variables, assignment.begin());
       objective = *static_cast<const double*>(objective_value);
+      bound     = *static_cast<const double*>(solution_bound);
     }
 
-    auto buffer = build_incumbent_proto(job_id_, objective, assignment);
+    auto buffer = build_incumbent_proto(job_id_, objective, bound, assignment);
     if (!send_incumbent_pipe(fd_, buffer)) {
       SERVER_LOG_ERROR("[Worker] Incumbent pipe write failed for job %s, disabling further sends",
                        job_id_.c_str());

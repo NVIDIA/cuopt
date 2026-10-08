@@ -83,7 +83,8 @@ struct fj_move_t {
   bool operator!=(const fj_move_t& rhs) const { return !(*this == rhs); }
 };
 
-struct fj_staged_score_t {
+// cuda::atomic_ref loads this score as 64 bits, including into local temporaries.
+struct alignas(8) fj_staged_score_t {
   float base{-std::numeric_limits<float>::infinity()};
   float bonus{-std::numeric_limits<float>::infinity()};
 
