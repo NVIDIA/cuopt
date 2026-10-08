@@ -34,10 +34,11 @@ std::chrono::milliseconds worker_ready_timeout(const char* test_env_name)
   return kDefault;
 }
 
-// Same path as a failed GPU probe: mark fatal and wake the sigwait thread.
-void request_fatal_gpu_shutdown(const char* reason)
+// Mark an unrecoverable worker failure and wake the sigwait thread. The reason
+// is the specific cause (GPU probe, spawn retries, or ready timeout).
+void request_fatal_worker_shutdown(const char* reason)
 {
-  fatal_gpu_failure.store(true, std::memory_order_release);
+  fatal_worker_failure.store(true, std::memory_order_release);
   SERVER_LOG_ERROR("[Server] %s; shutting down", reason);
   // SIGINT/SIGTERM are blocked process-wide. Sending SIGTERM to ourselves
   // wakes the existing sigwait shutdown thread and keeps one shutdown path.
@@ -49,6 +50,8 @@ void request_fatal_gpu_shutdown(const char* reason)
 }
 
 constexpr int kWorkerSpawnRetries = 3;
+// Pause between failed forks so a transient ENOMEM or fd exhaustion can clear.
+constexpr auto kWorkerSpawnRetryBackoff = std::chrono::milliseconds(100);
 
 }  // namespace
 
@@ -56,10 +59,12 @@ void worker_monitor_thread()
 {
   SERVER_LOG_INFO("[Server] Worker monitor thread started");
 
-  // Epoch means "not waiting for ready". Set for the original spawn and again
-  // after each successful respawn; cleared once that worker publishes ready.
+  // Epoch means "not waiting for ready". Set when the monitor starts watching
+  // the original workers, and again after each successful respawn. Cleared once
+  // that worker publishes ready. The original deadline is measured from here,
+  // immediately after spawn, rather than from each fork.
   std::vector<std::chrono::steady_clock::time_point> worker_ready_deadline(
-    static_cast<size_t>(std::max(1, config.num_workers)));
+    static_cast<size_t>(config.num_workers));
 
   {
     const auto initial_deadline =
@@ -128,7 +133,7 @@ void worker_monitor_thread()
       for (auto& deadline : worker_ready_deadline) {
         deadline = std::chrono::steady_clock::time_point{};
       }
-      request_fatal_gpu_shutdown("GPU health failure");
+      request_fatal_worker_shutdown("GPU health failure");
     }
 
     for (const auto& dw : dead) {
@@ -136,7 +141,7 @@ void worker_monitor_thread()
 
       mark_worker_jobs_failed(dw.pid);
 
-      if (gpu_failure_detected || fatal_gpu_failure.load(std::memory_order_acquire) ||
+      if (gpu_failure_detected || fatal_worker_failure.load(std::memory_order_acquire) ||
           !(keep_running && shm_ctrl && !shm_ctrl->shutdown_requested)) {
         continue;
       }
@@ -147,6 +152,7 @@ void worker_monitor_thread()
 
       pid_t new_pid = -1;
       for (int attempt = 1; attempt <= kWorkerSpawnRetries; ++attempt) {
+        if (attempt > 1) { std::this_thread::sleep_for(kWorkerSpawnRetryBackoff); }
         new_pid = spawn_single_worker(static_cast<int>(dw.index));
         if (new_pid > 0) { break; }
         SERVER_LOG_ERROR("[Server] Failed to restart worker %zu (attempt %d/%d)",
@@ -169,18 +175,17 @@ void worker_monitor_thread()
             worker_ready_timeout("CUOPT_GRPC_TEST_RESPAWN_READY_MS");
         }
       } else {
-        request_fatal_gpu_shutdown("replacement worker spawn failed after retries");
+        request_fatal_worker_shutdown("replacement worker spawn failed after retries");
       }
     }
 
     // A worker that never publishes ready (stuck in CUDA/RMM init) must take the
     // server down. Kill-and-respawn does not recover a hung driver.
-    if (!fatal_gpu_failure.load(std::memory_order_acquire) && worker_ready_flags) {
+    if (!fatal_worker_failure.load(std::memory_order_acquire) && worker_ready_flags) {
       const auto now = std::chrono::steady_clock::now();
       for (size_t i = 0; i < worker_ready_deadline.size(); ++i) {
         if (worker_ready_deadline[i] == std::chrono::steady_clock::time_point{}) { continue; }
-        if (i < static_cast<size_t>(config.num_workers) &&
-            worker_ready_flags[i].load(std::memory_order_acquire)) {
+        if (worker_ready_flags[i].load(std::memory_order_acquire)) {
           worker_ready_deadline[i] = std::chrono::steady_clock::time_point{};
           continue;
         }
@@ -189,7 +194,7 @@ void worker_monitor_thread()
           for (auto& deadline : worker_ready_deadline) {
             deadline = std::chrono::steady_clock::time_point{};
           }
-          request_fatal_gpu_shutdown("worker never became ready");
+          request_fatal_worker_shutdown("worker never became ready");
           break;
         }
       }
@@ -499,8 +504,9 @@ void incumbent_retrieval_thread()
 
       std::string job_id;
       double objective = 0.0;
+      double bound     = 0.0;
       std::vector<double> assignment;
-      if (!parse_incumbent_proto(data.data(), data.size(), job_id, objective, assignment)) {
+      if (!parse_incumbent_proto(data.data(), data.size(), job_id, objective, bound, assignment)) {
         SERVER_LOG_ERROR("[Server] Failed to parse incumbent payload");
         continue;
       }
@@ -509,6 +515,7 @@ void incumbent_retrieval_thread()
 
       IncumbentEntry entry;
       entry.objective  = objective;
+      entry.bound      = bound;
       size_t num_vars  = assignment.size();
       entry.assignment = std::move(assignment);
 

@@ -80,6 +80,7 @@ struct grpc_logs_result_t {
 struct grpc_incumbent_entry_t {
   int64_t index    = 0;
   double objective = 0.0;
+  double bound     = 0.0;
   std::vector<double> assignment;
 };
 

@@ -127,6 +127,7 @@ enum class JobStatus { QUEUED, PROCESSING, COMPLETED, FAILED, NOT_FOUND, CANCELL
 
 struct IncumbentEntry {
   double objective = 0.0;
+  double bound     = 0.0;
   std::vector<double> assignment;
 };
 
@@ -235,7 +236,7 @@ struct PendingChunkedUpload {
 // =============================================================================
 
 inline std::atomic<bool> keep_running{true};
-inline std::atomic<bool> fatal_gpu_failure{false};
+inline std::atomic<bool> fatal_worker_failure{false};
 inline std::map<std::string, JobInfo> job_tracker;
 inline std::mutex tracker_mutex;
 inline std::condition_variable result_cv;

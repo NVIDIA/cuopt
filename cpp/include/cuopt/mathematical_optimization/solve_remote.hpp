@@ -29,8 +29,6 @@ class solver_settings_t;
 
 /**
  * @brief Solve an LP remotely.
- *
- * Sends the deprecated typed fields and the parameter map.
  */
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
@@ -38,8 +36,6 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
 
 /**
  * @brief Solve a MIP remotely.
- *
- * Sends the deprecated typed fields and the parameter map.
  */
 template <typename i_t, typename f_t>
 std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
