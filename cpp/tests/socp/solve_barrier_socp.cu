@@ -1603,6 +1603,7 @@ TEST(barrier, cached_solve_can_enable_iterative_refinement)
     auto cache = barrier_cache_t::create(cudaStreamNonBlocking);
     init_handler(cache->handle_ptr());
     user_problem_t<int, double> user_problem(cache->handle_ptr());
+    user_problem.num_range_rows = 0;
 
     // Minimize 0.5 * (x0^2 + x1^2), subject to x0 + x1 = rhs and 0 <= x <= 10.
     // The unique solution is x0 = x1 = rhs / 2, with objective rhs^2 / 4.
