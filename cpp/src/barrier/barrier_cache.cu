@@ -23,8 +23,9 @@ using barrier_iteration_data_t = barrier::iteration_data_t<int, double>;
 using barrier_iteration_data_ptr =
   std::unique_ptr<barrier_iteration_data_t, void (*)(barrier_iteration_data_t*)>;
 
-static void require_cache(barrier_transform_t<int, double> const* transform,
-                          barrier_iteration_data_t const* data,
+template <typename i_t, typename f_t>
+static void require_cache(barrier_transform_t<i_t, f_t> const* transform,
+                          barrier::iteration_data_t<i_t, f_t> const* data,
                           char const* api)
 {
   cuopt_expects(transform != nullptr,
@@ -38,7 +39,8 @@ static void require_cache(barrier_transform_t<int, double> const* transform,
 }
 
 // Re-adds the first solve's barrier-minus-crush shift so the update lands in the presolved model.
-static void add_shift(std::vector<double>& crushed, std::vector<double> const& shift)
+template <typename f_t>
+static void add_shift(std::vector<f_t>& crushed, std::vector<f_t> const& shift)
 {
   cuopt_expects(shift.size() == crushed.size(),
                 error_type_t::ValidationError,

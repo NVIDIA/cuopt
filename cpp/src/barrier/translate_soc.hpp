@@ -69,7 +69,7 @@ void convert_quadratic_constraints_to_second_order_cones(
   // Use a practical tolerance for text-parsed MPS numeric values.
   const f_t tol = std::numeric_limits<f_t>::epsilon() * 2;
 
-  // Rows appended below all land after these, so the model's own keep their indices.
+  // Row number before second-order cone translation.
   user_problem.original_num_rows = csr_A.m;
 
   // Derive implied lower bounds from singleton inequality rows.
