@@ -4,12 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
-#include "c_api_check.hpp"
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
 #include "miplib2017_bks.hpp"
 
-#include <cuopt/mathematical_optimization/cuopt_c.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
@@ -94,87 +92,6 @@ void write_to_output_file(const std::string& out_dir,
 
 inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 
-constexpr bool use_c_api = true;
-
-struct c_api_handles_t {
-  c_api_handles_t()                                  = default;
-  c_api_handles_t(const c_api_handles_t&)            = delete;
-  c_api_handles_t& operator=(const c_api_handles_t&) = delete;
-
-  ~c_api_handles_t()
-  {
-    cuOptDestroySolution(&solution);
-    cuOptDestroySolverSettings(&settings);
-    cuOptDestroyProblem(&problem);
-  }
-
-  cuOptOptimizationProblem problem{};
-  cuOptSolverSettings settings{};
-  cuOptSolution solution{};
-};
-
-struct solve_result_t {
-  double objective_value{};
-  double solution_bound{};
-  double mip_gap{};
-  cuopt_int_t termination_status{};
-
-  double get_objective_value() const { return objective_value; }
-  double get_solution_bound() const { return solution_bound; }
-  double get_mip_gap() const { return mip_gap; }
-};
-
-static void configure_c_api_settings(
-  cuOptSolverSettings c_settings,
-  const cuopt::mathematical_optimization::mip_solver_settings_t<int, double>& settings)
-{
-  cuopt_bench::check_c_api(
-    cuOptSetFloatParameter(c_settings, CUOPT_TIME_LIMIT, settings.time_limit),
-    "cuOptSetFloatParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetFloatParameter(c_settings, CUOPT_WORK_LIMIT, settings.work_limit),
-    "cuOptSetFloatParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetIntegerParameter(c_settings, CUOPT_NUM_CPU_THREADS, settings.num_cpu_threads),
-    "cuOptSetIntegerParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetIntegerParameter(c_settings, CUOPT_MIP_DETERMINISM_MODE, settings.determinism_mode),
-    "cuOptSetIntegerParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetFloatParameter(
-      c_settings, CUOPT_MIP_RELATIVE_TOLERANCE, settings.tolerances.relative_tolerance),
-    "cuOptSetFloatParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetFloatParameter(
-      c_settings, CUOPT_MIP_ABSOLUTE_TOLERANCE, settings.tolerances.absolute_tolerance),
-    "cuOptSetFloatParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetFloatParameter(
-      c_settings, CUOPT_MIP_INTEGRALITY_TOLERANCE, settings.tolerances.integrality_tolerance),
-    "cuOptSetFloatParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetIntegerParameter(c_settings, CUOPT_PRESOLVE, (cuopt_int_t)settings.presolver),
-    "cuOptSetIntegerParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetIntegerParameter(
-      c_settings, CUOPT_MIP_RELIABILITY_BRANCHING, settings.reliability_branching),
-    "cuOptSetIntegerParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetIntegerParameter(c_settings, CUOPT_MIP_CLIQUE_CUTS, settings.clique_cuts),
-    "cuOptSetIntegerParameter");
-  cuopt_bench::check_c_api(cuOptSetIntegerParameter(c_settings, CUOPT_RANDOM_SEED, settings.seed),
-                           "cuOptSetIntegerParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetParameter(
-      c_settings, CUOPT_MIP_HEURISTICS_ONLY, settings.heuristics_only ? "true" : "false"),
-    "cuOptSetParameter");
-  cuopt_bench::check_c_api(
-    cuOptSetParameter(c_settings, CUOPT_LOG_TO_CONSOLE, settings.log_to_console ? "true" : "false"),
-    "cuOptSetParameter");
-  cuopt_bench::check_c_api(cuOptSetParameter(c_settings, CUOPT_LOG_FILE, settings.log_file.c_str()),
-                           "cuOptSetParameter");
-}
-
 void read_single_solution_from_path(const std::string& path,
                                     const std::vector<std::string>& var_names,
                                     std::vector<std::vector<double>>& solutions)
@@ -240,14 +157,15 @@ class incumbent_tracker_t : public cuopt::internals::get_solution_callback_with_
   {
   }
 
-  void get_solution_with_data(void* data,
-                              void* cost,
-                              void* /*solution_bound*/,
-                              void* /*user_data*/,
-                              const cuOptMIPCallbackData& callback_data) override
+  void get_solution_with_data(
+    void* data,
+    void* cost,
+    void* /*solution_bound*/,
+    void* /*user_data*/,
+    const cuopt::internals::solution_callback_data_t& callback_data) override
   {
     record_solution(
-      static_cast<double*>(data), *static_cast<double*>(cost), callback_data.from_lns != 0);
+      static_cast<double*>(data), *static_cast<double*>(cost), callback_data.from_lns);
   }
 
   void record_solution(const double* solution, double objective, bool from_lns)
@@ -308,16 +226,6 @@ class incumbent_tracker_t : public cuopt::internals::get_solution_callback_with_
   std::mutex records_mutex_;
 };
 
-static void c_api_incumbent_callback(const cuopt_float_t* solution,
-                                     const cuopt_float_t* objective_value,
-                                     const cuopt_float_t* /*solution_bound*/,
-                                     const cuOptMIPCallbackData* callback_data,
-                                     void* user_data)
-{
-  static_cast<incumbent_tracker_t*>(user_data)->record_solution(
-    solution, *objective_value, callback_data->from_lns != 0);
-}
-
 static void write_incumbent_trace(
   const incumbent_tracker_t& tracker,
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& problem,
@@ -356,10 +264,8 @@ int run_single_file(std::string file_path,
 {
   (void)cudaFree(0);
 
-  std::unique_ptr<raft::handle_t> handle;
-  if constexpr (!use_c_api) { handle = std::make_unique<raft::handle_t>(); }
+  auto handle = std::make_unique<raft::handle_t>();
   cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings;
-  c_api_handles_t c_api;
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
   // if output directory is given, set the log file
   if (write_log_file) {
@@ -383,8 +289,7 @@ int run_single_file(std::string file_path,
   settings.presolver                     = cuopt::mathematical_optimization::presolver_t::Default;
   settings.reliability_branching         = reliability_branching;
   settings.clique_cuts                   = -1;
-  settings.seed =
-    std::getenv("HIVE_EVALUATION_SEED") ? std::stoi(std::getenv("HIVE_EVALUATION_SEED")) : 42;
+  settings.seed                          = 42;
 
   // This benchmark and the solver library have separate loggers, both writing settings.log_file.
   // Configure the solver's first so its own initializer reuses that configuration rather than
@@ -396,12 +301,11 @@ int run_single_file(std::string file_path,
   cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_data_model;
   std::unique_ptr<incumbent_tracker_t> incumbent_tracker;
   try {
-    if constexpr (use_c_api) {
-      cuopt_bench::check_c_api(cuOptCreateSolverSettings(&c_api.settings),
-                               "cuOptCreateSolverSettings");
-      configure_c_api_settings(c_api.settings, settings);
+    if (time_limit < 0) { throw std::invalid_argument("time_limit must be nonnegative"); }
+    if (work_limit < 0) { throw std::invalid_argument("work_limit must be nonnegative"); }
+    if (reliability_branching < -1) {
+      throw std::invalid_argument("reliability_branching must be at least -1");
     }
-
     constexpr bool input_mps_strict = false;
     bool parsing_failed             = false;
     {
@@ -433,71 +337,26 @@ int run_single_file(std::string file_path,
                                               settings.tolerances.relative_tolerance,
                                               settings.tolerances.integrality_tolerance);
         if (feasible_variables) {
-          if constexpr (use_c_api) {
-            cuopt_bench::check_c_api(
-              cuOptAddMIPStart(c_api.settings, initial_solution.data(), initial_solution.size()),
-              "cuOptAddMIPStart");
-          } else {
-            settings.add_initial_solution(
-              initial_solution.data(), initial_solution.size(), handle->get_stream());
-          }
+          settings.add_initial_solution(
+            initial_solution.data(), initial_solution.size(), handle->get_stream());
         }
       }
     }
     cuopt::mathematical_optimization::benchmark_info_t benchmark_info;
-    if constexpr (!use_c_api) { settings.benchmark_info_ptr = &benchmark_info; }
-    std::chrono::steady_clock::time_point start_run_solver;
-    solve_result_t solution;
-    if constexpr (use_c_api) {
-      if (mps_data_model.get_objective_scaling_factor() != 1.0) {
-        throw std::runtime_error("cuOptCreateRangedProblem does not support objective scaling");
-      }
-      cuopt_bench::check_c_api(
-        cuOptCreateRangedProblem(mps_data_model.get_n_constraints(),
-                                 mps_data_model.get_n_variables(),
-                                 mps_data_model.get_sense() ? CUOPT_MAXIMIZE : CUOPT_MINIMIZE,
-                                 mps_data_model.get_objective_offset(),
-                                 mps_data_model.get_objective_coefficients().data(),
-                                 mps_data_model.get_constraint_matrix_offsets().data(),
-                                 mps_data_model.get_constraint_matrix_indices().data(),
-                                 mps_data_model.get_constraint_matrix_values().data(),
-                                 mps_data_model.get_constraint_lower_bounds().data(),
-                                 mps_data_model.get_constraint_upper_bounds().data(),
-                                 mps_data_model.get_variable_lower_bounds().data(),
-                                 mps_data_model.get_variable_upper_bounds().data(),
-                                 mps_data_model.get_variable_types().data(),
-                                 &c_api.problem),
-        "cuOptCreateRangedProblem");
-
-      start_run_solver = std::chrono::steady_clock::now();
-      incumbent_tracker =
-        std::make_unique<incumbent_tracker_t>(start_run_solver, mps_data_model.get_n_variables());
-      cuopt_bench::check_c_api(cuOptSetMIPGetSolutionCallbackWithData(
-                                 c_api.settings, c_api_incumbent_callback, incumbent_tracker.get()),
-                               "cuOptSetMIPGetSolutionCallbackWithData");
-      cuopt_bench::check_c_api(cuOptSolve(c_api.problem, c_api.settings, &c_api.solution),
-                               "cuOptSolve");
-      cuopt_bench::check_c_api(
-        cuOptGetTerminationStatus(c_api.solution, &solution.termination_status),
-        "cuOptGetTerminationStatus");
-      cuopt_bench::check_c_api(cuOptGetObjectiveValue(c_api.solution, &solution.objective_value),
-                               "cuOptGetObjectiveValue");
-      cuopt_bench::check_c_api(cuOptGetSolutionBound(c_api.solution, &solution.solution_bound),
-                               "cuOptGetSolutionBound");
-      cuopt_bench::check_c_api(cuOptGetMIPGap(c_api.solution, &solution.mip_gap), "cuOptGetMIPGap");
-    } else {
-      start_run_solver = std::chrono::steady_clock::now();
-      incumbent_tracker =
-        std::make_unique<incumbent_tracker_t>(start_run_solver, mps_data_model.get_n_variables());
-      settings.set_mip_callback(incumbent_tracker.get());
-      auto cpp_solution =
-        cuopt::mathematical_optimization::solve_mip(handle.get(), mps_data_model, settings);
-      solution.objective_value    = cpp_solution.get_objective_value();
-      solution.solution_bound     = cpp_solution.get_solution_bound();
-      solution.mip_gap            = cpp_solution.get_mip_gap();
-      solution.termination_status = (cuopt_int_t)cpp_solution.get_termination_status();
-      // solution.write_to_sol_file(base_filename + ".sol", handle_.get_stream());
+    settings.benchmark_info_ptr = &benchmark_info;
+    // Build the GPU problem before starting the incumbent clock.
+    auto problem = cuopt::mathematical_optimization::mps_data_model_to_optimization_problem(
+      handle.get(), mps_data_model);
+    const auto start_run_solver = std::chrono::steady_clock::now();
+    incumbent_tracker =
+      std::make_unique<incumbent_tracker_t>(start_run_solver, mps_data_model.get_n_variables());
+    settings.set_mip_callback(incumbent_tracker.get());
+    auto solution = cuopt::mathematical_optimization::solve_mip(problem, settings);
+    if (solution.get_error_status().get_error_type() != cuopt::error_type_t::Success) {
+      throw solution.get_error_status();
     }
+    const auto termination_status = solution.get_termination_status();
+    using termination_status_t    = cuopt::mathematical_optimization::mip_termination_status_t;
     CUOPT_LOG_INFO(
       "first obj: %f last improvement of best feasible: %f last improvement after recombination: "
       "%f",
@@ -508,9 +367,9 @@ int run_single_file(std::string file_path,
     auto end = std::chrono::steady_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_run_solver);
     CUOPT_LOG_INFO("run_solver %d", duration.count());
-    if constexpr (!use_c_api) { handle->sync_stream(); }
-    int sol_found = int(solution.termination_status == CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND ||
-                        solution.termination_status == CUOPT_TERMINATION_STATUS_OPTIMAL);
+    handle->sync_stream();
+    int sol_found = int(termination_status == termination_status_t::FeasibleFound ||
+                        termination_status == termination_status_t::Optimal);
     double obj_val =
       sol_found ? solution.get_objective_value() : std::numeric_limits<double>::max();
     if (sol_found) {
@@ -531,11 +390,11 @@ int run_single_file(std::string file_path,
                                     .count() /
                                   1000.0;
       std::string _status_str;
-      switch (solution.termination_status) {
-        case CUOPT_TERMINATION_STATUS_OPTIMAL: _status_str = "Optimal"; break;
-        case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND: _status_str = "FeasibleFound"; break;
-        case CUOPT_TERMINATION_STATUS_TIME_LIMIT: _status_str = "TimeLimit"; break;
-        case CUOPT_TERMINATION_STATUS_INFEASIBLE: _status_str = "Infeasible"; break;
+      switch (termination_status) {
+        case termination_status_t::Optimal: _status_str = "Optimal"; break;
+        case termination_status_t::FeasibleFound: _status_str = "FeasibleFound"; break;
+        case termination_status_t::TimeLimit: _status_str = "TimeLimit"; break;
+        case termination_status_t::Infeasible: _status_str = "Infeasible"; break;
         default: _status_str = "Other"; break;
       }
       cuopt_bench::print_miplib_gap_stat(base_filename,
@@ -550,7 +409,7 @@ int run_single_file(std::string file_path,
     std::stringstream ss;
     int decimal_places = 5;
     double mip_gap     = solution.get_mip_gap();
-    int is_optimal     = solution.termination_status == CUOPT_TERMINATION_STATUS_OPTIMAL ? 1 : 0;
+    int is_optimal     = termination_status == termination_status_t::Optimal ? 1 : 0;
     ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found
        << "," << obj_val << "," << benchmark_info.objective_of_initial_population << ","
        << benchmark_info.last_improvement_of_best_feasible << ","
@@ -561,13 +420,9 @@ int run_single_file(std::string file_path,
     write_incumbent_trace(
       *incumbent_tracker, mps_data_model, settings, out_dir, base_filename, num_cpu_threads);
     return sol_found;
-  } catch (const cuopt_bench::c_api_error_t& e) {
-    CUOPT_LOG_ERROR("BenchmarkError instance=%s operation=%s code=%d",
-                    base_filename.c_str(),
-                    e.operation,
-                    e.code);
-    std::cerr << "BenchmarkError instance=" << base_filename << " operation=" << e.operation
-              << " code=" << e.code << '\n';
+  } catch (const std::exception& e) {
+    CUOPT_LOG_ERROR("BenchmarkError instance=%s message=%s", base_filename.c_str(), e.what());
+    std::cerr << "BenchmarkError instance=" << base_filename << " message=" << e.what() << '\n';
     if (!out_dir.empty()) {
       std::ofstream error_file(out_dir + "/" + base_filename + "_error.txt");
       error_file << e.what() << '\n';
@@ -576,7 +431,7 @@ int run_single_file(std::string file_path,
       write_incumbent_trace(
         *incumbent_tracker, mps_data_model, settings, out_dir, base_filename, num_cpu_threads);
     }
-    // An API failure is not a completed solve with no incumbent. Do not emit a
+    // A solver failure is not a completed solve with no incumbent. Do not emit a
     // normal final-result row; let the runner flag the incomplete benchmark.
     return -1;
   }

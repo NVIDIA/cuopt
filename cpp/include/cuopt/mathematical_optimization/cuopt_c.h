@@ -885,32 +885,6 @@ typedef void (*cuOptMIPGetSolutionCallback)(const cuopt_float_t* solution,
                                             void* user_data);
 
 /**
- * @brief Metadata accompanying an incumbent MIP solution.
- */
-typedef struct cuOptMIPCallbackData {
-  /** 1 if LNS produced the incumbent; 0 otherwise or when origin is unavailable.
-   * Remote solves currently do not provide origin information. */
-  cuopt_int_t from_lns;
-} cuOptMIPCallbackData;
-
-/**
- * @brief Type of callback for receiving incumbent MIP solutions and their metadata.
- *
- * @param[in] solution - Pointer to incumbent values in original problem variable order.
- * @param[in] objective_value - Pointer to incumbent objective value.
- * @param[in] solution_bound - Pointer to current solution (dual/user) bound.
- * @param[in] callback_data - Pointer to metadata for this incumbent.
- * @param[in] user_data - User-defined pointer supplied during registration, unchanged.
- * @note All pointer arguments refer to host memory and are only valid during the callback.
- * Copy any data you need to retain after it returns.
- */
-typedef void (*cuOptMIPGetSolutionCallbackWithData)(const cuopt_float_t* solution,
-                                                    const cuopt_float_t* objective_value,
-                                                    const cuopt_float_t* solution_bound,
-                                                    const cuOptMIPCallbackData* callback_data,
-                                                    void* user_data);
-
-/**
  * @brief Type of callback for injecting MIP solutions with user context.
  *
  * @param[out] solution - Pointer to solution values to set.
@@ -944,20 +918,6 @@ typedef void (*cuOptMIPSetSolutionCallback)(cuopt_float_t* solution,
 cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
                                            cuOptMIPGetSolutionCallback callback,
                                            void* user_data);
-
-/**
- * @brief Register a callback to receive incumbent MIP solutions and their metadata.
- *
- * @param[in] settings - The solver settings object.
- * @param[in] callback - Callback function to receive incumbent solutions and metadata.
- * @param[in] user_data - User-defined pointer forwarded to the callback unchanged.
- * @note Callback arguments refer to host memory and are valid only during invocation.
- * Copy any data you need to retain after the callback returns.
- * @return A status code indicating success or failure.
- */
-cuopt_int_t cuOptSetMIPGetSolutionCallbackWithData(cuOptSolverSettings settings,
-                                                   cuOptMIPGetSolutionCallbackWithData callback,
-                                                   void* user_data);
 
 /**
  * @brief Register a callback to inject MIP solutions.

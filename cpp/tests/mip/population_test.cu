@@ -37,11 +37,12 @@ void init_population_test_problem(opt::optimization_problem_t<int, double>& op)
 
 class origin_callback_t : public cuopt::internals::get_solution_callback_with_data_t {
  public:
-  void get_solution_with_data(void* data,
-                              void* objective_value,
-                              void* solution_bound,
-                              void* user_data,
-                              const cuOptMIPCallbackData& callback_data) override
+  void get_solution_with_data(
+    void* data,
+    void* objective_value,
+    void* solution_bound,
+    void* user_data,
+    const cuopt::internals::solution_callback_data_t& callback_data) override
   {
     EXPECT_EQ(user_data, this);
     const auto* assignment = static_cast<double*>(data);

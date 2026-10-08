@@ -13,7 +13,6 @@
 #include <type_traits>
 
 #include <cuopt/mathematical_optimization/constants.h>
-#include <cuopt/mathematical_optimization/cuopt_c.h>
 namespace cuopt {
 namespace internals {
 
@@ -56,6 +55,10 @@ class get_solution_callback_t : public base_solution_callback_t {
   }
 };
 
+struct solution_callback_data_t {
+  bool from_lns{false};
+};
+
 // Optional extension: keep the existing callback interface and its user data unchanged.
 class get_solution_callback_with_data_t : public get_solution_callback_t {
  public:
@@ -71,14 +74,14 @@ class get_solution_callback_with_data_t : public get_solution_callback_t {
                                       void* objective_value,
                                       void* solution_bound,
                                       void* user_data,
-                                      const cuOptMIPCallbackData& callback_data) = 0;
+                                      const solution_callback_data_t& callback_data) = 0;
 };
 
 inline void invoke_get_solution_callback(get_solution_callback_t* callback,
                                          void* data,
                                          void* objective_value,
                                          void* solution_bound,
-                                         const cuOptMIPCallbackData& callback_data = {})
+                                         const solution_callback_data_t& callback_data = {})
 {
   if (auto* extended = dynamic_cast<get_solution_callback_with_data_t*>(callback)) {
     extended->get_solution_with_data(

@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "../../../benchmarks/linear_programming/cuopt/c_api_check.hpp"
-
 #include <mip_heuristics/diversity/diversity_manager.cuh>
 #include <mip_heuristics/feasibility_jump/cpu/climber.hpp>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
@@ -250,11 +248,12 @@ void init_test_problem(opt::optimization_problem_t<int, double>& op,
 
 class lns_origin_callback_t : public cuopt::internals::get_solution_callback_with_data_t {
  public:
-  void get_solution_with_data(void* data,
-                              void* objective_value,
-                              void* solution_bound,
-                              void* user_data,
-                              const cuOptMIPCallbackData& callback_data) override
+  void get_solution_with_data(
+    void* data,
+    void* objective_value,
+    void* solution_bound,
+    void* user_data,
+    const cuopt::internals::solution_callback_data_t& callback_data) override
   {
     EXPECT_EQ(user_data, this);
     const auto* assignment = static_cast<double*>(data);
@@ -422,17 +421,6 @@ TEST(Lns, PresolveIncumbentIsHandedToMainPopulationOnce)
   EXPECT_DOUBLE_EQ(solutions[0].get_user_objective(), 1);
 }
 
-TEST(Lns, BenchmarkApiErrorsAreDistinctFromNoSolution)
-{
-  EXPECT_NO_THROW(cuopt_bench::check_c_api(CUOPT_SUCCESS, "cuOptSolve"));
-  try {
-    cuopt_bench::check_c_api(CUOPT_RUNTIME_ERROR, "cuOptSolve");
-    FAIL() << "API error was ignored";
-  } catch (const cuopt_bench::c_api_error_t& error) {
-    EXPECT_EQ(error.code, CUOPT_RUNTIME_ERROR);
-    EXPECT_STREQ(error.operation, "cuOptSolve");
-  }
-}
 TEST(Lns, PresolveBudgetsIncludePapiloAndAuxiliaryWorkers)
 {
   for (int team_size = 2; team_size <= 128; ++team_size) {
