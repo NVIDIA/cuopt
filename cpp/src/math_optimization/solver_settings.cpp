@@ -12,7 +12,6 @@
 #include <utilities/logger.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -78,32 +77,6 @@ bool string_to_bool(const std::string& value, bool& result)
   }
 }
 
-bool string_to_reduced_matrix_mode(const std::string& value, int& result)
-{
-  std::string upper = value;
-  std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) {
-    return static_cast<char>(std::toupper(c));
-  });
-  if (upper == "DEFAULT") {
-    result = CUOPT_PDLP_REDUCED_MATRIX_DEFAULT;
-    return true;
-  }
-  if (upper == "OFF") {
-    result = CUOPT_PDLP_REDUCED_MATRIX_OFF;
-    return true;
-  }
-  if (upper == "COLUMN_REDUCTION") {
-    result = CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION;
-    return true;
-  }
-  bool enabled;
-  if (string_to_bool(upper, enabled)) {
-    result = enabled ? CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION : CUOPT_PDLP_REDUCED_MATRIX_OFF;
-    return true;
-  }
-  return string_to_int(value, result);
-}
-
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -115,10 +88,7 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
   for (auto& param : int_parameters) {
     if (param.param_name == name) {
       i_t value_int;
-      const bool is_reduced_matrix = name == CUOPT_PDLP_HYPER_REDUCED_MATRIX;
-      const bool parsed = is_reduced_matrix ? string_to_reduced_matrix_mode(value, value_int)
-                                            : string_to_int(value, value_int);
-      if (parsed) {
+      if (string_to_int(value, value_int)) {
         if (value_int < param.min_value || value_int > param.max_value) {
           throw std::invalid_argument("Parameter " + name + " value " + value + " out of range");
         }
@@ -129,10 +99,6 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
           output = true;
         }
       } else {
-        if (is_reduced_matrix) {
-          throw std::invalid_argument("Parameter " + name + " value " + value +
-                                      " must be DEFAULT (-1), OFF (0), or COLUMN_REDUCTION (1)");
-        }
         throw std::invalid_argument("Parameter " + name + " value " + value + " is not an integer");
       }
     }

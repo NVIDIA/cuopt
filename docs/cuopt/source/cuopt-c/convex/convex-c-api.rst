@@ -237,12 +237,12 @@ These constants are used to configure `CUOPT_PDLP_SOLVER_MODE` via :c:func:`cuOp
 PDLP Reduced-Matrix Constants
 ----------------------------
 
-These constants configure ``CUOPT_PDLP_HYPER_REDUCED_MATRIX`` via
-:c:func:`cuOptSetIntegerParameter`. ``DEFAULT`` enables column reduction when
+These integer constants configure ``CUOPT_PDLP_HYPER_REDUCED_MATRIX`` via
+:c:func:`cuOptSetIntegerParameter`. The default value ``-1`` enables column reduction when
 the matrix entering PDLP has at least ``CUOPT_CONCURRENT_NNZ_CUTOFF`` nonzeros
 (50,000,000 by default). Setting that cutoff to -1 disables automatic reduction;
-``COLUMN_REDUCTION`` bypasses that size gate. Both modes retain compatibility checks, including
-disabling reduction on the multi-GPU PDLP path.
+``0`` disables reduction and ``1`` requests it regardless of size. Enabled modes
+retain compatibility checks, including disabling reduction on the multi-GPU PDLP path.
 
 .. doxygendefine:: CUOPT_PDLP_REDUCED_MATRIX_DEFAULT
 .. doxygendefine:: CUOPT_PDLP_REDUCED_MATRIX_OFF
