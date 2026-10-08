@@ -24,6 +24,7 @@ namespace cuopt::mathematical_optimization::pdlp {
 /** Resolve the requested mode against the PDLP matrix and execution path, logging the decision. */
 bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
                             int64_t nnz,
+                            int concurrent_nnz_cutoff,
                             bool is_legacy_batch_mode,
                             bool batch_mode,
                             bool enable_mixed_precision_spmv,

@@ -55,6 +55,7 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
   const pdlp::pdlp_hyper_params_t& hyper_params,
   const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
+  int concurrent_nnz_cutoff,
   bool enable_mixed_precision_spmv,
   bool is_distributed)
   : batch_mode_(climber_strategies.size() > 1),
@@ -101,6 +102,7 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
                     op_problem_scaled,
                     reduced_matrix_enabled(hyper_params,
                                            op_problem_scaled.nnz,
+                                           concurrent_nnz_cutoff,
                                            is_legacy_batch_mode,
                                            batch_mode_,
                                            enable_mixed_precision_spmv,

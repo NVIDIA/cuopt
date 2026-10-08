@@ -199,6 +199,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                  climber_strategies_,
                  settings_.hyper_params,
                  settings_.new_bounds,
+                 settings_.concurrent_nnz_cutoff,
                  settings_.pdlp_precision == pdlp_precision_t::MixedPrecision,
                  is_distributed_sub_pdlp},
     initial_scaling_strategy_{handle_ptr_,
@@ -394,7 +395,8 @@ static pdlp_solver_settings_t<i_t, f_t> without_distributed_reduction(
   pdlp_solver_settings_t<i_t, f_t> settings)
 {
   // Resolve this before constructing the shape-zero master; shards must inherit OFF as well.
-  reduced_matrix_enabled(settings.hyper_params, 0, false, false, false, false, true);
+  reduced_matrix_enabled(
+    settings.hyper_params, 0, settings.concurrent_nnz_cutoff, false, false, false, false, true);
   settings.hyper_params.reduced_matrix = reduced_matrix_mode_t::OFF;
   return settings;
 }

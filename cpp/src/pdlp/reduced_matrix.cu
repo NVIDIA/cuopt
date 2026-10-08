@@ -9,6 +9,7 @@
 
 #include <cuopt/error.hpp>
 #include <mip_heuristics/mip_constants.hpp>
+#include <pdlp/pdlp_constants.hpp>
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/logger.hpp>
 
@@ -246,6 +247,7 @@ struct add_fixed_reflected_activity_op {
 
 bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
                             int64_t nnz,
+                            int concurrent_nnz_cutoff,
                             bool is_legacy_batch_mode,
                             bool batch_mode,
                             bool enable_mixed_precision_spmv,
@@ -283,15 +285,27 @@ bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
     CUOPT_LOG_INFO("Column reduction disabled (%s): %s", mode_name, reason);
     return false;
   }
-  constexpr int64_t default_nnz_threshold = 100'000'000;
-  if (mode == reduced_matrix_mode_t::DEFAULT && nnz <= default_nnz_threshold) {
-    CUOPT_LOG_INFO("Column reduction disabled (DEFAULT): PDLP matrix nnz=%" PRId64
-                   " must exceed %" PRId64,
+  if (mode == reduced_matrix_mode_t::DEFAULT) {
+    if (!should_skip_concurrent_cpu_solvers(static_cast<std::size_t>(nnz), concurrent_nnz_cutoff)) {
+      if (concurrent_nnz_cutoff < 0) {
+        CUOPT_LOG_INFO(
+          "Column reduction disabled (DEFAULT): CONCURRENT_NNZ_CUTOFF=-1 disables "
+          "automatic reduction");
+      } else {
+        CUOPT_LOG_INFO("Column reduction disabled (DEFAULT): PDLP matrix nnz=%" PRId64
+                       " is below CONCURRENT_NNZ_CUTOFF=%d",
+                       nnz,
+                       concurrent_nnz_cutoff);
+      }
+      return false;
+    }
+    CUOPT_LOG_INFO("Column reduction enabled (DEFAULT): PDLP matrix nnz=%" PRId64
+                   " meets CONCURRENT_NNZ_CUTOFF=%d",
                    nnz,
-                   default_nnz_threshold);
-    return false;
+                   concurrent_nnz_cutoff);
+  } else {
+    CUOPT_LOG_INFO("Column reduction enabled (%s): PDLP matrix nnz=%" PRId64, mode_name, nnz);
   }
-  CUOPT_LOG_INFO("Column reduction enabled (%s): PDLP matrix nnz=%" PRId64, mode_name, nnz);
   return true;
 }
 

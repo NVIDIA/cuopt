@@ -121,8 +121,13 @@ PDLP Reduced Matrix
 column reduction during PDLP iterations:
 
 * ``DEFAULT`` (-1, default): Enable column reduction when the constraint matrix
-  entering PDLP has **strictly more than 100,000,000 nonzeros**. When presolve is
-  enabled, this is the post-presolve matrix, not the original input matrix.
+  entering PDLP has **at least** ``CUOPT_CONCURRENT_NNZ_CUTOFF``
+  (``concurrent_nnz_cutoff``) nonzeros, **50,000,000 by default**. This is the same
+  cutoff used to skip barrier and dual simplex in concurrent solves. Setting the
+  cutoff to -1 disables automatic column reduction as well as that solver cutoff.
+  A cutoff of 0 makes all problem sizes eligible for automatic column reduction.
+  When presolve is enabled, the size is that of the post-presolve matrix, not the
+  original input matrix. The reduction gate also applies in PDLP-only mode.
 * ``OFF`` (0): Disable column reduction.
 * ``COLUMN_REDUCTION`` (1): Request column reduction regardless of problem size.
 

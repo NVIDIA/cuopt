@@ -20,6 +20,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::test {
@@ -62,9 +63,12 @@ io::mps_data_model_t<int, double> make_reduction_test_model()
   return model;
 }
 
-bool reduction_enabled(const pdlp::pdlp_hyper_params_t& params, int64_t nnz)
+bool reduction_enabled(const pdlp::pdlp_hyper_params_t& params,
+                       int64_t nnz,
+                       int concurrent_nnz_cutoff)
 {
-  return pdlp::reduced_matrix_enabled(params, nnz, false, false, false, false, false);
+  return pdlp::reduced_matrix_enabled(
+    params, nnz, concurrent_nnz_cutoff, false, false, false, false, false);
 }
 
 class ReducedMatrixPolicy : public testing::Test {
@@ -72,38 +76,68 @@ class ReducedMatrixPolicy : public testing::Test {
   reduced_matrix_log_capture_t log_;
 };
 
-TEST_F(ReducedMatrixPolicy, DefaultRequiresStrictlyMoreThanOneHundredMillionNonzeros)
+TEST_F(ReducedMatrixPolicy, DefaultUsesConfiguredConcurrentNnzCutoffInclusively)
 {
-  pdlp::pdlp_hyper_params_t params;
-  EXPECT_EQ(params.reduced_matrix, reduced_matrix_mode_t::DEFAULT);
-  for (int64_t nnz : {0LL, 99'999'999LL, 100'000'000LL}) {
-    SCOPED_TRACE(nnz);
-    EXPECT_FALSE(reduction_enabled(params, nnz));
+  const pdlp_solver_settings_t<int, double> settings;
+  EXPECT_EQ(settings.hyper_params.reduced_matrix, reduced_matrix_mode_t::DEFAULT);
+  EXPECT_EQ(settings.concurrent_nnz_cutoff, 50'000'000);
+  for (int cutoff : {settings.concurrent_nnz_cutoff, 7}) {
+    SCOPED_TRACE(cutoff);
+    log_.clear();
+    EXPECT_FALSE(reduction_enabled(settings.hyper_params, cutoff - 1, cutoff));
+    EXPECT_NE(log_.text().find("Column reduction disabled (DEFAULT)"), std::string::npos);
+    EXPECT_EQ(log_.text().find("Column reduction enabled ("), std::string::npos);
+    for (int64_t nnz : {int64_t{cutoff}, int64_t{cutoff} + 1}) {
+      SCOPED_TRACE(nnz);
+      log_.clear();
+      EXPECT_TRUE(reduction_enabled(settings.hyper_params, nnz, cutoff));
+      EXPECT_NE(log_.text().find("Column reduction enabled (DEFAULT)"), std::string::npos);
+      EXPECT_NE(log_.text().find(std::to_string(nnz)), std::string::npos);
+    }
   }
-  log_.clear();
-  EXPECT_TRUE(reduction_enabled(params, 100'000'001));
-  EXPECT_NE(log_.text().find("Column reduction enabled (DEFAULT)"), std::string::npos);
-  EXPECT_NE(log_.text().find("100000001"), std::string::npos);
 }
 
-TEST_F(ReducedMatrixPolicy, OffIsSilentRegardlessOfSizeAndDistributedPath)
+TEST_F(ReducedMatrixPolicy, DefaultRespectsZeroAndDisabledCutoff)
+{
+  const pdlp::pdlp_hyper_params_t params;
+  for (int64_t nnz : {0LL, 1LL, 50'000'000LL, 100'000'001LL}) {
+    SCOPED_TRACE(nnz);
+    log_.clear();
+    EXPECT_FALSE(reduction_enabled(params, nnz, -1));
+    EXPECT_NE(log_.text().find("Column reduction disabled (DEFAULT)"), std::string::npos);
+    EXPECT_EQ(log_.text().find("Column reduction enabled ("), std::string::npos);
+    log_.clear();
+    EXPECT_TRUE(reduction_enabled(params, nnz, 0));
+    EXPECT_NE(log_.text().find("Column reduction enabled (DEFAULT)"), std::string::npos);
+  }
+}
+
+TEST_F(ReducedMatrixPolicy, OffIsSilentRegardlessOfSizeCutoffAndDistributedPath)
 {
   pdlp::pdlp_hyper_params_t params;
   params.reduced_matrix = reduced_matrix_mode_t::OFF;
-  for (int64_t nnz : {0LL, 100'000'001LL}) {
-    EXPECT_FALSE(reduction_enabled(params, nnz));
-    EXPECT_FALSE(pdlp::reduced_matrix_enabled(params, nnz, false, false, false, false, true));
+  for (int cutoff : {-1, 0, 7, 50'000'000}) {
+    SCOPED_TRACE(cutoff);
+    for (int64_t nnz : {0LL, 100'000'001LL}) {
+      SCOPED_TRACE(nnz);
+      EXPECT_FALSE(reduction_enabled(params, nnz, cutoff));
+      EXPECT_FALSE(
+        pdlp::reduced_matrix_enabled(params, nnz, cutoff, false, false, false, false, true));
+    }
   }
   EXPECT_TRUE(log_.text().empty());
 }
 
-TEST_F(ReducedMatrixPolicy, ExplicitColumnReductionBypassesSizeThreshold)
+TEST_F(ReducedMatrixPolicy, ExplicitColumnReductionBypassesSizeAndDisabledCutoff)
 {
   pdlp::pdlp_hyper_params_t params;
   params.reduced_matrix = reduced_matrix_mode_t::COLUMN_REDUCTION;
-  for (int64_t nnz : {1LL, 99'999'999LL, 100'000'000LL, 100'000'001LL}) {
-    SCOPED_TRACE(nnz);
-    EXPECT_TRUE(reduction_enabled(params, nnz));
+  for (int cutoff : {-1, 0, 7, 50'000'000}) {
+    SCOPED_TRACE(cutoff);
+    for (int64_t nnz : {0LL, 1LL, 50'000'000LL, 100'000'001LL}) {
+      SCOPED_TRACE(nnz);
+      EXPECT_TRUE(reduction_enabled(params, nnz, cutoff));
+    }
   }
   EXPECT_NE(log_.text().find("Column reduction enabled (COLUMN_REDUCTION)"), std::string::npos);
 }
@@ -139,32 +173,71 @@ TEST_F(ReducedMatrixPolicy, UnsupportedPathsDisableBothAutomaticAndExplicitReduc
         case 7: unsupported_params.artificial_restart_in_main_loop = true; break;
         case 8: unsupported_params.reflection_coefficient = 0.5; break;
       }
-      log_.clear();
-      EXPECT_FALSE(pdlp::reduced_matrix_enabled(unsupported_params,
-                                                100'000'001,
-                                                legacy_batch,
-                                                batch,
-                                                mixed_precision,
-                                                quadratic,
-                                                distributed));
-      EXPECT_NE(log_.text().find("Column reduction disabled ("), std::string::npos);
-      EXPECT_NE(log_.text().find(reasons[unsupported]), std::string::npos);
-      EXPECT_EQ(log_.text().find("Column reduction enabled ("), std::string::npos);
+      for (int cutoff : {-1, 0, 50'000'000}) {
+        SCOPED_TRACE(cutoff);
+        log_.clear();
+        EXPECT_FALSE(pdlp::reduced_matrix_enabled(unsupported_params,
+                                                  50'000'000,
+                                                  cutoff,
+                                                  legacy_batch,
+                                                  batch,
+                                                  mixed_precision,
+                                                  quadratic,
+                                                  distributed));
+        EXPECT_NE(log_.text().find("Column reduction disabled ("), std::string::npos);
+        EXPECT_NE(log_.text().find(reasons[unsupported]), std::string::npos);
+        EXPECT_EQ(log_.text().find("Column reduction enabled ("), std::string::npos);
+      }
     }
   }
 }
 
-TEST_F(ReducedMatrixPolicy, DistributedPathTakesPriorityOverPlaceholderSize)
+TEST_F(ReducedMatrixPolicy, DistributedPathTakesPriorityOverPlaceholderSizeAndCutoff)
 {
   for (auto mode : {reduced_matrix_mode_t::DEFAULT, reduced_matrix_mode_t::COLUMN_REDUCTION}) {
     pdlp::pdlp_hyper_params_t params;
     params.reduced_matrix = mode;
-    for (int64_t nnz : {0LL, 100'000'001LL}) {
-      SCOPED_TRACE(nnz);
-      log_.clear();
-      EXPECT_FALSE(pdlp::reduced_matrix_enabled(params, nnz, false, false, false, false, true));
-      EXPECT_NE(log_.text().find("multi-GPU"), std::string::npos);
+    for (int cutoff : {-1, 0, 50'000'000}) {
+      SCOPED_TRACE(cutoff);
+      for (int64_t nnz : {0LL, 50'000'000LL}) {
+        SCOPED_TRACE(nnz);
+        log_.clear();
+        EXPECT_FALSE(
+          pdlp::reduced_matrix_enabled(params, nnz, cutoff, false, false, false, false, true));
+        EXPECT_NE(log_.text().find("multi-GPU"), std::string::npos);
+      }
     }
+  }
+}
+
+TEST(ReducedMatrixSettings, SolveUsesConfiguredConcurrentNnzCutoff)
+{
+  raft::handle_t handle;
+  auto model = make_reduction_test_model();
+  ASSERT_EQ(model.get_nnz(), 4);
+  const std::array<std::pair<int, bool>, 5> cases{
+    {{3, true}, {4, true}, {5, false}, {-1, false}, {0, true}}};
+  for (const auto& [cutoff, expected_enabled] : cases) {
+    SCOPED_TRACE(cutoff);
+    pdlp_solver_settings_t<int, double> settings;
+    settings.method                = method_t::PDLP;
+    settings.presolver             = presolver_t::None;
+    settings.crossover             = false;
+    settings.log_to_console        = false;
+    settings.iteration_limit       = 2000;
+    settings.time_limit            = 30;
+    settings.concurrent_nnz_cutoff = cutoff;
+    settings.set_optimality_tolerance(1e-6);
+    ASSERT_EQ(settings.hyper_params.reduced_matrix, reduced_matrix_mode_t::DEFAULT);
+    reduced_matrix_log_capture_t log;
+    auto result = solve_lp(&handle, model, settings);
+    EXPECT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
+    EXPECT_NEAR(result.get_objective_value(), 2.0, 1e-5);
+    EXPECT_EQ(log.text().find("Column reduction enabled (DEFAULT)") != std::string::npos,
+              expected_enabled);
+    EXPECT_EQ(log.text().find("Column reduction disabled (DEFAULT)") != std::string::npos,
+              !expected_enabled);
+    handle.sync_stream();
   }
 }
 
