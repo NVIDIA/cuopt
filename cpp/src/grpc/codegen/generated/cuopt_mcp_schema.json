@@ -84,15 +84,17 @@
             "Concurrent",
             "PDLP",
             "DualSimplex",
-            "Barrier"
+            "Barrier",
+            "PrimalSimplex"
           ],
           "x-enum-values": {
             "Concurrent": 0,
             "PDLP": 1,
             "DualSimplex": 2,
-            "Barrier": 3
+            "Barrier": 3,
+            "PrimalSimplex": 4
           },
-          "description": "Method used to solve the LP. Concurrent runs PDLP, dual simplex and barrier in parallel. Default accuracy differs per method: PDLP 1e-4 relative, barrier 1e-8 relative, dual simplex 1e-6 absolute. Default: Concurrent."
+          "description": "Method used to solve the LP: Concurrent, PDLP, dual simplex, barrier, or primal simplex. Concurrent runs PDLP, dual simplex and barrier in parallel. Default accuracy differs per method: PDLP 1e-4 relative, barrier 1e-8 relative, dual simplex and primal simplex 1e-6 absolute. Default: Concurrent."
         },
         "presolver": {
           "type": "integer",

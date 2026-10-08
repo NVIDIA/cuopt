@@ -751,7 +751,7 @@ optimization_problem_solution_t<i_t, f_t> run_primal(
                                   std::get<2>(sol_primal),
                                   std::get<3>(sol_primal),
                                   std::get<4>(sol_primal),
-                                  method_t::Primal);
+                                  method_t::PrimalSimplex);
 }
 
 #if PDLP_INSTANTIATE_FLOAT || CUOPT_INSTANTIATE_FLOAT
@@ -1950,7 +1950,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
   if constexpr (std::is_same_v<f_t, double>) {
     if (settings.method == method_t::DualSimplex) {
       return run_dual_simplex(problem, settings, timer);
-    } else if (settings.method == method_t::Primal) {
+    } else if (settings.method == method_t::PrimalSimplex) {
       return run_primal(problem, settings, timer);
     } else if (settings.method == method_t::Barrier) {
       return run_barrier(problem, settings, timer, settings.barrier_cache);

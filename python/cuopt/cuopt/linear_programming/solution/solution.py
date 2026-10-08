@@ -125,8 +125,8 @@ class Solution:
         Solve time in seconds
     solved_by: enum
         Note: Applicable to only LP
-        Whether the LP was solved by Dual Simplex, PDLP or Barrier. This is populated
-        by the solver using the values from SolverMethod.
+        The method that solved the LP. This is populated by the solver using the
+        values from SolverMethod.
     """
 
     def __init__(
@@ -330,7 +330,7 @@ class Solution:
 
     def get_solved_by(self):
         """
-        Returns whether the LP was solved by Dual Simplex, PDLP or Barrier. See SolverMethod for all possible values.
+        Returns the method that solved the LP. See SolverMethod for all possible values.
         """
         return self.solved_by
 

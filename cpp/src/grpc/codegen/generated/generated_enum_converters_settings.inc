@@ -33,6 +33,7 @@ cuopt::remote::LPMethod to_proto_lp_method(method_t v)
     case method_t::PDLP: return cuopt::remote::PDLP;
     case method_t::DualSimplex: return cuopt::remote::DualSimplex;
     case method_t::Barrier: return cuopt::remote::Barrier;
+    case method_t::PrimalSimplex: return cuopt::remote::PrimalSimplex;
   }
   throw std::invalid_argument("Unknown method_t: " + std::to_string(static_cast<int>(v)));
 }
@@ -44,6 +45,7 @@ method_t from_proto_lp_method(cuopt::remote::LPMethod v)
     case cuopt::remote::PDLP: return method_t::PDLP;
     case cuopt::remote::DualSimplex: return method_t::DualSimplex;
     case cuopt::remote::Barrier: return method_t::Barrier;
+    case cuopt::remote::PrimalSimplex: return method_t::PrimalSimplex;
   }
   throw std::invalid_argument("Unknown cuopt::remote::LPMethod: " + std::to_string(static_cast<int>(v)));
 }
