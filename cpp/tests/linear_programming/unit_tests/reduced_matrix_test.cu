@@ -5,15 +5,219 @@
  */
 /* clang-format on */
 
-#include <gtest/gtest.h>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <pdlp/reduced_matrix.cuh>
-#include <raft/core/handle.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/logger.hpp>
+
+#include <raft/core/device_setter.hpp>
+#include <raft/core/handle.hpp>
+
+#include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
+#include <string>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::test {
+namespace {
+
+using pdlp::reduced_matrix_mode_t;
+
+void append_reduction_log(const char* message, void* data)
+{
+  auto& log = *static_cast<std::string*>(data);
+  log += message;
+  log += '\n';
+}
+
+class reduced_matrix_log_capture_t {
+ public:
+  const std::string& text() const { return log_; }
+  void clear() { log_.clear(); }
+
+ private:
+  cuopt::init_logger_t logger_{"", false};
+  std::string log_;
+  cuopt::scoped_log_callback_t callback_{append_reduction_log, &log_};
+};
+
+io::mps_data_model_t<int, double> make_reduction_test_model()
+{
+  io::mps_data_model_t<int, double> model;
+  model.set_maximize(false);
+  const std::vector<double> values{1, 2, 3, 4};
+  const std::vector<int> columns{0, 1, 1, 2}, offsets{0, 2, 4};
+  const std::vector<double> objective{1, 2, 3}, lower{0, 0, 0}, upper{10, 10, 10};
+  const std::vector<double> row_bounds{2, 3};
+  model.set_csr_constraint_matrix(values, columns, offsets);
+  model.set_objective_coefficients(objective);
+  model.set_variable_lower_bounds(lower);
+  model.set_variable_upper_bounds(upper);
+  model.set_constraint_lower_bounds(row_bounds);
+  model.set_constraint_upper_bounds(row_bounds);
+  return model;
+}
+
+bool reduction_enabled(const pdlp::pdlp_hyper_params_t& params, int64_t nnz)
+{
+  return pdlp::reduced_matrix_enabled(params, nnz, false, false, false, false, false);
+}
+
+class ReducedMatrixPolicy : public testing::Test {
+ protected:
+  reduced_matrix_log_capture_t log_;
+};
+
+TEST_F(ReducedMatrixPolicy, DefaultRequiresStrictlyMoreThanOneHundredMillionNonzeros)
+{
+  pdlp::pdlp_hyper_params_t params;
+  EXPECT_EQ(params.reduced_matrix, reduced_matrix_mode_t::DEFAULT);
+  for (int64_t nnz : {0LL, 99'999'999LL, 100'000'000LL}) {
+    SCOPED_TRACE(nnz);
+    EXPECT_FALSE(reduction_enabled(params, nnz));
+  }
+  log_.clear();
+  EXPECT_TRUE(reduction_enabled(params, 100'000'001));
+  EXPECT_NE(log_.text().find("Column reduction enabled (DEFAULT)"), std::string::npos);
+  EXPECT_NE(log_.text().find("100000001"), std::string::npos);
+}
+
+TEST_F(ReducedMatrixPolicy, OffIsSilentRegardlessOfSizeAndDistributedPath)
+{
+  pdlp::pdlp_hyper_params_t params;
+  params.reduced_matrix = reduced_matrix_mode_t::OFF;
+  for (int64_t nnz : {0LL, 100'000'001LL}) {
+    EXPECT_FALSE(reduction_enabled(params, nnz));
+    EXPECT_FALSE(pdlp::reduced_matrix_enabled(params, nnz, false, false, false, false, true));
+  }
+  EXPECT_TRUE(log_.text().empty());
+}
+
+TEST_F(ReducedMatrixPolicy, ExplicitColumnReductionBypassesSizeThreshold)
+{
+  pdlp::pdlp_hyper_params_t params;
+  params.reduced_matrix = reduced_matrix_mode_t::COLUMN_REDUCTION;
+  for (int64_t nnz : {1LL, 99'999'999LL, 100'000'000LL, 100'000'001LL}) {
+    SCOPED_TRACE(nnz);
+    EXPECT_TRUE(reduction_enabled(params, nnz));
+  }
+  EXPECT_NE(log_.text().find("Column reduction enabled (COLUMN_REDUCTION)"), std::string::npos);
+}
+
+TEST_F(ReducedMatrixPolicy, UnsupportedPathsDisableBothAutomaticAndExplicitReduction)
+{
+  const std::array<const char*, 9> reasons{"legacy stream batching is not supported",
+                                           "multiple PDLP climbers are not supported",
+                                           "mixed-precision SpMV is not supported",
+                                           "quadratic objectives are not supported",
+                                           "multi-GPU PDLP is not supported",
+                                           "reflected primal-dual updates are required",
+                                           "adaptive step sizes are not supported",
+                                           "artificial restarts in the main loop are not supported",
+                                           "reflection coefficient must be 1"};
+  for (auto mode : {reduced_matrix_mode_t::DEFAULT, reduced_matrix_mode_t::COLUMN_REDUCTION}) {
+    SCOPED_TRACE(static_cast<int>(mode));
+    pdlp::pdlp_hyper_params_t params;
+    params.reduced_matrix = mode;
+    for (int unsupported = 0; unsupported < 9; ++unsupported) {
+      SCOPED_TRACE(reasons[unsupported]);
+      auto unsupported_params = params;
+      bool legacy_batch = false, batch = false, mixed_precision = false;
+      bool quadratic = false, distributed = false;
+      switch (unsupported) {
+        case 0: legacy_batch = true; break;
+        case 1: batch = true; break;
+        case 2: mixed_precision = true; break;
+        case 3: quadratic = true; break;
+        case 4: distributed = true; break;
+        case 5: unsupported_params.use_reflected_primal_dual = false; break;
+        case 6: unsupported_params.use_adaptive_step_size_strategy = true; break;
+        case 7: unsupported_params.artificial_restart_in_main_loop = true; break;
+        case 8: unsupported_params.reflection_coefficient = 0.5; break;
+      }
+      log_.clear();
+      EXPECT_FALSE(pdlp::reduced_matrix_enabled(unsupported_params,
+                                                100'000'001,
+                                                legacy_batch,
+                                                batch,
+                                                mixed_precision,
+                                                quadratic,
+                                                distributed));
+      EXPECT_NE(log_.text().find("Column reduction disabled ("), std::string::npos);
+      EXPECT_NE(log_.text().find(reasons[unsupported]), std::string::npos);
+      EXPECT_EQ(log_.text().find("Column reduction enabled ("), std::string::npos);
+    }
+  }
+}
+
+TEST_F(ReducedMatrixPolicy, DistributedPathTakesPriorityOverPlaceholderSize)
+{
+  for (auto mode : {reduced_matrix_mode_t::DEFAULT, reduced_matrix_mode_t::COLUMN_REDUCTION}) {
+    pdlp::pdlp_hyper_params_t params;
+    params.reduced_matrix = mode;
+    for (int64_t nnz : {0LL, 100'000'001LL}) {
+      SCOPED_TRACE(nnz);
+      log_.clear();
+      EXPECT_FALSE(pdlp::reduced_matrix_enabled(params, nnz, false, false, false, false, true));
+      EXPECT_NE(log_.text().find("multi-GPU"), std::string::npos);
+    }
+  }
+}
+
+TEST(ReducedMatrixWorkspace, DisabledOperatorDoesNotAllocateProblemSizedBuffers)
+{
+  raft::handle_t handle;
+  auto model = make_reduction_test_model();
+  auto op    = mps_data_model_to_optimization_problem<int, double>(&handle, model);
+  mip::problem_t<int, double> problem(op);
+  pdlp::reduced_matrix_t<int, double> reduced(&handle, problem, false);
+  EXPECT_EQ(reduced.full_workspace_size_bytes(), 0);
+  EXPECT_FALSE(reduced.active());
+  EXPECT_FALSE(reduced.refresh_pending());
+  rmm::device_uvector<double> empty(0, handle.get_stream());
+  EXPECT_FALSE(reduced.update_mode(0.0, false, empty, empty, empty));
+  EXPECT_FALSE(reduced.request_refresh(true, empty, empty));
+  EXPECT_FALSE(reduced.finish_refresh(empty, empty, empty));
+  EXPECT_EQ(reduced.full_workspace_size_bytes(), 0);
+  handle.sync_stream();
+}
+
+TEST(ReducedMatrixDistributed, ExplicitReductionIsDisabledWithOneVisibleGpu)
+{
+  if (raft::device_setter::get_device_count() != 1) {
+    GTEST_SKIP() << "This regression exercises distributed PDLP with exactly one visible GPU";
+  }
+  raft::handle_t handle;
+  auto model = make_reduction_test_model();
+  pdlp_solver_settings_t<int, double> settings;
+  settings.method                      = method_t::PDLP;
+  settings.num_gpus                    = -1;
+  settings.presolver                   = presolver_t::None;
+  settings.crossover                   = false;
+  settings.log_to_console              = false;
+  settings.iteration_limit             = 2000;
+  settings.time_limit                  = 30;
+  settings.hyper_params.reduced_matrix = reduced_matrix_mode_t::COLUMN_REDUCTION;
+  settings.set_optimality_tolerance(1e-6);
+  reduced_matrix_log_capture_t log;
+  auto result = solve_lp(&handle, model, settings);
+  EXPECT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(result.get_objective_value(), 2.0, 1e-5);
+  EXPECT_NE(log.text().find("Solving with distributed PDLP on 1 GPUs"), std::string::npos);
+  EXPECT_NE(log.text().find("multi-GPU"), std::string::npos);
+  const auto disabled = log.text().find("Column reduction disabled (COLUMN_REDUCTION)");
+  ASSERT_NE(disabled, std::string::npos);
+  EXPECT_EQ(log.text().find("Column reduction disabled (", disabled + 1), std::string::npos);
+  EXPECT_EQ(log.text().find("Column reduction enabled ("), std::string::npos);
+  EXPECT_EQ(log.text().find("Reduced matrix activated"), std::string::npos);
+  handle.sync_stream();
+}
+
+}  // namespace
 
 class ReducedMatrix : public testing::TestWithParam<bool> {};
 
@@ -77,8 +281,13 @@ TEST_P(ReducedMatrix, CompactPrimalRefreshReleaseAndRestart)
                                   sizeof(double) * shared_structure.reverse_coefficients.size(),
                                   stream.get()));
   }
-  ASSERT_TRUE(reduced.update_mode(1e-4, false, d_projected, d_current, d_initial));
+  reduced_matrix_log_capture_t log;
+  ASSERT_TRUE(reduced.update_mode(1e-4, false, d_projected, d_current, d_initial, 42));
   ASSERT_EQ(reduced.free_count(), 1);
+  EXPECT_NE(log.text().find("Reduced matrix activated"), std::string::npos);
+  EXPECT_NE(log.text().find("columns=1/8"), std::string::npos);
+  EXPECT_NE(log.text().find("nnz=2/16"), std::string::npos);
+  EXPECT_NE(log.text().find("iteration=42"), std::string::npos);
 
   int iteration = 0;
   for (int epoch = 0; epoch < 3; ++epoch) {

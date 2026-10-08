@@ -114,6 +114,34 @@ C API users should use the constants defined in :ref:`pdlp-solver-mode-constants
 
 Server Thin client users should use the :class:`cuopt_sh_client.PDLPSolverMode` for this parameter.
 
+PDLP Reduced Matrix
+^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_PDLP_HYPER_REDUCED_MATRIX`` (``pdlp_hyper_reduced_matrix``) controls adaptive
+column reduction during PDLP iterations:
+
+* ``DEFAULT`` (-1, default): Enable column reduction when the constraint matrix
+  entering PDLP has **strictly more than 100,000,000 nonzeros**. When presolve is
+  enabled, this is the post-presolve matrix, not the original input matrix.
+* ``OFF`` (0): Disable column reduction.
+* ``COLUMN_REDUCTION`` (1): Request column reduction regardless of problem size.
+
+The string parameter interface accepts these names case-insensitively, as well as
+their integer values. Legacy ``true`` and ``false`` values remain aliases for
+``COLUMN_REDUCTION`` and ``OFF``. For example, the CLI accepts
+``--pdlp-hyper-reduced-matrix COLUMN_REDUCTION``. C API users should use the
+constants in :ref:`pdlp-reduced-matrix-constants` with :c:func:`cuOptSetIntegerParameter`.
+
+All enabled modes retain compatibility checks: column reduction is unavailable
+on the multi-GPU PDLP path, for batched solves, quadratic objectives, mixed-precision
+SpMV, or incompatible PDLP update/restart modes. Explicitly requesting
+``COLUMN_REDUCTION`` bypasses the size gate, not these checks. The solver logs the
+reason when a requested mode is disabled and announces automatic enablement.
+
+Enablement does not mean iterations immediately use a reduced matrix: PDLP first
+identifies a suitable active set of columns. When it starts using a reduced matrix,
+it reports that event in the log.
+
 Iteration Limit
 ^^^^^^^^^^^^^^^
 

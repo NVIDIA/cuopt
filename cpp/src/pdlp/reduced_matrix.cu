@@ -7,6 +7,7 @@
 
 #include <pdlp/reduced_matrix.cuh>
 
+#include <cuopt/error.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/logger.hpp>
@@ -22,6 +23,7 @@
 #include <cub/device/device_for.cuh>
 
 #include <algorithm>
+#include <cinttypes>
 #include <cstdint>
 
 namespace cuopt::mathematical_optimization::pdlp {
@@ -242,6 +244,57 @@ struct add_fixed_reflected_activity_op {
 
 }  // namespace
 
+bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
+                            int64_t nnz,
+                            bool is_legacy_batch_mode,
+                            bool batch_mode,
+                            bool enable_mixed_precision_spmv,
+                            bool has_quadratic_objective,
+                            bool is_distributed)
+{
+  const auto mode = hyper_params.reduced_matrix;
+  if (mode == reduced_matrix_mode_t::OFF) { return false; }
+  cuopt_expects(
+    mode == reduced_matrix_mode_t::DEFAULT || mode == reduced_matrix_mode_t::COLUMN_REDUCTION,
+    error_type_t::ValidationError,
+    "Unknown reduced matrix mode");
+  const char* mode_name = mode == reduced_matrix_mode_t::DEFAULT ? "DEFAULT" : "COLUMN_REDUCTION";
+  const char* reason    = nullptr;
+  if (is_distributed) {
+    reason = "multi-GPU PDLP is not supported";
+  } else if (is_legacy_batch_mode) {
+    reason = "legacy stream batching is not supported";
+  } else if (batch_mode) {
+    reason = "multiple PDLP climbers are not supported";
+  } else if (!hyper_params.use_reflected_primal_dual) {
+    reason = "reflected primal-dual updates are required";
+  } else if (enable_mixed_precision_spmv) {
+    reason = "mixed-precision SpMV is not supported";
+  } else if (hyper_params.use_adaptive_step_size_strategy) {
+    reason = "adaptive step sizes are not supported";
+  } else if (hyper_params.artificial_restart_in_main_loop) {
+    reason = "artificial restarts in the main loop are not supported";
+  } else if (hyper_params.reflection_coefficient != 1.0) {
+    reason = "reflection coefficient must be 1";
+  } else if (has_quadratic_objective) {
+    reason = "quadratic objectives are not supported";
+  }
+  if (reason != nullptr) {
+    CUOPT_LOG_INFO("Column reduction disabled (%s): %s", mode_name, reason);
+    return false;
+  }
+  constexpr int64_t default_nnz_threshold = 100'000'000;
+  if (mode == reduced_matrix_mode_t::DEFAULT && nnz <= default_nnz_threshold) {
+    CUOPT_LOG_INFO("Column reduction disabled (DEFAULT): PDLP matrix nnz=%" PRId64
+                   " must exceed %" PRId64,
+                   nnz,
+                   default_nnz_threshold);
+    return false;
+  }
+  CUOPT_LOG_INFO("Column reduction enabled (%s): PDLP matrix nnz=%" PRId64, mode_name, nnz);
+  return true;
+}
+
 template <typename i_t, typename f_t>
 reduced_matrix_t<i_t, f_t>::reduced_matrix_t(raft::handle_t const* handle_ptr,
                                              mip::problem_t<i_t, f_t>& problem,
@@ -251,7 +304,7 @@ reduced_matrix_t<i_t, f_t>::reduced_matrix_t(raft::handle_t const* handle_ptr,
     problem_ptr_(&problem),
     structure_problem_ptr_(&problem),
     enabled_(enabled),
-    mask_(problem.n_variables, stream_view_),
+    mask_(enabled ? problem.n_variables : 0, stream_view_),
     free_to_original_(0, stream_view_),
     reduced_At_offsets_(0, stream_view_),
     reduced_At_indices_(0, stream_view_),
@@ -267,9 +320,9 @@ reduced_matrix_t<i_t, f_t>::reduced_matrix_t(raft::handle_t const* handle_ptr,
     reduced_bounds_(0, stream_view_),
     fixed_alpha_(one_v<f_t>, stream_view_),
     fixed_beta_(zero_v<f_t>, stream_view_),
-    fixed_bound_activity_(problem.n_constraints, stream_view_),
-    fixed_current_activity_(problem.n_constraints, stream_view_),
-    fixed_initial_activity_(problem.n_constraints, stream_view_),
+    fixed_bound_activity_(enabled ? problem.n_constraints : 0, stream_view_),
+    fixed_current_activity_(enabled ? problem.n_constraints : 0, stream_view_),
+    fixed_initial_activity_(enabled ? problem.n_constraints : 0, stream_view_),
     A_buffer_(0, stream_view_),
     At_buffer_(0, stream_view_),
     one_(one_v<f_t>, stream_view_),
@@ -307,7 +360,8 @@ bool reduced_matrix_t<i_t, f_t>::update_mode(f_t relative_kkt,
                                              bool restarted,
                                              const rmm::device_uvector<f_t>& projected_primal,
                                              const rmm::device_uvector<f_t>& current_primal,
-                                             const rmm::device_uvector<f_t>& restart_primal)
+                                             const rmm::device_uvector<f_t>& restart_primal,
+                                             i_t iteration)
 {
   if (!enabled_) { return false; }
   if (!active_ && !refresh_pending_ && !(relative_kkt < static_cast<f_t>(enter_kkt))) {
@@ -341,7 +395,7 @@ bool reduced_matrix_t<i_t, f_t>::update_mode(f_t relative_kkt,
       (stable_checks_ < stable_checks && ratio >= static_cast<f_t>(fast_ratio))) {
     return false;
   }
-  return rebuild(projected_primal, current_primal, restart_primal, false);
+  return rebuild(projected_primal, current_primal, restart_primal, false, iteration);
 }
 
 template <typename i_t, typename f_t>
@@ -360,7 +414,8 @@ bool reduced_matrix_t<i_t, f_t>::request_refresh(bool update_mask,
 template <typename i_t, typename f_t>
 bool reduced_matrix_t<i_t, f_t>::finish_refresh(const rmm::device_uvector<f_t>& projected_primal,
                                                 const rmm::device_uvector<f_t>& current_primal,
-                                                const rmm::device_uvector<f_t>& restart_primal)
+                                                const rmm::device_uvector<f_t>& restart_primal,
+                                                i_t iteration)
 {
   if (!refresh_pending_) { return false; }
   refresh_pending_ = false;
@@ -387,7 +442,7 @@ bool reduced_matrix_t<i_t, f_t>::finish_refresh(const rmm::device_uvector<f_t>& 
     active_ = true;
     return true;
   }
-  rebuild(projected_primal, current_primal, restart_primal, false);
+  rebuild(projected_primal, current_primal, restart_primal, false, iteration);
   return true;
 }
 
@@ -395,7 +450,8 @@ template <typename i_t, typename f_t>
 bool reduced_matrix_t<i_t, f_t>::rebuild(const rmm::device_uvector<f_t>& projected_primal,
                                          const rmm::device_uvector<f_t>& current_primal,
                                          const rmm::device_uvector<f_t>& restart_primal,
-                                         bool initialize)
+                                         bool initialize,
+                                         i_t iteration)
 {
   if (initialize) { initialize_mask(projected_primal); }
   clear_operator();
@@ -403,11 +459,12 @@ bool reduced_matrix_t<i_t, f_t>::rebuild(const rmm::device_uvector<f_t>& project
   build_fixed_activities(current_primal, restart_primal);
   initialize_spmv();
   active_ = true;
-  CUOPT_LOG_INFO("Reduced matrix activated: columns=%lld/%lld nnz=%lld/%lld",
+  CUOPT_LOG_INFO("Reduced matrix activated: columns=%lld/%lld nnz=%lld/%lld iteration=%lld",
                  static_cast<long long>(free_count_),
                  static_cast<long long>(problem_ptr_->n_variables),
                  static_cast<long long>(reduced_At_values_.size()),
-                 static_cast<long long>(problem_ptr_->nnz));
+                 static_cast<long long>(problem_ptr_->nnz),
+                 static_cast<long long>(iteration));
   return true;
 }
 

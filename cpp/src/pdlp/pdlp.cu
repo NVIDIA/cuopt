@@ -199,7 +199,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                  climber_strategies_,
                  settings_.hyper_params,
                  settings_.new_bounds,
-                 settings_.pdlp_precision == pdlp_precision_t::MixedPrecision},
+                 settings_.pdlp_precision == pdlp_precision_t::MixedPrecision,
+                 is_distributed_sub_pdlp},
     initial_scaling_strategy_{handle_ptr_,
                               op_problem_scaled_,
                               settings_.hyper_params.default_l_inf_ruiz_iterations,
@@ -388,6 +389,16 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
   }
 }
 
+template <typename i_t, typename f_t>
+static pdlp_solver_settings_t<i_t, f_t> without_distributed_reduction(
+  pdlp_solver_settings_t<i_t, f_t> settings)
+{
+  // Resolve this before constructing the shape-zero master; shards must inherit OFF as well.
+  reduced_matrix_enabled(settings.hyper_params, 0, false, false, false, false, true);
+  settings.hyper_params.reduced_matrix = reduced_matrix_mode_t::OFF;
+  return settings;
+}
+
 // ============================================================================
 // Distributed multi-GPU ctor.
 // needs placeholder_problem to be a shape-0 problem
@@ -400,7 +411,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
   pdlp_solver_settings_t<i_t, f_t> const& settings)
   // Makes all inner feilds of master 0 size
-  : pdlp_solver_t(placeholder_problem, settings, /*is_legacy_batch_mode=*/false)
+  : pdlp_solver_t(placeholder_problem,
+                  without_distributed_reduction(settings),
+                  /*is_legacy_batch_mode=*/false)
 {
   cuopt_expects(placeholder_problem.n_variables == 0 && placeholder_problem.n_constraints == 0 &&
                   placeholder_problem.nnz == 0,
@@ -531,6 +544,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
   sub_pdlp_settings.num_gpus                         = 1;
+  sub_pdlp_settings.hyper_params.reduced_matrix      = reduced_matrix_mode_t::OFF;
   // Disable automatic matrix scaling in the initial_scaling ctor: the
   // distributed pipeline computes Curtis-Reid, Ruiz, and Pock-Chambolle via
   // distributed_scaling using the global problem.

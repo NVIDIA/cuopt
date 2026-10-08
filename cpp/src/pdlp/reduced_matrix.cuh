@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/cusparse_view.hpp>
 
 #include <cuda/stream>
@@ -15,7 +16,19 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <cstddef>
+#include <cstdint>
+
 namespace cuopt::mathematical_optimization::pdlp {
+
+/** Resolve the requested mode against the PDLP matrix and execution path, logging the decision. */
+bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
+                            int64_t nnz,
+                            bool is_legacy_batch_mode,
+                            bool batch_mode,
+                            bool enable_mixed_precision_spmv,
+                            bool has_quadratic_objective,
+                            bool is_distributed);
 
 /**
  * @brief Adaptive column-reduced operator for single-problem reflected PDLP.
@@ -50,12 +63,14 @@ class reduced_matrix_t {
                    bool restarted,
                    const rmm::device_uvector<f_t>& projected_primal,
                    const rmm::device_uvector<f_t>& current_primal,
-                   const rmm::device_uvector<f_t>& restart_primal);
+                   const rmm::device_uvector<f_t>& restart_primal,
+                   i_t iteration = 0);
 
   /** Rebuild after the one full iteration requested by update_mode(). */
   bool finish_refresh(const rmm::device_uvector<f_t>& projected_primal,
                       const rmm::device_uvector<f_t>& current_primal,
-                      const rmm::device_uvector<f_t>& restart_primal);
+                      const rmm::device_uvector<f_t>& restart_primal,
+                      i_t iteration = 0);
 
   void compute_At_y(const rmm::device_uvector<f_t>& dual);
 
@@ -67,12 +82,21 @@ class reduced_matrix_t {
                    const rmm::device_scalar<f_t>& halpern_weight);
 
   i_t free_count() const { return free_count_; }
+  /** Full-sized mask/activity storage, excluding compact operators and scalar state. */
+  size_t full_workspace_size_bytes() const
+  {
+    return mask_.capacity() * sizeof(uint8_t) +
+           (fixed_bound_activity_.capacity() + fixed_current_activity_.capacity() +
+            fixed_initial_activity_.capacity()) *
+             sizeof(f_t);
+  }
 
  private:
   bool rebuild(const rmm::device_uvector<f_t>& projected_primal,
                const rmm::device_uvector<f_t>& current_primal,
                const rmm::device_uvector<f_t>& restart_primal,
-               bool initialize_mask);
+               bool initialize_mask,
+               i_t iteration);
   void clear_operator();
   void initialize_mask(const rmm::device_uvector<f_t>& projected_primal);
   void release_mask(const rmm::device_uvector<f_t>& projected_primal);

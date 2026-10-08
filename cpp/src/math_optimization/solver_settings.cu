@@ -212,6 +212,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_RANDOM_SEED, &mip_settings.seed, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_MIP_RELIABILITY_BRANCHING, &mip_settings.reliability_branching, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_PDLP_PRECISION, reinterpret_cast<int*>(&pdlp_settings.pdlp_precision), CUOPT_PDLP_DEFAULT_PRECISION, CUOPT_PDLP_MIXED_PRECISION, CUOPT_PDLP_DEFAULT_PRECISION},
+    {CUOPT_PDLP_HYPER_REDUCED_MATRIX, reinterpret_cast<int*>(&pdlp_settings.hyper_params.reduced_matrix), CUOPT_PDLP_REDUCED_MATRIX_DEFAULT, CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION, CUOPT_PDLP_REDUCED_MATRIX_DEFAULT, "reduced-matrix mode: -1 DEFAULT (more than 100M matrix nonzeros), 0 OFF, 1 COLUMN_REDUCTION; single-GPU compatible PDLP only"},
     {CUOPT_MIP_SYMMETRY, &mip_settings.symmetry, -1, 2, -1},
     {CUOPT_MIP_SCALING, &mip_settings.mip_scaling, CUOPT_MIP_SCALING_OFF, CUOPT_MIP_SCALING_NO_OBJECTIVE, CUOPT_MIP_SCALING_NO_OBJECTIVE},
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
@@ -269,7 +270,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING, &mip_settings.indicator_strengthening, true, "append implied indicator rows and lift capacity rows before Papilo presolve"},
     // PDLP scaling hyper-parameter (hidden from default --help: name contains "hyper_")
     {CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, &pdlp_settings.hyper_params.do_curtis_reid_scaling, true, "Curtis-Reid prescaling, run before Ruiz/Pock-Chambolle scaling"},
-    {CUOPT_PDLP_HYPER_REDUCED_MATRIX, &pdlp_settings.hyper_params.use_reduced_matrix, true, "adaptive reduced-matrix SpMV for large, wide LPs"},
   };
   // String parameters
   string_parameters = {

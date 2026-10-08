@@ -40,7 +40,8 @@ class pdhg_solver_t {
                 const std::vector<pdlp_climber_strategy_t>& climber_strategies,
                 const pdlp::pdlp_hyper_params_t& hyper_params,
                 const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
-                bool enable_mixed_precision_spmv = false);
+                bool enable_mixed_precision_spmv = false,
+                bool is_distributed              = false);
 
   saddle_point_state_t<i_t, f_t>& get_saddle_point_state();
   cusparse_view_t<i_t, f_t>& get_cusparse_view();

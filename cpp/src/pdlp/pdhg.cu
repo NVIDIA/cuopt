@@ -55,7 +55,8 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
   const pdlp::pdlp_hyper_params_t& hyper_params,
   const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
-  bool enable_mixed_precision_spmv)
+  bool enable_mixed_precision_spmv,
+  bool is_distributed)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
@@ -98,15 +99,13 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
                    enable_mixed_precision_spmv},
     reduced_matrix_{handle_ptr_,
                     op_problem_scaled,
-                    hyper_params.use_reduced_matrix && !is_legacy_batch_mode && !batch_mode_ &&
-                      hyper_params.use_reflected_primal_dual && !enable_mixed_precision_spmv &&
-                      !hyper_params.use_adaptive_step_size_strategy &&
-                      !hyper_params.artificial_restart_in_main_loop &&
-                      hyper_params.reflection_coefficient == 1.0 &&
-                      op_problem_scaled.Q_values.empty() &&
-                      op_problem_scaled.n_variables >= 1'000'000 &&
-                      static_cast<int64_t>(op_problem_scaled.n_variables) >
-                        2 * static_cast<int64_t>(op_problem_scaled.n_constraints)},
+                    reduced_matrix_enabled(hyper_params,
+                                           op_problem_scaled.nnz,
+                                           is_legacy_batch_mode,
+                                           batch_mode_,
+                                           enable_mixed_precision_spmv,
+                                           !op_problem_scaled.Q_values.empty(),
+                                           is_distributed)},
     reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
     reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
     reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_},
@@ -1747,7 +1746,8 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
   if (finish_reduced_refresh &&
       reduced_matrix_.finish_refresh(potential_next_primal_solution_,
                                      current_saddle_point_state_.get_primal_solution(),
-                                     initial_primal)) {
+                                     initial_primal,
+                                     total_pdlp_iterations + 1)) {
     reset_iteration_graphs();
   }
   total_pdhg_iterations_ += 1;
@@ -1777,7 +1777,8 @@ void pdhg_solver_t<i_t, f_t>::update_reduced_matrix(f_t relative_kkt,
                                   restarted,
                                   potential_next_primal_solution_,
                                   current_saddle_point_state_.get_primal_solution(),
-                                  restart_primal)) {
+                                  restart_primal,
+                                  total_pdhg_iterations_)) {
     reset_iteration_graphs();
   }
 }
