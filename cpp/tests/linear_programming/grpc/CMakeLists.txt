@@ -97,6 +97,36 @@ install(
 )
 
 # ##################################################################################################
+# - gRPC worker spawn argument checks --------------------------------------------------------------
+# Runs cuopt_grpc_server with internal and user argv. Both cases exit in the
+# argument parser, so no GPU or listening socket is required.
+
+add_executable(GRPC_WORKER_SPAWN_TEST ${CMAKE_CURRENT_SOURCE_DIR}/grpc_worker_spawn_test.cpp)
+
+target_link_libraries(GRPC_WORKER_SPAWN_TEST PRIVATE GTest::gtest GTest::gtest_main)
+
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(GRPC_WORKER_SPAWN_TEST PRIVATE -Wl,--enable-new-dtags)
+endif()
+
+add_dependencies(GRPC_WORKER_SPAWN_TEST cuopt_grpc_server)
+
+add_test(
+    NAME GRPC_WORKER_SPAWN_TEST
+    COMMAND ${CMAKE_COMMAND} -E env
+        "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
+        $<TARGET_FILE:GRPC_WORKER_SPAWN_TEST>
+)
+set_tests_properties(GRPC_WORKER_SPAWN_TEST PROPERTIES LABELS "numopt")
+
+install(
+    TARGETS GRPC_WORKER_SPAWN_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)
+
+# ##################################################################################################
 # - gRPC Integration Tests -------------------------------------------------------------------------
 # These tests start a real server process and run end-to-end tests
 

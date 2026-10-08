@@ -41,14 +41,10 @@ void close_if_open(int fd)
   if (fd >= 0) close(fd);
 }
 
-std::string current_executable_path()
-{
-  char buf[4096];
-  const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-  if (n <= 0) return {};
-  buf[n] = '\0';
-  return std::string(buf, static_cast<size_t>(n));
-}
+// Exec this path rather than the readlink() string. After the binary is
+// unlinked or replaced, readlink appends " (deleted)" and exec of that string
+// fails with ENOENT. /proc/self/exe still names the running inode.
+constexpr const char* kSpawnExecutable = "/proc/self/exe";
 
 void* map_existing_shared_memory(const char* name, size_t size)
 {
@@ -67,10 +63,9 @@ const char* next_arg(int argc, char** argv, int& i)
   return argv[++i];
 }
 
-// Snapshot of fds the child must not keep. closefrom() is absent from the
-// glibc 2.28 headers this build uses; addclose of each open fd is the
-// portable equivalent. The directory fd is omitted because it is closed
-// before spawn. Returns false when /proc/self/fd cannot be read.
+// Snapshot of fds the child must not keep. Each open fd gets its own addclose.
+// The directory fd is omitted because it is closed before spawn. Returns false
+// when /proc/self/fd cannot be read.
 bool inherited_fds_to_close(std::vector<int>& fds)
 {
   fds.clear();
@@ -289,20 +284,15 @@ pid_t spawn_worker(int worker_id, bool is_replacement)
     return -1;
   }
 
-  const std::string exe = current_executable_path();
-  if (exe.empty()) {
-    SERVER_LOG_ERROR("[Server] Failed to resolve /proc/self/exe for %s%d", which, worker_id);
-    close_if_open(hold_read);
-    close_if_open(hold_write);
-    close_if_open(hold_inc);
-    close_all_worker_pipes(wp);
-    return -1;
-  }
-
+  // Exec drops the parent's address space. The worker only receives the fields
+  // listed below: num_workers, verbose, log_to_console, and server_log_file.
+  // Port, message size, chunk timeout, and TLS stay in the parent process.
+  // Worker code must not read those ServerConfig fields; after exec they are
+  // the struct defaults.
   const std::string id_str      = std::to_string(worker_id);
   const std::string workers_str = std::to_string(config.num_workers);
   std::vector<std::string> arg_storage;
-  arg_storage.push_back(exe);
+  arg_storage.push_back(kSpawnExecutable);
   arg_storage.push_back("--worker");
   arg_storage.push_back("--worker-id");
   arg_storage.push_back(id_str);
@@ -331,7 +321,13 @@ pid_t spawn_worker(int worker_id, bool is_replacement)
   }
   argv.push_back(nullptr);
 
-  // Another thread can close an fd between the /proc snapshot and posix_spawn,
+  // The snapshot is taken inside the loop. Create any descriptor this function
+  // needs before that, as the pipes above are. A descriptor opened afterward
+  // without O_CLOEXEC, including from another thread, is inherited by the
+  // worker. Do not add a plain open, pipe, or socket on a thread that runs
+  // during respawn. gRPC sockets are already close-on-exec.
+  //
+  // Another thread can also close an fd between the snapshot and posix_spawn,
   // and addclose of a missing fd fails the spawn. Retry that race only.
   constexpr int kSpawnAttempts = 5;
   pid_t pid                    = -1;
@@ -343,8 +339,11 @@ pid_t spawn_worker(int worker_id, bool is_replacement)
       break;
     }
     posix_spawn_file_actions_t actions;
-    if (posix_spawn_file_actions_init(&actions) != 0) {
-      spawn_rc = errno;
+    // Returns the error number and does not set errno. A zero errno here would
+    // look like success, skip the pipe cleanup, and hand back pid -1.
+    const int init_rc = posix_spawn_file_actions_init(&actions);
+    if (init_rc != 0) {
+      spawn_rc = init_rc;
       break;
     }
 
@@ -362,7 +361,7 @@ pid_t spawn_worker(int worker_id, bool is_replacement)
 
     spawn_rc = action_rc;
     if (action_rc == 0) {
-      spawn_rc = posix_spawn(&pid, exe.c_str(), &actions, nullptr, argv.data(), environ);
+      spawn_rc = posix_spawn(&pid, kSpawnExecutable, &actions, nullptr, argv.data(), environ);
     }
     posix_spawn_file_actions_destroy(&actions);
     if (spawn_rc == 0) break;
@@ -412,14 +411,14 @@ int run_spawned_worker(int argc, char** argv)
       const char* value = next_arg(argc, argv, i);
       if (value == nullptr) {
         std::cerr << "cuopt_grpc_server --worker: missing value for " << arg << "\n";
-        return 1;
+        return kWorkerAttachFailedExitCode;
       }
       char* end         = nullptr;
       errno             = 0;
       const long parsed = std::strtol(value, &end, 10);
       if (errno != 0 || end == value || *end != '\0' || parsed < 0 || parsed > INT_MAX) {
         std::cerr << "cuopt_grpc_server --worker: invalid " << arg << "\n";
-        return 1;
+        return kWorkerAttachFailedExitCode;
       }
       if (std::strcmp(arg, "--worker-id") == 0) {
         worker_id = static_cast<int>(parsed);
@@ -432,7 +431,7 @@ int run_spawned_worker(int argc, char** argv)
       const char* value = next_arg(argc, argv, i);
       if (value == nullptr || value[0] == '\0') {
         std::cerr << "cuopt_grpc_server --worker: missing value for " << arg << "\n";
-        return 1;
+        return kWorkerAttachFailedExitCode;
       }
       if (std::strcmp(arg, "--shm-job") == 0) {
         shm_job = value;
@@ -447,14 +446,14 @@ int run_spawned_worker(int argc, char** argv)
       }
     } else {
       std::cerr << "cuopt_grpc_server --worker: unknown argument " << arg << "\n";
-      return 1;
+      return kWorkerAttachFailedExitCode;
     }
   }
 
   if (worker_id < 0 || num_workers < 1 || worker_id >= num_workers || shm_job == nullptr ||
       shm_result == nullptr || shm_control == nullptr || shm_ready == nullptr) {
     std::cerr << "cuopt_grpc_server --worker: incomplete arguments\n";
-    return 1;
+    return kWorkerAttachFailedExitCode;
   }
 
   config.num_workers    = num_workers;
@@ -468,23 +467,23 @@ int run_spawned_worker(int argc, char** argv)
   void* job_map = map_existing_shared_memory(shm_job, sizeof(JobQueueEntry) * MAX_JOBS);
   if (job_map == MAP_FAILED) {
     SERVER_LOG_ERROR("[Worker] Failed to map job queue: %s", strerror(errno));
-    return 1;
+    return kWorkerAttachFailedExitCode;
   }
   void* result_map = map_existing_shared_memory(shm_result, sizeof(ResultQueueEntry) * MAX_RESULTS);
   if (result_map == MAP_FAILED) {
     SERVER_LOG_ERROR("[Worker] Failed to map result queue: %s", strerror(errno));
-    return 1;
+    return kWorkerAttachFailedExitCode;
   }
   void* ctrl_map = map_existing_shared_memory(shm_control, sizeof(SharedMemoryControl));
   if (ctrl_map == MAP_FAILED) {
     SERVER_LOG_ERROR("[Worker] Failed to map control block: %s", strerror(errno));
-    return 1;
+    return kWorkerAttachFailedExitCode;
   }
   void* ready_map = map_existing_shared_memory(
     shm_ready, sizeof(std::atomic<bool>) * static_cast<size_t>(num_workers));
   if (ready_map == MAP_FAILED) {
     SERVER_LOG_ERROR("[Worker] Failed to map worker-ready flags: %s", strerror(errno));
-    return 1;
+    return kWorkerAttachFailedExitCode;
   }
   job_queue          = static_cast<JobQueueEntry*>(job_map);
   result_queue       = static_cast<ResultQueueEntry*>(result_map);

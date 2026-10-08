@@ -84,7 +84,8 @@ void worker_monitor_thread()
       bool was_clean_shutdown_exit;
     };
     std::vector<DeadWorker> dead;
-    bool gpu_failure_detected = false;
+    bool gpu_failure_detected    = false;
+    bool attach_failure_detected = false;
 
     {
       std::lock_guard<std::mutex> lock(worker_pids_mutex);
@@ -106,6 +107,13 @@ void worker_monitor_thread()
           gpu_failure_detected = true;
           SERVER_LOG_ERROR("[Server] Worker %d reported fatal GPU health failure; shutting down",
                            pid);
+        } else if (exit_code == kWorkerAttachFailedExitCode) {
+          // Arguments or shared-memory attach failed. Another exec of the same
+          // binary will fail the same way, so this is not a respawn candidate.
+          // kWorkerSpawnRetries covers only posix_spawn itself returning an error.
+          attach_failure_detected = true;
+          SERVER_LOG_ERROR("[Server] Worker %d failed to attach to server resources; shutting down",
+                           pid);
         } else if (signaled) {
           SERVER_LOG_ERROR("[Server] Worker %d killed by signal %d", pid, signal_num);
         } else if (exit_code != 0) {
@@ -124,11 +132,12 @@ void worker_monitor_thread()
       }
     }
 
-    if (gpu_failure_detected) {
+    if (gpu_failure_detected || attach_failure_detected) {
       for (auto& deadline : worker_ready_deadline) {
         deadline = std::chrono::steady_clock::time_point{};
       }
-      request_fatal_gpu_shutdown("GPU health failure");
+      request_fatal_gpu_shutdown(gpu_failure_detected ? "GPU health failure"
+                                                      : "worker failed to attach");
     }
 
     for (const auto& dw : dead) {
@@ -136,7 +145,8 @@ void worker_monitor_thread()
 
       mark_worker_jobs_failed(dw.pid);
 
-      if (gpu_failure_detected || fatal_gpu_failure.load(std::memory_order_acquire) ||
+      if (gpu_failure_detected || attach_failure_detected ||
+          fatal_gpu_failure.load(std::memory_order_acquire) ||
           !(keep_running && shm_ctrl && !shm_ctrl->shutdown_requested)) {
         continue;
       }

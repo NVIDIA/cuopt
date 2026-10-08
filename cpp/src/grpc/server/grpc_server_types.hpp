@@ -107,7 +107,7 @@ struct ResultQueueEntry {
   ResultStatus status;
   uint64_t data_size;  // Size of result data (uint64 for large results)
   char error_message[1024];
-  std::atomic<bool> claimed;      // CAS guard: prevents two forked workers from
+  std::atomic<bool> claimed;      // CAS guard: prevents two workers from
                                   // writing the same slot simultaneously.
   std::atomic<bool> ready;        // Result is ready for reading (published last).
   std::atomic<bool> retrieved;    // Result has been retrieved
@@ -292,6 +292,11 @@ constexpr int64_t kGiB = 1024LL * 1024 * 1024;
 // Distinguishes a fatal CUDA/RMM health failure from ordinary worker exits
 // such as the SIGKILL used to cancel a running job.
 constexpr int kGpuUnhealthyExitCode = 86;
+
+// Worker exec started, then failed before it could attach to the parent's
+// shared memory or pipes (bad internal arguments, missing segment). Respawning
+// cannot succeed, so the monitor shuts the server down instead of retrying.
+constexpr int kWorkerAttachFailedExitCode = 87;
 
 // Floor: 4 KiB is enough for basic gRPC control messages. Values below this
 // would risk rejecting even metadata-only RPCs like CheckStatus.
