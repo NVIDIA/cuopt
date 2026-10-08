@@ -109,7 +109,8 @@ barrier_iteration_data_t* barrier_cache_t::release_iteration_data()
   return impl_->iteration_data.release();
 }
 
-void barrier_cache_t::store_transform(std::unique_ptr<barrier_transform_t<int, double>> transform)
+template <typename i_t, typename f_t>
+void barrier_cache_t::store_transform(std::unique_ptr<barrier_transform_t<i_t, f_t>> transform)
 {
   impl_->transform = std::move(transform);
 }
@@ -136,19 +137,20 @@ void barrier_cache_t::mark_clean()
 
 bool barrier_cache_t::rhs_infeasible() const { return impl_->rhs_infeasible; }
 
-void barrier_cache_t::update_linear_objective(double const* c, int n)
+template <typename i_t, typename f_t>
+void barrier_cache_t::update_linear_objective(f_t const* c, i_t n)
 {
   require_cache(impl_->transform.get(), impl_->iteration_data.get(), "update_linear_objective");
   // Cached Q and c are in minimization space.
-  std::vector<double> user_objective;
+  std::vector<f_t> user_objective;
   if (impl_->transform->maximize && c != nullptr && n > 0) {
     user_objective.assign(c, c + n);
-    for (double& value : user_objective) {
+    for (f_t& value : user_objective) {
       value = -value;
     }
     c = user_objective.data();
   }
-  std::vector<double> crushed;
+  std::vector<f_t> crushed;
   try {
     crushed = crush_user_linear_objective(*impl_->transform, c, n);
   } catch (std::invalid_argument const& e) {
@@ -159,13 +161,13 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   auto const& linear_obj_shift = impl_->transform->linear_obj_shift;
   auto const& column_scales    = impl_->transform->column_scales;
   auto const& translated_lower = impl_->transform->presolve_info.removed_lower_bounds;
-  simplex::lp_problem_t<int, double>& barrier_lp = *impl_->transform->barrier_lp;
+  simplex::lp_problem_t<i_t, f_t>& barrier_lp = *impl_->transform->barrier_lp;
   if (!translated_lower.empty() && linear_obj_shift.size() == crushed.size() &&
       column_scales.size() == crushed.size() && barrier_lp.objective.size() == crushed.size()) {
-    double obj_constant_delta = 0.0;
+    f_t obj_constant_delta    = 0.0;
     std::size_t const n_lower = std::min(translated_lower.size(), crushed.size());
     for (std::size_t j = 0; j < n_lower; ++j) {
-      double const crushed_before = barrier_lp.objective[j] - linear_obj_shift[j];
+      f_t const crushed_before = barrier_lp.objective[j] - linear_obj_shift[j];
       obj_constant_delta += (crushed[j] - crushed_before) * column_scales[j] * translated_lower[j];
     }
     barrier_lp.obj_constant += obj_constant_delta;
@@ -173,21 +175,22 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   add_shift(crushed, linear_obj_shift);
   // The next solve builds its solver from barrier_lp, so keep its objective and the cached
   // iteration workspace on the same c.
-  std::vector<double>& barrier_objective = barrier_lp.objective;
+  std::vector<f_t>& barrier_objective = barrier_lp.objective;
   cuopt_expects(barrier_objective.size() == crushed.size(),
                 error_type_t::ValidationError,
                 "update_linear_objective: crushed objective size does not match the cached "
                 "barrier LP.");
   barrier_objective = crushed;
   barrier::apply_barrier_linear_objective(
-    *impl_->iteration_data, crushed.data(), static_cast<int>(crushed.size()));
+    *impl_->iteration_data, crushed.data(), static_cast<i_t>(crushed.size()));
   impl_->linear_objective_dirty = true;
 }
 
-void barrier_cache_t::update_rhs(double const* b, int m)
+template <typename i_t, typename f_t>
+void barrier_cache_t::update_rhs(f_t const* b, i_t m)
 {
   require_cache(impl_->transform.get(), impl_->iteration_data.get(), "update_rhs");
-  std::vector<double> crushed;
+  std::vector<f_t> crushed;
   std::string error;
   crush_rhs_status_t const status = crush_user_rhs(*impl_->transform, b, m, crushed, error);
   if (status == crush_rhs_status_t::infeasible) {
@@ -203,14 +206,19 @@ void barrier_cache_t::update_rhs(double const* b, int m)
   add_shift(crushed, impl_->transform->rhs_shift);
   // barrier_lp->rhs also seeds the next solve's Mehrotra start, so keep it and the cached
   // workspace on the same b.
-  std::vector<double>& barrier_rhs = impl_->transform->barrier_lp->rhs;
+  std::vector<f_t>& barrier_rhs = impl_->transform->barrier_lp->rhs;
   cuopt_expects(barrier_rhs.size() == crushed.size(),
                 error_type_t::ValidationError,
                 "update_rhs: crushed RHS size does not match the cached barrier LP.");
   barrier_rhs = crushed;
   barrier::apply_barrier_rhs(
-    *impl_->iteration_data, crushed.data(), static_cast<int>(crushed.size()));
+    *impl_->iteration_data, crushed.data(), static_cast<i_t>(crushed.size()));
   impl_->rhs_dirty = true;
 }
+
+template void barrier_cache_t::store_transform<int, double>(
+  std::unique_ptr<barrier_transform_t<int, double>>);
+template void barrier_cache_t::update_linear_objective<int, double>(double const*, int);
+template void barrier_cache_t::update_rhs<int, double>(double const*, int);
 
 }  // namespace cuopt::mathematical_optimization

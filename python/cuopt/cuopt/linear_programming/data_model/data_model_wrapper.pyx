@@ -191,7 +191,7 @@ cdef class DataModel:
             )
             c_view = np.ascontiguousarray(new_c, dtype=np.float64)
             if c_view.shape[0] == 0:
-                cache.update_linear_objective(NULL, 0)
+                cache.update_linear_objective(<const double*>NULL, 0)
             else:
                 cache.update_linear_objective(&c_view[0], <int>c_view.shape[0])
         self.c = new_c
@@ -217,7 +217,7 @@ cdef class DataModel:
             )
             b_view = np.ascontiguousarray(new_b, dtype=np.float64)
             if b_view.shape[0] == 0:
-                cache.update_rhs(NULL, 0)
+                cache.update_rhs(<const double*>NULL, 0)
             else:
                 cache.update_rhs(&b_view[0], <int>b_view.shape[0])
         self.b = new_b
