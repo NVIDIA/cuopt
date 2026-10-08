@@ -76,7 +76,11 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
     primal_residual_{climber_strategies.size() * dual_size_h_, stream_view_},
     dual_residual_{climber_strategies.size() * primal_size_h_, stream_view_},
     reduced_cost_{climber_strategies.size() * primal_size_h_, stream_view_},
-    bound_value_{static_cast<size_t>(std::max(primal_size_h_, dual_size_h_)), stream_view_},
+    // The reflected path computes the dual objective from slacks, without bound products.
+    bound_value_{settings.hyper_params.use_reflected_primal_dual
+                   ? 0
+                   : static_cast<size_t>(std::max(primal_size_h_, dual_size_h_)),
+                 stream_view_},
     primal_slack_{(settings.hyper_params.use_reflected_primal_dual)
                     ? static_cast<size_t>(dual_size_h_ * climber_strategies.size())
                     : 0,

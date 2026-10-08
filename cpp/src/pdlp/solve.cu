@@ -2293,13 +2293,20 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
           op_problem.get_row_names());
       }
 
-      problem.emplace(result->reduced_problem);
+      problem.emplace(result->reduced_problem,
+                      typename mip_solver_settings_t<i_t, f_t>::tolerances_t{},
+                      false,
+                      settings.inside_mip);
       presolve_time = lp_timer.elapsed_time();
       CUOPT_LOG_INFO("%s presolve time: %.2fs",
                      settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
                      presolve_time);
     } else {
-      problem.emplace(op_problem);
+      // Explicit LP relaxations can retain integer metadata when presolve is disabled.
+      problem.emplace(op_problem,
+                      typename mip_solver_settings_t<i_t, f_t>::tolerances_t{},
+                      false,
+                      settings.inside_mip);
     }
 
     if (!settings_const.inside_mip) {
@@ -2315,6 +2322,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     if (run_presolve && settings.presolve_file != "") {
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
       result->reduced_problem.write_to_mps(settings.presolve_file);
+    }
+
+    // problem owns the presolved device data. Release the staging buffers after
+    // optional MPS output, but retain metadata referenced by original_problem_ptr.
+    // FP32 PDLP still converts that data in run_pdlp_solver_in_fp32.
+    if (run_presolve && settings.pdlp_precision != pdlp_precision_t::SinglePrecision) {
+      result->reduced_problem.clear();
     }
 
     // Set the hyper-parameters based on the solver_settings

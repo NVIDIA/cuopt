@@ -22,8 +22,9 @@ class solver_settings_t;
 /**
  * @brief Build a gRPC SubmitJobRequest for an LP problem.
  *
- * Typed fields are written from get_pdlp_settings(), then every set_parameter()
- * value is written into settings.parameters.
+ * Warm start is written from get_pdlp_settings(). Every set_parameter() value
+ * is written into settings.parameters and not as a deprecated typed field.
+ * A server from before the parameter map cannot apply this request.
  */
 template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_lp_submit_request(
@@ -32,8 +33,10 @@ cuopt::remote::SubmitJobRequest build_lp_submit_request(
 /**
  * @brief Build a gRPC SubmitJobRequest for a MIP problem.
  *
- * Typed fields are written from get_mip_settings(), then every set_parameter()
- * value is written into settings.parameters.
+ * presolve_absolute_tolerance is written from get_mip_settings(). Every
+ * set_parameter() value is written into settings.parameters and not as a
+ * deprecated typed field. A server from before the parameter map cannot
+ * apply this request.
  */
 template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_mip_submit_request(

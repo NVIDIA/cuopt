@@ -128,7 +128,21 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   // Multi-GPU PDLP shards defer scaling to multi_gpu_engine_t::distributed_scaling,
   // which runs a cross-shard-coherent Ruiz. Local per-shard Ruiz would be incoherent
   // across shards, so skip it here.
-  if (!skip_ruiz_pock_compute) { compute_scaling_vectors(number_of_ruiz_iterations, alpha); }
+  if (!skip_ruiz_pock_compute) {
+    compute_scaling_vectors(number_of_ruiz_iterations, alpha);
+    // Applying the cumulative factors later does not need the iteration scratch.
+    // Release it before PDLP constructs its restart and termination workspaces.
+    if (!running_mip_) { release_iteration_scratch(); }
+  }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::release_iteration_scratch()
+{
+  iteration_variable_scaling_.resize(0, stream_view_);
+  iteration_variable_scaling_.shrink_to_fit(stream_view_);
+  iteration_constraint_matrix_scaling_.resize(0, stream_view_);
+  iteration_constraint_matrix_scaling_.shrink_to_fit(stream_view_);
 }
 
 template <typename i_t, typename f_t>
@@ -140,6 +154,10 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
   // Skip scaling entirely for a shape-0 problem (multi-GPU PDLP builds the
   // master pdlp_solver_t from a shape-0 placeholder)
   if (primal_size_h_ == 0 || dual_size_h_ == 0) return;
+
+  // A caller may explicitly recompute scaling after releasing the scratch.
+  iteration_variable_scaling_.resize(primal_size_h_, stream_view_);
+  iteration_constraint_matrix_scaling_.resize(dual_size_h_, stream_view_);
 
   // Curtis-Reid runs first as a prescale: its global log-domain fit removes broad
   // magnitude skew, leaving Ruiz and Pock-Chambolle to equilibrate locally.

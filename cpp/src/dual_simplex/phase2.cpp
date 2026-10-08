@@ -1563,7 +1563,8 @@ void remove_leaving_perturbation(const lp_problem_t<i_t, f_t>& lp,
                                  i_t leaving_index,
                                  i_t direction,
                                  std::vector<f_t>& z,
-                                 std::vector<f_t>& objective)
+                                 std::vector<f_t>& objective,
+                                 f_t& sum_perturb)
 {
   const f_t perturb = objective[leaving_index] - lp.objective[leaving_index];
   if (perturb == 0.0) return;
@@ -1598,6 +1599,8 @@ void remove_leaving_perturbation(const lp_problem_t<i_t, f_t>& lp,
       objective[leaving_index] -= correction;
     }
   }
+  sum_perturb +=
+    std::abs(objective[leaving_index] - lp.objective[leaving_index]) - std::abs(perturb);
 }
 
 template <typename i_t, typename f_t>
@@ -1616,21 +1619,22 @@ i_t compute_perturbation(const lp_problem_t<i_t, f_t>& lp,
   const i_t m         = lp.num_rows;
   const f_t tight_tol = settings.tight_tol;
   i_t num_perturb     = 0;
-  sum_perturb         = 0.0;
   for (i_t k = 0; k < delta_z_indices.size(); ++k) {
     const i_t j = delta_z_indices[k];
     if (lp.upper[j] == inf && lp.lower[j] > -inf && z[j] < -tight_tol) {
       const f_t violation = -z[j];
       z[j] += violation;  // z[j] <- 0
+      const f_t old_perturbation = std::abs(objective[j] - lp.objective[j]);
       objective[j] += violation;
       num_perturb++;
-      sum_perturb += violation;
+      sum_perturb += std::abs(objective[j] - lp.objective[j]) - old_perturbation;
     } else if (lp.lower[j] == -inf && lp.upper[j] < inf && z[j] > tight_tol) {
       const f_t violation = z[j];
       z[j] -= violation;  // z[j] <- 0
+      const f_t old_perturbation = std::abs(objective[j] - lp.objective[j]);
       objective[j] -= violation;
       num_perturb++;
-      sum_perturb += violation;
+      sum_perturb += std::abs(objective[j] - lp.objective[j]) - old_perturbation;
     }
   }
   // On degenerate steps, shift the entering variable's cost
@@ -1639,13 +1643,16 @@ i_t compute_perturbation(const lp_problem_t<i_t, f_t>& lp,
     assert(vstatus[entering_index] != variable_status_t::BASIC);
     const f_t shift = -z[entering_index];
     if (shift != 0.0) {
+      const f_t old_perturbation =
+        std::abs(objective[entering_index] - lp.objective[entering_index]);
       objective[entering_index] += shift;
       z[entering_index] = 0.0;
-      sum_perturb += std::abs(shift);
+      sum_perturb +=
+        std::abs(objective[entering_index] - lp.objective[entering_index]) - old_perturbation;
       num_perturb++;
     }
   }
-  work_estimate += 7 * delta_z_indices.size();
+  work_estimate += 7 * delta_z_indices.size() + 5 * num_perturb;
   return 0;
 }
 
@@ -1758,6 +1765,8 @@ void adjust_for_flips(const basis_update_mpf_t<i_t, f_t>& ft,
                       sparse_vector_t<i_t, f_t>& delta_xB_0_sparse,
                       std::vector<f_t>& delta_x_flip,
                       std::vector<f_t>& x,
+                      const std::vector<f_t>& original_objective,
+                      f_t& obj,
                       f_t& work_estimate)
 {
   const i_t atilde_nz = atilde_index.size();
@@ -1775,14 +1784,16 @@ void adjust_for_flips(const basis_update_mpf_t<i_t, f_t>& ft,
   for (i_t k = 0; k < delta_xB_0_nz; ++k) {
     const i_t j = basic_list[delta_xB_0_sparse.i[k]];
     x[j] += delta_xB_0_sparse.x[k];
+    obj += original_objective[j] * delta_xB_0_sparse.x[k];
   }
-  work_estimate += 4 * delta_xB_0_nz;
+  work_estimate += 7 * delta_xB_0_nz;
   for (i_t k = 0; k < delta_z_indices.size(); ++k) {
     const i_t j = delta_z_indices[k];
     x[j] += delta_x_flip[j];
+    obj += original_objective[j] * delta_x_flip[j];
     delta_x_flip[j] = 0.0;
   }
-  work_estimate += 4 * delta_z_indices.size();
+  work_estimate += 7 * delta_z_indices.size();
   // Clear atilde
   for (i_t k = 0; k < atilde_index.size(); ++k) {
     atilde[atilde_index[k]] = 0.0;
@@ -1864,7 +1875,21 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
       work_estimate += 2 * scaled_delta_xB_sparse.i.size() + scaled_delta_xB.size();
       scale = -scaled_delta_xB[basic_leaving_index];
     } else if (delta_z[entering_index] != 0.0) {
-      scale = -delta_z[entering_index];
+      // Let p be the leaving variable's position in the basis and q the entering variable.
+      // We have that
+      // B*w = -A(:, q)
+      // B'*delta_y = -direction * e_p
+      // delta z_N = -N^T delta_y
+      //
+      // Therefore, delta_z[q] = -A(:, q)' * delta_y
+      // and delta_y = -direction * B^{-T} * e_p
+      // so delta_z[q] = -delta_y'*A(:,q) = direction * e_p'*B^{-1} * A(:, q)
+      // Using w = -B^{-1} A(:, q)  we have
+      // delta_z[q] = -direction * e_p ' * w = -direction * w[p]
+      // So scale = w[p] = - delta_z[q] / direction
+      // Since direction = {+1 , -1}, we have that 1/direction = {+1 , -1} = direction
+      // So scale = w[p] = -direction * delta_z[q]
+      scale = -direction * delta_z[entering_index];
       // The sparse solve did not produce a coefficient for basic_leaving_index.
       // Add it so update_primal_variables / update_primal_infeasibilities process
       // the leaving variable (they iterate over scaled_delta_xB_sparse.i).
@@ -2499,6 +2524,45 @@ f_t amount_of_perturbation(const lp_problem_t<i_t, f_t>& lp, const std::vector<f
     perturbation += std::abs(lp.objective[j] - objective[j]);
   }
   return perturbation;
+}
+
+template <typename i_t, typename f_t>
+f_t compute_lower_bound_on_primal_objective(const lp_problem_t<i_t, f_t>& lp,
+                                            const simplex_solver_settings_t<i_t, f_t>& settings,
+                                            const basis_update_mpf_t<i_t, f_t>& ft,
+                                            const std::vector<i_t>& basic_list,
+                                            const std::vector<f_t>& objective,
+                                            std::vector<f_t>& trial_y,
+                                            std::vector<f_t>& reduced_cost,
+                                            f_t& work_estimate)
+{
+  const i_t num_rows = lp.num_rows;
+  const i_t num_cols = lp.num_cols;
+  if (amount_of_perturbation(lp, objective) != 0.0) {
+    std::vector<f_t> original_basic_cost(num_rows);
+    for (i_t i = 0; i < num_rows; ++i) {
+      original_basic_cost[i] = lp.objective[basic_list[i]];
+    }
+    work_estimate += 5 * num_rows;
+    ft.b_transpose_solve(original_basic_cost, trial_y);
+  }
+  // Include residual reduced costs for basic variables in the dual bound.
+  reduced_cost = lp.objective;
+  matrix_transpose_vector_multiply(lp.A, -1.0, trial_y, 1.0, reduced_cost);
+  f_t lower_bound = dot<i_t, f_t>(lp.rhs, trial_y);
+  for (i_t j = 0; j < num_cols; ++j) {
+    const bool missing_bound = (reduced_cost[j] > 0.0 && lp.lower[j] == -inf) ||
+                               (reduced_cost[j] < 0.0 && lp.upper[j] == inf);
+    // Tolerate roundoff at infinite bounds only; this is an approximate certificate.
+    if (missing_bound && std::abs(reduced_cost[j]) <= settings.zero_tol) { continue; }
+    if (reduced_cost[j] > 0.0) {
+      lower_bound += reduced_cost[j] * lp.lower[j];
+    } else if (reduced_cost[j] < 0.0) {
+      lower_bound += reduced_cost[j] * lp.upper[j];
+    }
+  }
+  work_estimate += 3 * lp.A.col_start[num_cols] + 12 * num_cols + 2 * num_rows;
+  return lower_bound;
 }
 
 // Attempt to remove perturbation at optimality of the perturbed problem.
@@ -3346,8 +3410,9 @@ static dual_status_t dual_phase2_with_advanced_basis(
     return dual_status_t::CONCURRENT_LIMIT;
   }
 
-  f_t obj = compute_objective(lp, x);
-  phase2_work_estimate += 2 * n;
+  f_t obj         = compute_objective(lp, x);
+  f_t sum_perturb = phase2::amount_of_perturbation(lp, objective);
+  phase2_work_estimate += 5 * n;
 
   const i_t start_iter = iter;
 
@@ -3383,7 +3448,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
                         compute_user_objective(lp, obj),
                         infeasibility_indices.size(),
                         primal_infeasibility_squared,
-                        0.0,
+                        sum_perturb,
                         toc(start_time));
   }
   i_t iterations_since_refactor = 0;
@@ -3559,7 +3624,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
           solve_work                = 0.0;
 
           if (primal_infeasibility > settings.primal_tol) {
-            obj = phase2::compute_perturbed_objective(objective, x);
+            obj = compute_objective(lp, x);
             phase2_work_estimate += 2 * n;
             settings.log.printf(
               "New infeasibilities found after recompute (primal_inf=%.2e). "
@@ -3592,7 +3657,8 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                                      primal_infeasibility_squared,
                                                                      phase2_work_estimate);
         if (removal_status == 1) {  // CONTINUE_DUAL
-          obj = phase2::compute_perturbed_objective(objective, x);
+          sum_perturb = 0.0;
+          obj         = compute_objective(lp, x);
           phase2_work_estimate += 2 * n;
           continue;
         }
@@ -3610,12 +3676,14 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                                           phase2_work_estimate);
           if (cleanup_status != dual_status_t::OPTIMAL) { return cleanup_status; }
         }
+        sum_perturb = 0.0;
         // removal_status == 0 (OPTIMAL) or primal cleanup done: fall through to prepare_optimality
       }
 
       if (phase == 2 && std::isfinite(box_objective_bound)) {
         // This helps prevent small negative bound O(-1e-8) on cbs-cta.
         const f_t original_objective = compute_objective(lp, x);
+        obj                          = original_objective;
         phase2_work_estimate += 2 * n;
         if (box_objective_bound - original_objective >= settings.tight_tol) {
           // Normal pricing ignores sub-primal_tol violations, but their objective
@@ -3950,6 +4018,8 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                delta_xB_0_sparse,
                                delta_x_flip,
                                x,
+                               lp.objective,
+                               obj,
                                phase2_work_estimate);
       timers.ftran_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     }
@@ -4038,8 +4108,6 @@ static dual_status_t dual_phase2_with_advanced_basis(
 #endif
 
     timers.start_timer(phase2_work_estimate + ft.work_estimate());
-    // TODO(CMM): Do I also need to update the objective due to the bound flips?
-    // TODO(CMM): I'm using the unperturbed objective here, should this be the perturbed objective?
     phase2::update_objective(basic_list,
                              scaled_delta_xB_sparse.i,
                              lp.objective,
@@ -4111,9 +4179,9 @@ static dual_status_t dual_phase2_with_advanced_basis(
 
     timers.start_timer(phase2_work_estimate + ft.work_estimate());
     if (settings.remove_perturbation != 0) {
-      phase2::remove_leaving_perturbation(lp, settings, leaving_index, direction, z, objective);
+      phase2::remove_leaving_perturbation(
+        lp, settings, leaving_index, direction, z, objective, sum_perturb);
     }
-    f_t sum_perturb = 0.0;
     phase2::compute_perturbation(lp,
                                  settings,
                                  delta_z_indices,
@@ -4255,7 +4323,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                      phase2_work_estimate);
           x = unperturbed_x;
           phase2_work_estimate += 2 * n;
-          obj = phase2::compute_perturbed_objective(objective, x);
+          obj = compute_objective(lp, x);
           phase2_work_estimate += 2 * n;
         }
         primal_infeasibility_squared =
@@ -4323,9 +4391,15 @@ static dual_status_t dual_phase2_with_advanced_basis(
                           primal_infeasibility_squared,
                           sum_perturb,
                           now);
-      if (phase == 2 && settings.inside_mip == 1 && settings.dual_simplex_objective_callback) {
-        settings.dual_simplex_objective_callback(obj);
-      }
+    }
+
+    if (phase == 2 && settings.inside_mip == 1 && settings.dual_simplex_objective_callback &&
+        iter % (10 * settings.iteration_log_frequency) == 0) {
+      std::vector<f_t> trial_y = y;
+      std::vector<f_t> reduced_cost;
+      const f_t lower_bound = phase2::compute_lower_bound_on_primal_objective(
+        lp, settings, ft, basic_list, objective, trial_y, reduced_cost, phase2_work_estimate);
+      if (std::isfinite(lower_bound)) { settings.dual_simplex_objective_callback(lower_bound); }
     }
 
     // Use the pivotal BTRAN density already measured in this iteration. Always
@@ -4339,30 +4413,9 @@ static dual_status_t dual_phase2_with_advanced_basis(
       if (unperturb_obj >= settings.cut_off) {
         // Validate the cutoff using the original objective, not the perturbed costs.
         std::vector<f_t> trial_y = y;
-        if (phase2::amount_of_perturbation(lp, objective) != 0.0) {
-          std::vector<f_t> original_basic_cost(m);
-          for (i_t k = 0; k < m; ++k) {
-            original_basic_cost[k] = lp.objective[basic_list[k]];
-          }
-          phase2_work_estimate += 5 * m;
-          ft.b_transpose_solve(original_basic_cost, trial_y);
-        }
-        // Include residual reduced costs for basic variables in the dual bound.
-        std::vector<f_t> reduced_cost = lp.objective;
-        matrix_transpose_vector_multiply(lp.A, -1.0, trial_y, 1.0, reduced_cost);
-        f_t dual_objective = dot<i_t, f_t>(lp.rhs, trial_y);
-        for (i_t j = 0; j < n; j++) {
-          const bool missing_bound = (reduced_cost[j] > 0.0 && lp.lower[j] == -inf) ||
-                                     (reduced_cost[j] < 0.0 && lp.upper[j] == inf);
-          // Tolerate roundoff at infinite bounds only; this is an approximate certificate.
-          if (missing_bound && std::abs(reduced_cost[j]) <= settings.zero_tol) { continue; }
-          if (reduced_cost[j] > 0.0) {
-            dual_objective += reduced_cost[j] * lp.lower[j];
-          } else if (reduced_cost[j] < 0.0) {
-            dual_objective += reduced_cost[j] * lp.upper[j];
-          }
-        }
-        phase2_work_estimate += 3 * lp.A.col_start[n] + 12 * n + 2 * m;
+        std::vector<f_t> reduced_cost;
+        const f_t dual_objective = phase2::compute_lower_bound_on_primal_objective(
+          lp, settings, ft, basic_list, objective, trial_y, reduced_cost, phase2_work_estimate);
 
         if (std::isfinite(dual_objective) && dual_objective >= settings.cut_off) {
           // Preserve the basic reduced-cost convention only after evaluating the bound.
