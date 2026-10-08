@@ -1814,6 +1814,8 @@ template class mps_parser_t<int, float>;
 
 template class mps_parser_t<int, double>;
 
+template class mps_parser_t<int64_t, double>;
+
 template void check_symmetric_offdiagonal_pairs<int, float>(
   const std::vector<int>&,
   const std::vector<int>&,

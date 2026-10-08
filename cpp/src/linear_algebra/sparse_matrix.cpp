@@ -21,6 +21,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 
 namespace cuopt::mathematical_optimization {
@@ -945,8 +946,10 @@ template class csr_matrix_t<int, float>;
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template class csc_matrix_t<int, double>;
-
 template class csr_matrix_t<int, double>;
+
+template class csc_matrix_t<int64_t, double>;
+template class csr_matrix_t<int64_t, double>;
 
 template void cumulative_sum<int>(std::vector<int>& inout, std::vector<int>& output);
 

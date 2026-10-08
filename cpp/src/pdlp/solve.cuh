@@ -54,7 +54,8 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
  *
  * @param handle_ptr  Master raft handle (its stream owns the gather buffers and
  *                    any master-side aggregator allocations). Must be non-null.
- * @param mps_data_model  Host-resident MPS data (CPU vectors only).
+ * @param mps_data_model  Host-resident MPS data (CPU vectors only). Indexed by `index_t`, which
+ *                    may be wider than the solver's `i_t`.
  * @param settings    User-supplied PDLP solver settings; `num_gpus` is the
  *                    distributed shard count, -1 selects all visible GPUs.
  * @param use_pdlp_solver_mode  When true, applies `set_pdlp_solver_mode()` to a
@@ -65,11 +66,11 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
  * `settings.pdlp_solver_mode == Stable3`, `pdlp_precision == DefaultPrecision`, not inside MIP,
  * and no initial primal/dual or warm-start data.
  */
-template <typename i_t, typename f_t>
+template <typename i_t, typename index_t, typename f_t>
 cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t>
 solve_lp_distributed_from_mps(
   raft::handle_t const* handle_ptr,
-  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<index_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool use_pdlp_solver_mode);
 

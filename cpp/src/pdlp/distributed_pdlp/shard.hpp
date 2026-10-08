@@ -52,10 +52,13 @@ struct pdlp_shard_t {
 
   // sub worker for distributed pdlp. Owns its own view on scaled problem and unscaled problem
   // Owns necessary multi-gpu data (rank_data, device_id, nccl_comm)
+  // `index_t` is the model's index type and may be wider than the solver's i_t: only f_t
+  // arrays and scalars are read from the model here.
+  template <typename index_t>
   pdlp_shard_t(int device_id,
                rank_data_t<i_t, f_t>&& rd,
                nccl_comm_unique_ptr_t&& comm,
-               io::mps_data_model_t<i_t, f_t> const& mps,
+               io::mps_data_model_t<index_t, f_t> const& mps,
                pdlp_solver_settings_t<i_t, f_t> const& settings);
 
   pdlp_shard_t(const pdlp_shard_t&)            = delete;

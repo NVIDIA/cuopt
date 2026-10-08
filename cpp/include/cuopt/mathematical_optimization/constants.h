@@ -100,6 +100,7 @@
 #define CUOPT_NUM_CPU_THREADS           "num_cpu_threads"
 #define CUOPT_NUM_GPUS                  "num_gpus"
 #define CUOPT_MULTIGPU_PDLP_PARTITIONER "multigpu_pdlp_partitioner"
+#define CUOPT_MPS_INDEX_64BIT           "mps_index_64bit"
 #define CUOPT_USER_PROBLEM_FILE         "user_problem_file"
 #define CUOPT_PRESOLVE_FILE             "presolve_file"
 #define CUOPT_RANDOM_SEED               "random_seed"

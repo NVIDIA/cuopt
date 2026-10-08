@@ -589,7 +589,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     }
 
     CUOPT_LOG_INFO(
-      "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
+      "Solving a problem with %lld constraints, %lld variables (%lld integers), and %lld nonzeros",
       op_problem.get_n_constraints(),
       op_problem.get_n_variables(),
       op_problem.get_n_integers(),
