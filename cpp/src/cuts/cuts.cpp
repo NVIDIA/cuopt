@@ -1000,16 +1000,6 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
 
 }  // namespace
 
-enum class inequality_sense_t { LESS_EQUAL, GREATER_EQUAL };
-
-template <typename i_t, typename f_t>
-bool rational_coefficients(const std::vector<variable_type_t>& var_types,
-                           const std::vector<f_t>& lower_bounds,
-                           const std::vector<f_t>& upper_bounds,
-                           inequality_sense_t sense,
-                           const inequality_t<i_t, f_t>& inequality,
-                           inequality_t<i_t, f_t>& rational_inequality);
-
 int64_t gcd(const std::vector<int64_t>& integers);
 
 int64_t lcm(const std::vector<int64_t>& integers);
@@ -2682,7 +2672,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
     settings.log.printf("seperation_rhs %g\n", seperation_rhs);
   }
 
-  if (seperation_rhs <= 0.0) {
+  if (seperation_rhs < 0.0) {
     restore_complemented(complemented_variables);
     return -1;
   }
@@ -2731,7 +2721,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   std::vector<f_t> solution;
   solution.resize(values.size());
 
-  if (seperation_rhs <= 0.0) {
+  if (seperation_rhs < 0.0) {
     restore_complemented(complemented_variables);
     return -1;
   }
@@ -7073,6 +7063,13 @@ template class flow_cover_generation_t<int, double>;
 template class tableau_equality_t<int, double>;
 template class complemented_mixed_integer_rounding_cut_t<int, double>;
 template class variable_bounds_t<int, double>;
+
+template bool rational_coefficients<int, double>(const std::vector<variable_type_t>& var_types,
+                                                 const std::vector<double>& lower_bounds,
+                                                 const std::vector<double>& upper_bounds,
+                                                 inequality_sense_t sense,
+                                                 const inequality_t<int, double>& inequality,
+                                                 inequality_t<int, double>& rational_inequality);
 
 template int add_cuts(const simplex_solver_settings_t<int, double>& settings,
                       const csr_matrix_t<int, double>& cuts,

@@ -164,6 +164,16 @@ struct inequality_t {
   }
 };
 
+enum class inequality_sense_t { LESS_EQUAL, GREATER_EQUAL };
+
+template <typename i_t, typename f_t>
+bool rational_coefficients(const std::vector<simplex::variable_type_t>& var_types,
+                           const std::vector<f_t>& lower_bounds,
+                           const std::vector<f_t>& upper_bounds,
+                           inequality_sense_t sense,
+                           const inequality_t<i_t, f_t>& inequality,
+                           inequality_t<i_t, f_t>& rational_inequality);
+
 template <typename i_t, typename f_t>
 struct cut_info_t {
   bool has_cuts() const

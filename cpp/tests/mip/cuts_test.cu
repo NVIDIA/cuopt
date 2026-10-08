@@ -1005,6 +1005,125 @@ TEST(cuts, knapsack_cover_floor_regression_reference)
   EXPECT_NEAR(3.0, solution.get_objective_value(), 1e-6);
 }
 
+TEST(cuts, rational_coefficients_50v10_regression)
+{
+  const double coefficient                              = 0.3684210526315792;
+  const std::vector<simplex::variable_type_t> var_types = {simplex::variable_type_t::INTEGER,
+                                                           simplex::variable_type_t::CONTINUOUS,
+                                                           simplex::variable_type_t::INTEGER,
+                                                           simplex::variable_type_t::INTEGER,
+                                                           simplex::variable_type_t::INTEGER};
+  const std::vector<double> lower(5, 0.0);
+  const std::vector<double> upper        = {1.0, 3.0 * coefficient, 1.0, 1.0, 1.0};
+  const std::vector<int> binary_columns  = {0, 2, 3, 4};
+  const std::vector<int> integer_weights = {1, 1, 1, 2};
+
+  for (int direction = 0; direction < 2; direction++) {
+    SCOPED_TRACE(direction);
+    mip::inequality_t<int, double> inequality(5);
+    inequality.push_back(0, -coefficient);
+    inequality.push_back(1, 1.0);
+    inequality.push_back(2, -coefficient);
+    inequality.push_back(3, -coefficient);
+    inequality.push_back(4, -2.0 * coefficient);
+    inequality.rhs = -2.0 * coefficient;
+    const auto sense =
+      direction == 0 ? mip::inequality_sense_t::LESS_EQUAL : mip::inequality_sense_t::GREATER_EQUAL;
+    if (direction == 1) { inequality.negate(); }
+
+    mip::inequality_t<int, double> rational_inequality(5);
+    ASSERT_TRUE(
+      mip::rational_coefficients(var_types, lower, upper, sense, inequality, rational_inequality));
+    if (direction == 1) { rational_inequality.negate(); }
+
+    EXPECT_EQ(rational_inequality.coeff(0), -1.0);
+    EXPECT_EQ(rational_inequality.coeff(2), -1.0);
+    EXPECT_EQ(rational_inequality.coeff(3), -1.0);
+    EXPECT_EQ(rational_inequality.coeff(4), -2.0);
+    EXPECT_GE(rational_inequality.rhs, -2.0);
+    const std::vector<double> boundary_point = {0.0, 0.0, 1.0, 1.0, 0.0};
+    EXPECT_LE(rational_inequality.vector.dot(boundary_point), rational_inequality.rhs);
+
+    int feasible_assignments = 0;
+    for (int mask = 0; mask < 16; mask++) {
+      SCOPED_TRACE(mask);
+      std::vector<double> point(5, 0.0);
+      int weight = 0;
+      for (int j = 0; j < 4; j++) {
+        const int value          = (mask >> j) & 1;
+        point[binary_columns[j]] = value;
+        weight += integer_weights[j] * value;
+      }
+      if (weight < 2) { continue; }
+      feasible_assignments++;
+      EXPECT_LE(rational_inequality.vector.dot(point), rational_inequality.rhs);
+    }
+    EXPECT_EQ(feasible_assignments, 12);
+  }
+}
+
+TEST(cuts, knapsack_fractional_capacity_regression)
+{
+  struct test_case_t {
+    double capacity;
+    std::vector<double> xstar;
+    int feasible_assignments;
+  };
+  const std::vector<test_case_t> cases = {{3.0, {0.7, 0.7, 0.05, 3.0 - 2.95}, 4},
+                                          {3.2, {0.7, 0.7, 0.05, 3.2 - 2.95}, 4},
+                                          {6.0, {0.875, 0.875, 0.75, 6.0 - 5.75}, 7},
+                                          {6.2, {0.875, 0.875, 0.75, 6.2 - 5.75}, 7},
+                                          {3.2, {0.75, 0.75, 0.0, 3.2 - 3.0}, 4}};
+  for (int instance = 0; instance < cases.size(); instance++) {
+    SCOPED_TRACE(instance);
+    const double capacity = cases[instance].capacity;
+    SCOPED_TRACE(capacity);
+    simplex::simplex_solver_settings_t<int, double> settings;
+    settings.set_log(false);
+    simplex::lp_problem_t<int, double> lp(nullptr, 1, 4, 4);
+    lp.A.col_start = {0, 1, 2, 3, 4};
+    lp.A.i         = {0, 0, 0, 0};
+    lp.A.x         = {2.0, 2.0, 3.0, 1.0};
+    lp.rhs         = {capacity};
+    lp.lower.assign(4, 0.0);
+    lp.upper = {1.0, 1.0, 1.0, capacity};
+    csr_matrix_t<int, double> rows(1, 4, 4);
+    lp.A.to_compressed_row(rows);
+    const std::vector<int> slacks                         = {3};
+    const std::vector<simplex::variable_type_t> var_types = {simplex::variable_type_t::INTEGER,
+                                                             simplex::variable_type_t::INTEGER,
+                                                             simplex::variable_type_t::INTEGER,
+                                                             simplex::variable_type_t::CONTINUOUS};
+    const std::vector<double>& xstar                      = cases[instance].xstar;
+    mip::knapsack_generation_t<int, double> separator(lp, settings, rows, slacks, var_types);
+    ASSERT_EQ(separator.num_knapsack_constraints(), 1);
+
+    mip::inequality_t<int, double> cut(4);
+    ASSERT_EQ(
+      separator.generate_knapsack_cut(lp, settings, rows, slacks, var_types, xstar, 0, cut, tic()),
+      0);
+    EXPECT_LT(cut.vector.dot(xstar), cut.rhs);
+
+    int feasible_assignments       = 0;
+    const std::vector<int> weights = {2, 2, 3};
+    for (int mask = 0; mask < 8; mask++) {
+      SCOPED_TRACE(mask);
+      std::vector<double> point(4, 0.0);
+      int weight = 0;
+      for (int j = 0; j < 3; j++) {
+        const int value = (mask >> j) & 1;
+        point[j]        = value;
+        weight += weights[j] * value;
+      }
+      if (weight > capacity) { continue; }
+      feasible_assignments++;
+      point[3] = capacity - weight;
+      EXPECT_GE(cut.vector.dot(point), cut.rhs);
+    }
+    EXPECT_EQ(feasible_assignments, cases[instance].feasible_assignments);
+  }
+}
+
 TEST(cuts, test_duplicate_cuts_detection)
 {
   simplex::simplex_solver_settings_t<int, double> settings;
