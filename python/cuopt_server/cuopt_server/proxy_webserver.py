@@ -15,7 +15,7 @@ from typing import Any, List, Optional, Union
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from cuopt.utilities import (
@@ -1122,6 +1122,13 @@ def _result_envelope(job_id, meta, kind, req_id="", cache_warmstart=False):
             notes.append(sol.get("status_message") or "")
         notes = [n for n in notes if n]
         solve_time = float(sol.get("solve_time") or 0)
+        # Legacy uses solver_response for status 0 and
+        # solver_infeasible_response otherwise.
+        response_key = (
+            "solver_response"
+            if inner.get("status") == 0
+            else "solver_infeasible_response"
+        )
     else:
         if cache_warmstart:
             _store_warmstart(job_id, _warmstart_dict_from_sol(sol))
@@ -1132,8 +1139,9 @@ def _result_envelope(job_id, meta, kind, req_id="", cache_warmstart=False):
             pass
         if inner.get("solution"):
             solve_time = inner["solution"].get("solver_time") or 0
+        response_key = "solver_response"
     envelope = make_response(
-        {"solver_response": inner},
+        {response_key: inner},
         warnings=warnings,
         notes=notes,
         reqId=req_id,
@@ -1162,6 +1170,15 @@ def getwarmstart(id: str):
         return encode(http_exception_handler(e), mime_msgpack)
     except Exception as e:
         return encode(exception_handler(e), mime_msgpack)
+
+
+def _documented_solution(encoded):
+    # response_model is documentation. A dict return is validated against
+    # those strict models, and the proxy envelope has fields they reject.
+    # A Response is sent unchanged.
+    if isinstance(encoded, dict):
+        return JSONResponse(content=encoded)
+    return encoded
 
 
 @app.get(
@@ -1199,13 +1216,15 @@ def getsolution(
             fallback = meta.get("accept", mime_msgpack)
         accept = _resolve_accept(accept, fallback)
         if meta is not None and meta.get("validation_only"):
-            return encode(meta["validation_result"], accept, job_result=True)
+            return _documented_solution(
+                encode(meta["validation_result"], accept, job_result=True)
+            )
         status = get_grpc_client().status(id)
         kind = None if meta is None else meta.get("kind")
         if _is_status(status, "NOT_FOUND"):
             raise _job_not_found(id)
         if _is_status(status, "QUEUED", "PROCESSING"):
-            return encode({"reqId": id}, accept)
+            return _documented_solution(encode({"reqId": id}, accept))
         if _is_status(status, "FAILED", "CANCELLED"):
             raise HTTPException(
                 status_code=409,
@@ -1215,7 +1234,7 @@ def getsolution(
             id, meta, kind, req_id=id, cache_warmstart=True
         )
         if envelope is None:
-            return encode({"reqId": id}, accept)
+            return _documented_solution(encode({"reqId": id}, accept))
         resultdir, maxresult, mode = settings.get_result_dir()
         result_file = "" if meta is None else meta.get("result_file") or ""
         if result_file and resultdir:
@@ -1231,12 +1250,14 @@ def getsolution(
                 # SolutionModelInFile always serializes these lists.
                 file_msg.setdefault("warnings", list(warnings or []))
                 file_msg.setdefault("notes", list(notes or []))
-                return encode(file_msg, accept, job_result=True)
-        return encode(envelope, accept, job_result=True)
+                return _documented_solution(
+                    encode(file_msg, accept, job_result=True)
+                )
+        return _documented_solution(encode(envelope, accept, job_result=True))
     except HTTPException as e:
-        return encode(http_exception_handler(e), accept)
+        return _documented_solution(encode(http_exception_handler(e), accept))
     except Exception as e:
-        return encode(exception_handler(e), accept)
+        return _documented_solution(encode(exception_handler(e), accept))
 
 
 @app.get(

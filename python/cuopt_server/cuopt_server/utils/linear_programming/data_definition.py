@@ -711,34 +711,36 @@ class WarmStartData(StrictModel):
 
 
 class SolutionData(StrictModel):
-    problem_category: int = Field(
-        default=None, description=("Category of the solution, LP-0/MIP-1/IP-2")
+    problem_category: Optional[str] = Field(
+        default=None,
+        description=("Category of the solution: LP, MIP, or IP"),
     )
-    primal_solution: List[float] = Field(
-        default=[],
+    primal_solution: Optional[List[float]] = Field(
+        default=None,
         description=("Primal solution of the LP problem"),
     )
-    dual_solution: List[float] = Field(
-        default=[],
+    dual_solution: Optional[List[float]] = Field(
+        default=None,
         description=(
             "Note: Only applicable to LP \nDual solution of the LP problem\n"
         ),
     )
-    solver_time: float = Field(
+    solver_time: Optional[float] = Field(
         default=None,
         description=("Returns the engine solve time in seconds"),
     )
-    solved_by: int = Field(
+    solved_by: Optional[str] = Field(
         default=None,
         description=(
-            "Returns whether problem was solved by PDLP, Barrier or Dual Simplex"
+            "Solver that produced the solution: Concurrent, PDLP, "
+            "DualSimplex, Barrier, Primal, or Unset"
         ),
     )
-    primal_objective: float = Field(
+    primal_objective: Optional[float] = Field(
         default=None,
         description=("Primal objective of the LP problem"),
     )
-    dual_objective: float = Field(
+    dual_objective: Optional[float] = Field(
         default=None,
         description=(
             "Note: Only applicable to LP \nDual objective of the LP problem \n"
@@ -755,6 +757,12 @@ class SolutionData(StrictModel):
             "Convergence statistics of the solution \n"
             "Includes primal residual, dual residual, \n"
             "reduced cost and gap \n"
+        ),
+    )
+    reduced_cost: Optional[List[float]] = Field(
+        default=None,
+        description=(
+            "Note: Only applicable to LP \nReduced cost of the solution\n"
         ),
     )
     milp_statistics: Dict = Field(
@@ -910,12 +918,13 @@ lp_response = {
             "solver_response": {
                 "status": "Optimal",
                 "solution": {
-                    "problem_category": 0,
+                    "problem_category": "LP",
                     "primal_solution": [0.0, 0.0],
                     "dual_solution": [0.0, 0.0],
                     "primal_objective": 0.0,
                     "dual_objective": 0.0,
                     "solver_time": 43.0,
+                    "solved_by": "PDLP",
                     "vars": {},
                     "lp_statistics": {
                         "primal_residual": 0.0,
@@ -923,7 +932,7 @@ lp_response = {
                         "gap": 0.0,
                     },
                     "reduced_cost": [0.2, 0.1],
-                    "mip_statistics": {},
+                    "milp_statistics": {},
                 },
             }
         },
@@ -939,15 +948,17 @@ milp_response = {
             "solver_response": {
                 "status": "FeasibleFound",
                 "solution": {
-                    "problem_category": 1,
+                    "problem_category": "MIP",
                     "primal_solution": [0.0, 0.0],
                     "dual_solution": None,
                     "primal_objective": 0.0,
                     "dual_objective": None,
                     "solver_time": 43.0,
+                    "solved_by": "PDLP",
                     "vars": {},
                     "lp_statistics": {},
-                    "mip_statistics": {
+                    "reduced_cost": None,
+                    "milp_statistics": {
                         "mip_gap": 0.0,
                         "presolve_time": 0.0,
                         "solution_bound": 0.0,
@@ -970,15 +981,17 @@ milp_response = {
             "solver_response": {
                 "status": "FeasibleFound",
                 "solution": {
-                    "problem_category": 1,
+                    "problem_category": "MIP",
                     "primal_solution": [0.0, 0.0],
                     "dual_solution": None,
                     "primal_objective": 0.0,
                     "dual_objective": None,
                     "solver_time": 43.0,
+                    "solved_by": "PDLP",
                     "vars": {},
                     "lp_statistics": {},
-                    "mip_statistics": {
+                    "reduced_cost": None,
+                    "milp_statistics": {
                         "mip_gap": 0.0,
                         "presolve_time": 0.0,
                         "solution_bound": 0.0,
