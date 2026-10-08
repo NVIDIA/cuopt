@@ -131,9 +131,7 @@ column reduction during PDLP iterations:
 * ``OFF`` (0): Disable column reduction.
 * ``COLUMN_REDUCTION`` (1): Request column reduction regardless of problem size.
 
-The string parameter interface accepts these names case-insensitively, as well as
-their integer values. Legacy ``true`` and ``false`` values remain aliases for
-``COLUMN_REDUCTION`` and ``OFF``. For example, the CLI accepts
+For example, the CLI accepts
 ``--pdlp-hyper-reduced-matrix COLUMN_REDUCTION``. C API users should use the
 constants in :ref:`pdlp-reduced-matrix-constants` with :c:func:`cuOptSetIntegerParameter`.
 
