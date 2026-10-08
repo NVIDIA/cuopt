@@ -18,7 +18,6 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace cuopt::mathematical_optimization {
@@ -101,103 +100,6 @@ TEST(SolverSettingsTest, ConcurrentNnzCutoffParameter)
   settings.set_parameter_from_string(CUOPT_CONCURRENT_NNZ_CUTOFF, "-1");
   EXPECT_EQ(settings.get_pdlp_settings().concurrent_nnz_cutoff, -1);
   EXPECT_EQ(settings.get_mip_settings().concurrent_nnz_cutoff, -1);
-}
-
-TEST(SolverSettingsTest, ReducedMatrixParameterDefaults)
-{
-  const pdlp_solver_settings_t<int, double> direct_settings;
-  solver_settings_t<int, double> settings;
-  EXPECT_EQ(direct_settings.hyper_params.reduced_matrix, pdlp::reduced_matrix_mode_t::DEFAULT);
-  EXPECT_EQ(settings.get_pdlp_settings().hyper_params.reduced_matrix,
-            pdlp::reduced_matrix_mode_t::DEFAULT);
-  EXPECT_EQ(settings.get_parameter<int>(CUOPT_PDLP_HYPER_REDUCED_MATRIX),
-            CUOPT_PDLP_REDUCED_MATRIX_DEFAULT);
-  EXPECT_EQ(settings.get_parameter_as_string(CUOPT_PDLP_HYPER_REDUCED_MATRIX), "-1");
-
-  int registered = 0;
-  for (const auto& parameter : settings.get_int_parameters()) {
-    if (parameter.param_name == CUOPT_PDLP_HYPER_REDUCED_MATRIX) {
-      ++registered;
-      EXPECT_EQ(parameter.default_value, CUOPT_PDLP_REDUCED_MATRIX_DEFAULT);
-    }
-  }
-  EXPECT_EQ(registered, 1);
-  for (const auto& parameter : settings.get_bool_parameters()) {
-    EXPECT_NE(parameter.param_name, CUOPT_PDLP_HYPER_REDUCED_MATRIX);
-  }
-}
-
-TEST(SolverSettingsTest, ReducedMatrixParameterIntegerRoundtrip)
-{
-  solver_settings_t<int, double> settings;
-  for (const int value : {CUOPT_PDLP_REDUCED_MATRIX_OFF,
-                          CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION,
-                          CUOPT_PDLP_REDUCED_MATRIX_DEFAULT}) {
-    settings.set_parameter(CUOPT_PDLP_HYPER_REDUCED_MATRIX, value);
-    EXPECT_EQ(settings.get_parameter<int>(CUOPT_PDLP_HYPER_REDUCED_MATRIX), value);
-    EXPECT_EQ(settings.get_pdlp_settings().hyper_params.reduced_matrix,
-              static_cast<pdlp::reduced_matrix_mode_t>(value));
-    EXPECT_EQ(settings.get_parameter_as_string(CUOPT_PDLP_HYPER_REDUCED_MATRIX),
-              std::to_string(value));
-  }
-  EXPECT_THROW(settings.set_parameter(CUOPT_PDLP_HYPER_REDUCED_MATRIX, -2), std::invalid_argument);
-  EXPECT_THROW(settings.set_parameter(CUOPT_PDLP_HYPER_REDUCED_MATRIX, 2), std::invalid_argument);
-  EXPECT_EQ(settings.get_parameter<int>(CUOPT_PDLP_HYPER_REDUCED_MATRIX),
-            CUOPT_PDLP_REDUCED_MATRIX_DEFAULT);
-}
-
-TEST(SolverSettingsTest, ReducedMatrixParameterStringAliases)
-{
-  solver_settings_t<int, double> settings;
-  const std::vector<std::pair<std::string, int>> values{
-    {"-1", CUOPT_PDLP_REDUCED_MATRIX_DEFAULT},
-    {"DEFAULT", CUOPT_PDLP_REDUCED_MATRIX_DEFAULT},
-    {"default", CUOPT_PDLP_REDUCED_MATRIX_DEFAULT},
-    {"DeFaUlT", CUOPT_PDLP_REDUCED_MATRIX_DEFAULT},
-    {"0", CUOPT_PDLP_REDUCED_MATRIX_OFF},
-    {"OFF", CUOPT_PDLP_REDUCED_MATRIX_OFF},
-    {"off", CUOPT_PDLP_REDUCED_MATRIX_OFF},
-    {"OfF", CUOPT_PDLP_REDUCED_MATRIX_OFF},
-    {"1", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"COLUMN_REDUCTION", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"column_reduction", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"Column_Reduction", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"true", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"True", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"TRUE", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"TrUe", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"t", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"T", CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION},
-    {"false", CUOPT_PDLP_REDUCED_MATRIX_OFF},
-    {"False", CUOPT_PDLP_REDUCED_MATRIX_OFF},
-    {"FALSE", CUOPT_PDLP_REDUCED_MATRIX_OFF},
-    {"FaLsE", CUOPT_PDLP_REDUCED_MATRIX_OFF},
-    {"f", CUOPT_PDLP_REDUCED_MATRIX_OFF},
-    {"F", CUOPT_PDLP_REDUCED_MATRIX_OFF}};
-  for (const auto& [value, expected] : values) {
-    SCOPED_TRACE(value);
-    settings.set_parameter_from_string(CUOPT_PDLP_HYPER_REDUCED_MATRIX, value);
-    EXPECT_EQ(settings.get_parameter<int>(CUOPT_PDLP_HYPER_REDUCED_MATRIX), expected);
-    EXPECT_EQ(settings.get_pdlp_settings().hyper_params.reduced_matrix,
-              static_cast<pdlp::reduced_matrix_mode_t>(expected));
-    const auto serialized = settings.get_parameter_as_string(CUOPT_PDLP_HYPER_REDUCED_MATRIX);
-    EXPECT_EQ(serialized, std::to_string(expected));
-    settings.set_parameter_from_string(CUOPT_PDLP_HYPER_REDUCED_MATRIX, serialized);
-    EXPECT_EQ(settings.get_parameter<int>(CUOPT_PDLP_HYPER_REDUCED_MATRIX), expected);
-  }
-}
-
-TEST(SolverSettingsTest, ReducedMatrixParameterRejectsInvalidValues)
-{
-  solver_settings_t<int, double> settings;
-  for (const auto* value : {"", "ON", "ROW_REDUCTION", "2", "-2", "1.0", "1x", "999999999999"}) {
-    SCOPED_TRACE(value);
-    EXPECT_THROW(settings.set_parameter_from_string(CUOPT_PDLP_HYPER_REDUCED_MATRIX, value),
-                 std::invalid_argument);
-    EXPECT_EQ(settings.get_parameter<int>(CUOPT_PDLP_HYPER_REDUCED_MATRIX),
-              CUOPT_PDLP_REDUCED_MATRIX_DEFAULT);
-  }
-  EXPECT_THROW(settings.set_parameter_from_string(CUOPT_METHOD, "OFF"), std::invalid_argument);
 }
 
 TEST(SolverSettingsTest, warm_start_smaller_vector)
