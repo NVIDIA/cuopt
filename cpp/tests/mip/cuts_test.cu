@@ -1074,7 +1074,7 @@ TEST(cuts, knapsack_fractional_capacity_regression)
                                           {6.0, {0.875, 0.875, 0.75, 6.0 - 5.75}, 7},
                                           {6.2, {0.875, 0.875, 0.75, 6.2 - 5.75}, 7},
                                           {3.2, {0.75, 0.75, 0.0, 3.2 - 3.0}, 4}};
-  for (int instance = 0; instance < cases.size(); instance++) {
+  for (std::size_t instance = 0; instance < cases.size(); instance++) {
     SCOPED_TRACE(instance);
     const double capacity = cases[instance].capacity;
     SCOPED_TRACE(capacity);
