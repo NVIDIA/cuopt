@@ -1963,8 +1963,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     settings.log.printf("Dependent row check in %.2fs\n", toc(dependent_row_start));
   }
 
-  // LP already goes through PSLP; this substitution is for QP/SOCP only.
-  if (settings.barrier_presolve && (has_cones || problem.Q.n > 0)) {
+  // LP already goes through PSLP; this substitution is for QP/SOCP only. A cache fill skips it.
+  if (settings.barrier_presolve && settings.barrier_eliminate_free_variables &&
+      (has_cones || problem.Q.n > 0)) {
     const i_t old_free_count         = static_cast<i_t>(presolve_info.direct_free_variables.size());
     const f_t free_elimination_start = tic();
     const i_t pivot_rejected         = eliminate_free_variables(problem, presolve_info);

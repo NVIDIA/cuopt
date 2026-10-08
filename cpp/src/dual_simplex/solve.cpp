@@ -531,6 +531,9 @@ lp_status_t solve_linear_program_with_barrier(
 {
   lp_status_t status                                   = lp_status_t::UNSET;
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
+  // The cached presolve records cannot be replayed after an RHS update, so the fill solve
+  // keeps these free columns in the barrier system.
+  if (cache != nullptr) { barrier_settings.barrier_eliminate_free_variables = false; }
 
   auto const* xf          = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
   const bool user_has_soc = !user_problem.second_order_cone_dims.empty();

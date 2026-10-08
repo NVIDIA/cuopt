@@ -175,8 +175,11 @@ struct simplex_solver_settings_t {
   bool eliminate_singletons;  // true to eliminate singletons from the basis
   bool print_presolve_stats;  // true to print presolve stats
   bool barrier_presolve;      // true to use barrier presolve
-  bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
-  bool barrier;               // true to use barrier method, false to use dual simplex method
+  // Equality substitution of zero-cost free variables. A barrier cache cannot refresh the
+  // stored pivot RHS, so a solve that fills the cache turns this off.
+  bool barrier_eliminate_free_variables = true;
+  bool cudss_deterministic;  // true to use cuDSS deterministic mode, false for non-deterministic
+  bool barrier;              // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
   bool eliminate_dense_columns;         // true to eliminate dense columns from A*D*A^T
   bool barrier_iterative_refinement;    // true to use iterative refinement for barrier method
