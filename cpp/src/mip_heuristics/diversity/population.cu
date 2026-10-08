@@ -187,10 +187,10 @@ void population_t<i_t, f_t>::set_feasible_solution_callback(feasible_solution_ca
   cuopt_expects(!feasible_solution_callback,
                 error_type_t::RuntimeError,
                 "Population feasible-solution callback is already registered");
-  for (size_t i = 0; i < solutions.size(); ++i) {
-    auto& [stored, sol] = solutions[i];
+  if (!solutions.empty()) {
+    auto& [stored, sol] = solutions[0];
     if (stored && sol.get_feasible()) {
-      callback(sol.get_host_assignment(), sol.get_objective(), sol.get_user_objective(), i == 0);
+      callback(sol.get_host_assignment(), sol.get_objective(), sol.get_user_objective());
     }
   }
   feasible_solution_callback = std::move(callback);
@@ -204,12 +204,12 @@ void population_t<i_t, f_t>::clear_feasible_solution_callback()
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::notify_feasible_solution(solution_t<i_t, f_t>& sol, bool is_best)
+void population_t<i_t, f_t>::notify_feasible_solution(solution_t<i_t, f_t>& sol)
 {
   std::lock_guard<std::mutex> callback_lock(feasible_solution_callback_mutex);
   if (!feasible_solution_callback || !sol.get_feasible()) return;
   feasible_solution_callback(
-    sol.get_host_assignment(), sol.get_objective(), sol.get_user_objective(), is_best);
+    sol.get_host_assignment(), sol.get_objective(), sol.get_user_objective());
 }
 
 template <typename i_t, typename f_t>
@@ -455,7 +455,7 @@ std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&&
     solutions[0].second = std::move(temp_sol);
     indices[0].second   = sol_cost;
     best_updated        = true;
-    notify_feasible_solution(solutions[0].second, true);
+    notify_feasible_solution(solutions[0].second);
   }
 
   // Fast reject
@@ -487,7 +487,6 @@ std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&&
 
     solutions[hint].first  = true;
     solutions[hint].second = std::move(sol);
-    notify_feasible_solution(solutions[hint].second);
 
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)hint, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
@@ -502,7 +501,6 @@ std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&&
 
     solutions[free].first  = true;
     solutions[free].second = std::move(sol);
-    notify_feasible_solution(solutions[free].second);
 
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)free, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");

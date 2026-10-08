@@ -75,9 +75,9 @@ class population_t {
   bool is_better_than_best_feasible(solution_t<i_t, f_t>& sol);
   void run_all_recombiners(solution_t<i_t, f_t>& sol);
 
-  using feasible_solution_callback_t = std::function<void(const std::vector<f_t>&, f_t, f_t, bool)>;
-  // One consumer receives existing feasible members, then every accepted feasible solution.
-  // Arguments are assignment, solver objective, user objective, and whether this is slot 0.
+  using feasible_solution_callback_t = std::function<void(const std::vector<f_t>&, f_t, f_t)>;
+  // One consumer receives the current best feasible solution, then every best-slot update.
+  // Arguments are assignment, solver objective, and user objective.
   // Called under population locks: keep it short and do not call back into the population.
   void set_feasible_solution_callback(feasible_solution_callback_t callback);
   // Waits for any in-flight callback before releasing its captured state.
@@ -220,7 +220,7 @@ class population_t {
   assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
 
-  void notify_feasible_solution(solution_t<i_t, f_t>& sol, bool is_best = false);
+  void notify_feasible_solution(solution_t<i_t, f_t>& sol);
   std::mutex feasible_solution_callback_mutex;
   feasible_solution_callback_t feasible_solution_callback;
 };

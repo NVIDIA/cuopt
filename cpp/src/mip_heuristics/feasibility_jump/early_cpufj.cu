@@ -7,8 +7,6 @@
 
 #include "early_cpufj.cuh"
 
-#include <mip_heuristics/lns/early.cuh>
-#include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/splitmix64.hpp>
 
@@ -24,13 +22,11 @@ early_cpufj_t<i_t, f_t>::early_cpufj_t(
   const optimization_problem_t<i_t, f_t>& op_problem,
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
   early_incumbent_callback_t<f_t> incumbent_callback,
-  uint64_t seed,
-  std::exception_ptr* task_exception)
+  uint64_t seed)
   : early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>(op_problem, std::move(incumbent_callback)),
     problem_ptr_(&op_problem),
     tolerances_(tolerances),
-    seed_(seed),
-    task_exception_(task_exception)
+    seed_(seed)
 {
 }
 
@@ -45,24 +41,21 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
 {
   const bool threaded = !omp_in_parallel();
   // 1: presolve, 1: early GPU FJ, 1: early CPU FJ
-  if (lns_ || !climbers_.empty() ||
+  if (!climbers_.empty() ||
       (!threaded && omp_get_num_threads() < CUOPT_MIP_EARLY_CPUFJ_REQUIRED_THREAD_COUNT)) {
     return;
   }
 
   this->preemption_flag_.store(false);
-  lns_preemption_flag_.store(false);
   this->start_time_ = std::chrono::steady_clock::now();
 
   // Tasks are not preempted, so a lane posted beyond the team size would sit in the queue for the
   // whole of presolve without running an iteration.
-  const int worker_budget =
+  n_lanes =
     threaded
       ? 1
       : std::clamp(
           n_lanes, 1, std::max(1, omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS));
-  const int improvement_lanes = threaded ? 0 : presolve_lns_worker_count(worker_budget);
-  n_lanes                     = worker_budget - improvement_lanes;
   cuopt::splitmix64_t seed_rng(seed_);
   const int64_t base_seed = seed_rng.next_i64();
   climbers_.resize(n_lanes);
@@ -94,25 +87,9 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
   for (int k = 0; k < n_lanes; ++k)
     climbers_[k]->shared_incumbent = shared;
 
-  // Construct both private search states before any lane starts mutating the anchor.
-  if (improvement_lanes) {
-    cuopt_assert(task_exception_ != nullptr, "early LNS lanes need the team exception slot");
-    lns_ = std::make_unique<early_lns_t<i_t, f_t>>(
-      *climbers_[0],
-      shared,
-      lns_preemption_flag_,
-      *task_exception_,
-      [this](f_t objective, const std::vector<f_t>& x, const char* origin) {
-        std::lock_guard<std::mutex> guard(incumbent_mutex_);
-        this->try_update_best(objective, x, origin);
-      },
-      seed_);
-    improvement_lanes_ = improvement_lanes;
-  }
   if (!threaded)
-    CUOPT_LOG_INFO("Early CPUFJ budget: %d feasibility + %d LNS workers within %d OpenMP threads",
+    CUOPT_LOG_INFO("Early CPUFJ budget: %d feasibility workers within %d OpenMP threads",
                    n_lanes,
-                   improvement_lane_count(),
                    omp_get_num_threads());
   CUOPT_LOG_DEBUG("Launching %d early CPUFJ %s", n_lanes, threaded ? "thread" : "tasks");
   if (threaded) {
@@ -126,17 +103,14 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
   depend(out : *climber) default(none)
     cpufj_solve(climber);
   }
-  if (lns_) lns_->start();
 }
 
 template <typename i_t, typename f_t>
 void early_cpufj_t<i_t, f_t>::stop()
 {
-  if (climbers_.empty() && !lns_) { return; }
+  if (climbers_.empty()) { return; }
 
   preemption_flag_.store(true);
-  lns_preemption_flag_.store(true);
-  if (lns_) lns_->request_stop();
 
   // Every lane is told to stop before any wait, otherwise the first wait blocks on a lane that has
   // not been asked to exit yet.
@@ -149,12 +123,6 @@ void early_cpufj_t<i_t, f_t>::stop()
     for (size_t k = 0; k < climbers_.size(); ++k) {
 #pragma omp taskwait depend(in : *climbers_[k])  // Wait for each early CPUFJ task to finish
     }
-  }
-
-  if (lns_) {
-    lns_->finish();
-    lns_.reset();
-    improvement_lanes_ = 0;
   }
 
   [[maybe_unused]] i_t total_iterations = 0;

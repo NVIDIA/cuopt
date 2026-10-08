@@ -30,7 +30,7 @@
 namespace cuopt::mathematical_optimization::mip {
 
 // Apply the existing feasibility-portfolio thresholds to the capacity remaining
-// after reserving any enabled persistent LNS workers.
+// after reserving the persistent CPUFJ LNS worker.
 template <typename i_t, typename f_t>
 static int feasibility_team_size(const mip_solver_context_t<i_t, f_t>& context)
 {
@@ -120,20 +120,6 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
   }
 }
 
-// The current device is per thread, and the task may run on any team member.
-template <typename i_t, typename f_t>
-static void run_repair_lns_task(repair_lns_t<i_t, f_t>& repair_lns,
-                                lns_population_feed_t<i_t, f_t>& feed,
-                                population_t<i_t, f_t>& population,
-                                int device)
-{
-  RAFT_CUDA_TRY(cudaSetDevice(device));
-  repair_lns.run([&feed](auto& seeds) { feed.recent_feasible(seeds); },
-                 [&population](const auto& x, f_t objective) {
-                   population.add_external_solution(x, objective, solution_origin_t::CPUFJ);
-                 });
-}
-
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_lns_improvement_thread(
   population_t<i_t, f_t>& population)
@@ -143,7 +129,7 @@ void local_search_t<i_t, f_t>::start_cpufj_lns_improvement_thread(
     omp_get_num_threads(), context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
   if (workers == 0) return;
   auto* exception_ptr = context.task_exception;
-  cuopt_assert(exception_ptr != nullptr, "LNS workers need the team exception slot");
+  cuopt_assert(exception_ptr != nullptr, "LNS worker needs the team exception slot");
 
   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
   solution_t<i_t, f_t> solution(*context.problem_ptr);
@@ -171,62 +157,37 @@ void local_search_t<i_t, f_t>::start_cpufj_lns_improvement_thread(
       population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
     };
 
-  repair_lns_feed = std::make_unique<lns_population_feed_t<i_t, f_t>>(population);
-  auto stream     = context.problem_ptr->handle_ptr->get_stream();
-  auto bounds     = cuopt::host_copy_async(context.problem_ptr->variable_bounds, stream);
-  auto types      = cuopt::host_copy_async(context.problem_ptr->variable_types, stream);
+  lns_population_feed = std::make_unique<lns_population_feed_t<i_t, f_t>>(population);
+  auto stream         = context.problem_ptr->handle_ptr->get_stream();
+  lns_original_bounds = cuopt::host_copy_async(context.problem_ptr->variable_bounds, stream);
+  lns_original_types  = cuopt::host_copy_async(context.problem_ptr->variable_types, stream);
   context.problem_ptr->handle_ptr->sync_stream();
-  repair_lns = std::make_unique<repair_lns_t<i_t, f_t>>(*scratch_cpu_fj_lns,
-                                                        std::move(bounds),
-                                                        std::move(types),
-                                                        context.preempt_heuristic_solver_,
-                                                        context.base_seed,
-                                                        population.timer);
-  int device;
-  RAFT_CUDA_TRY(cudaGetDevice(&device));
-  auto* repair_ptr = repair_lns.get();
-  auto* feed_ptr   = repair_lns_feed.get();
-  auto* pop        = &population;
-  if (persistent_repair_lns_enabled) {
-    CUOPT_LOG_DEBUG("Launching repair LNS improvement task");
-#pragma omp task firstprivate(repair_ptr, feed_ptr, pop, exception_ptr, device) \
-  priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *repair_ptr) default(none)
-    {
-      const int previous_max_threads = omp_get_max_threads();
-      omp_set_num_threads(1);
-      try {
-        run_repair_lns_task(*repair_ptr, *feed_ptr, *pop, device);
-      } catch (...) {
-        repair_ptr->halted = true;
-#pragma omp critical(cuopt_mip_task_exception)
-        if (!*exception_ptr) *exception_ptr = std::current_exception();
-      }
-      omp_set_num_threads(previous_max_threads);
-    }
-  }
-  auto ptr       = scratch_cpu_fj_lns.get();
-  const size_t n = context.problem_ptr->n_variables;
-  if (persistent_cpufj_lns_enabled) {
-    CUOPT_LOG_DEBUG("Launching CPUFJ LNS improvement task");
-#pragma omp task firstprivate(ptr, feed_ptr, repair_ptr, exception_ptr, n) \
+  auto* bounds_ptr = &lns_original_bounds;
+  auto* types_ptr  = &lns_original_types;
+  auto* feed_ptr   = lns_population_feed.get();
+  auto* ptr        = scratch_cpu_fj_lns.get();
+  const size_t n   = context.problem_ptr->n_variables;
+  CUOPT_LOG_DEBUG("Launching CPUFJ LNS improvement task");
+#pragma omp task firstprivate(ptr, feed_ptr, bounds_ptr, types_ptr, exception_ptr, n) \
   priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *ptr) default(none)
-    {
-      const int previous_max_threads = omp_get_max_threads();
-      omp_set_num_threads(1);
-      try {
-        run_cpufj_lns_ruin_repair<i_t, f_t>(
-          ptr,
-          [feed_ptr, n](auto& assignment) {
-            assignment.resize(n);
-            return feed_ptr->best_feasible(assignment);
-          },
-          [repair_ptr](const auto& assignment) { return repair_ptr->feasible(assignment); });
-      } catch (...) {
+  {
+    const int previous_max_threads = omp_get_max_threads();
+    omp_set_num_threads(1);
+    try {
+      run_cpufj_lns_ruin_repair<i_t, f_t>(
+        ptr,
+        [feed_ptr, n](auto& assignment) {
+          assignment.resize(n);
+          return feed_ptr->best_feasible(assignment);
+        },
+        [ptr, bounds_ptr, types_ptr](const auto& assignment) {
+          return verify_cpufj_lns_feasible(*ptr->problem, *bounds_ptr, *types_ptr, assignment);
+        });
+    } catch (...) {
 #pragma omp critical(cuopt_mip_task_exception)
-        if (!*exception_ptr) *exception_ptr = std::current_exception();
-      }
-      omp_set_num_threads(previous_max_threads);
+      if (!*exception_ptr) *exception_ptr = std::current_exception();
     }
+    omp_set_num_threads(previous_max_threads);
   }
 }
 
@@ -278,7 +239,6 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
   // Signal every persistent worker before reaching any task scheduling point.
   // LNS can run on teams too small to launch the scratch feasibility lanes.
   if (scratch_cpu_fj_lns) scratch_cpu_fj_lns->halted = true;
-  if (repair_lns) repair_lns->halted = true;
   if (scratch_cpu_fj_on_lp_opt) scratch_cpu_fj_on_lp_opt->halted = true;
   for (auto& cpu_fj : scratch_cpu_fj) {
     if (cpu_fj) cpu_fj->halted = true;
@@ -298,11 +258,6 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
   if (scratch_cpu_fj_lns) {
 #pragma omp taskwait depend(in : *scratch_cpu_fj_lns)  // Wait for the LNS improvement task
     CUOPT_LOG_DEBUG("CPUFJ LNS improvement task was stopped");
-  }
-
-  if (repair_lns) {
-#pragma omp taskwait depend(in : *repair_lns)  // Wait for the repair LNS improvement task
-    CUOPT_LOG_DEBUG("Repair LNS improvement task was stopped");
   }
 }
 

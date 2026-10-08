@@ -211,7 +211,7 @@ TEST(Population, ExternalQueueDrainAllowsReentrantProducerAndLeavesNewHeapPendin
   EXPECT_EQ(dm.population.best_feasible().get_objective(), 1.0 / 128);
 }
 
-TEST(Population, LnsFeedBoundsRecentAcceptedSeedsAndDetachesOnDestruction)
+TEST(Population, LnsFeedTracksOnlyBestSlotAndDetachesOnDestruction)
 {
   raft::handle_t handle;
   opt::optimization_problem_t<int, double> op(&handle);
@@ -233,24 +233,10 @@ TEST(Population, LnsFeedBoundsRecentAcceptedSeedsAndDetachesOnDestruction)
     std::vector<double> best(2);
     ASSERT_TRUE(feed.best_feasible(best));
     EXPECT_EQ(best, (std::vector<double>{0.75, 0}));
-    std::vector<std::vector<double>> seeds;
-    feed.recent_feasible(seeds);
-    ASSERT_FALSE(seeds.empty());
-    for (const auto& seed : seeds)
-      EXPECT_EQ(seed, (std::vector<double>{0.75, 0}));
-
     for (int i = 10; i > 0; --i) {
       const double value = i / 16.0;
       dm.population.add_external_solution({value, 0}, value, mip::solution_origin_t::EXTERNAL);
       dm.population.add_external_solutions_to_population();
-    }
-    seeds.clear();
-    feed.recent_feasible(seeds);
-    ASSERT_EQ(seeds.size(), 8);
-    EXPECT_EQ(seeds.back(), (std::vector<double>{1.0 / 16, 0}));
-    for (const auto& seed : seeds) {
-      EXPECT_LE(seed[0], 8.0 / 16);
-      EXPECT_EQ(seed[1], 0);
     }
     ASSERT_TRUE(feed.best_feasible(best));
     EXPECT_EQ(best, (std::vector<double>{1.0 / 16, 0}));
@@ -261,10 +247,10 @@ TEST(Population, LnsFeedBoundsRecentAcceptedSeedsAndDetachesOnDestruction)
     const std::vector<double> nearby{value + 0.5, 1};
     dm.population.add_external_solution(nearby, value, mip::solution_origin_t::EXTERNAL);
     dm.population.add_external_solutions_to_population();
-    seeds.clear();
-    feed.recent_feasible(seeds);
-    ASSERT_EQ(seeds.size(), 8);
-    EXPECT_EQ(seeds.back(), nearby);
+    EXPECT_TRUE(std::any_of(
+      dm.population.solutions.begin(), dm.population.solutions.end(), [&](auto& member) {
+        return member.first && member.second.get_host_assignment() == nearby;
+      }));
     EXPECT_EQ(dm.population.best_feasible().get_objective(), 1.0 / 16);
     ASSERT_TRUE(feed.best_feasible(best));
     EXPECT_EQ(best, (std::vector<double>{1.0 / 16, 0}));
@@ -278,13 +264,14 @@ TEST(Population, LnsFeedBoundsRecentAcceptedSeedsAndDetachesOnDestruction)
   // Reattaching would fail if the destroyed feed had left its callback installed.
   std::vector<std::vector<double>> received;
   dm.population.set_feasible_solution_callback(
-    [&received](const auto& assignment, double, double, bool) { received.push_back(assignment); });
+    [&received](const auto& assignment, double, double) { received.push_back(assignment); });
+  ASSERT_EQ(received.size(), 1);
+  EXPECT_EQ(received[0], (std::vector<double>{1.0 / 16, 0}));
   received.clear();
   dm.population.add_external_solution({0, 0}, 0, mip::solution_origin_t::EXTERNAL);
   dm.population.add_external_solutions_to_population();
-  ASSERT_FALSE(received.empty());
-  for (const auto& assignment : received)
-    EXPECT_EQ(assignment, (std::vector<double>{0, 0}));
+  ASSERT_EQ(received.size(), 1);
+  EXPECT_EQ(received[0], (std::vector<double>{0, 0}));
   dm.population.clear_feasible_solution_callback();
 }
 

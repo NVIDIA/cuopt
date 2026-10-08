@@ -324,8 +324,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
         *problem.original_problem_ptr,
         settings.get_tolerances(),
         incumbent_callback,
-        mip::derive_seed(solver.context.base_seed, mip::rng_id_t::early_cpufj),
-        &task_exception);
+        mip::derive_seed(solver.context.base_seed, mip::rng_id_t::early_cpufj));
       // Convert initial_upper_bound from user-space to the CPUFJ's solver-space (papilo-presolved).
       // problem.get_solver_obj_from_user_obj uses the papilo offset/scale (matching the CPUFJ).
       if (std::isfinite(initial_upper_bound)) {
@@ -586,8 +585,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         op_problem,
         settings.get_tolerances(),
         early_fj_callback,
-        mip::derive_seed(early_fj_base_seed, mip::rng_id_t::early_cpufj),
-        &task_exception);
+        mip::derive_seed(early_fj_base_seed, mip::rng_id_t::early_cpufj));
       // Both are built from the same op_problem, so the probe's threshold needs no conversion.
       if (pre_solve_heuristics && pre_solve_heuristics->solution_found()) {
         early_cpufj->set_best_objective(pre_solve_heuristics->get_best_objective());
@@ -670,7 +668,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       const int papilo_threads     = mip::papilo_thread_budget(
         omp_get_num_threads(), cpufj_workers, gpufj_workers, structural_workers);
       CUOPT_LOG_INFO(
-        "Papilo thread budget: %d presolve + %d CPUFJ/LNS + %d GPUFJ + %d structural within %d "
+        "Papilo thread budget: %d presolve + %d CPUFJ + %d GPUFJ + %d structural within %d "
         "threads",
         papilo_threads,
         cpufj_workers,
