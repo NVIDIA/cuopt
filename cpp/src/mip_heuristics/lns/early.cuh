@@ -135,7 +135,10 @@ class early_lns_t {
     const int previous_max_threads = omp_get_max_threads();
     omp_set_num_threads(1);
     cuopt::scope_guard restore([&] { omp_set_num_threads(previous_max_threads); });
-    run_cpufj_lns_ruin_repair<i_t, f_t>(cpufj_.get(), [this](auto& x) { return snapshot(x); });
+    run_cpufj_lns_ruin_repair<i_t, f_t>(
+      cpufj_.get(),
+      [this](auto& x) { return snapshot(x); },
+      [this](const auto& x) { return repair_lns_->feasible(x); });
   }
 
   void run_repair_lns()

@@ -208,16 +208,19 @@ void local_search_t<i_t, f_t>::start_cpufj_lns_improvement_thread(
   const size_t n = context.problem_ptr->n_variables;
   if (persistent_cpufj_lns_enabled) {
     CUOPT_LOG_DEBUG("Launching CPUFJ LNS improvement task");
-#pragma omp task firstprivate(ptr, feed_ptr, exception_ptr, n) \
+#pragma omp task firstprivate(ptr, feed_ptr, repair_ptr, exception_ptr, n) \
   priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *ptr) default(none)
     {
       const int previous_max_threads = omp_get_max_threads();
       omp_set_num_threads(1);
       try {
-        run_cpufj_lns_ruin_repair<i_t, f_t>(ptr, [feed_ptr, n](auto& assignment) {
-          assignment.resize(n);
-          return feed_ptr->best_feasible(assignment);
-        });
+        run_cpufj_lns_ruin_repair<i_t, f_t>(
+          ptr,
+          [feed_ptr, n](auto& assignment) {
+            assignment.resize(n);
+            return feed_ptr->best_feasible(assignment);
+          },
+          [repair_ptr](const auto& assignment) { return repair_ptr->feasible(assignment); });
       } catch (...) {
 #pragma omp critical(cuopt_mip_task_exception)
         if (!*exception_ptr) *exception_ptr = std::current_exception();

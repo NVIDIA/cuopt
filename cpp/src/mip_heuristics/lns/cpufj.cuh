@@ -6,6 +6,7 @@
 
 #include <mip_heuristics/feasibility_jump/cpu/search/api.hpp>
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
+#include <utilities/timer.hpp>
 #include "cpufj_geometry.cuh"
 #include "cpufj_validation.cuh"
 
@@ -89,7 +90,8 @@ bool repair_cpufj_lns_neighborhood(fj_cpu_climber_t<i_t, f_t>* ptr,
 // it cannot race the main solve thread or the feasibility-finding scratch CPUFJ lanes.
 template <typename i_t, typename f_t>
 void run_cpufj_lns_ruin_repair(fj_cpu_climber_t<i_t, f_t>* ptr,
-                               const std::function<bool(std::vector<f_t>&)>& snapshot)
+                               const std::function<bool(std::vector<f_t>&)>& snapshot,
+                               const std::function<bool(const std::vector<f_t>&)>& model_feasible)
 {
   const bool geometric_repair = configure_cpufj_lns_geometry(*ptr);
   if (geometric_repair) { CUOPT_LOG_DEBUG("CPUFJ LNS: enabling bound-aware geometric repair"); }
@@ -115,21 +117,31 @@ void run_cpufj_lns_ruin_repair(fj_cpu_climber_t<i_t, f_t>* ptr,
   std::vector<i_t> guidance_pool;
   std::vector<uint8_t> chosen(n_vars, 0);
   std::vector<i_t> ruin_set;
-  std::vector<f_t> pop_assignment;
+  std::vector<f_t> pop_assignment, population_seed, rejected_seed;
+  cuopt::timer_t rejection_log_timer(0.0);
   i_t consecutive_no_improve = 0;
 
   while (!ptr->halted.load(std::memory_order_relaxed) &&
          !ptr->preemption_flag.load(std::memory_order_relaxed)) {
-    if (!snapshot(pop_assignment) || pop_assignment.size() != static_cast<size_t>(n_vars)) {
+    if (!snapshot(population_seed) || population_seed.size() != static_cast<size_t>(n_vars) ||
+        population_seed == rejected_seed) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
 
-    if (!clamp_and_validate_cpufj_lns_seed(
-          *ptr->problem, ptr->h_var_bounds.underlying(), pop_assignment)) {
+    pop_assignment = population_seed;
+    if (!clamp_and_validate_cpufj_lns_seed(*ptr, pop_assignment, model_feasible)) {
+      rejected_seed = population_seed;
+      if (rejection_log_timer.check_time_limit()) {
+        CUOPT_LOG_DEBUG(
+          "CPUFJ LNS: skipping population seed that fails solver-model or private-domain "
+          "validation; waiting for a different seed");
+        rejection_log_timer = cuopt::timer_t(5.0);
+      }
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
+    rejected_seed.clear();
     const f_t pop_objective = std::inner_product(
       pop_assignment.begin(), pop_assignment.end(), ptr->problem->h_obj_coeffs.begin(), f_t{0});
     const bool adopt_population_incumbent =

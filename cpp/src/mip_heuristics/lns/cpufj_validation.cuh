@@ -57,6 +57,27 @@ bool verify_cpufj_lns_feasible(const fj_cpu_problem_t<i_t, f_t>& problem,
   return verify_cpufj_lns_feasible(problem, bounds, problem.h_var_types, assignment);
 }
 
+// Project into the private search domain, then recheck the complete assignment.
+template <typename i_t, typename f_t>
+bool clamp_cpufj_lns_seed_to_domain(const fj_cpu_problem_t<i_t, f_t>& problem,
+                                    const std::vector<typename type_2<f_t>::type>& bounds,
+                                    const std::vector<var_t>& types,
+                                    std::vector<f_t>& assignment,
+                                    bool* changed = nullptr)
+{
+  if (changed) *changed = false;
+  for (i_t v = 0; v < problem.n_variables; ++v) {
+    const bool integer = types[v] == var_t::INTEGER;
+    const f_t lo       = integer ? std::ceil(get_lower(bounds[v])) : get_lower(bounds[v]);
+    const f_t hi       = integer ? std::floor(get_upper(bounds[v])) : get_upper(bounds[v]);
+    if (lo > hi) return false;
+    const f_t value = std::clamp(integer ? std::round(assignment[v]) : assignment[v], lo, hi);
+    if (changed) *changed |= value != assignment[v];
+    assignment[v] = value;
+  }
+  return verify_cpufj_lns_feasible(problem, bounds, types, assignment);
+}
+
 // Round integer values and clamp to strict domains, validating before and after adjustment.
 template <typename i_t, typename f_t>
 bool clamp_and_validate_cpufj_lns_seed(const fj_cpu_problem_t<i_t, f_t>& problem,
@@ -64,15 +85,8 @@ bool clamp_and_validate_cpufj_lns_seed(const fj_cpu_problem_t<i_t, f_t>& problem
                                        const std::vector<var_t>& types,
                                        std::vector<f_t>& assignment)
 {
-  if (!verify_cpufj_lns_feasible(problem, bounds, types, assignment)) return false;
-  for (i_t v = 0; v < problem.n_variables; ++v) {
-    const bool integer = types[v] == var_t::INTEGER;
-    const f_t lo       = integer ? std::ceil(get_lower(bounds[v])) : get_lower(bounds[v]);
-    const f_t hi       = integer ? std::floor(get_upper(bounds[v])) : get_upper(bounds[v]);
-    if (lo > hi) return false;
-    assignment[v] = std::clamp(integer ? std::round(assignment[v]) : assignment[v], lo, hi);
-  }
-  return verify_cpufj_lns_feasible(problem, bounds, types, assignment);
+  return verify_cpufj_lns_feasible(problem, bounds, types, assignment) &&
+         clamp_cpufj_lns_seed_to_domain(problem, bounds, types, assignment);
 }
 
 template <typename i_t, typename f_t>
@@ -81,5 +95,21 @@ bool clamp_and_validate_cpufj_lns_seed(const fj_cpu_problem_t<i_t, f_t>& problem
                                        std::vector<f_t>& assignment)
 {
   return clamp_and_validate_cpufj_lns_seed(problem, bounds, problem.h_var_types, assignment);
+}
+
+// Population seeds belong to the solver model, before CPUFJ caps domains or strengthens types.
+template <typename i_t, typename f_t, typename model_validator_t>
+bool clamp_and_validate_cpufj_lns_seed(const fj_cpu_climber_t<i_t, f_t>& climber,
+                                       std::vector<f_t>& assignment,
+                                       const model_validator_t& model_feasible)
+{
+  if (!model_feasible(assignment)) return false;
+  bool changed = false;
+  return clamp_cpufj_lns_seed_to_domain(*climber.problem,
+                                        climber.h_var_bounds.underlying(),
+                                        climber.problem->h_var_types,
+                                        assignment,
+                                        &changed) &&
+         (!changed || model_feasible(assignment));
 }
 }  // namespace cuopt::mathematical_optimization::mip

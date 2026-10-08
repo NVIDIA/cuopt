@@ -143,6 +143,14 @@ TEST(Lns, PopulationSeedUsesModelBoundsBeyondCpufjIntegerCap)
   EXPECT_FALSE(lns.feasible({4e7 + 1}));
   EXPECT_FALSE(lns.feasible({2e7 + .5}));
 
+  auto seed = std::vector<double>{2e7};
+  ASSERT_TRUE(mip::clamp_and_validate_cpufj_lns_seed(
+    *anchor, seed, [&](const auto& x) { return lns.feasible(x); }));
+  EXPECT_EQ(seed, (std::vector<double>{1e7}));
+  seed = {4e7 + 1};
+  EXPECT_FALSE(mip::clamp_and_validate_cpufj_lns_seed(
+    *anchor, seed, [&](const auto& x) { return lns.feasible(x); }));
+
   mip::lns_repair_request_t<double> request;
   request.start = request.lower = request.upper = {2e7};
   EXPECT_TRUE(lns.make_neighborhood(request).possible);
@@ -184,6 +192,13 @@ TEST(Lns, PopulationSeedKeepsOriginalContinuousTypes)
   EXPECT_EQ(normalized, source);
   EXPECT_FALSE(lns.feasible({1.5, .6}));
 
+  ASSERT_TRUE(mip::clamp_and_validate_cpufj_lns_seed(
+    *anchor, normalized, [&](const auto& x) { return lns.feasible(x); }));
+  EXPECT_EQ(normalized, (std::vector<double>{2, 1}));
+  normalized = {1.5, .6};
+  EXPECT_FALSE(mip::clamp_and_validate_cpufj_lns_seed(
+    *anchor, normalized, [&](const auto& x) { return lns.feasible(x); }));
+
   mip::lns_repair_request_t<double> request;
   request.start           = source;
   request.lower           = {1.5, 0};
@@ -197,6 +212,49 @@ TEST(Lns, PopulationSeedKeepsOriginalContinuousTypes)
   const auto fixed              = lns.repair(request, mip::lns_repair_backend_t::cpufj, nullptr);
   ASSERT_TRUE(fixed.feasible);
   EXPECT_EQ(fixed.assignment, source);
+}
+
+TEST(Lns, CpufjWorkerSkipsRepeatedIncompatiblePopulationSeed)
+{
+  std::atomic<bool> preemption{false};
+  const host_model_t model{{1, -.5},
+                           {0, 0},
+                           {4e7, 8e7},
+                           {1, 1},
+                           {0},
+                           {0},
+                           {0, 1},
+                           {0, 2},
+                           {opt::var_t::INTEGER, opt::var_t::INTEGER}};
+  auto anchor = make_anchor(model, preemption, test_tolerances());
+  mip::repair_lns_t<int, double> lns(
+    *anchor, {make_double2(0, 4e7), make_double2(0, 8e7)}, model.types, preemption, 42);
+  const std::vector<double> incompatible{2e7, 4e7}, compatible{1, 2};
+  ASSERT_TRUE(lns.feasible(incompatible));
+  auto projected = incompatible;
+  EXPECT_FALSE(mip::clamp_and_validate_cpufj_lns_seed(
+    *anchor, projected, [&](const auto& x) { return lns.feasible(x); }));
+  // Independent clamping to the CPUFJ caps breaks x0 - .5*x1 = 0.
+  EXPECT_FALSE(lns.feasible(projected));
+
+  int snapshots = 0, validations = 0;
+  mip::run_cpufj_lns_ruin_repair<int, double>(
+    anchor.get(),
+    [&](auto& x) {
+      ++snapshots;
+      x = snapshots < 4 ? incompatible : compatible;
+      if (snapshots == 4) preemption = true;
+      return true;
+    },
+    [&](const auto& x) {
+      ++validations;
+      return lns.feasible(x);
+    });
+  EXPECT_EQ(snapshots, 4);
+  // One model validation per distinct seed; the unchanged replacement needs no second check.
+  EXPECT_EQ(validations, 2);
+  ASSERT_TRUE(anchor->feasible_found);
+  EXPECT_TRUE(lns.feasible(anchor->h_best_assignment.underlying()));
 }
 
 TEST(Lns, RunImprovesPopulationSeedExcludedByCpufjStrengthening)
