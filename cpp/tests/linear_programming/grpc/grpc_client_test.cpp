@@ -663,12 +663,14 @@ TEST_F(GrpcClientTest, GetIncumbents_Success)
       auto* inc1 = resp->add_incumbents();
       inc1->set_index(0);
       inc1->set_objective(100.5);
+      inc1->set_bound(90.0);
       inc1->add_assignment(1.0);
       inc1->add_assignment(0.0);
 
       auto* inc2 = resp->add_incumbents();
       inc2->set_index(1);
       inc2->set_objective(95.3);
+      inc2->set_bound(95.3);
       inc2->add_assignment(1.0);
       inc2->add_assignment(1.0);
 
@@ -683,8 +685,10 @@ TEST_F(GrpcClientTest, GetIncumbents_Success)
   EXPECT_EQ(result.incumbents.size(), 2);
   EXPECT_EQ(result.incumbents[0].index, 0);
   EXPECT_DOUBLE_EQ(result.incumbents[0].objective, 100.5);
+  EXPECT_DOUBLE_EQ(result.incumbents[0].bound, 90.0);
   EXPECT_EQ(result.incumbents[1].index, 1);
   EXPECT_DOUBLE_EQ(result.incumbents[1].objective, 95.3);
+  EXPECT_DOUBLE_EQ(result.incumbents[1].bound, 95.3);
   EXPECT_EQ(result.next_index, 2);
   EXPECT_FALSE(result.job_complete);
 }

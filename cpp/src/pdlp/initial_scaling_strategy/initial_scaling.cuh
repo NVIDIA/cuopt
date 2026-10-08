@@ -114,6 +114,9 @@ class pdlp_initial_scaling_strategy_t {
   // Public for distributed PDLP
   void compute_scaling_vectors(i_t number_of_ruiz_iterations, f_t alpha);
 
+  // Release capacity, not just logical size, after the last scaling pass.
+  void release_iteration_scratch();
+
   // ----- Distributed-PDLP hooks -----
 
   // Apply the cumulative row/column scalings that Ruiz/Pock-Chambolle
@@ -147,7 +150,7 @@ class pdlp_initial_scaling_strategy_t {
   void curtis_reid_folding();
   // Iteration_* scratch buffers used by ruiz_iter_local /
   // pock_chambolle_scaling. Exposed mutably so distributed PDLP can grow
-  // them back to full size after the ctor's release (see distributed_scaling).
+  // them while the distributed scaling passes are in progress.
   rmm::device_uvector<f_t>& get_iteration_variable_scaling();
   rmm::device_uvector<f_t>& get_iteration_constraint_matrix_scaling();
 
