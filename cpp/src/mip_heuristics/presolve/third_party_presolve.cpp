@@ -78,23 +78,7 @@ void normalize_for_presolve(io::mps_data_model_t<i_t, f_t> const& mps,
     }
     objective_offset = -objective_offset;
   }
-
-  if (constr_lb.empty() && constr_ub.empty()) {
-    const auto& row_types         = mps.get_row_types();
-    const auto& constraint_bounds = mps.get_constraint_bounds();
-    for (size_t i = 0; i < row_types.size(); ++i) {
-      if (row_types[i] == 'L') {
-        constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
-        constr_ub.push_back(constraint_bounds[i]);
-      } else if (row_types[i] == 'G') {
-        constr_lb.push_back(constraint_bounds[i]);
-        constr_ub.push_back(std::numeric_limits<f_t>::infinity());
-      } else if (row_types[i] == 'E') {
-        constr_lb.push_back(constraint_bounds[i]);
-        constr_ub.push_back(constraint_bounds[i]);
-      }
-    }
-  }
+  expand_rhs(mps, constr_lb, constr_ub);
 }
 
 // Build a papilo::Problem
