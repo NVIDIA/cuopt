@@ -75,14 +75,22 @@ void cleanup_shared_memory()
   if (job_queue) {
     munmap(job_queue, sizeof(JobQueueEntry) * MAX_JOBS);
     shm_unlink(SHM_JOB_QUEUE.c_str());
+    job_queue = nullptr;
   }
   if (result_queue) {
     munmap(result_queue, sizeof(ResultQueueEntry) * MAX_RESULTS);
     shm_unlink(SHM_RESULT_QUEUE.c_str());
+    result_queue = nullptr;
+  }
+  if (worker_ready_flags) {
+    munmap(worker_ready_flags, sizeof(std::atomic<bool>) * static_cast<size_t>(config.num_workers));
+    shm_unlink(SHM_WORKER_READY.c_str());
+    worker_ready_flags = nullptr;
   }
   if (shm_ctrl) {
     munmap(shm_ctrl, sizeof(SharedMemoryControl));
     shm_unlink(SHM_CONTROL.c_str());
+    shm_ctrl = nullptr;
   }
 }
 
@@ -201,7 +209,7 @@ pid_t spawn_worker(int worker_id, bool is_replacement)
     close_and_reset(worker_pipes[worker_id].to_worker_fd);
     close_and_reset(worker_pipes[worker_id].from_worker_fd);
     close_and_reset(worker_pipes[worker_id].incumbent_from_worker_fd);
-    worker_process(worker_id);
+    worker_process(worker_id, is_replacement);
     _exit(0);
   }
 

@@ -15,7 +15,7 @@
  *   DefaultServerTests     - Shared server with default config (~22 tests)
  *   ChunkedUploadTests     - Shared server with --max-message-mb 256 (4 tests)
  *   PathSelectionTests     - Shared server with --max-message-bytes 12288 --verbose (4 tests)
- *   ErrorRecoveryTests     - Per-test server lifecycle (4 tests)
+ *   ErrorRecoveryTests     - Per-test server lifecycle (GPU health + respawn timeout)
  *   TlsServerTests         - Shared TLS server (2 tests)
  *   MtlsServerTests        - Shared mTLS server (2 tests)
  *
@@ -54,7 +54,9 @@
 #include "grpc_test_log_capture.hpp"
 
 #include <cuopt_remote_service.grpc.pb.h>
+#include <grpcpp/generic/generic_stub.h>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/support/byte_buffer.h>
 
 #include "grpc_service_mapper.hpp"
 
@@ -802,6 +804,42 @@ TEST_F(DefaultServerTests, ServerAcceptsConnections)
   EXPECT_TRUE(log_capture.client_log_contains("Connected successfully"))
     << "Expected success log. Logs:\n"
     << log_capture.get_client_logs();
+}
+
+// Kubelet grpc probes call grpc.health.v1.Health/Check with an empty service
+// name. The request has to be a real empty buffer: a default ByteBuffer is
+// null, and the health service rejects that as "could not parse request".
+// HealthCheckResponse{status: SERVING} is field 1, varint 1.
+TEST_F(DefaultServerTests, StandardHealthCheckServing)
+{
+  auto channel =
+    grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+  grpc::GenericStub stub(channel);
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  grpc::Slice empty_request;
+  grpc::ByteBuffer request(&empty_request, 1);
+  grpc::ByteBuffer response;
+  grpc::Status status;
+  grpc::CompletionQueue cq;
+  auto call = stub.PrepareUnaryCall(&ctx, "/grpc.health.v1.Health/Check", request, &cq);
+  ASSERT_NE(call, nullptr);
+  call->StartCall();
+  call->Finish(&response, &status, reinterpret_cast<void*>(1));
+  void* tag = nullptr;
+  bool ok   = false;
+  ASSERT_TRUE(cq.Next(&tag, &ok));
+  EXPECT_TRUE(ok);
+  EXPECT_EQ(tag, reinterpret_cast<void*>(1));
+  EXPECT_TRUE(status.ok()) << status.error_code() << " " << status.error_message();
+
+  std::vector<grpc::Slice> slices;
+  ASSERT_TRUE(response.Dump(&slices).ok());
+  std::string payload;
+  for (const auto& slice : slices) {
+    payload.append(reinterpret_cast<const char*>(slice.begin()), slice.size());
+  }
+  EXPECT_EQ(payload, std::string("\x08\x01", 2));
 }
 
 // -- Status / Cancel / Delete on nonexistent jobs --
@@ -2210,9 +2248,9 @@ TEST_F(ErrorRecoveryTests, PreJobGpuHealthFailureShutsDownWithoutRespawn)
   auto client = create_client();
   ASSERT_NE(client, nullptr);
 
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 5.0;
-  auto submitted      = client->submit_mip(create_simple_mip(), settings);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 5.0);
+  auto submitted = client->submit_mip(create_simple_mip(), settings);
   ASSERT_TRUE(submitted.success);
 
   // start_server() returns when the parent accepts RPCs, not when the worker
@@ -2259,6 +2297,94 @@ TEST_F(ErrorRecoveryTests, IdleGpuHealthFailureShutsDownWithoutRespawn)
   const std::string logs = read_file_contents(log_path);
   EXPECT_NE(logs.find("GPU unhealthy during idle probe"), std::string::npos) << logs;
   EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+// Original worker never publishes ready. Short ready timeout forces the same
+// fatal shutdown as a hung replacement, without waiting for a respawn.
+TEST_F(ErrorRecoveryTests, InitialWorkerReadyTimeoutShutsDown)
+{
+  ASSERT_TRUE(start_server({},
+                           {{"CUOPT_GRPC_TEST_WORKER_READY_HANG", "initial"},
+                            {"CUOPT_GRPC_TEST_INITIAL_READY_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("never became ready", 30000))
+    << "Initial ready-timeout shutdown was not logged\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the initial ready timeout\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("never became ready"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+// Replacement never publishes ready: SIGKILL the warm worker, then hang the
+// respawn after init/probe. The short timeout applies only to the replacement;
+// the original worker keeps the 180s budget so CUDA init can finish.
+TEST_F(ErrorRecoveryTests, RespawnedWorkerReadyTimeoutShutsDown)
+{
+  ASSERT_TRUE(start_server({},
+                           {{"CUOPT_GRPC_TEST_WORKER_READY_HANG", "respawn"},
+                            {"CUOPT_GRPC_TEST_RESPAWN_READY_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  // Initial worker must finish CUDA/RMM init before we kill it; hang applies
+  // only to replacements.
+  auto warmup = warm_up_worker(client.get(), log_path);
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success) << submit_result.error_message;
+  const std::string job_id = submit_result.job_id;
+
+  bool processing = false;
+  for (int i = 0; i < 120; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.success && status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before worker kill";
+
+  // delete of a PROCESSING job SIGKILLs the worker and triggers respawn.
+  ASSERT_TRUE(client->delete_job(job_id));
+
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("Restarted worker", 30000))
+    << "Monitor did not respawn after SIGKILL\n"
+    << log_capture.get_server_logs();
+
+  // READY_MS=3000 starts at Restarted worker. Replacement may still be in
+  // CUDA init; either hang-after-probe or mid-init timeout both log this.
+  ASSERT_TRUE(log_capture.wait_for_server_log("never became ready", 30000))
+    << "Ready-timeout shutdown was not logged\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after replacement ready timeout\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("Restarted worker"), std::string::npos) << logs;
+  EXPECT_NE(logs.find("never became ready"), std::string::npos) << logs;
 }
 
 TEST_F(ErrorRecoveryTests, ClientReconnectsAfterServerRestart)

@@ -380,6 +380,18 @@ def proxy(proxy_server, monkeypatch):
     set_max_request_size(1024 * 1024 * 1024)
 
 
+def test_openapi_legacy_path_matches_canonical(proxy_server):
+    canonical = requests.get(proxy_server + "/cuopt/openapi.json")
+    alias = requests.get(proxy_server + "/cuopt.yaml")
+    assert canonical.status_code == 200
+    assert alias.status_code == 200
+    assert alias.headers["content-type"].startswith("application/json")
+    body = alias.json()
+    assert body == canonical.json()
+    assert body["info"]["title"] == "NVIDIA cuOpt HTTP proxy"
+    assert "/cuopt.yaml" not in body["paths"]
+
+
 def test_parse_args_defaults():
     args = parse_args([])
     assert args.port == 5000
@@ -794,16 +806,26 @@ def test_incumbents_cursor_and_sentinel(proxy):
     req_id = res.json()["reqId"]
     assert fake.submitted[0]["enable_incumbents"] is True
     fake._incumbents[req_id] = [
-        {"index": 0, "objective": 2.0, "assignment": [1.0, 1.0]},
-        {"index": 1, "objective": 1.0, "assignment": [0.0, 1.0]},
+        {
+            "index": 0,
+            "objective": 2.0,
+            "bound": 1.5,
+            "assignment": [1.0, 1.0],
+        },
+        {
+            "index": 1,
+            "objective": 1.0,
+            "bound": 0.5,
+            "assignment": [0.0, 1.0],
+        },
     ]
     first = requests.get(
         url + f"/cuopt/solution/{req_id}/incumbents", headers=_JSON_ACCEPT
     )
     assert first.status_code == 200
     assert first.json() == [
-        {"solution": [1.0, 1.0], "cost": 2.0, "bound": None},
-        {"solution": [0.0, 1.0], "cost": 1.0, "bound": None},
+        {"solution": [1.0, 1.0], "cost": 2.0, "bound": 1.5},
+        {"solution": [0.0, 1.0], "cost": 1.0, "bound": 0.5},
     ]
     second = requests.get(
         url + f"/cuopt/solution/{req_id}/incumbents", headers=_JSON_ACCEPT

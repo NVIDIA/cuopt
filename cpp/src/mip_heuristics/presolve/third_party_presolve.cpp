@@ -5,14 +5,7 @@
  */
 /* clang-format on */
 
-// Papilo's ProbingView::reset() guards bounds restoration with #ifndef NDEBUG.
-// This causes invalid (-1) column indices due to bugs in the Probing presolver.
-// Force-include ProbingView.hpp with NDEBUG undefined so the restoration is compiled in.
-#ifdef NDEBUG
-#undef NDEBUG
 #include <papilo/core/ProbingView.hpp>
-#define NDEBUG
-#endif
 
 #include <PSLP/PSLP_sol.h>
 #include <PSLP/PSLP_stats.h>

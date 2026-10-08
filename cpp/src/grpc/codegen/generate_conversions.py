@@ -1459,8 +1459,14 @@ def generate_settings_message_proto(registry, message_name, obj):
                 num,
                 "  // set_parameter() key/value store. Keys are the CUOPT_*\n"
                 "  // parameter strings; values are the textual form\n"
-                "  // set_parameter_from_string accepts. A key present here\n"
-                "  // takes precedence over the matching deprecated field.\n"
+                "  // set_parameter_from_string accepts. All or nothing, based\n"
+                "  // on this serialized map. Non-empty: only these entries are\n"
+                "  // applied, and every deprecated typed field in this message\n"
+                "  // is ignored. Empty: an older client; those typed fields are\n"
+                "  // applied and this map changes nothing. Calling\n"
+                "  // set_parameter() on a settings object does not fill this\n"
+                "  // map. A client writes it only by serializing it. Warm start\n"
+                "  // and presolve_absolute_tolerance still apply either way.\n"
                 f"  map<string, string> {name} = {num};",
             )
         )
@@ -1468,15 +1474,24 @@ def generate_settings_message_proto(registry, message_name, obj):
     return "\n".join(item[1] for item in lines)
 
 
-def generate_settings_to_proto_body(registry, obj_name, obj, indent="  "):
+def generate_settings_to_proto_body(
+    registry, obj_name, obj, indent="  ", skip_parameters=False
+):
     # Two presence mechanisms (handled by `emit_scalar_to_proto`):
     #   * `sentinel` -> if/else wrapping so a C++ sentinel value (e.g.
     #     std::numeric_limits<i_t>::max()) is emitted as a reserved proto
     #     value (e.g. -1).
     # (`optional` only affects the from-proto direction and the proto
     # declaration; the to-proto setter always writes a value.)
+    #
+    # skip_parameters is the live client export. set_parameter() values go in
+    # the parameters map, so a client built from that export needs a server
+    # that applies the map. The full body stays for the deprecated typed
+    # fields an older client still sends.
     lines, ind = [], indent
     for f in parse_settings_fields(obj.get("fields", [])):
+        if skip_parameters and _settings_field_is_parameter(f):
+            continue
         cpp_member = f.get("member", f["name"])
         setter_lhs = f"pb_settings->set_{_proto_cpp_name(f['name'])}"
         lines.extend(
@@ -1484,10 +1499,54 @@ def generate_settings_to_proto_body(registry, obj_name, obj, indent="  "):
                 setter_lhs, f"settings.{cpp_member}", f, registry, ind
             )
         )
+    if not lines:
+        lines.append(
+            f"{ind}// set_parameter() values travel in the parameters map."
+        )
     return "\n".join(lines)
 
 
-def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
+def _parameter_set_name(f):
+    """CUOPT_* string set_parameter() looks up. The proto field name is that
+    string unless ``param_name`` says otherwise.
+    """
+    name = f.get("param_name")
+    return name if name else f["name"]
+
+
+def _parameter_assign(f, value_expr, proto_accessor):
+    """Apply one deprecated typed field through the parameter table.
+
+    set_parameter() rejects an out-of-range int or float. An int64 is passed
+    through set_parameter_from_string() so a value that does not fit in i_t
+    is rejected there instead of being narrowed first.
+    """
+    name = _parameter_set_name(f)
+    ftype = f.get("type", "double")
+    if ftype == "int64":
+        return (
+            f'settings.set_parameter_from_string("{name}", '
+            f"std::to_string({proto_accessor}));"
+        )
+    if ftype == "bool":
+        arg = value_expr
+    elif ftype == "string":
+        arg = f"std::string({value_expr})"
+    elif ftype in ("double", "float"):
+        arg = f"static_cast<f_t>({value_expr})"
+    else:
+        arg = f"static_cast<i_t>({value_expr})"
+    return f'settings.set_parameter("{name}", {arg});'
+
+
+def generate_proto_to_settings_body(
+    registry,
+    obj_name,
+    obj,
+    indent="  ",
+    field_filter="all",
+    settings_expr="settings",
+):
     # Two presence mechanisms (handled by `emit_scalar_from_proto_assign`):
     #   * `optional` -> wrap the body in `if (pb.has_X())` so an omitted
     #     wire field preserves the C++ struct's in-class default.
@@ -1496,14 +1555,36 @@ def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
     #     as "use default" (e.g. -1 for iteration_limit).
     # When both are set, the optional guard runs first, then the sentinel
     # value-guard runs inside it.
+    #
+    # field_filter splits set_parameter() fields from the rest. The server
+    # applies parameter fields only when the parameters map is empty, and it
+    # does that by calling set_parameter() on a solver_settings_t. Fields that
+    # are not parameters are assigned on the nested settings object named by
+    # settings_expr. Warm start is not a field here; the caller reads it.
     lines, ind = [], indent
     for f in parse_settings_fields(obj.get("fields", [])):
+        is_parameter = _settings_field_is_parameter(f)
+        if field_filter == "parameters" and not is_parameter:
+            continue
+        if field_filter == "non_parameters" and is_parameter:
+            continue
         pname = _proto_cpp_name(f["name"])
-        cpp_member = f.get("member", f["name"])
+        proto_accessor = f"pb_settings.{pname}()"
+        if field_filter == "parameters":
+
+            def assign(v, field=f, acc=proto_accessor):
+                return _parameter_assign(field, v, acc)
+
+        else:
+            cpp_member = f.get("member", f["name"])
+
+            def assign(v, m=cpp_member, expr=settings_expr):
+                return f"{expr}.{m} = {v};"
+
         lines.extend(
             emit_scalar_from_proto_assign(
-                lambda v, m=cpp_member: f"settings.{m} = {v};",
-                f"pb_settings.{pname}()",
+                assign,
+                proto_accessor,
                 f,
                 registry,
                 ind,
@@ -2596,11 +2677,11 @@ def _gen_populate_chunked_header(registry, solver_type, indent="  "):
 
     if solver_type == "lp":
         lines.append(
-            f"{ind}map_pdlp_settings_to_proto(settings, header->mutable_lp_settings());"
+            f"{ind}map_pdlp_client_settings_to_proto(settings, header->mutable_lp_settings());"
         )
     else:
         lines.append(
-            f"{ind}map_mip_settings_to_proto(settings, header->mutable_mip_settings());"
+            f"{ind}map_mip_client_settings_to_proto(settings, header->mutable_mip_settings());"
         )
         lines.append(f"{ind}header->set_enable_incumbents(enable_incumbents);")
         lines.append(
@@ -4004,14 +4085,58 @@ def main():
                 + generate_settings_to_proto_body(registry, key, obj)
                 + "\n",
             )
-            write_file(
-                os.path.join(
-                    outdir, f"generated_proto_to_{label}_settings.inc"
-                ),
-                HEADER
-                + generate_proto_to_settings_body(registry, key, obj)
-                + "\n",
-            )
+            if obj.get("parameter_map"):
+                write_file(
+                    os.path.join(
+                        outdir,
+                        f"generated_{label}_client_settings_to_proto.inc",
+                    ),
+                    HEADER
+                    + generate_settings_to_proto_body(
+                        registry, key, obj, skip_parameters=True
+                    )
+                    + "\n",
+                )
+            if obj.get("parameter_map"):
+                write_file(
+                    os.path.join(
+                        outdir, f"generated_proto_to_{label}_parameters.inc"
+                    ),
+                    HEADER
+                    + generate_proto_to_settings_body(
+                        registry, key, obj, field_filter="parameters"
+                    )
+                    + "\n",
+                )
+                nested = (
+                    "settings.get_mip_settings()"
+                    if label == "mip"
+                    else "settings.get_pdlp_settings()"
+                )
+                non_parameters = generate_proto_to_settings_body(
+                    registry,
+                    key,
+                    obj,
+                    field_filter="non_parameters",
+                    settings_expr=nested,
+                )
+                if non_parameters.strip():
+                    write_file(
+                        os.path.join(
+                            outdir,
+                            f"generated_proto_to_{label}_non_parameters.inc",
+                        ),
+                        HEADER + non_parameters + "\n",
+                    )
+            else:
+                write_file(
+                    os.path.join(
+                        outdir, f"generated_proto_to_{label}_settings.inc"
+                    ),
+                    HEADER
+                    + generate_proto_to_settings_body(registry, key, obj)
+                    + "\n",
+                )
 
     # Full data proto
     write_file(

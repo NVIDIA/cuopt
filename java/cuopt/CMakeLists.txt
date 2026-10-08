@@ -117,6 +117,10 @@ if(CUOPT_STATIC_BUILD_DIR)
     "${CUOPT_NCCL_LIBRARY}"
     "${CUOPT_CUDSS_LIBRARY}")
 else()
+  # Lets ld resolve CUOPT_LIBRARY's sibling DT_NEEDs (libcuopt_client.so, etc.) at link time.
+  if(CUOPT_RUNTIME_LIBRARY_DIR)
+    target_link_directories(cuopt_jni PRIVATE ${CUOPT_RUNTIME_LIBRARY_DIR})
+  endif()
   target_link_libraries(cuopt_jni PRIVATE "${CUOPT_LIBRARY}" CUDA::cudart)
 endif()
 
