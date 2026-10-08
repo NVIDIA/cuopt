@@ -7,7 +7,7 @@ from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import jsonref
 import numpy as np
-from pydantic import BaseModel, Extra, Field, PlainValidator
+from pydantic import AfterValidator, BaseModel, Extra, Field, PlainValidator
 from typing_extensions import Annotated
 
 from ..._version import __version_major_minor__
@@ -826,30 +826,33 @@ def validate_termination_status(v):
 
 
 class SolutionResultData(StrictModel):
-    status: Annotated[str, PlainValidator(validate_termination_status)] = (
-        Field(
-            default="NoTermination",
-            examples=["Optimal"],
-            description=(
-                "In case of LP : \n\n"
-                "NoTermination - No Termination \n\n"
-                "NumericalError - Numerical Error \n\n"
-                "Optimal - Optimal solution is available \n\n"
-                "PrimalInfeasible - Primal Infeasible solution \n\n"
-                "DualInfeasible - Dual Infeasible solution \n\n"
-                "IterationLimit - Iteration Limit reached \n\n"
-                "TimeLimit - TimeLimit reached \n\n"
-                "PrimalFeasible - Primal Feasible \n\n"
-                "---------------------- \n\n"
-                "In case of MILP/IP : \n\n"
-                "NoTermination - No Termination \n\n"
-                "Optimal - Optimal solution is available \n\n"
-                "FeasibleFound - Feasible solution is available \n\n"
-                "Infeasible - Infeasible \n\n"
-                "Unbounded - Unbounded \n\n"
-                "TimeLimit - TimeLimit reached \n\n"
-            ),
-        )
+    status: Union[
+        Literal[0],
+        Annotated[str, AfterValidator(validate_termination_status)],
+    ] = Field(
+        default="NoTermination",
+        examples=["Optimal", 0],
+        description=(
+            "A solved request returns one of the names below. "
+            "A validation-only request returns 0.\n\n"
+            "In case of LP : \n\n"
+            "NoTermination - No Termination \n\n"
+            "NumericalError - Numerical Error \n\n"
+            "Optimal - Optimal solution is available \n\n"
+            "PrimalInfeasible - Primal Infeasible solution \n\n"
+            "DualInfeasible - Dual Infeasible solution \n\n"
+            "IterationLimit - Iteration Limit reached \n\n"
+            "TimeLimit - TimeLimit reached \n\n"
+            "PrimalFeasible - Primal Feasible \n\n"
+            "---------------------- \n\n"
+            "In case of MILP/IP : \n\n"
+            "NoTermination - No Termination \n\n"
+            "Optimal - Optimal solution is available \n\n"
+            "FeasibleFound - Feasible solution is available \n\n"
+            "Infeasible - Infeasible \n\n"
+            "Unbounded - Unbounded \n\n"
+            "TimeLimit - TimeLimit reached \n\n"
+        ),
     )
     solution: SolutionData = Field(
         default=SolutionData(), description=("Solution of the LP problem")

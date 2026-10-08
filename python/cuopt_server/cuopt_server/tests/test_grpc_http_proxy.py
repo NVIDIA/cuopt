@@ -1074,6 +1074,15 @@ def test_solution_models_accept_returned_shapes():
     SolutionModelWithId.model_validate(
         {
             "response": {
+                "solver_response": {"status": 0, "solution": {}},
+            },
+            "notes": ["Input is valid"],
+            "reqId": req_id,
+        }
+    )
+    SolutionModelWithId.model_validate(
+        {
+            "response": {
                 "solver_response": {
                     "status": "Optimal",
                     "solution": {
