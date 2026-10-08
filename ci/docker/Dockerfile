@@ -106,6 +106,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 ENV CXX=/usr/bin/g++-12
 
+# raft needs headers from nvidia-cuda-cccl; the cuXY-suffixed packages pulled in transitively are too old.
+RUN python -m pip install --no-cache-dir --upgrade nvidia-cuda-cccl
+
 # CMake's find_package(CUDAToolkit REQUIRED) needs nvcc on PATH; reuse cuda-headers instead of
 # installing the toolkit again via apt.
 COPY --from=cuda-headers /usr/local/cuda /usr/local/cuda

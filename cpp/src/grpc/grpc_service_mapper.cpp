@@ -34,8 +34,8 @@ cuopt::remote::SubmitJobRequest build_lp_submit_request(
   // Map problem data to protobuf
   map_problem_to_proto(cpu_problem, lp_request->mutable_problem());
 
-  // Map settings to protobuf
-  map_pdlp_settings_to_proto(settings, lp_request->mutable_settings());
+  // Warm start only. set_parameter() values are added by the caller.
+  map_pdlp_client_settings_to_proto(settings, lp_request->mutable_settings());
 
   return submit_request;
 }
@@ -70,8 +70,8 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
   // Map problem data to protobuf
   map_problem_to_proto(cpu_problem, mip_request->mutable_problem());
 
-  // Map settings to protobuf
-  map_mip_settings_to_proto(settings, mip_request->mutable_settings());
+  // presolve_absolute_tolerance only. set_parameter() values are added by the caller.
+  map_mip_client_settings_to_proto(settings, mip_request->mutable_settings());
 
   mip_request->set_enable_incumbents(enable_incumbents);
   mip_request->set_enable_set_incumbent(enable_set_incumbent);
@@ -97,15 +97,7 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
 #if CUOPT_INSTANTIATE_FLOAT
 template cuopt::remote::SubmitJobRequest build_lp_submit_request(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
-  const pdlp_solver_settings_t<int32_t, float>& settings);
-template cuopt::remote::SubmitJobRequest build_lp_submit_request(
-  const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   solver_settings_t<int32_t, float>& settings);
-template cuopt::remote::SubmitJobRequest build_mip_submit_request(
-  const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
-  const mip_solver_settings_t<int32_t, float>& settings,
-  bool enable_incumbents,
-  bool enable_set_incumbent);
 template cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   solver_settings_t<int32_t, float>& settings,
@@ -116,15 +108,7 @@ template cuopt::remote::SubmitJobRequest build_mip_submit_request(
 #if CUOPT_INSTANTIATE_DOUBLE
 template cuopt::remote::SubmitJobRequest build_lp_submit_request(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
-  const pdlp_solver_settings_t<int32_t, double>& settings);
-template cuopt::remote::SubmitJobRequest build_lp_submit_request(
-  const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   solver_settings_t<int32_t, double>& settings);
-template cuopt::remote::SubmitJobRequest build_mip_submit_request(
-  const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
-  const mip_solver_settings_t<int32_t, double>& settings,
-  bool enable_incumbents,
-  bool enable_set_incumbent);
 template cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   solver_settings_t<int32_t, double>& settings,

@@ -138,7 +138,8 @@ void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
                                coo_begin,
                                coo_begin + cnst.size(),
                                is_variable_free_t<f_t, f_t2>{pb.tolerances.integrality_tolerance,
-                                                             make_span(pb.variable_bounds)});
+                                                             make_span(pb.variable_bounds),
+                                                             make_span(pb.variable_types)});
     RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     nnz_edge_count = partition_iter - coo_begin;
   }

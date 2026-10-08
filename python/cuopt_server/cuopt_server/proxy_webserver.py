@@ -15,7 +15,7 @@ from typing import Any, List, Optional
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from cuopt.utilities import (
@@ -114,6 +114,13 @@ app = FastAPI(
     redoc_url="/cuopt/redoc",
     openapi_url="/cuopt/openapi.json",
 )
+
+
+@app.get("/cuopt.yaml", include_in_schema=False)
+def openapi_legacy_path():
+    """Same JSON document as /cuopt/openapi.json, at the legacy spec path."""
+    return JSONResponse(app.openapi())
+
 
 _grpc_client = None
 _routing_client = None
@@ -898,7 +905,7 @@ def getincumbent(
                 {
                     "solution": e.get("assignment", []),
                     "cost": e.get("objective"),
-                    "bound": None,
+                    "bound": e.get("bound"),
                 }
                 for e in entries
             ]

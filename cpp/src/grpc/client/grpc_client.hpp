@@ -163,6 +163,7 @@ struct cancel_result_t {
 struct incumbent_t {
   int64_t index    = 0;
   double objective = 0.0;
+  double bound     = 0.0;
   std::vector<double> assignment;
 };
 
@@ -288,48 +289,14 @@ class grpc_client_t {
   bool ping(int timeout_seconds = 5);
 
   /**
-   * @brief Solve an LP problem remotely
-   *
-   * This is a blocking call that:
-   * 1. Submits the problem to the server
-   * 2. Polls for completion (with optional log streaming)
-   * 3. Retrieves and parses the result
-   *
-   * @param problem The CPU optimization problem to solve
-   * @param settings Solver settings
-   * @return Result containing success status and solution (if successful)
-   */
-  template <typename i_t, typename f_t>
-  remote_lp_result_t<i_t, f_t> solve_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                                        const pdlp_solver_settings_t<i_t, f_t>& settings);
-
-  /**
-   * @brief Solve an LP remotely, sending typed fields and the parameter map.
+   * @brief Solve an LP remotely.
    */
   template <typename i_t, typename f_t>
   remote_lp_result_t<i_t, f_t> solve_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
                                         solver_settings_t<i_t, f_t>& settings);
 
   /**
-   * @brief Solve a MIP problem remotely
-   *
-   * This is a blocking call that:
-   * 1. Submits the problem to the server
-   * 2. Polls for completion (with optional log streaming)
-   * 3. Retrieves and parses the result
-   *
-   * @param problem The CPU optimization problem to solve
-   * @param settings Solver settings
-   * @param enable_incumbents Whether to enable incumbent solution streaming
-   * @return Result containing success status and solution (if successful)
-   */
-  template <typename i_t, typename f_t>
-  remote_mip_result_t<i_t, f_t> solve_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                                          const mip_solver_settings_t<i_t, f_t>& settings,
-                                          bool enable_incumbents = false);
-
-  /**
-   * @brief Solve a MIP remotely, sending typed fields and the parameter map.
+   * @brief Solve a MIP remotely.
    */
   template <typename i_t, typename f_t>
   remote_mip_result_t<i_t, f_t> solve_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
@@ -341,36 +308,14 @@ class grpc_client_t {
   // =========================================================================
 
   /**
-   * @brief Submit an LP problem without waiting for result
-   * @return Result containing job_id if successful
-   */
-  template <typename i_t, typename f_t>
-  submit_result_t submit_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                            const pdlp_solver_settings_t<i_t, f_t>& settings);
-
-  /**
    * @brief Submit an LP problem from a solver_settings_t.
-   *
-   * Writes the deprecated typed fields and then every set_parameter() value.
    */
   template <typename i_t, typename f_t>
   submit_result_t submit_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
                             solver_settings_t<i_t, f_t>& settings);
 
   /**
-   * @brief Submit a MIP problem without waiting for result
-   * @return Result containing job_id if successful
-   */
-  template <typename i_t, typename f_t>
-  submit_result_t submit_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                             const mip_solver_settings_t<i_t, f_t>& settings,
-                             bool enable_incumbents    = false,
-                             bool enable_set_incumbent = false);
-
-  /**
    * @brief Submit a MIP problem from a solver_settings_t.
-   *
-   * Writes the deprecated typed fields and then every set_parameter() value.
    */
   template <typename i_t, typename f_t>
   submit_result_t submit_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,

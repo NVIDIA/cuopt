@@ -27,6 +27,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -119,7 +120,7 @@ void run_climber(mip::fj_cpu_climber_t<i_t, f_t>* climber,
 
 std::vector<f_t> uncrush_assignment(mip::problem_t<i_t, f_t>& problem,
                                     const std::vector<f_t>& assignment,
-                                    rmm::cuda_stream_view stream)
+                                    cuda::stream_ref stream)
 {
   rmm::device_uvector<f_t> d_assignment(assignment.size(), stream);
   raft::copy(d_assignment.data(), assignment.data(), assignment.size(), stream);
@@ -137,7 +138,7 @@ bool write_lane_solutions(
   const std::vector<std::unique_ptr<mip::fj_cpu_climber_t<i_t, f_t>>>& climbers,
   const std::vector<climber_result_t>& results,
   mip::problem_t<i_t, f_t>& problem,
-  rmm::cuda_stream_view stream,
+  cuda::stream_ref stream,
   int& written)
 {
   std::error_code ec;

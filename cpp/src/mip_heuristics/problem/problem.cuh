@@ -124,7 +124,7 @@ class problem_t {
     return presolve_data.get_papilo_original_num_variables();
   }
   void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
-                                 rmm::cuda_stream_view stream) const;
+                                 cuda::stream_ref stream) const;
   void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const
   {
     papilo_uncrush_assignment(assignment, handle_ptr->get_stream());

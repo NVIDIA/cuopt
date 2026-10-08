@@ -750,9 +750,11 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
 
   lp_solution_t<i_t, f_t> lp_solution(original_lp_.num_rows, original_lp_.num_cols);
 
-  i_t iter                               = 0;
-  f_t lp_start_time                      = tic();
-  simplex_solver_settings_t lp_settings  = settings_;
+  i_t iter                              = 0;
+  f_t lp_start_time                     = tic();
+  simplex_solver_settings_t lp_settings = settings_;
+  lp_settings.time_limit                = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (lp_settings.time_limit <= 0.0) { return false; }
   lp_settings.concurrent_halt            = &node_concurrent_halt_;
   std::vector<variable_status_t> vstatus = root_vstatus_;
   lp_settings.set_log(false);
@@ -1700,6 +1702,9 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     feasible = apply_symmetry_reductions(node_ptr, worker, stats);
 
     if (feasible) {
+      lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+      if (lp_settings.time_limit <= 0.0) { return dual_status_t::TIME_LIMIT; }
+
       i_t node_iter     = 0;
       f_t lp_start_time = tic();
 
@@ -2479,6 +2484,12 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                submip_problem.A.nnz());
 
   probing_implied_bound_t<i_t, f_t> empty_probing(submip_problem.num_cols);
+  submip_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (submip_settings.time_limit <= 0.0) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    return;
+  }
+
   branch_and_bound_t submip_bnb(submip_problem, submip_settings, tic(), empty_probing);
   mip_solution_t<i_t, f_t> submip_solution(submip_problem.num_cols);
 
@@ -4298,6 +4309,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   // Stops the root heuristics and clear the associated data
   root_heuristics.stop_and_sync();
+
+  if (toc(exploration_stats_.start_time) > settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return solver_status_;
+  }
+
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);
@@ -5059,8 +5077,10 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   // Solve LP relaxation
   worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
   decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols, worker.leaf_vstatus);
+  f_t lp_start_time      = tic();
+  lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (lp_settings.time_limit <= 0.0) { return node_status_t::PENDING; }
   i_t node_iter                    = 0;
-  f_t lp_start_time                = tic();
   std::vector<f_t> leaf_edge_norms = edge_norms_;
 
   dual_status_t lp_status = dual_phase2_with_advanced_basis(2,
@@ -5674,8 +5694,10 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 
     // Solve LP relaxation
     worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
+    f_t lp_start_time      = tic();
+    lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+    if (lp_settings.time_limit <= 0.0) { break; }
     i_t node_iter                    = 0;
-    f_t lp_start_time                = tic();
     std::vector<f_t> leaf_edge_norms = edge_norms_;
 
     decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols, worker.leaf_vstatus);
