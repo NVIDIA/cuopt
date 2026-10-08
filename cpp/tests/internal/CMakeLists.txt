@@ -42,6 +42,7 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     # qp
     ${CUOPT_TEST_DIR}/qp/unit_tests/mps_ranged_rows_test.cu
     # socp
+    ${CUOPT_TEST_DIR}/socp/barrier_kernels_test.cu
     ${CUOPT_TEST_DIR}/socp/second_order_cone_kernels.cu
     ${CUOPT_TEST_DIR}/socp/sparse_augmented_kkt_test.cu
     ${CUOPT_TEST_DIR}/socp/solve_barrier_socp.cu
