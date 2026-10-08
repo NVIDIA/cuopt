@@ -1040,6 +1040,118 @@ def test_vrp_submit_status_and_solution(proxy):
     assert sol.json()["response"]["total_solve_time"] == 1.25
 
 
+def test_vrp_infeasible_uses_legacy_response_key(proxy):
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_vrp(),
+    )
+    assert res.status_code == 200, res.text
+    req_id = res.json()["reqId"]
+    infeasible = _vrp_grpc_sol()
+    infeasible["status"] = 1
+    infeasible["status_message"] = "no feasible solution"
+    fake.routing.results[req_id] = infeasible
+    sol = requests.get(url + f"/cuopt/solution/{req_id}", headers=_JSON_ACCEPT)
+    assert sol.status_code == 200, sol.text
+    body = sol.json()["response"]
+    assert "solver_response" not in body
+    assert body["solver_infeasible_response"]["status"] == 1
+    assert body["total_solve_time"] == 1.25
+    assert sol.json()["notes"] == ["no feasible solution"]
+
+
+def test_solution_models_accept_returned_shapes():
+    from cuopt_server.utils.data_definition import SolutionModelWithId
+
+    req_id = "00000000-0000-0000-0000-000000000001"
+    route = {
+        "status": 0,
+        "num_vehicles": 1,
+        "solution_cost": 1.0,
+        "objective_values": {"cost": 1.0},
+        "vehicle_data": {},
+        "initial_solutions": ["accepted"],
+        "dropped_tasks": {"task_id": [], "task_index": []},
+    }
+    SolutionModelWithId.model_validate(
+        {
+            "response": {
+                "solver_response": route,
+                "total_solve_time": 1.25,
+            },
+            "reqId": req_id,
+        }
+    )
+    SolutionModelWithId.model_validate(
+        {
+            "response": {
+                "solver_infeasible_response": {**route, "status": 1},
+                "total_solve_time": 1.25,
+            },
+            "reqId": req_id,
+        }
+    )
+    SolutionModelWithId.model_validate(
+        {
+            "response": {
+                "solver_response": {"status": 0, "solution": {}},
+            },
+            "notes": ["Input is valid"],
+            "reqId": req_id,
+        }
+    )
+    SolutionModelWithId.model_validate(
+        {
+            "response": {
+                "solver_response": {
+                    "status": "Optimal",
+                    "solution": {
+                        "problem_category": "LP",
+                        "primal_solution": [0.0, 1.0],
+                        "dual_solution": [0.0],
+                        "primal_objective": 1.2,
+                        "dual_objective": 1.2,
+                        "solver_time": 0.1,
+                        "solved_by": "PDLP",
+                        "vars": {},
+                        "lp_statistics": {},
+                        "reduced_cost": [0.2, 0.1],
+                        "milp_statistics": {},
+                    },
+                },
+                "total_solve_time": 0.1,
+            },
+            "reqId": req_id,
+        }
+    )
+    SolutionModelWithId.model_validate(
+        {
+            "response": {
+                "solver_response": {
+                    "status": "Optimal",
+                    "solution": {
+                        "problem_category": "MIP",
+                        "primal_solution": [1.0, 0.0],
+                        "dual_solution": None,
+                        "primal_objective": 1.0,
+                        "dual_objective": None,
+                        "solver_time": 0.2,
+                        "solved_by": "DualSimplex",
+                        "vars": {"x": 1.0},
+                        "lp_statistics": {},
+                        "reduced_cost": None,
+                        "milp_statistics": {"mip_gap": 0.0},
+                    },
+                },
+                "total_solve_time": 0.2,
+            },
+            "reqId": req_id,
+        }
+    )
+
+
 def test_vrp_initial_id_from_prior_grpc_result(proxy):
     url, fake = proxy
     first = requests.post(
