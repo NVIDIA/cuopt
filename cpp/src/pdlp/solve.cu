@@ -79,17 +79,17 @@ namespace cuopt::mathematical_optimization {
 
 namespace {
 
-template <typename i_t, typename f_t, typename xf_f_t>
+template <typename i_t, typename f_t>
 simplex::user_problem_t<i_t, f_t> user_problem_from_transform(
   raft::handle_t const* handle_ptr,
   optimization_problem_t<i_t, f_t>& model,
-  cuopt::mathematical_optimization::barrier_transform_t<i_t, xf_f_t> const& xf)
+  cuopt::mathematical_optimization::barrier_transform_t<i_t, f_t> const& xf)
 {
   simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
-  user_problem.num_rows  = xf.user_num_rows;
-  user_problem.num_cols  = xf.user_num_cols;
+  user_problem.num_rows = xf.user_num_rows;
+  user_problem.num_cols = xf.user_num_cols;
   user_problem.objective =
-    scatter_model_objective<i_t>(xf, model.get_objective_coefficients_host());
+    scatter_problem_objective<i_t>(xf, model.get_objective_coefficients_host());
   user_problem.row_sense = xf.row_sense;
   user_problem.rhs.assign(static_cast<std::size_t>(xf.user_num_rows), f_t(0));
   user_problem.obj_scale    = static_cast<f_t>(xf.obj_scale);
@@ -2009,12 +2009,11 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                               op_problem.get_n_constraints(),
                               op_problem.has_quadratic_objective(),
                               user_has_soc) &&
-      (!user_has_soc ||
-       (static_cast<i_t>(op_problem.get_quadratic_constraints().size()) ==
-          xf->num_quadratic_constraints &&
-        static_cast<i_t>(xf->row_sense.size()) == xf->user_num_rows &&
-        op_problem.get_n_variables() == model_num_cols(*xf) &&
-        op_problem.get_n_constraints() == model_num_rows(*xf)));
+      (!user_has_soc || (static_cast<i_t>(op_problem.get_quadratic_constraints().size()) ==
+                           xf->num_quadratic_constraints &&
+                         static_cast<i_t>(xf->row_sense.size()) == xf->user_num_rows &&
+                         op_problem.get_n_variables() == problem_num_cols(*xf) &&
+                         op_problem.get_n_constraints() == problem_num_rows(*xf)));
 
     if (problem_checking && !reuse_from_cache) {
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);

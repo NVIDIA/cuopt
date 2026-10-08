@@ -24,8 +24,10 @@
 #include <utility>
 
 namespace cuopt::mathematical_optimization {
-class barrier_cache_t;
-}
+template <typename i_t, typename f_t>
+class barrier_cache;
+using barrier_cache_t = barrier_cache<int, double>;
+}  // namespace cuopt::mathematical_optimization
 
 namespace cuopt::mathematical_optimization::barrier {
 

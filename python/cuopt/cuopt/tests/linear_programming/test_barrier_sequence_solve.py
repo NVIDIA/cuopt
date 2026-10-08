@@ -492,22 +492,22 @@ def test_cone_update_rhs_rejects_lost_cone_head_bound(capfd):
 
 
 def test_cone_update_rhs_rejects_wrong_length(capfd):
-    """Length is validated against the model rows, not the converted rows."""
+    """Length is validated against the problem rows, not the converted rows."""
     settings = _sequence_settings()
     model = _build_lorentz([2.0, 9.0], [1.0, 0.0, 0.0])
     first, _ = _solve(model, settings, capfd)
     assert first.get_termination_reason() == "Optimal"
 
     # Two model rows. Passing the converted row count must not be accepted.
-    with pytest.raises(Exception, match="match the cached model row count"):
+    with pytest.raises(Exception, match="match the cached problem row count"):
         model.update_rhs(np.array([2.0, 9.0, 0.0, 0.0]))
 
 
 def test_update_rhs_rejects_wrong_length():
-    """Length is validated against the cached model row count."""
+    """Length is validated against the cached problem row count."""
     settings = _sequence_settings()
     model = _build(**dict(MIXED_SENSES, rhs=[5.0, 8.0, 3.0]))
     assert solver.Solve(model, settings).get_termination_reason() == "Optimal"
 
-    with pytest.raises(Exception, match="match the cached model row count"):
+    with pytest.raises(Exception, match="match the cached problem row count"):
         model.update_rhs(np.array([1.0, 2.0]))

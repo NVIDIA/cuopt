@@ -64,7 +64,7 @@ struct barrier_transform_t {
   i_t pre_expansion_num_rows{0};
   std::vector<i_t> original_col_to_expanded_col;
   // RHS of the rows the expansion appended. Fixed by the quadratic constraints, so an RHS
-  // update keeps them and only overwrites the model's own rows.
+  // update keeps them and only overwrites the problem's own rows.
   std::vector<f_t> cone_row_rhs;
   std::vector<cone_head_bound_t<i_t, f_t>> cone_head_bounds;
 
@@ -83,9 +83,9 @@ struct barrier_transform_t {
   std::unique_ptr<csc_matrix_t<i_t, f_t>> barrier_Q;
 };
 
-// Shared reuse gate from the update-API work. A cone model skips the QP-only
+// Shared reuse gate from the update-API work. A cone problem skips the QP-only
 // size check: the caller compares either expanded user counts or pre-expansion
-// model counts, which are not the same number.
+// problem counts, which are not the same number.
 template <typename i_t, typename f_t>
 inline bool can_reuse_barrier_cache(barrier_transform_t<i_t, f_t> const* xf,
                                     i_t bound_free_variables,
@@ -108,25 +108,25 @@ inline bool can_reuse_barrier_cache(barrier_transform_t<i_t, f_t> const* xf,
 // Dimensions an update is sized in: the cached user counts, or the smaller pre-expansion counts
 // when the QCMATRIX->SOC expansion grew the problem.
 template <typename i_t, typename f_t>
-inline i_t model_num_cols(barrier_transform_t<i_t, f_t> const& xf)
+inline i_t problem_num_cols(barrier_transform_t<i_t, f_t> const& xf)
 {
   return xf.pre_expansion_num_cols > 0 ? xf.pre_expansion_num_cols : xf.user_num_cols;
 }
 
 template <typename i_t, typename f_t>
-inline i_t model_num_rows(barrier_transform_t<i_t, f_t> const& xf)
+inline i_t problem_num_rows(barrier_transform_t<i_t, f_t> const& xf)
 {
   return xf.pre_expansion_num_rows > 0 ? xf.pre_expansion_num_rows : xf.user_num_rows;
 }
 
-// The expansion permutes model columns into a [linear | cone] layout. An empty map means no
+// The expansion permutes problem columns into a [linear | cone] layout. An empty map means no
 // expansion ran, so the layouts coincide.
 template <typename i_t, typename f_t>
-inline i_t model_col_to_expanded_col(barrier_transform_t<i_t, f_t> const& xf, i_t model_col)
+inline i_t problem_col_to_expanded_col(barrier_transform_t<i_t, f_t> const& xf, i_t problem_col)
 {
   return xf.original_col_to_expanded_col.empty()
-           ? model_col
-           : xf.original_col_to_expanded_col[static_cast<std::size_t>(model_col)];
+           ? problem_col
+           : xf.original_col_to_expanded_col[static_cast<std::size_t>(problem_col)];
 }
 
 // convert inserts the inequality slacks ahead of the cone block, pushing every cone column
@@ -141,31 +141,31 @@ inline i_t expanded_col_to_converted_col(barrier_transform_t<i_t, f_t> const& xf
   return xf.converted_cone_var_start + (expanded_col - xf.cone_var_start);
 }
 
-// Move the model's own coefficients into the expanded layout the cached problem is sized for.
+// Move the problem's own coefficients into the expanded layout the cached problem is sized for.
 template <typename i_t, typename f_t, typename value_t>
-std::vector<value_t> scatter_model_objective(barrier_transform_t<i_t, f_t> const& xf,
-                                             std::vector<value_t> const& model_objective)
+std::vector<value_t> scatter_problem_objective(barrier_transform_t<i_t, f_t> const& xf,
+                                               std::vector<value_t> const& problem_objective)
 {
   std::vector<value_t> expanded(static_cast<std::size_t>(xf.user_num_cols), value_t(0));
-  for (i_t j = 0; j < static_cast<i_t>(model_objective.size()); ++j) {
-    expanded[static_cast<std::size_t>(model_col_to_expanded_col(xf, j))] =
-      model_objective[static_cast<std::size_t>(j)];
+  for (i_t j = 0; j < static_cast<i_t>(problem_objective.size()); ++j) {
+    expanded[static_cast<std::size_t>(problem_col_to_expanded_col(xf, j))] =
+      problem_objective[static_cast<std::size_t>(j)];
   }
   return expanded;
 }
 
-// Inverse of scatter_model_objective, giving crush_user_linear_objective the model-sized input
+// Inverse of scatter_problem_objective, giving crush_user_linear_objective the problem-sized input
 // it expects. The expansion adds no objective coefficients, so nothing is lost.
 template <typename i_t, typename f_t>
-std::vector<f_t> gather_model_objective(barrier_transform_t<i_t, f_t> const& xf,
-                                        std::vector<f_t> const& expanded_objective)
+std::vector<f_t> gather_problem_objective(barrier_transform_t<i_t, f_t> const& xf,
+                                          std::vector<f_t> const& expanded_objective)
 {
-  std::vector<f_t> model_objective(static_cast<std::size_t>(model_num_cols(xf)));
-  for (i_t j = 0; j < static_cast<i_t>(model_objective.size()); ++j) {
-    model_objective[static_cast<std::size_t>(j)] =
-      expanded_objective[static_cast<std::size_t>(model_col_to_expanded_col(xf, j))];
+  std::vector<f_t> problem_objective(static_cast<std::size_t>(problem_num_cols(xf)));
+  for (i_t j = 0; j < static_cast<i_t>(problem_objective.size()); ++j) {
+    problem_objective[static_cast<std::size_t>(j)] =
+      expanded_objective[static_cast<std::size_t>(problem_col_to_expanded_col(xf, j))];
   }
-  return model_objective;
+  return problem_objective;
 }
 
 // Reuse never re-runs the expansion, so the cone block must be laid out exactly as the cached
@@ -193,32 +193,32 @@ std::vector<cone_head_bound_t<i_t, f_t>> record_cone_head_bounds(
   if (user_problem.second_order_cone_dims.empty()) { return bounds; }
 
   // Cones only reach here via the expansion, which always sets original_num_rows.
-  const auto& A        = user_problem.A;
-  const i_t model_rows = user_problem.original_num_rows;
-  std::vector<i_t> row_nz(model_rows, 0);
+  const auto& A          = user_problem.A;
+  const i_t problem_rows = user_problem.original_num_rows;
+  std::vector<i_t> row_nz(problem_rows, 0);
   for (i_t j = 0; j < user_problem.num_cols; ++j) {
     for (i_t p = A.col_start[j]; p < A.col_start[j + 1]; ++p) {
-      if (A.i[p] < model_rows) { ++row_nz[A.i[p]]; }
+      if (A.i[p] < problem_rows) { ++row_nz[A.i[p]]; }
     }
   }
 
-  // Only heads that were already model variables carry the precondition. A head the expansion
+  // Only heads that were already problem variables carry the precondition. A head the expansion
   // created is nonnegative by cone membership, so no row has to prove it.
-  std::vector<char> is_model_col(user_problem.num_cols, 0);
+  std::vector<char> is_problem_col(user_problem.num_cols, 0);
   for (i_t expanded : user_problem.original_col_to_expanded_col) {
-    if (expanded >= 0 && expanded < user_problem.num_cols) { is_model_col[expanded] = 1; }
+    if (expanded >= 0 && expanded < user_problem.num_cols) { is_problem_col[expanded] = 1; }
   }
 
   i_t head = user_problem.cone_var_start;
   for (i_t q_k : user_problem.second_order_cone_dims) {
     if (head < 0 || head >= user_problem.num_cols) { break; }
-    if (is_model_col[head] && !(user_problem.lower[head] >= f_t(0))) {
+    if (is_problem_col[head] && !(user_problem.lower[head] >= f_t(0))) {
       cone_head_bound_t<i_t, f_t> bound;
       bound.head_col = head;
       // A is CSC, so the head's own column already lists every row it appears in.
       for (i_t p = A.col_start[head]; p < A.col_start[head + 1]; ++p) {
         const i_t i = A.i[p];
-        if (i >= model_rows || row_nz[i] != 1) { continue; }
+        if (i >= problem_rows || row_nz[i] != 1) { continue; }
         const f_t a      = A.x[p];
         const char sense = user_problem.row_sense[i];
         if ((sense == 'G' && a > f_t(0)) || (sense == 'L' && a < f_t(0))) {
@@ -317,9 +317,10 @@ inline std::vector<f_t> crush_user_linear_objective(barrier_transform_t<i_t, f_t
                                                     f_t const* c,
                                                     i_t n)
 {
-  if (c == nullptr || n != model_num_cols(xf)) {
+  if (c == nullptr || n != problem_num_cols(xf)) {
     throw std::invalid_argument(
-      "update_linear_objective: linear objective length must match the cached model column count.");
+      "update_linear_objective: linear objective length must match the cached problem column "
+      "count.");
   }
   if (xf.original_num_cols < xf.user_num_cols) {
     throw std::invalid_argument(
@@ -331,14 +332,14 @@ inline std::vector<f_t> crush_user_linear_objective(barrier_transform_t<i_t, f_t
   if (!xf.original_col_to_expanded_col.empty() &&
       static_cast<i_t>(xf.original_col_to_expanded_col.size()) != n) {
     throw std::invalid_argument(
-      "update_linear_objective: cached column map does not cover the model columns.");
+      "update_linear_objective: cached column map does not cover the problem columns.");
   }
 
   // The expansion leaves the variables it adds out of the objective, so only the positions of
-  // the model's own coefficients move.
+  // the problem's own coefficients move.
   std::vector<f_t> orig(static_cast<std::size_t>(xf.original_num_cols), f_t(0));
   for (i_t j = 0; j < n; ++j) {
-    i_t const converted_col = expanded_col_to_converted_col(xf, model_col_to_expanded_col(xf, j));
+    i_t const converted_col = expanded_col_to_converted_col(xf, problem_col_to_expanded_col(xf, j));
     if (converted_col < 0 || converted_col >= xf.original_num_cols) {
       throw std::invalid_argument(
         "update_linear_objective: cached column map points outside the converted problem.");
@@ -394,17 +395,17 @@ enum class crush_rhs_status_t { success = 0, invalid = -1, infeasible = -2 };
 
 template <typename i_t, typename f_t>
 inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf,
-                                          f_t const* b,
-                                          i_t m,
-                                          std::vector<f_t>& crushed,
-                                          std::string& error)
+                                         f_t const* b,
+                                         i_t m,
+                                         std::vector<f_t>& crushed,
+                                         std::string& error)
 {
   auto invalid = [&](char const* message) {
     error = message;
     return crush_rhs_status_t::invalid;
   };
-  if (b == nullptr || m != model_num_rows(xf)) {
-    return invalid("update_rhs: RHS length must match the cached model row count.");
+  if (b == nullptr || m != problem_num_rows(xf)) {
+    return invalid("update_rhs: RHS length must match the cached problem row count.");
   }
   if (!xf.rhs_update_supported) {
     return invalid("update_rhs: cached convert used range rows or folding; run a full Solve.");
@@ -418,7 +419,7 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf
   if (xf.barrier_lp == nullptr) { return invalid("update_rhs: cached barrier LP is missing."); }
 
   // The quadratic constraints fix the RHS of the appended rows, so an update overwrites the
-  // model's own rows and keeps the cached tail. The tail is empty without an expansion.
+  // problem's own rows and keeps the cached tail. The tail is empty without an expansion.
   std::vector<f_t> expanded(static_cast<std::size_t>(m));
   for (i_t i = 0; i < m; ++i) {
     expanded[static_cast<std::size_t>(i)] = b[i];
@@ -431,7 +432,7 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf
   }
 
   // The expansion proved these heads nonnegative from the old RHS. A full solve rejects the
-  // model once that no longer holds, so re-prove it here rather than trust the cached verdict.
+  // problem once that no longer holds, so re-prove it here rather than trust the cached verdict.
   for (cone_head_bound_t<i_t, f_t> const& bound : xf.cone_head_bounds) {
     f_t implied = -std::numeric_limits<f_t>::infinity();
     for (auto const& [row, coefficient] : bound.rows) {
@@ -446,10 +447,9 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf
 
   // convert turns 'G' rows into 'L' rows by negating the row and its RHS.
   std::vector<f_t> original(static_cast<std::size_t>(xf.original_num_rows));
-  for (i_t i = 0; i < xf.user_num_rows; ++i) {
-    original[static_cast<std::size_t>(i)] =
-      xf.row_sense[static_cast<std::size_t>(i)] == 'G' ? -expanded[static_cast<std::size_t>(i)]
-                                                       : expanded[static_cast<std::size_t>(i)];
+  const std::size_t user_num_rows = xf.user_num_rows;
+  for (std::size_t i = 0; i < user_num_rows; ++i) {
+    original[i] = xf.row_sense[i] == 'G' ? -expanded[i] : expanded[i];
   }
 
   // Presolve drops only empty equalities, and only when the RHS is exactly 0.
@@ -457,7 +457,7 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf
     if (i < 0 || i >= xf.user_num_rows) {
       return invalid("update_rhs: removed constraint index is out of range.");
     }
-    if (original[static_cast<std::size_t>(i)] != f_t(0)) { return crush_rhs_status_t::infeasible; }
+    if (original[i] != f_t(0)) { return crush_rhs_status_t::infeasible; }
   }
 
   // Empty remaining_constraints means either no empty-row pass ran, or every row was dropped
@@ -466,7 +466,7 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf
   if (!xf.presolve_info.remaining_constraints.empty()) {
     presolved.resize(xf.presolve_info.remaining_constraints.size());
     for (std::size_t k = 0; k < xf.presolve_info.remaining_constraints.size(); ++k) {
-      presolved[k] = original[static_cast<std::size_t>(xf.presolve_info.remaining_constraints[k])];
+      presolved[k] = original[xf.presolve_info.remaining_constraints[k]];
     }
   } else if (xf.presolve_info.removed_constraints.empty()) {
     presolved = std::move(original);

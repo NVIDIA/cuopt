@@ -72,9 +72,6 @@ struct user_problem_t {
   // Row count before QCMATRIX->SOC expansion. The expansion only appends rows, so rows
   // [0, original_num_rows) still hold the model's own constraints at their original indices.
   i_t original_num_rows{0};
-  // Set when a variable shared by several cones was given an alias column. The cone head a
-  // cache sees is then not the variable whose bounds the expansion checked.
-  bool cone_variables_aliased{false};
 };
 
 }  // namespace cuopt::mathematical_optimization::simplex

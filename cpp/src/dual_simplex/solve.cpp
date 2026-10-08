@@ -532,7 +532,7 @@ lp_status_t solve_linear_program_with_barrier(
   lp_status_t status                                   = lp_status_t::UNSET;
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
 
-  auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
+  auto const* xf          = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
   const bool user_has_soc = !user_problem.second_order_cone_dims.empty();
   // run_barrier already resolved -1 to 0. can_reuse_barrier_cache also rejects a cache whose
   // presolve bounded free variables, which this path cannot replay.
@@ -627,8 +627,8 @@ lp_status_t solve_linear_program_with_barrier(
   if (cache != nullptr) {
     cache->clear();
     auto xf = std::make_unique<cuopt::mathematical_optimization::barrier_transform_t<i_t, f_t>>();
-    xf->user_num_cols = user_problem.num_cols;
-    xf->user_num_rows = user_problem.num_rows;
+    xf->user_num_cols                = user_problem.num_cols;
+    xf->user_num_rows                = user_problem.num_rows;
     xf->original_num_cols            = original_lp.num_cols;
     xf->original_num_rows            = original_lp.num_rows;
     xf->obj_scale                    = user_problem.obj_scale;
@@ -638,8 +638,8 @@ lp_status_t solve_linear_program_with_barrier(
     xf->second_order_cone_dims       = user_problem.second_order_cone_dims;
     xf->pre_expansion_num_cols       = user_problem.original_num_cols;
     xf->original_col_to_expanded_col = user_problem.original_col_to_expanded_col;
-    xf->pre_expansion_num_rows   = user_problem.original_num_rows;
-    xf->converted_cone_var_start = original_lp.cone_var_start;
+    xf->pre_expansion_num_rows       = user_problem.original_num_rows;
+    xf->converted_cone_var_start     = original_lp.cone_var_start;
     xf->cone_head_bounds = cuopt::mathematical_optimization::record_cone_head_bounds(user_problem);
     // Rows the expansion appended past the model's own; none when no expansion ran.
     if (user_problem.original_num_rows > 0) {
@@ -648,14 +648,13 @@ lp_status_t solve_linear_program_with_barrier(
     }
     xf->presolve_info = presolve_info;
     xf->column_scales = column_scales;
-    xf->row_scales = row_scales;
+    xf->row_scales    = row_scales;
     // convert_range_rows zeroes rhs[i] onto the slack bounds and folding aggregates rows, so
     // neither leaves the user RHS in barrier_lp->rhs. Plain inequality/equality slacks do.
-    // Aliased cone variables hide which model variable a head stands for, so the head bounds
-    // cannot be re-proved against a new RHS.
-    xf->rhs_update_supported = user_problem.num_range_rows == 0 &&
-                               !presolve_info.folding_info.is_folded &&
-                               !user_problem.cone_variables_aliased;
+    // Alias rows (alias - x = 0) are appended after the original constraints and stay in the
+    // cached tail, so they do not block an update of the original RHS.
+    xf->rhs_update_supported =
+      user_problem.num_range_rows == 0 && !presolve_info.folding_info.is_folded;
     xf->barrier_lp = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
     solver_lp      = xf->barrier_lp.get();
     cache->store_transform(std::move(xf));
@@ -686,10 +685,11 @@ lp_status_t solve_linear_program_with_barrier(
       // is already model-sized, but it permutes columns, so gather the objective back.
       bool objective_shift_ok = false;
       try {
-        auto const model_objective =
-          cuopt::mathematical_optimization::gather_model_objective<i_t>(*xf, user_problem.objective);
+        auto const problem_objective =
+          cuopt::mathematical_optimization::gather_problem_objective<i_t>(*xf,
+                                                                          user_problem.objective);
         auto const crushed = cuopt::mathematical_optimization::crush_user_linear_objective(
-          *xf, model_objective.data(), static_cast<i_t>(model_objective.size()));
+          *xf, problem_objective.data(), static_cast<i_t>(problem_objective.size()));
         objective_shift_ok =
           shift_from<i_t, f_t>(solver_lp->objective, crushed, xf->linear_obj_shift) == 0;
       } catch (std::exception const&) {
@@ -702,12 +702,11 @@ lp_status_t solve_linear_program_with_barrier(
       if (xf->rhs_update_supported) {
         std::vector<f_t> crushed;
         std::string error;
-        const i_t model_m = cuopt::mathematical_optimization::model_num_rows(*xf);
-        bool const rhs_shift_ok =
-          cuopt::mathematical_optimization::crush_user_rhs(
-            *xf, user_problem.rhs.data(), model_m, crushed, error) ==
-            cuopt::mathematical_optimization::crush_rhs_status_t::success &&
-          shift_from<i_t, f_t>(solver_lp->rhs, crushed, xf->rhs_shift) == 0;
+        const i_t problem_m     = cuopt::mathematical_optimization::problem_num_rows(*xf);
+        bool const rhs_shift_ok = cuopt::mathematical_optimization::crush_user_rhs(
+                                    *xf, user_problem.rhs.data(), problem_m, crushed, error) ==
+                                    cuopt::mathematical_optimization::crush_rhs_status_t::success &&
+                                  shift_from<i_t, f_t>(solver_lp->rhs, crushed, xf->rhs_shift) == 0;
         if (!rhs_shift_ok) {
           // Maps cannot reproduce this RHS, so refuse later updates.
           xf->rhs_update_supported = false;

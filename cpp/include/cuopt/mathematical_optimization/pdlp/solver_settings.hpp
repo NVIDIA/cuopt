@@ -26,7 +26,9 @@
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
 
-class barrier_cache_t;
+template <typename i_t, typename f_t>
+class barrier_cache;
+using barrier_cache_t = barrier_cache<int, double>;
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>

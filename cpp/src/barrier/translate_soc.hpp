@@ -841,8 +841,6 @@ void convert_quadratic_constraints_to_second_order_cones(
       const i_t m_old = csr_A.m;
       const i_t m_new = static_cast<i_t>(m_old + cone_alias_pairs.size());
 
-      user_problem.cone_variables_aliased = true;
-
       user_problem.objective.resize(n_new, 0);
       user_problem.lower.resize(n_new, -std::numeric_limits<f_t>::infinity());
       user_problem.upper.resize(n_new, std::numeric_limits<f_t>::infinity());
