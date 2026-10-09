@@ -3651,21 +3651,15 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                   fractional,
                                   integer_pivot_work);
     root_integer_pivot_work_ += integer_pivot_work;
-    if (root_integer_pivot_work_ >= integer_pivot_work_limit && settings_.inside_mip < 2) {
-      settings_.log.printf(
-        "Root integer pivot budget exhausted: site=cut_pass used=%.6e limit=%.6e "
-        "root_ratio=%.6e; skipping future root integer pivots\n",
-        root_integer_pivot_work_,
-        integer_pivot_work_limit,
-        root_integer_pivot_work_ / root_relax_work_estimate_);
-    }
     if (num_integer_increased > 0) {
       integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
     }
   }
-  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n",
-                       num_integer_increased,
-                       toc(pivot_out_integer_variables_start_time));
+  if (num_integer_increased > 0) {
+    settings_.log.printf("Pivoted out %d integer variables in %.2f seconds\n",
+                         num_integer_increased,
+                         toc(pivot_out_integer_variables_start_time));
+  }
   if (settings_.dual_degenerate_feasibility_pump != 0) {
     dual_degenerate_feasibility_pump(original_lp_,
                                      settings_,
@@ -3765,7 +3759,6 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
     last_upper_bound              = upper_bound_.load();
     std::vector<f_t> lower_bounds = original_lp_.lower;
     std::vector<f_t> upper_bounds = original_lp_.upper;
-    f_t previous_max_objective    = reduced_cost_bounds.get_max_objective();
     i_t new_bounds = reduced_cost_bounds.update_bounds_from_new_incumbent(original_lp_,
                                                                           settings_,
                                                                           root_relax_soln_,
@@ -3779,14 +3772,9 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
     original_lp_.lower = lower_bounds;
     original_lp_.upper = upper_bounds;
     mutex_original_lp_.unlock();
-    if (1 || new_bounds > 0) {
-      settings_.log.printf(
-        "Updated %d integer bounds using reduced cost strengthening from new incumbent. Max "
-        "objective %e Current objective %e Previous max objective %e\n",
-        new_bounds,
-        reduced_cost_bounds.get_max_objective(),
-        upper_bound_.load(),
-        previous_max_objective);
+    if (new_bounds > 0) {
+      settings_.log.printf("Updated %d integer bounds using reduced cost strengthening\n",
+                           new_bounds);
     }
   }
 
@@ -3901,9 +3889,9 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   if (settings_.reduced_cost_strengthening >= 1) {
     reduced_cost_bounds.update_reduced_cost_bounds(
       original_lp_, settings_, var_types_, root_objective_, root_relax_soln_.z, root_vstatus_);
-    settings_.log.printf("New reduced cost objective %e (current %e)\n",
-                         reduced_cost_bounds.get_max_objective(),
-                         upper_bound_.load());
+    settings_.log.debug("New reduced cost objective %e (current %e)\n",
+                        reduced_cost_bounds.get_max_objective(),
+                        upper_bound_.load());
     if (settings_.primal_degenerate_pivots != 0) {
       pivot_to_improve_reduced_cost_strengthening(original_lp_,
                                                   settings_,
@@ -3919,9 +3907,9 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                                   root_relax_work_estimate_,
                                                   reduced_cost_bounds);
     }
-    settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",
-                         reduced_cost_bounds.get_max_objective(),
-                         upper_bound_.load());
+    settings_.log.debug("After pivoting: new reduced cost objective %e (current %e)\n",
+                        reduced_cost_bounds.get_max_objective(),
+                        upper_bound_.load());
   }
 
   // Refresh fractional info after re-solving with cuts; the pre-cut count is stale.
@@ -4261,9 +4249,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   reduced_cost_bounds_t<i_t, f_t> reduced_cost_bounds(original_lp_.num_cols);
   reduced_cost_bounds.update_reduced_cost_bounds(
     original_lp_, settings_, var_types_, root_objective_, root_relax_soln_.z, root_vstatus_);
-  settings_.log.printf("New reduced cost objective %e (current %e)\n",
-                       reduced_cost_bounds.get_max_objective(),
-                       upper_bound_.load());
+  settings_.log.debug("New reduced cost objective %e (current %e)\n",
+                      reduced_cost_bounds.get_max_objective(),
+                      upper_bound_.load());
   if (settings_.primal_degenerate_pivots != 0) {
     pivot_to_improve_reduced_cost_strengthening(original_lp_,
                                                 settings_,
@@ -4279,9 +4267,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                 root_relax_work_estimate_,
                                                 reduced_cost_bounds);
   }
-  settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",
-                       reduced_cost_bounds.get_max_objective(),
-                       upper_bound_.load());
+  settings_.log.debug("After pivoting: new reduced cost objective %e (current %e)\n",
+                      reduced_cost_bounds.get_max_objective(),
+                      upper_bound_.load());
 
   f_t pivot_out_integer_variables_start_time = tic();
   i_t num_integer_increased                  = 0;
@@ -4313,18 +4301,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
     }
   }
-  if (settings_.dual_degenerate_pivots != 0 &&
-      root_integer_pivot_work_ >= integer_pivot_work_limit && settings_.inside_mip < 2) {
-    settings_.log.printf(
-      "Root integer pivot budget exhausted: site=initial used=%.6e limit=%.6e "
-      "root_ratio=%.6e; skipping future root integer pivots\n",
-      root_integer_pivot_work_,
-      integer_pivot_work_limit,
-      integer_pivot_work_limit > 0 ? root_integer_pivot_work_ / root_relax_work_estimate_ : 0.0);
+  if (num_integer_increased > 0) {
+    settings_.log.printf("Pivoted out %d integer variables in %.2f seconds\n",
+                         num_integer_increased,
+                         toc(pivot_out_integer_variables_start_time));
   }
-  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n",
-                       num_integer_increased,
-                       toc(pivot_out_integer_variables_start_time));
 
   if (settings_.dual_degenerate_feasibility_pump != 0) {
     dual_degenerate_feasibility_pump(original_lp_,
@@ -4557,7 +4538,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
        upper_bound_.load() <= reduced_cost_bounds.get_max_objective())) {
     std::vector<f_t> lower_bounds = original_lp_.lower;
     std::vector<f_t> upper_bounds = original_lp_.upper;
-    f_t previous_max_objective    = reduced_cost_bounds.get_max_objective();
     i_t num_changed = reduced_cost_bounds.update_bounds_from_new_incumbent(original_lp_,
                                                                            settings_,
                                                                            root_relax_soln_,
@@ -4566,13 +4546,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                                            var_types_,
                                                                            lower_bounds,
                                                                            upper_bounds);
-    settings_.log.printf(
-      "Updated %d integer bounds using reduced cost strengthening from new incumbent. Max "
-      "objective %e Current objective %e Previous max objective %e\n",
-      num_changed,
-      reduced_cost_bounds.get_max_objective(),
-      upper_bound_.load(),
-      previous_max_objective);
+    if (num_changed > 0) {
+      settings_.log.printf("Updated %d integer bounds using reduced cost strengthening\n",
+                           num_changed);
+    }
     mutex_original_lp_.lock();
     original_lp_.lower = lower_bounds;
     original_lp_.upper = upper_bounds;

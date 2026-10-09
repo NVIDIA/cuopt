@@ -300,7 +300,7 @@ void pivot_to_improve_reduced_cost_strengthening(
   }
   const f_t basis_work = basis_update.work_estimate() - basis_work_start;
   const f_t total_work = work_estimate + basis_work;
-  settings.log.printf(
+  settings.log.debug(
     "RCS: candidates=%d bounds=%d skipped_dense=%d rejected_dual=%d time=%f work=%e "
     "root_work=%e root_ratio=%f elapsed=%f\n",
     processed_candidates,
@@ -507,7 +507,7 @@ void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
     }
 
     if (num_violated == 0) {
-      settings.log.printf(
+      settings.log.debug(
         "Degenerate feasibility pump (%d/%d): skipping primal simplex, no violated reduced costs "
         "(%d nonbasics checked)\n",
         pump_iter,
@@ -522,7 +522,7 @@ void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
       pump_iter--;
       continue;
     }
-    settings.log.printf(
+    settings.log.debug(
       "Degenerate feasibility pump (%d/%d): %d violated reduced costs (max %.2e) out of %d "
       "nonbasics\n",
       pump_iter,
@@ -539,7 +539,7 @@ void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
     primal_settings.log.log                             = false;
     primal_settings.time_limit                          = settings.time_limit;
     primal_settings.work_limit                          = root_relax_work_estimate / 10;
-    settings.log.printf(
+    settings.log.debug(
       "Degenerate feasibility pump: calling primal simplex with %d rows, %d cols, %d nnz, "
       "%d basis updates, work_limit %.2e, primal_work_estimate %.2e\n",
       m,
@@ -563,7 +563,7 @@ void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
     f_t pump_call_time  = toc(pump_call_start_time);
     f_t pump_call_work  = primal_work_estimate - primal_work_before;
     i_t pump_call_iters = iter - iter_before;
-    settings.log.printf(
+    settings.log.debug(
       "Degenerate feasibility pump: primal simplex returned status %d, %d iters, "
       "work %.2e (%.2e/iter), time %.2f (%.2e work/s)\n",
       static_cast<int>(lp_status),
@@ -593,13 +593,13 @@ void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
       const f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
 
       if (primal_residual > 1e-6) {
-        settings.log.printf("Reduced LP residual|| A*x  - b ||_inf = %.4e\n", primal_residual);
+        settings.log.debug("Reduced LP residual|| A*x  - b ||_inf = %.4e\n", primal_residual);
       }
 
       std::vector<i_t> tmp_fractional;
       i_t num_fractional_reduced =
         fractional_variables(settings, adjusted_solution, var_types, tmp_fractional);
-      settings.log.printf(
+      settings.log.debug(
         "Degenerate feasibility pump (%d/%d): primal work estimate %.2e, iter %d, fractional "
         "variables %d/%d. Time %.2f\n",
         pump_iter,
@@ -617,7 +617,7 @@ void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
         best_reduced_vstatus = reduced_vstatus;
       }
     } else {
-      settings.log.printf(
+      settings.log.debug(
         "Degenerate feasibility pump: primal simplex returned non-optimal status %d at pump_iter "
         "%d. Work estimate %.2e\n",
         static_cast<int>(lp_status),
@@ -643,7 +643,7 @@ void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
           std::vector<i_t> tmp_fractional;
           i_t num_fractional_reduced =
             fractional_variables(settings, adjusted_solution, var_types, tmp_fractional);
-          settings.log.printf(
+          settings.log.debug(
             "Degenerate feasibility pump (%d/%d): after work/time limit, fractional "
             "variables %d/%d\n",
             pump_iter,
@@ -662,13 +662,11 @@ void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
 
   settings.log.printf(
     "Degenerate feasibility pump: Simplex iterations %d, Best number of fractional variables "
-    "%d/%d. Work estimate %.2e, Time %.2f, Basis updates %d\n",
+    "%d/%d. Time %.2f\n",
     iter,
     best_num_fractional,
     num_fractional,
-    primal_work_estimate,
-    toc(dual_degenerate_feasibility_pump_start_time),
-    reduced_basis_update.num_updates());
+    toc(dual_degenerate_feasibility_pump_start_time));
   if (best_num_fractional < num_fractional) {
     // Translate the vstatus from the reduced problem to the vstatus for the original problem
     i_t reduced_cols = 0;
@@ -929,8 +927,8 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
   }
 
   if (fast_candidates.size() > 0 && settings.inside_mip < 2) {
-    settings.log.printf("Found %ld fast candidates for pivot out integer variables\n",
-                        fast_candidates.size());
+    settings.log.debug("Found %ld fast candidates for pivot out integer variables\n",
+                       fast_candidates.size());
   }
 
   // Build a reverse index nonbasic_index[v] = position of v in nonbasic_list, or -1 if not
@@ -1051,20 +1049,20 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
     basis_update.clear_work_estimate();
     if (error == -1) { return false; }
     if (!error && settings.inside_mip < 2) {
-      settings.log.printf(
+      settings.log.debug(
         "Fast candidate pivot succeeded: j=%d entering slack=%d row=%d\n", j, entering_index, row);
     }
 
     if (settings.inside_mip < 2 && toc(last_log) > 1.0) {
-      settings.log.printf("Fast candidates %d/%d processed in %.2f seconds\n",
-                          k + 1,
-                          num_candidates,
-                          toc(loop_start));
+      settings.log.debug("Fast candidates %d/%d processed in %.2f seconds\n",
+                         k + 1,
+                         num_candidates,
+                         toc(loop_start));
       last_log = tic();
     }
   }
   if (settings.inside_mip < 2) {
-    settings.log.printf(
+    settings.log.debug(
       "Fast candidates: %d/%d processed in %.2f seconds\n", k, num_candidates, toc(loop_start));
   }
   return true;
@@ -1081,7 +1079,7 @@ f_t log_integer_pivot_work(const simplex::simplex_solver_settings_t<i_t, f_t>& s
                            const char* status)
 {
   if (settings.inside_mip < 2) {
-    settings.log.printf(
+    settings.log.debug(
       "Integer pivot work: status=%s candidates=%d fractional_before=%d fractional_after=%d "
       "total=%.6e root=%.6e root_ratio=%.6e time=%.6f\n",
       status,
@@ -1194,7 +1192,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
   }
   const f_t degeneracy_fraction = static_cast<f_t>(num_degenerate) / lp.num_rows;
   if (settings.inside_mip < 2 && settings.inside_submip == 0) {
-    settings.log.printf(
+    settings.log.debug(
       "Primal degeneracy: %d/%d basic variables are degenerate (%.1f%%), "
       "continuous=%d, integer=%d\n",
       num_degenerate,
@@ -1208,8 +1206,8 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
   // will almost always be won by a degenerate variable, making pivots hopeless.
   if (degeneracy_fraction > 0.5) {
     if (settings.inside_mip < 2) {
-      settings.log.printf("Skipping pivot_out_integer_variables: degeneracy %.1f%% > 50%%\n",
-                          100.0 * degeneracy_fraction);
+      settings.log.debug("Skipping pivot_out_integer_variables: degeneracy %.1f%% > 50%%\n",
+                         100.0 * degeneracy_fraction);
     }
     total_work = log_integer_pivot_work(settings,
                                         work_estimate,
@@ -1228,8 +1226,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     variable_to_basic[basic_list_copy[k]] = k;
   }
   work_estimate += lp.num_cols + 2.0 * lp.num_rows;
-  const f_t setup_work      = work_estimate;
-  const bool fast_valid     = fast_slack_integer_pivots(lp,
+  const bool fast_valid = fast_slack_integer_pivots(lp,
                                                     settings,
                                                     fractional,
                                                     row_to_slack,
@@ -1245,15 +1242,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
                                                     soln_copy,
                                                     basis_update_copy,
                                                     work_estimate);
-  const f_t after_fast_work = work_estimate;
   if (!fast_valid) {
-    if (settings.inside_mip < 2) {
-      settings.log.printf("Integer pivot stages: setup=%.6e fast=%.6e worklist=%.6e finish=%.6e\n",
-                          setup_work,
-                          after_fast_work - setup_work,
-                          0.0,
-                          0.0);
-    }
     total_work = log_integer_pivot_work(settings,
                                         work_estimate,
                                         root_relax_work_estimate,
@@ -1275,46 +1264,21 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
 
   std::vector<f_t> delta_y_dense(lp.num_rows, 0.0);
 
-  // Track which entering variables are actually tried (to detect duplication)
+  // Do not retry entering variables after the basis changes.
   std::vector<i_t> entering_tried_count(lp.num_cols, 0);
   work_estimate += fractional.size() + lp.num_rows + lp.num_cols;
   bool trial_valid = true;
-
-  i_t worklist_total_processed  = 0;
-  i_t worklist_skipped          = 0;
-  i_t worklist_btran_done       = 0;
-  i_t worklist_ftran_done       = 0;
-  i_t worklist_pivots_succeeded = 0;
-  i_t worklist_readded          = 0;
-  f_t worklist_btran_time       = 0.0;
-  f_t worklist_dot_time         = 0.0;
-  f_t worklist_ftran_time       = 0.0;
-  i_t worklist_no_candidates    = 0;  // target had no nonzero dot_q
-  i_t candidates_rejected       = 0;
-
-  f_t worklist_loop_start = tic();
-  f_t worklist_last_log   = tic();
 
   while (!work_list.empty() && trial_valid && work_estimate < work_limit) {
     work_estimate += 6;
     const i_t j = work_list.back();
     const i_t p = variable_to_basic[j];
     work_list.pop_back();
-    worklist_total_processed++;
 
     // Skip if j is no longer basic and fractional (may have been fixed by a prior pivot)
-    if (p < 0) {
-      worklist_skipped++;
-      continue;
-    }
-    if (vstatus_copy[j] != variable_status_t::BASIC) {
-      worklist_skipped++;
-      continue;
-    }
-    if (!is_fractional(soln_copy.x[j], var_types[j], settings.integer_tol)) {
-      worklist_skipped++;
-      continue;
-    }
+    if (p < 0) { continue; }
+    if (vstatus_copy[j] != variable_status_t::BASIC) { continue; }
+    if (!is_fractional(soln_copy.x[j], var_types[j], settings.integer_tol)) { continue; }
 
     // We want to pivot variable j out of the basis.
     // We solve B^T * delta_y = e_p, where p is the position of j in the basis.
@@ -1323,13 +1287,10 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     ep.i[0] = p;
     sparse_vector_t<i_t, f_t> delta_y_sparse;
     sparse_vector_t<i_t, f_t> UTsol_sparse;
-    f_t btran_start = tic();
     if (work_estimate >= work_limit) { break; }
     basis_update_copy.b_transpose_solve(ep, delta_y_sparse, UTsol_sparse);
     work_estimate += basis_update_copy.work_estimate();
     basis_update_copy.clear_work_estimate();
-    worklist_btran_time += toc(btran_start);
-    worklist_btran_done++;
 
     // Scatter delta_y_sparse into dense workspace for dot product computation
     const i_t delta_y_nz = delta_y_sparse.i.size();
@@ -1368,7 +1329,6 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     // Skip entering variables that have already been tried (and failed) by prior targets.
     f_t values[3]  = {0.0, 0.0, 0.0};
     i_t indices[3] = {-1, -1, -1};
-    f_t dot_start  = tic();
     for (i_t q : zero_reduced_costs_vars) {
       if (work_estimate >= work_limit) { break; }
       work_estimate += 4;
@@ -1405,9 +1365,6 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
         values[2]  = merit;
       }
     }
-    worklist_dot_time += toc(dot_start);
-
-    if (indices[0] == -1) { worklist_no_candidates++; }
 
     // Try the top 3 candidates
     for (i_t h = 0; h < 3; h++) {
@@ -1430,14 +1387,11 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
       work_estimate += 2.0 * rhs.i.size();
       sparse_vector_t<i_t, f_t> delta_xB;
       sparse_vector_t<i_t, f_t> utilde_sparse;
-      f_t ftran_start = tic();
       if (work_estimate >= work_limit) { break; }
       entering_tried_count[q]++;
       basis_update_copy.b_solve(rhs, delta_xB, utilde_sparse);
       work_estimate += basis_update_copy.work_estimate();
       basis_update_copy.clear_work_estimate();
-      worklist_ftran_time += toc(ftran_start);
-      worklist_ftran_done++;
 
       sparse_vector_t<i_t, f_t> delta_x(lp.num_cols, 0);
       delta_x.i.reserve(delta_xB.i.size() + 1);
@@ -1476,10 +1430,8 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
         trial_valid = false;
         break;
       }
-      if (error == 1) { candidates_rejected++; }
 
       if (!error) {
-        worklist_pivots_succeeded++;
 #ifdef READD_TO_WORKLIST
         // We did a successful pivot; add fractional variables whose values changed to work list.
         std::vector<f_t> delta_x_dense;
@@ -1487,10 +1439,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
         work_estimate += lp.num_cols + 2.0 * delta_x.i.size() + 3.0 * fractional.size();
         for (i_t k : fractional) {
           if (vstatus_copy[k] != variable_status_t::BASIC) { continue; }
-          if (std::abs(delta_x_dense[k]) > settings.zero_tol) {
-            work_list.push_back(k);
-            worklist_readded++;
-          }
+          if (std::abs(delta_x_dense[k]) > settings.zero_tol) { work_list.push_back(k); }
         }
 #endif
         break;
@@ -1501,68 +1450,6 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     for (i_t h = 0; h < delta_y_nz; h++) {
       delta_y_dense[delta_y_sparse.i[h]] = 0.0;
     }
-
-    if (toc(worklist_last_log) > 1.0) {
-      if (settings.inside_mip < 2) {
-        settings.log.printf(
-          "Worklist progress: %d/%d processed, %d pivots, %d candidates_rejected, "
-          "%d no_cand, %.2f seconds\n",
-          worklist_total_processed,
-          static_cast<i_t>(fractional.size()),
-          worklist_pivots_succeeded,
-          candidates_rejected,
-          worklist_no_candidates,
-          toc(worklist_loop_start));
-      }
-      worklist_last_log = tic();
-    }
-  }
-
-  // Count unique entering variables and duplication
-  const f_t after_worklist_work = work_estimate;
-  work_estimate += 4.0 * lp.num_cols;
-  i_t unique_entering         = 0;
-  i_t max_entering_count      = 0;
-  i_t entering_tried_once     = 0;
-  i_t entering_tried_multiple = 0;
-  for (i_t q = 0; q < lp.num_cols; q++) {
-    if (entering_tried_count[q] > 0) {
-      unique_entering++;
-      max_entering_count = std::max(max_entering_count, entering_tried_count[q]);
-      if (entering_tried_count[q] == 1) {
-        entering_tried_once++;
-      } else {
-        entering_tried_multiple++;
-      }
-    }
-  }
-  if (settings.inside_mip < 2) {
-    settings.log.printf(
-      "Worklist entering stats: unique=%d, tried_once=%d, tried_multiple=%d, "
-      "max_count=%d, total_ftran=%d, duplication_ratio=%.1fx\n",
-      unique_entering,
-      entering_tried_once,
-      entering_tried_multiple,
-      max_entering_count,
-      worklist_ftran_done,
-      worklist_ftran_done / std::max(1.0, static_cast<double>(unique_entering)));
-
-    settings.log.printf(
-      "Worklist stats: processed=%d skipped=%d btran=%d ftran=%d pivots=%d readded=%d "
-      "btran_time=%.2f dot_time=%.2f ftran_time=%.2f zero_rc_vars=%d "
-      "no_candidates=%d candidates_rejected=%d\n",
-      worklist_total_processed,
-      worklist_skipped,
-      worklist_btran_done,
-      worklist_ftran_done,
-      worklist_pivots_succeeded,
-      worklist_readded,
-      worklist_btran_time,
-      worklist_dot_time,
-      worklist_ftran_time,
-      num_zero_reduced_costs_vars,
-      worklist_no_candidates,
-      candidates_rejected);
   }
 
   std::vector<i_t> new_fractional;
@@ -1580,13 +1467,6 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     basis_update   = basis_update_copy;
     solution       = soln_copy;
     work_estimate += copy_work + new_fractional.size();
-  }
-  if (settings.inside_mip < 2) {
-    settings.log.printf("Integer pivot stages: setup=%.6e fast=%.6e worklist=%.6e finish=%.6e\n",
-                        setup_work,
-                        after_fast_work - setup_work,
-                        after_worklist_work - after_fast_work,
-                        work_estimate - after_worklist_work);
   }
   total_work = log_integer_pivot_work(settings,
                                       work_estimate,
