@@ -5,7 +5,7 @@
 #pragma once
 
 #include <mip_heuristics/feasibility_jump/cpu/climber.hpp>
-#include <mip_heuristics/feasibility_jump/cpu/geometry.hpp>
+#include <mip_heuristics/feasibility_jump/cpu/setup/structure.hpp>
 #include <mip_heuristics/utils.cuh>
 #include <mip_heuristics/utils.hpp>
 

@@ -6,6 +6,7 @@
 
 #include <mip_heuristics/feasibility_jump/cpu/search/api.hpp>
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
+#include <mip_heuristics/utils.hpp>
 #include <utilities/timer.hpp>
 #include "cpufj_geometry.cuh"
 #include "cpufj_validation.cuh"
@@ -16,7 +17,6 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <numeric>
 #include <random>
 #include <thread>
 
@@ -32,12 +32,10 @@ bool repair_cpufj_lns_neighborhood(fj_cpu_climber_t<i_t, f_t>* ptr,
   const bool have_archive =
     ptr->feasible_found && clamp_and_validate_cpufj_lns_seed(
                              *ptr->problem, ptr->h_var_bounds.underlying(), archived_assignment);
-  const f_t archived_objective = have_archive
-                                   ? std::inner_product(archived_assignment.begin(),
-                                                        archived_assignment.end(),
-                                                        ptr->problem->h_obj_coeffs.begin(),
-                                                        f_t{0})
-                                   : std::numeric_limits<f_t>::infinity();
+  const f_t archived_objective = have_archive ? compensated_dot2(ptr->problem->h_obj_coeffs.data(),
+                                                                 archived_assignment.data(),
+                                                                 ptr->problem->n_variables)
+                                              : std::numeric_limits<f_t>::infinity();
 
   // A previous scalar repair expands equalities/ranged constraints into search
   // rows. Restore model-row membership before calling the unchanged setup again.
@@ -48,8 +46,8 @@ bool repair_cpufj_lns_neighborhood(fj_cpu_climber_t<i_t, f_t>* ptr,
   // Recreate the LNS climber's initial unit weights for the next repair.
   ptr->h_initial_left_weights.resize(ptr->problem->n_constraints, f_t{1});
   ptr->h_initial_right_weights.resize(ptr->problem->n_constraints, f_t{1});
+  // Model activities may be used before CPUFJ rebuilds its solve-local search state.
   recompute_lhs(*ptr);
-  invalidate_mtm_cache(*ptr);
   // The geometric repair must first repair the ruined assignment. Keep the
   // validated incumbent in the archive above while starting this local search
   // without an incumbent; the merge below retains the better validated point.
@@ -66,8 +64,8 @@ bool repair_cpufj_lns_neighborhood(fj_cpu_climber_t<i_t, f_t>* ptr,
     ptr->feasible_found &&
     clamp_and_validate_cpufj_lns_seed(*ptr->problem, ptr->h_var_bounds.underlying(), candidate);
   const f_t objective =
-    valid ? std::inner_product(
-              candidate.begin(), candidate.end(), ptr->problem->h_obj_coeffs.begin(), f_t{0})
+    valid ? compensated_dot2(
+              ptr->problem->h_obj_coeffs.data(), candidate.data(), ptr->problem->n_variables)
           : std::numeric_limits<f_t>::infinity();
   const bool improved = valid && objective + OBJECTIVE_EPSILON < archived_objective;
   ptr->feasible_found = improved || have_archive;
@@ -142,8 +140,8 @@ void run_cpufj_lns_ruin_repair(fj_cpu_climber_t<i_t, f_t>* ptr,
       continue;
     }
     rejected_seed.clear();
-    const f_t pop_objective = std::inner_product(
-      pop_assignment.begin(), pop_assignment.end(), ptr->problem->h_obj_coeffs.begin(), f_t{0});
+    const f_t pop_objective = compensated_dot2(
+      ptr->problem->h_obj_coeffs.data(), pop_assignment.data(), ptr->problem->n_variables);
     const bool adopt_population_incumbent =
       !ptr->feasible_found || pop_objective + OBJECTIVE_EPSILON < (f_t)ptr->h_best_objective;
     if (adopt_population_incumbent) {

@@ -229,6 +229,32 @@ TEST(Lns, CpufjLnsRevalidatesWithSolverTolerances)
   EXPECT_FALSE(mip::clamp_and_validate_cpufj_lns_seed(problem, bounds, seed));
 }
 
+TEST(Lns, CpufjLnsExpiredRepairPreservesCompensatedObjective)
+{
+  std::atomic<bool> preemption{false};
+  const host_model_t model{{1, 1, 1},
+                           {0, 0, 0},
+                           {1, 1, 1},
+                           {1e16, 1, -1e16},
+                           {3},
+                           {3},
+                           {0, 1, 2},
+                           {0, 3},
+                           std::vector<opt::var_t>(3, opt::var_t::INTEGER)};
+  auto anchor = make_anchor(model, preemption, test_tolerances());
+  const std::vector<double> incumbent{1, 1, 1};
+  anchor->h_best_assignment = incumbent;
+  anchor->h_best_objective  = 1;
+  anchor->feasible_found    = true;
+  anchor->h_assignment      = std::vector<double>{0, 0, 0};
+
+  // An exhausted repair restores the archived point; cancellation must not turn its objective to 0.
+  EXPECT_FALSE(mip::repair_cpufj_lns_neighborhood(anchor.get(), 0.0, true));
+  ASSERT_TRUE(anchor->feasible_found);
+  EXPECT_EQ(anchor->h_best_assignment.underlying(), incumbent);
+  EXPECT_EQ((double)anchor->h_best_objective, 1.0);
+}
+
 void init_test_problem(opt::optimization_problem_t<int, double>& op,
                        bool integer           = false,
                        double row_lower_bound = 0)

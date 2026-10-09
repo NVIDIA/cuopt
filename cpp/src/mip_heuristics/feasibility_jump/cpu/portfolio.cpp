@@ -6,10 +6,10 @@
 /* clang-format on */
 
 #include "climber.hpp"
-#include "geometry.hpp"
 #include "internal.hpp"
 #include "problem.hpp"
 #include "setup/bounds.hpp"
+#include "setup/structure.hpp"
 #include "starts/starts.hpp"
 
 namespace cuopt::mathematical_optimization::mip {

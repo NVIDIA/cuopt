@@ -182,14 +182,12 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::set_feasible_solution_callback(feasible_solution_callback_t callback)
 {
-  cuopt_expects(static_cast<bool>(callback),
-                error_type_t::RuntimeError,
-                "Population feasible-solution callback must not be empty");
+  cuopt_assert(static_cast<bool>(callback),
+               "Population feasible-solution callback must not be empty");
   std::lock_guard<std::recursive_mutex> lock(write_mutex);
   std::lock_guard<std::mutex> callback_lock(feasible_solution_callback_mutex);
-  cuopt_expects(!feasible_solution_callback,
-                error_type_t::RuntimeError,
-                "Population feasible-solution callback is already registered");
+  cuopt_assert(!feasible_solution_callback,
+               "Population feasible-solution callback is already registered");
   if (!solutions.empty()) {
     auto& [stored, sol] = solutions[0];
     if (stored && sol.get_feasible()) {

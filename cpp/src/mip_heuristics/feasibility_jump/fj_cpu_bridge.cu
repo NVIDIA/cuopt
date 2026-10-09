@@ -231,7 +231,9 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
                            objective_weight,
                            probing_cache);
   fj_cpu->settings = settings;
-  // Optional improvement workers must not advance the feasibility search's stream.
+  // LNS initialization consumes draws for both parameter randomization and the seed.
+  // Use a copy so adding that worker does not shift later feasibility-search draws,
+  // including in opportunistic solves.
   auto private_rng  = rng;
   auto& climber_rng = preserve_rng ? private_rng : rng;
   if (randomize_params) {
