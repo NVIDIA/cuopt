@@ -40,7 +40,8 @@ row_bounds_t<f_t> get_range_bounds_from_sense(char row_sense, f_t rhs, f_t range
 
 template <typename i_t, typename f_t>
 struct lp_problem_t {
-  lp_problem_t(raft::handle_t const* handle_ptr_, i_t m, i_t n, i_t nz)
+  lp_problem_t(
+    raft::handle_t const* handle_ptr_, i_t m, i_t n, i_t nz, i_t cone_var_start_ = 0)
     : handle_ptr(handle_ptr_),
       num_rows(m),
       num_cols(n),
@@ -50,7 +51,8 @@ struct lp_problem_t {
       rhs(m),
       lower(n),
       upper(n),
-      obj_constant(0.0)
+      obj_constant(0.0),
+      cone_var_start(cone_var_start_)
   {
   }
   raft::handle_t const* handle_ptr;

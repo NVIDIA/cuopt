@@ -1996,10 +1996,9 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 
     auto* cache    = settings.barrier_cache;
     auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
-    // Must stay in lockstep with the gate in solve_linear_program_with_barrier: this path swaps
-    // in the slim user_problem_from_transform, so disagreement runs presolve on a fabricated
-    // problem. Cone models are compared in model coordinates: the cached counts are
-    // post-expansion, so can_reuse_barrier_cache leaves that comparison to this caller.
+    // Same decision as the reuse check in solve_linear_program_with_barrier. A hit copies the
+    // cached problem and skips conversion. Cone sizes are compared here, before expansion.
+    // can_reuse_barrier_cache skips that comparison: the cache stores the expanded size.
     const bool user_has_soc = op_problem.has_quadratic_constraints();
     const bool reuse_from_cache =
       settings.user_problem_file.empty() &&

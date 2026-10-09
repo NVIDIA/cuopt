@@ -932,7 +932,7 @@ class iteration_data_t {
         {
           raft::common::nvtx::range form_scope("Barrier: LP Data: form augmented");
           // Build the sparsity pattern of the augmented system
-          form_augmented(true);
+          form_augmented(augmented_form_t::build);
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
         symbolic_status = chol->analyze(device_augmented);
@@ -949,9 +949,9 @@ class iteration_data_t {
 
   // Attach this solve's settings and rewind iterate-dependent state so barrier can
   // start with the new c / b. A and Q are unchanged. The previous solve left D
-  // and the KKT values at its last iterate. form_*(false) rewrites values in the
-  // existing CSR. The cone block is put back to the initial diagonal a cold start
-  // factorizes; Nesterov-Todd scaling is recomputed from the new point.
+  // and the KKT values at its last iterate. reset_for_reuse (or form_adat(false)) rewrites
+  // values in the existing CSR. The cone block is put back to the initial diagonal a cold
+  // start factorizes; Nesterov-Todd scaling is recomputed from the new point.
   bool reset_iterate_state(const simplex_solver_settings_t<i_t, f_t>& settings)
   {
     if (chol == nullptr || symbolic_status != 0) { return false; }
@@ -988,7 +988,7 @@ class iteration_data_t {
     }
 
     if (use_augmented) {
-      form_augmented(false, true);
+      form_augmented(augmented_form_t::reset_for_reuse);
     } else {
       form_adat(false);
     }
@@ -1064,7 +1064,12 @@ class iteration_data_t {
     return degree;
   }
 
-  void form_augmented(bool first_call = false, bool initial_cone_block = false)
+  // build: first call, device CSR and metadata.
+  // reset_for_reuse: values only; cone block back to the cold-start matrix.
+  // update: values only; cone block from the current Nesterov-Todd scaling.
+  enum class augmented_form_t { build, reset_for_reuse, update };
+
+  void form_augmented(augmented_form_t mode = augmented_form_t::update)
   {
     i_t n    = A.n;
     i_t m    = A.m;
@@ -1075,7 +1080,7 @@ class iteration_data_t {
     const i_t p            = augmented_expansion_count();
     i_t factorization_size = augmented_system_size(n, m);
 
-    if (first_call) {
+    if (mode == augmented_form_t::build) {
       raft::common::nvtx::range scope("Barrier: augmented: device CSR build");
 
       const size_t n_sparse_cone_entries =
@@ -1166,7 +1171,7 @@ class iteration_data_t {
                          });
       RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 
-      if (has_soc && initial_cone_block) {
+      if (has_soc && mode == augmented_form_t::reset_for_reuse) {
         // Cold initial_point factorizes this diagonal, then the first Newton step
         // rebuilds the Nesterov-Todd Hessian. Zero w and eta so a dense block
         // scatter and the matrix-free product both see that same initial matrix.

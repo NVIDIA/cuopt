@@ -70,11 +70,10 @@ void unscale_uncrush_barrier_to_user(const user_problem_t<i_t, f_t>& user_proble
                              unscaled_y,
                              unscaled_z);
 
-  // Dummy converted LP: sizes only. Bound-free=0 so uncrush_solution never reads A.
-  // cone_var_start is the exception: uncrush_primal_solution needs the real value to undo the
-  // shift convert applied to the cone block.
-  lp_problem_t<i_t, f_t> converted(handle_ptr, original_num_rows, original_num_cols, 0);
-  converted.cone_var_start = converted_cone_var_start;
+  // Dummy converted LP. Bound-free=0 so uncrush_solution never reads A. cone_var_start undoes
+  // the shift convert applied to the cone block.
+  lp_problem_t<i_t, f_t> converted(
+    handle_ptr, original_num_rows, original_num_cols, 0, converted_cone_var_start);
   lp_solution_t<i_t, f_t> lp_solution(original_num_rows, original_num_cols);
   uncrush_solution(presolve_info,
                    barrier_settings,
@@ -547,6 +546,8 @@ lp_status_t solve_linear_program_with_barrier(
       user_problem.num_rows,
       !user_problem.Q_values.empty(),
       user_has_soc) &&
+    // Cone reuse also requires the expanded layout and dimensions to match. These checks stay
+    // here because the other caller of can_reuse_barrier_cache sees the pre-expansion problem.
     (xf != nullptr && cuopt::mathematical_optimization::cone_layout_matches(*xf, user_problem)) &&
     (!user_has_soc ||
      (user_problem.num_cols == xf->user_num_cols && user_problem.num_rows == xf->user_num_rows));
@@ -644,8 +645,9 @@ lp_status_t solve_linear_program_with_barrier(
     xf->pre_expansion_num_rows       = user_problem.original_num_rows;
     xf->converted_cone_var_start     = original_lp.cone_var_start;
     xf->cone_head_bounds = cuopt::mathematical_optimization::record_cone_head_bounds(user_problem);
-    // Rows the expansion appended past the model's own; none when no expansion ran.
-    if (user_problem.original_num_rows > 0) {
+    // Rows the expansion appended past the model's own. The column map is non-empty whenever
+    // the expansion ran, including a cone model with no linear rows (original_num_rows == 0).
+    if (!user_problem.original_col_to_expanded_col.empty()) {
       xf->cone_row_rhs.assign(user_problem.rhs.begin() + user_problem.original_num_rows,
                               user_problem.rhs.end());
     }

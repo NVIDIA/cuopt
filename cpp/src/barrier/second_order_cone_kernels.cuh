@@ -420,7 +420,7 @@ __global__ void __launch_bounds__(soc_block_size)
 
   const f_t x_head  = x[cone_off];
   const f_t z_head  = z[cone_off];
-  const f_t denom   = z_head / z_scale_cone + x_head / x_scale_cone + static_cast<f_t>(2) * gamma;
+  const f_t denom   = z_head / z_scale_cone + x_head / x_scale_cone + 2.0 * gamma;
   const f_t coeff_z = (gamma + x_head / x_scale_cone) / z_scale_cone;
   const f_t coeff_x = (gamma + z_head / z_scale_cone) / x_scale_cone;
 
@@ -556,18 +556,18 @@ __global__ void update_scaling_sparse_kernel(raft::device_span<const f_t> w,
   const i_t block_start = sparse_entry_offsets[sparse_idx];
 
   if (threadIdx.x == 0) {
-    const f_t alpha    = f_t(2) * w[cone_off];
-    const f_t wsq      = f_t(2) * w[cone_off] * w[cone_off] - f_t(1);
-    const f_t wsq_safe = f_t(0.5) * (wsq + sqrt(wsq * wsq + f_t(1)));
-    const f_t wsqinv   = f_t(1) / wsq_safe;
+    const f_t alpha    = 2.0 * w[cone_off];
+    const f_t wsq      = 2.0 * w[cone_off] * w[cone_off] - 1.0;
+    const f_t wsq_safe = f_t(0.5) * (wsq + sqrt(wsq * wsq + 1.0));
+    const f_t wsqinv   = 1.0 / wsq_safe;
     const f_t di       = f_t(0.5) * wsqinv;
     d[sparse_idx]      = di;
     const f_t radicand = wsq_safe - di;
     const f_t u0       = sqrt(max(radicand, f_t(0)));
-    const f_t u1       = (u0 > f_t(0)) ? alpha / u0 : f_t(0);
-    const f_t v0       = f_t(0);
-    const f_t denom    = f_t(2) * wsq_safe - wsqinv;
-    const f_t v1_arg   = (abs(denom) > f_t(1e-12)) ? f_t(2) * (f_t(2) + wsqinv) / denom : f_t(2);
+    const f_t u1       = (u0 > 0.0) ? alpha / u0 : 0.0;
+    const f_t v0       = 0.0;
+    const f_t denom    = 2.0 * wsq_safe - wsqinv;
+    const f_t v1_arg   = (abs(denom) > f_t(1e-12)) ? 2.0 * (2.0 + wsqinv) / denom : 2.0;
     const f_t v1       = sqrt(max(v1_arg, f_t(0)));
     const f_t eta_sq   = eta[cone_idx] * eta[cone_idx];
     s_mem[0]           = eta_sq * u0;
@@ -638,14 +638,14 @@ __global__ void __launch_bounds__(soc_block_size)
   const f_t w0      = w[cone_off];
   const f_t zeta    = tail_dot[cone];
   const f_t v0      = v[cone_off];
-  const f_t inv_eta = f_t(1) / eta[cone];
+  const f_t inv_eta = 1.0 / eta[cone];
 
   if (local_idx == 0) {
     out[idx] = inv_eta * (w0 * v0 - zeta);
     return;
   }
 
-  const f_t coeff = -v0 + zeta / (f_t(1) + w0);
+  const f_t coeff = -v0 + zeta / (1.0 + w0);
   out[idx]        = inv_eta * (v[idx] + coeff * w[idx]);
 }
 
@@ -676,7 +676,7 @@ __global__ void __launch_bounds__(soc_block_size)
     return;
   }
 
-  const f_t coeff = v0 + zeta / (f_t(1) + w0);
+  const f_t coeff = v0 + zeta / (1.0 + w0);
   out[idx]        = cone_eta * (v[idx] + coeff * w[idx]);
 }
 
@@ -1104,27 +1104,27 @@ __global__ void __launch_bounds__(soc_block_size) restore_initial_sparse_cone_bl
   raft::device_span<const i_t> sparse_expansion_D,
   f_t dual_perturb)
 {
-  const size_t e = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (e >= Hs_diag.size()) { return; }
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= Hs_diag.size()) { return; }
 
-  const i_t e_i        = static_cast<i_t>(e);
-  const i_t sparse_idx = bucket_index(sparse_entry_offsets, e_i, n_sparse_cones);
-  const bool is_head   = e_i == sparse_entry_offsets[sparse_idx];
+  const i_t idx_i      = static_cast<i_t>(idx);
+  const i_t sparse_idx = bucket_index(sparse_entry_offsets, idx_i, n_sparse_cones);
+  const bool is_head   = idx_i == sparse_entry_offsets[sparse_idx];
 
-  Hs_diag[e]  = f_t(0);
-  sparse_v[e] = f_t(0);
-  sparse_u[e] = f_t(0);
+  Hs_diag[idx]  = 0.0;
+  sparse_v[idx] = 0.0;
+  sparse_u[idx] = 0.0;
 
-  augmented_x[hessian_diag_csr_indices[e]] = -q_values[e] - dual_perturb;
-  augmented_x[exp_v_col[e]]                = f_t(0);
-  augmented_x[exp_u_col[e]]                = f_t(0);
-  augmented_x[exp_v_row[e]]                = f_t(0);
-  augmented_x[exp_u_row[e]]                = f_t(0);
+  augmented_x[hessian_diag_csr_indices[idx]] = -q_values[idx] - dual_perturb;
+  augmented_x[exp_v_col[idx]]                = 0.0;
+  augmented_x[exp_u_col[idx]]                = 0.0;
+  augmented_x[exp_v_row[idx]]                = 0.0;
+  augmented_x[exp_u_row[idx]]                = 0.0;
 
   if (is_head) {
-    d[sparse_idx]                                       = f_t(0);
-    augmented_x[sparse_expansion_D[2 * sparse_idx]]     = f_t(0);
-    augmented_x[sparse_expansion_D[2 * sparse_idx + 1]] = f_t(0);
+    d[sparse_idx]                                       = 0.0;
+    augmented_x[sparse_expansion_D[2 * sparse_idx]]     = 0.0;
+    augmented_x[sparse_expansion_D[2 * sparse_idx + 1]] = 0.0;
   }
 }
 
@@ -1209,8 +1209,8 @@ __global__ void sparse_augmented_matvec_kernel(raft::device_span<const f_t> x,
   const f_t x_exp_u = x[exp_u];
   const f_t eta_sq  = eta[cone] * eta[cone];
 
-  f_t partial_dot_v = f_t(0);
-  f_t partial_dot_u = f_t(0);
+  f_t partial_dot_v = 0.0;
+  f_t partial_dot_u = 0.0;
   for (i_t j = threadIdx.x; j < q; j += blockDim.x) {
     const f_t xj = x[base + j];
     const f_t vj = sparse_v[flat + j];
@@ -1313,7 +1313,7 @@ __global__ void __launch_bounds__(soc_block_size)
   const f_t w0     = w[off];
   const f_t u_r    = (r == 0) ? w0 : w[off + r];
   const f_t u_c    = (c == 0) ? w0 : w[off + c];
-  const f_t val    = f_t{2} * u_r * eta_sq * u_c;
+  const f_t val    = 2.0 * u_r * eta_sq * u_c;
 
   f_t entry = -val - q_values[e];
   if (r == c) {
@@ -1492,9 +1492,9 @@ __global__ void __launch_bounds__(block_dim)
     }
   }
 
-  f_t du_sq = f_t{0};
-  f_t u_du  = f_t{0};
-  f_t u_sq  = f_t{0};
+  f_t du_sq = 0.0;
+  f_t u_du  = 0.0;
+  f_t u_sq  = 0.0;
 #pragma unroll
   for (int k = 0; k < items_per_thread; ++k) {
     du_sq += acc_du_sq[k];
