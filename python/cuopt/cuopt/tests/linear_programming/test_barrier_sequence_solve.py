@@ -37,9 +37,18 @@ def _sequence_settings():
 
 
 def _build(
-    values, indices, offsets, rhs, senses, lower, upper, objective=None
+    values,
+    indices,
+    offsets,
+    rhs,
+    senses,
+    lower,
+    upper,
+    objective=None,
+    *,
+    quadratic=True,
 ):
-    """A QP with quadratic term x^T x, so the model is barrier-eligible."""
+    """Build a model. With ``quadratic``, add ``x^T x`` so it is barrier-eligible."""
     n = len(lower)
     model = data_model.DataModel()
     model.set_csr_constraint_matrix(
@@ -54,11 +63,12 @@ def _build(
         if objective is None
         else np.asarray(objective, dtype=np.float64)
     )
-    model.set_quadratic_objective_matrix(
-        np.ones(n),
-        np.arange(n, dtype=np.int32),
-        np.arange(n + 1, dtype=np.int32),
-    )
+    if quadratic:
+        model.set_quadratic_objective_matrix(
+            np.ones(n),
+            np.arange(n, dtype=np.int32),
+            np.arange(n + 1, dtype=np.int32),
+        )
     model.set_variable_lower_bounds(np.asarray(lower, dtype=np.float64))
     model.set_variable_upper_bounds(np.asarray(upper, dtype=np.float64))
     return model
@@ -290,6 +300,49 @@ def test_bounded_free_variables_block_reuse(
         second,
         _full_solve(FREE_VARIABLE, FREE_VARIABLE_RHS, objective=new_objective),
     )
+
+
+# min x + 2y, x + y >= b, 0 <= x <= 2, y free. The optimum is unique: x = 2,
+# y = b - 2. y is free, so a normal LP barrier solve would split it into v - w.
+PURE_LP = dict(
+    values=[1.0, 1.0],
+    indices=[0, 1],
+    offsets=[0, 2],
+    senses="G",
+    lower=[0.0, -np.inf],
+    upper=[2.0, np.inf],
+    objective=[1.0, 2.0],
+)
+
+
+def test_lp_barrier_update_rhs_reuses_cache(capfd):
+    """A pure LP barrier sequence solve reuses the cache after an RHS update.
+
+    There is no quadratic term, so this is the LP path. PSLP, folding, and the
+    v-w split would each change the matrix the cache has to replay.
+    """
+    settings = _sequence_settings()
+    settings.set_parameter("method", solver_settings.SolverMethod.Barrier)
+    model = _build(**dict(PURE_LP, rhs=[3.0]), quadratic=False)
+
+    first, log = _solve(model, settings, capfd)
+    assert first.get_termination_reason() == "Optimal"
+    assert REUSE_LOG not in log
+    assert "Using PSLP presolver" not in log
+    assert "Handling 1 free variables directly" in log
+    assert "Folding:" not in log
+
+    rhs = [6.0]
+    model.update_rhs(np.asarray(rhs, dtype=np.float64))
+    reused, log = _solve(model, settings, capfd)
+    assert REUSE_LOG in log, "LP barrier sequence solve fell back to a full solve"
+
+    oracle_settings = solver_settings.SolverSettings()
+    oracle_settings.set_parameter("method", solver_settings.SolverMethod.Barrier)
+    oracle = solver.Solve(
+        _build(**dict(PURE_LP, rhs=rhs), quadratic=False), oracle_settings
+    )
+    _assert_matches_oracle(reused, oracle)
 
 
 # Quadratic constraints reach the barrier as second-order cones. The conversion appends rows and

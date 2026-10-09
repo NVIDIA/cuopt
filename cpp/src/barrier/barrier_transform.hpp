@@ -71,8 +71,8 @@ struct barrier_transform_t {
   std::unique_ptr<csc_matrix_t<i_t, f_t>> barrier_Q;
 };
 
-// Shared reuse gate from the update-API work. A cone problem skips the QP-only
-// size check: the caller compares either expanded user counts or pre-expansion
+// Shared reuse gate from the update-API work. A cone problem skips the size
+// check: the caller compares either expanded user counts or pre-expansion
 // problem counts, which are not the same number.
 template <typename i_t, typename f_t>
 inline bool can_reuse_barrier_cache(barrier_transform_t<i_t, f_t> const* xf,
@@ -87,10 +87,12 @@ inline bool can_reuse_barrier_cache(barrier_transform_t<i_t, f_t> const* xf,
     return false;
   }
   if (user_has_soc) { return true; }
-  return has_quadratic_objective && xf->second_order_cone_dims.empty() &&
+  // LP and QP reuse when the sizes match. A cached quadratic objective does not match an LP.
+  return xf->second_order_cone_dims.empty() &&
          xf->barrier_lp->second_order_cone_dims.empty() &&
          static_cast<i_t>(xf->row_sense.size()) == xf->user_num_rows &&
-         num_cols == xf->user_num_cols && num_rows == xf->user_num_rows;
+         num_cols == xf->user_num_cols && num_rows == xf->user_num_rows &&
+         (has_quadratic_objective || xf->barrier_lp->Q.n == 0);
 }
 
 // Column count an update is sized in: the pre-expansion count when the SOC expansion grew the

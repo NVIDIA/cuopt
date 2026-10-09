@@ -560,6 +560,11 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.remove_perturbation                   = settings.remove_perturbation;
   barrier_settings.primal_pricing                        = settings.primal_pricing;
   barrier_settings.folding                               = settings.folding;
+  // Folding rewrites rows, so a sequence LP cannot replay an RHS update through the cache.
+  if (settings.sequence_solve && user_problem.Q_values.empty() &&
+      user_problem.second_order_cone_dims.empty()) {
+    barrier_settings.folding = 0;
+  }
   barrier_settings.augmented                             = settings.augmented;
   barrier_settings.dualize                               = settings.dualize;
   barrier_settings.ordering                              = settings.ordering;
@@ -2248,7 +2253,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         CUOPT_LOG_INFO("Skipping presolve for small problem (nnz=%d < %d)",
                        op_problem.get_nnz(),
                        presolve_nnz_threshold);
-      } else {
+      } else if (!(settings.sequence_solve && settings.method == method_t::Barrier)) {
         settings.presolver = presolver_t::PSLP;
         CUOPT_LOG_INFO("Using PSLP presolver");
       }
@@ -2258,6 +2263,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     std::unique_ptr<mip::third_party_presolve_t<i_t, f_t>> presolver;
     auto run_presolve = settings.presolver != presolver_t::None;
     run_presolve = run_presolve && settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1;
+    // The barrier cache stores the user's LP. PSLP would reduce a different problem each update.
+    if (settings.sequence_solve && settings.method == method_t::Barrier) { run_presolve = false; }
 
     // Declare result at outer scope so that result.reduced_problem (which may be
     // referenced by problem.original_problem_ptr) remains alive through the solve.
