@@ -58,7 +58,7 @@ struct gmres_workspace_t {
   static constexpr int dimension = 10;
   rmm::device_uvector<f_t> r, x_sav;
   std::vector<rmm::device_uvector<f_t>> V, Z;
-  transform_reduce_helper_t<f_t> reductions;
+  reduction_workspace_t<f_t> reductions;
   rmm::device_uvector<f_t> d_column;
   std::array<f_t, dimension + 2> h_column;
 
@@ -88,14 +88,10 @@ struct gmres_workspace_t {
 
   void check_preconditioner_async(const rmm::device_uvector<f_t>& z)
   {
-    reductions.transform_reduce_async(
-      z.data(),
-      thrust::maximum<f_t>{},
-      [] __host__ __device__(f_t v) { return abs(v); },
-      f_t(0),
-      z.size(),
-      raft::device_span<f_t>(d_column.data() + dimension + 1, 1),
-      z.stream());
+    vector_norm_inf_async(raft::device_span<const f_t>(z.data(), z.size()),
+                          raft::device_span<f_t>(d_column.data() + dimension + 1, 1),
+                          reductions,
+                          z.stream());
   }
 
   void orthogonalize(int k)

@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 #include <thrust/functional.h>
 #include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <cub/device/device_transform.cuh>
 
 #include <optional>
@@ -263,9 +264,19 @@ TEST(barrier, shared_reductions_reuse_storage_and_preserve_async_outputs)
 {
   raft::handle_t handle;
   const auto stream = handle.get_stream();
-  transform_reduce_helper_t<double> reductions(stream);
-  auto values = cuopt::device_copy(std::vector<double>{-3.0, 4.0}, stream);
+  reduction_workspace_t<double> reductions(stream);
+  const std::vector<double> host_values{-4.0, 3.0};
+  auto values = cuopt::device_copy(host_values, stream);
   rmm::device_uvector<double> empty(0, stream), outputs(2, stream);
+
+  EXPECT_DOUBLE_EQ(vector_norm_inf(values), 4.0);
+  EXPECT_DOUBLE_EQ((device_vector_norm_inf<int, double>(values, stream)), 4.0);
+  EXPECT_DOUBLE_EQ((vector_norm_inf<int, double>(host_values, stream)), 4.0);
+  const auto squares = thrust::make_transform_iterator(values.data(), reduction_test_square_op{});
+  EXPECT_DOUBLE_EQ((device_custom_vector_norm_inf<int, double>(squares, values.size(), stream)),
+                   16.0);
+  EXPECT_DOUBLE_EQ((device_custom_vector_norm_inf<int, double>(squares, 0, stream)), 0.0);
+  EXPECT_DOUBLE_EQ(vector_norm_inf(empty), 0.0);
 
   EXPECT_DOUBLE_EQ(vector_norm_inf(values, reductions), 4.0);
   EXPECT_DOUBLE_EQ(vector_norm2(values, reductions), 5.0);

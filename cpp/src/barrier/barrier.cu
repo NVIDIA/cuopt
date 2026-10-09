@@ -444,7 +444,7 @@ class barrier_reduce_helper_t {
 
   rmm::device_uvector<f_t> d_results_;
   pinned_dense_vector_t<i_t, f_t> h_results_;
-  transform_reduce_helper_t<f_t> reductions_;
+  reduction_workspace_t<f_t> reductions_;
 };
 
 template <typename i_t, typename f_t>
@@ -611,7 +611,7 @@ class iteration_data_t {
       d_Qx_(Qin.m, lp.handle_ptr->get_stream()),
       restrict_u_(0),
       d_restrict_u_(0, lp.handle_ptr->get_stream()),
-      transform_reduce_helper_(lp.handle_ptr->get_stream()),
+      reduction_workspace_(lp.handle_ptr->get_stream()),
       transform_reduce_pair_helper_(lp.handle_ptr->get_stream()),
       sum_reduce_helper_(lp.handle_ptr->get_stream()),
       reduce_helper_(lp.handle_ptr->get_stream()),
@@ -2422,7 +2422,7 @@ class iteration_data_t {
   dense_vector_t<i_t, f_t> restrict_u_;
   rmm::device_uvector<f_t> d_restrict_u_;
 
-  transform_reduce_helper_t<f_t> transform_reduce_helper_;
+  reduction_workspace_t<f_t> reduction_workspace_;
   transform_reduce_pair_helper_t<f_t> transform_reduce_pair_helper_;
   sum_reduce_helper_t<f_t> sum_reduce_helper_;
 
@@ -3914,7 +3914,7 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   raft::device_span<f_t> dx_aff_span(data.d_dx_aff_.data(), data.d_dx_aff_.size());
   raft::device_span<f_t> dz_aff_span(data.d_dz_aff_.data(), data.d_dz_aff_.size());
 
-  f_t complementarity_xz_aff_sum = data.transform_reduce_helper_.transform_reduce(
+  f_t complementarity_xz_aff_sum = data.reduction_workspace_.transform_reduce(
     thrust::make_counting_iterator<size_t>(0),
     cuda::std::plus<f_t>{},
     [step_primal_aff, step_dual_aff, x_span, z_span, dx_span, dz_span, dx_aff_span, dz_aff_span] HD(
@@ -3945,7 +3945,7 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   raft::device_span<f_t> dw_aff_span(data.d_dw_aff_.data(), data.d_dw_aff_.size());
   raft::device_span<f_t> dv_aff_span(data.d_dv_aff_.data(), data.d_dv_aff_.size());
 
-  f_t complementarity_wv_aff_sum = data.transform_reduce_helper_.transform_reduce(
+  f_t complementarity_wv_aff_sum = data.reduction_workspace_.transform_reduce(
     thrust::make_counting_iterator<size_t>(0),
     cuda::std::plus<f_t>{},
     [step_primal_aff, step_dual_aff, w_span, v_span, dw_span, dv_span, dw_aff_span, dv_aff_span] HD(
