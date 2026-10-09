@@ -213,7 +213,8 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   std::atomic<bool>& preemption_flag,
   const probing_cache_t<i_t, f_t>* probing_cache,
   fj_settings_t settings,
-  bool randomize_params)
+  bool randomize_params,
+  bool preserve_rng)
 {
   raft::common::nvtx::range scope("fj_cpu_init");
 
@@ -230,14 +231,19 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
                            objective_weight,
                            probing_cache);
   fj_cpu->settings = settings;
+  // LNS initialization consumes draws for both parameter randomization and the seed.
+  // Use a copy so adding that worker does not shift later feasibility-search draws,
+  // including in opportunistic solves.
+  auto private_rng  = rng;
+  auto& climber_rng = preserve_rng ? private_rng : rng;
   if (randomize_params) {
-    cuopt::pcgenerator_t host_rng(rng.next_i64());
+    cuopt::pcgenerator_t host_rng(climber_rng.next_i64());
     fj_cpu->mtm_viol_samples = host_rng.uniform<i_t>(15, 51);
     fj_cpu->mtm_sat_samples  = host_rng.uniform<i_t>(10, 31);
     fj_cpu->nnz_samples      = host_rng.uniform<i_t>(2000, 15001);
     fj_cpu->perturb_interval = host_rng.uniform<i_t>(50, 501);
   }
-  fj_cpu->settings.seed = rng.next_i64();
+  fj_cpu->settings.seed = climber_rng.next_i64();
   return fj_cpu;
 }
 
@@ -263,6 +269,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> fj_t<int, float>::create_
   std::atomic<bool>&,
   const probing_cache_t<int, float>*,
   fj_settings_t,
+  bool,
   bool);
 #endif
 
@@ -288,6 +295,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, double>> fj_t<int, double>::creat
   std::atomic<bool>&,
   const probing_cache_t<int, double>*,
   fj_settings_t,
+  bool,
   bool);
 #endif
 

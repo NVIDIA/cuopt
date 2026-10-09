@@ -57,7 +57,6 @@ from cuopt.linear_programming.solver_settings.solver_settings cimport (
 from cython.operator cimport dereference as deref, postincrement as postinc
 
 from enum import IntEnum
-import math
 import threading
 import time
 import warnings
@@ -234,14 +233,9 @@ class _LogStreamHandler:
             raise
 
 
-def _call_incumbent_callback(callback, index, objective, assignment, job_complete):
-    try:
-        return callback(index, objective, assignment, job_complete)
-    except TypeError:
-        return callback(index, objective, assignment)
-
-
-def _forward_incumbent_to_settings(settings, index, objective, assignment, job_complete):
+def _forward_incumbent_to_settings(
+    settings, index, objective, bound, assignment, job_complete
+):
     from cuopt.linear_programming.internals import GetSolutionCallback
 
     if job_complete:
@@ -252,9 +246,9 @@ def _forward_incumbent_to_settings(settings, index, objective, assignment, job_c
         if isinstance(mip_callback, GetSolutionCallback):
             solution = np.asarray(assignment, dtype=np.float64)
             cost = np.array([objective], dtype=np.float64)
-            bound = np.array([math.nan], dtype=np.float64)
+            bound_arr = np.array([bound], dtype=np.float64)
             mip_callback.get_solution(
-                solution, cost, bound, mip_callback.user_data
+                solution, cost, bound_arr, mip_callback.user_data
             )
     return True
 
@@ -600,7 +594,8 @@ cdef class Client:
         Return incumbent solutions collected so far (or all remaining).
 
         Works while the job is running or after it completes. Each entry is a
-        dict with ``index``, ``objective``, and ``assignment`` (list of floats).
+        dict with ``index``, ``objective``, ``bound``, and ``assignment``
+        (list of floats).
         """
         cdef grpc_incumbents_result_t outcome = self._client.get().fetch_incumbents(
             job_id.encode("utf-8"), from_index, 0
@@ -614,6 +609,7 @@ cdef class Client:
             {
                 "index": entry.index,
                 "objective": entry.objective,
+                "bound": entry.bound,
                 "assignment": [v for v in entry.assignment],
             }
             for entry in outcome.incumbents
@@ -641,9 +637,9 @@ cdef class Client:
         if settings is None:
             raise GrpcError("settings is required")
 
-        def combined(index, objective, assignment, job_complete):
+        def combined(index, objective, bound, assignment, job_complete):
             return _forward_incumbent_to_settings(
-                settings, index, objective, assignment, job_complete
+                settings, index, objective, bound, assignment, job_complete
             )
 
         incumbent_client = self._spawn_client()
@@ -717,8 +713,12 @@ cdef class Client:
                 assignment = []
                 for i in range(entry.assignment.size()):
                     assignment.append(entry.assignment[i])
-                if _call_incumbent_callback(
-                    callback, entry.index, entry.objective, assignment, False
+                if callback(
+                    entry.index,
+                    entry.objective,
+                    entry.bound,
+                    assignment,
+                    False,
                 ) is False:
                     self.cancel(job_id)
                     return
@@ -726,7 +726,7 @@ cdef class Client:
             next_index = outcome.next_index
             job_complete = outcome.job_complete
             if job_complete:
-                _call_incumbent_callback(callback, 0, 0.0, [], True)
+                callback(0, 0.0, 0.0, [], True)
                 return
 
             time.sleep(poll_seconds)

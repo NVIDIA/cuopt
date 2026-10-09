@@ -277,6 +277,7 @@ grpc_incumbents_result_t grpc_python_client_t::fetch_incumbents(const std::strin
     grpc_incumbent_entry_t entry;
     entry.index      = inc.index;
     entry.objective  = inc.objective;
+    entry.bound      = inc.bound;
     entry.assignment = inc.assignment;
     out.incumbents.push_back(std::move(entry));
   }

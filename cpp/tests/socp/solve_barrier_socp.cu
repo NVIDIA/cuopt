@@ -9,6 +9,7 @@
 
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/scaling.hpp>
 #include <dual_simplex/solve.hpp>
@@ -1384,6 +1385,71 @@ TEST(barrier, free_variable_substitution_postsolve_kkt)
   std::vector<double> solved_dual;
   dual_residual(original_lp, solution.x, solution.y, solution.z, solved_dual);
   EXPECT_NEAR((vector_norm_inf<int, double>(solved_dual)), 0.0, 1e-5);
+}
+
+TEST(barrier, cached_solve_can_enable_iterative_refinement)
+{
+  // The first solve has no GMRES workspace. Enabling refinement on a cached solve must
+  // create it for the retained system, including the ADAT case whose size is only m.
+  for (int augmented : {0, 1}) {
+    SCOPED_TRACE(augmented);
+    auto cache = barrier_cache_t::create(cudaStreamNonBlocking);
+    init_handler(cache->handle_ptr());
+    user_problem_t<int, double> user_problem(cache->handle_ptr());
+    user_problem.num_range_rows = 0;
+
+    // Minimize 0.5 * (x0^2 + x1^2), subject to x0 + x1 = rhs and 0 <= x <= 10.
+    // The unique solution is x0 = x1 = rhs / 2, with objective rhs^2 / 4.
+    constexpr int m = 1, n = 2, nz = 2;
+    user_problem.num_rows = m;
+    user_problem.num_cols = n;
+    user_problem.objective.assign(n, 0.0);
+    user_problem.A.m      = m;
+    user_problem.A.n      = n;
+    user_problem.A.nz_max = nz;
+    user_problem.A.reallocate(nz);
+    user_problem.A.col_start = {0, 1, 2};
+    user_problem.A.i         = {0, 0};
+    user_problem.A.x         = {1.0, 1.0};
+    user_problem.rhs         = {2.0};
+    user_problem.row_sense   = {'E'};
+    user_problem.lower.assign(n, 0.0);
+    user_problem.upper.assign(n, 10.0);
+    user_problem.Q_offsets = {0, 1, 2};
+    user_problem.Q_indices = {0, 1};
+    user_problem.Q_values  = {1.0, 1.0};
+    user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+    user_problem.problem_name = "cached_solve_can_enable_iterative_refinement";
+
+    simplex_solver_settings_t<int, double> settings;
+    settings.barrier                               = true;
+    settings.barrier_presolve                      = false;
+    settings.barrier_presolve_bound_free_variables = 0;
+    settings.dualize                               = 0;
+    settings.augmented                             = augmented;
+    settings.barrier_iterative_refinement          = false;
+    lp_solution_t<int, double> solution(m, n);
+    ASSERT_EQ(solve_linear_program_with_barrier(user_problem, settings, solution, cache.get()),
+              lp_status_t::OPTIMAL);
+    ASSERT_NE(cache->transform(), nullptr);
+    EXPECT_NEAR(solution.objective, 1.0, 1e-4);
+
+    settings.barrier_iterative_refinement = true;
+    for (double rhs : {4.0, 6.0}) {
+      SCOPED_TRACE(rhs);
+      // Update only the cache: rebuilding from user_problem would still solve RHS 2
+      // and fail the expected solution/objective checks below.
+      cache->update_rhs(&rhs, m);
+      ASSERT_TRUE(cache->dirty());
+      const auto status =
+        solve_linear_program_with_barrier(user_problem, settings, solution, cache.get());
+      ASSERT_EQ(status, lp_status_t::OPTIMAL);
+      EXPECT_FALSE(cache->dirty());
+      EXPECT_NEAR(solution.x[0], rhs / 2, 1e-4);
+      EXPECT_NEAR(solution.x[1], rhs / 2, 1e-4);
+      EXPECT_NEAR(solution.objective, rhs * rhs / 4, 1e-4);
+    }
+  }
 }
 
 }  // namespace cuopt::mathematical_optimization::simplex::test

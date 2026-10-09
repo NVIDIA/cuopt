@@ -84,8 +84,8 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
 // Numeric arrays — both top-level and per-container — bypass protobuf
 // serialization and flow directly through the pipe as raw bytes.
 //
-// The pipe is intra-process (forked worker), so this format is not a
-// public protocol and can evolve in lockstep with the server binary.
+// The pipe connects the server process to an exec'd worker, so this format
+// is not a public protocol and can evolve in lockstep with the server binary.
 // =============================================================================
 
 // Tri-state result for write_chunked_request_to_pipe.  The distinction lets

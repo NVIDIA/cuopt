@@ -250,7 +250,7 @@ struct SolveResult {
 // via a pipe.  A fresh instance is created per solve (as a unique_ptr scoped
 // to run_mip_solve) and registered with mip_settings.set_mip_callback().
 // The solver calls get_solution() every time it finds a better integer-feasible
-// solution; we serialize the objective + variable assignment into a protobuf
+// solution; we serialize the objective, bound, and variable assignment into a protobuf
 // and push it down the incumbent pipe FD.  The server thread reads the other
 // end to serve GetIncumbents RPCs.
 // ---------------------------------------------------------------------------
@@ -266,11 +266,11 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
   }
 
   // Called by the MIP solver each time a new incumbent is found.
-  // data/objective_value arrive as raw void* whose actual type depends on
-  // isFloat; we normalize everything to double before serializing.
+  // data/objective_value/solution_bound arrive as raw void* whose actual type
+  // depends on isFloat; we normalize everything to double before serializing.
   void get_solution(void* data,
                     void* objective_value,
-                    void* /*solution_bound*/,
+                    void* solution_bound,
                     void* /*user_data*/) override
   {
     if (n_variables == 0) { return; }
@@ -280,6 +280,7 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
     if (fd_ < 0) { return; }
 
     double objective = 0.0;
+    double bound     = 0.0;
     std::vector<double> assignment;
     assignment.resize(n_variables);
 
@@ -289,13 +290,15 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
         assignment[i] = static_cast<double>(float_data[i]);
       }
       objective = static_cast<double>(*static_cast<const float*>(objective_value));
+      bound     = static_cast<double>(*static_cast<const float*>(solution_bound));
     } else {
       const double* double_data = static_cast<const double*>(data);
       std::copy(double_data, double_data + n_variables, assignment.begin());
       objective = *static_cast<const double*>(objective_value);
+      bound     = *static_cast<const double*>(solution_bound);
     }
 
-    auto buffer = build_incumbent_proto(job_id_, objective, assignment);
+    auto buffer = build_incumbent_proto(job_id_, objective, bound, assignment);
     if (!send_incumbent_pipe(fd_, buffer)) {
       SERVER_LOG_ERROR("[Worker] Incumbent pipe write failed for job %s, disabling further sends",
                        job_id_.c_str());
@@ -364,7 +367,7 @@ static std::vector<T> device_to_host(const auto& device_vec)
 // Write a result entry with no payload (error, cancellation, etc.) into the
 // first free slot in the shared-memory result_queue.
 //
-// Lock-free protocol for cross-process writes (workers are forked):
+// Lock-free protocol for cross-process writes (one process per worker):
 //   1. Skip slots where ready==true (still being consumed by the reader).
 //   2. CAS claimed false→true to get exclusive write access.  Another
 //      writer (different worker process) that races on the same slot will
@@ -835,9 +838,9 @@ void worker_process(int worker_id, bool is_replacement)
 {
   SERVER_LOG_INFO("[Worker %d] Started (PID: %d)", worker_id, getpid());
 
-  // Parent owns SIGINT/SIGTERM shutdown. Ignoring here prevents the inherited
-  // soft handler from leaving mid-solve workers alive after Ctrl-C while the
-  // parent waits on them.
+  // The parent blocks SIGINT/SIGTERM before posix_spawn, and that mask survives
+  // exec. Ignore them here too so a process-group Ctrl-C does not kill a
+  // mid-solve worker while the parent is still shutting workers down.
   signal(SIGINT, SIG_IGN);
   signal(SIGTERM, SIG_IGN);
 
@@ -968,8 +971,7 @@ void worker_process(int worker_id, bool is_replacement)
 
   shm_ctrl->active_workers--;
   SERVER_LOG_INFO("[Worker %d] Stopped", worker_id);
-  // _exit() instead of exit() to avoid running atexit handlers or flushing
-  // parent-inherited stdio buffers a second time in the forked child.
+  // _exit() skips atexit handlers registered by CUDA, RMM, and the logger.
   _exit(0);
 }
 

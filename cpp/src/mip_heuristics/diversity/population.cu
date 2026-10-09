@@ -145,10 +145,13 @@ size_t population_t<i_t, f_t>::get_external_solution_size()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solution,
                                                    f_t objective,
-                                                   solution_origin_t origin)
+                                                   solution_origin_t origin,
+                                                   bool from_lns)
 {
   if (!std::isfinite(objective)) return;
-  context.solution_publication.publish_if_better(problem_ptr, solution, objective);
+  // Publish with producer metadata before queueing. Later population callbacks are
+  // suppressed by the publication objective floor; new descendants have their own origin.
+  context.solution_publication.publish_if_better(problem_ptr, solution, objective, from_lns);
   std::lock_guard<std::mutex> lock(solution_mutex);
 
   const bool full = external_solution_queue.size() == max_external_solutions;
@@ -174,6 +177,40 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
   }
   if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
   solutions_in_external_queue_ = true;
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::set_feasible_solution_callback(feasible_solution_callback_t callback)
+{
+  cuopt_assert(static_cast<bool>(callback),
+               "Population feasible-solution callback must not be empty");
+  std::lock_guard<std::recursive_mutex> lock(write_mutex);
+  std::lock_guard<std::mutex> callback_lock(feasible_solution_callback_mutex);
+  cuopt_assert(!feasible_solution_callback,
+               "Population feasible-solution callback is already registered");
+  if (!solutions.empty()) {
+    auto& [stored, sol] = solutions[0];
+    if (stored && sol.get_feasible()) {
+      callback(sol.get_host_assignment(), sol.get_objective(), sol.get_user_objective());
+    }
+  }
+  feasible_solution_callback = std::move(callback);
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::clear_feasible_solution_callback()
+{
+  std::lock_guard<std::mutex> callback_lock(feasible_solution_callback_mutex);
+  feasible_solution_callback = {};
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::notify_feasible_solution(solution_t<i_t, f_t>& sol)
+{
+  std::lock_guard<std::mutex> callback_lock(feasible_solution_callback_mutex);
+  if (!feasible_solution_callback || !sol.get_feasible()) return;
+  feasible_solution_callback(
+    sol.get_host_assignment(), sol.get_objective(), sol.get_user_objective());
 }
 
 template <typename i_t, typename f_t>
@@ -419,6 +456,7 @@ std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&&
     solutions[0].second = std::move(temp_sol);
     indices[0].second   = sol_cost;
     best_updated        = true;
+    notify_feasible_solution(solutions[0].second);
   }
 
   // Fast reject

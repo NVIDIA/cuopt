@@ -12,14 +12,32 @@
 
 #include <branch_and_bound/branch_and_bound.hpp>
 #include <mip_heuristics/diversity/diversity_manager.cuh>
-#include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/lns/cpufj.cuh>
+#include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
+#include <mip_heuristics/feasibility_jump/cpu/search/api.hpp>
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <random>
+
 namespace cuopt::mathematical_optimization::mip {
+
+// Apply the existing feasibility-portfolio thresholds to the capacity remaining
+// after reserving the persistent CPUFJ LNS worker.
+template <typename i_t, typename f_t>
+static int feasibility_team_size(const mip_solver_context_t<i_t, f_t>& context)
+{
+  const int team = omp_get_num_threads();
+  return team -
+         lns_worker_count(team, context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
+}
 
 template <typename i_t, typename f_t>
 local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context_,
@@ -51,7 +69,7 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t>& population)
 {
   // TODO: Find a way to enable this in low core count scenarios
-  if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
+  if (feasibility_team_size(context) < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
 
   pop_ptr = &population;
   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
@@ -103,11 +121,82 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
 }
 
 template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::start_cpufj_lns_improvement_thread(
+  population_t<i_t, f_t>& population)
+{
+  // Share the solve team and leave capacity for feasibility discovery.
+  const int workers = lns_worker_count(
+    omp_get_num_threads(), context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
+  if (workers == 0) return;
+  auto* exception_ptr = context.task_exception;
+  cuopt_assert(exception_ptr != nullptr, "LNS worker needs the team exception slot");
+
+  std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
+  solution_t<i_t, f_t> solution(*context.problem_ptr);
+  thrust::fill(solution.handle_ptr->get_thrust_policy(),
+               solution.assignment.begin(),
+               solution.assignment.end(),
+               0.0);
+  solution.clamp_within_bounds();
+
+  // Paid once: every subsequent ruin-and-repair iteration reuses this exact climber, mutating
+  // its assignment directly and calling cpufj_solve() again instead of reconstructing (which
+  // would re-download the whole problem from device and re-pay O(nnz) setup every iteration).
+  scratch_cpu_fj_lns             = fj.create_cpu_climber(solution,
+                                             default_weights,
+                                             default_weights,
+                                             0.,
+                                             context.preempt_heuristic_solver_,
+                                             &constraint_prop.bounds_update.probing_cache,
+                                             fj_settings_t{},
+                                             /*randomize=*/true,
+                                             /*preserve_rng=*/true);
+  scratch_cpu_fj_lns->log_prefix = "******* lns improvement: ";
+  scratch_cpu_fj_lns->improvement_callback =
+    [&population](f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
+      population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ, /*from_lns=*/true);
+    };
+
+  lns_population_feed = std::make_unique<lns_population_feed_t<i_t, f_t>>(population);
+  auto stream         = context.problem_ptr->handle_ptr->get_stream();
+  lns_original_bounds = cuopt::host_copy_async(context.problem_ptr->variable_bounds, stream);
+  lns_original_types  = cuopt::host_copy_async(context.problem_ptr->variable_types, stream);
+  context.problem_ptr->handle_ptr->sync_stream();
+  auto* bounds_ptr = &lns_original_bounds;
+  auto* types_ptr  = &lns_original_types;
+  auto* feed_ptr   = lns_population_feed.get();
+  auto* ptr        = scratch_cpu_fj_lns.get();
+  const size_t n   = context.problem_ptr->n_variables;
+  CUOPT_LOG_DEBUG("Launching CPUFJ LNS improvement task");
+#pragma omp task firstprivate(ptr, feed_ptr, bounds_ptr, types_ptr, exception_ptr, n) \
+  priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *ptr) default(none)
+  {
+    const int previous_max_threads = omp_get_max_threads();
+    omp_set_num_threads(1);
+    try {
+      run_cpufj_lns_ruin_repair<i_t, f_t>(
+        ptr,
+        [feed_ptr, n](auto& assignment) {
+          assignment.resize(n);
+          return feed_ptr->best_feasible(assignment);
+        },
+        [ptr, bounds_ptr, types_ptr](const auto& assignment) {
+          return verify_cpufj_lns_feasible(*ptr->problem, *bounds_ptr, *types_ptr, assignment);
+        });
+    } catch (...) {
+#pragma omp critical(cuopt_mip_task_exception)
+      if (!*exception_ptr) *exception_ptr = std::current_exception();
+    }
+    omp_set_num_threads(previous_max_threads);
+  }
+}
+
+template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   population_t<i_t, f_t>& population)
 {
   // TODO: Find a way to enable this in low core count scenarios
-  if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
+  if (feasibility_team_size(context) < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
 
   pop_ptr = &population;
 
@@ -147,22 +236,28 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
-  if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
-
+  // Signal every persistent worker before reaching any task scheduling point.
+  // LNS can run on teams too small to launch the scratch feasibility lanes.
+  if (scratch_cpu_fj_lns) scratch_cpu_fj_lns->halted = true;
+  if (scratch_cpu_fj_on_lp_opt) scratch_cpu_fj_on_lp_opt->halted = true;
   for (auto& cpu_fj : scratch_cpu_fj) {
-    cuopt_assert(cpu_fj != nullptr, "scratch climbers must have been created");
-    cpu_fj->halted = true;
+    if (cpu_fj) cpu_fj->halted = true;
   }
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
+    if (!scratch_cpu_fj[i]) continue;
 #pragma omp taskwait depend(in : *scratch_cpu_fj[i])  // Wait for each scratch CPU FJ task to finish
   }
 
   if (scratch_cpu_fj_on_lp_opt) {
-    scratch_cpu_fj_on_lp_opt->halted = true;
 #pragma omp taskwait depend( \
     in : *scratch_cpu_fj_on_lp_opt)  // Wait for the scratch CPU FJ (LP optimal) task to finish
 
     CUOPT_LOG_DEBUG("All scratch CPUFJ tasks were stopped");
+  }
+
+  if (scratch_cpu_fj_lns) {
+#pragma omp taskwait depend(in : *scratch_cpu_fj_lns)  // Wait for the LNS improvement task
+    CUOPT_LOG_DEBUG("CPUFJ LNS improvement task was stopped");
   }
 }
 
@@ -171,7 +266,7 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(mip::branch_and_bound_t
 {
   producer_sync_t& producer_sync = bb.get_producer_sync();
 
-  if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) {
+  if (feasibility_team_size(context) < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) {
     producer_sync.registration_complete();
     return;
   }
@@ -276,8 +371,9 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   // Start CPU solver in background thread
 #pragma omp taskgroup
   {
-    if (ls_cpu_fj.size() > 0 && omp_get_num_threads() > CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) {
-      size_t n = std::min<size_t>(omp_get_num_threads() - 1, ls_cpu_fj.size());
+    if (ls_cpu_fj.size() > 0 &&
+        feasibility_team_size(context) > CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) {
+      size_t n = std::min<size_t>(feasibility_team_size(context) - 1, ls_cpu_fj.size());
       CUOPT_LOG_DEBUG("Launching %d CPUFJ tasks", n);
 
 #pragma omp taskloop shared(ls_cpu_fj) default(none) num_tasks(n) \

@@ -76,7 +76,11 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
     primal_residual_{climber_strategies.size() * dual_size_h_, stream_view_},
     dual_residual_{climber_strategies.size() * primal_size_h_, stream_view_},
     reduced_cost_{climber_strategies.size() * primal_size_h_, stream_view_},
-    bound_value_{static_cast<size_t>(std::max(primal_size_h_, dual_size_h_)), stream_view_},
+    // The reflected path computes the dual objective from slacks, without bound products.
+    bound_value_{settings.hyper_params.use_reflected_primal_dual
+                   ? 0
+                   : static_cast<size_t>(std::max(primal_size_h_, dual_size_h_)),
+                 stream_view_},
     primal_slack_{(settings.hyper_params.use_reflected_primal_dual)
                     ? static_cast<size_t>(dual_size_h_ * climber_strategies.size())
                     : 0,
@@ -224,7 +228,7 @@ template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
   multi_gpu_engine_t<i_t, f_t>& engine)
 {
-  cuopt_assert(!batch_mode_, "distributed PDLP is not supported in batch mode");
+  cuopt_assert(!batch_mode_, "multi-GPU PDLP is not supported in batch mode");
 
   cuopt_expects(!hyper_params_.initial_primal_weight_combined_bounds,
                 error_type_t::ValidationError,
@@ -259,7 +263,7 @@ void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
                                              .l2_norm_primal_right_hand_side_.data();
                                          });
 
-  // Distributed PDLP is non-batch, so the objective side is an ordinary global
+  // Multi-GPU PDLP is non-batch, so the objective side is an ordinary global
   // L2 norm over the owned variable slices.
   engine.distributed_l2_norm_to_master(
     [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
@@ -798,8 +802,8 @@ __global__ void apply_objective_scaling_and_offset(raft::device_span<f_t> object
   objective[idx] = objective_scaling_factor * (objective[idx] + objective_offsets[idx]);
 }
 
-// Compute the primal objective using cublasdot. Takes a size as input so distributed and single use
-// the same kernel.
+// Compute the primal objective using cublasdot. Takes a size as input so multi-GPU and single-GPU
+// use the same kernel.
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_primal_objective_owned_partial(
   const rmm::device_uvector<f_t>& primal_solution, i_t n_owned)

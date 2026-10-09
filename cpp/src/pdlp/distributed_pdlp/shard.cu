@@ -129,7 +129,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   //     independent local slices, not transposes (A has all owned rows and
   //     A_T has all owned columns).
   //   * skip local Ruiz / Pock-Chambolle inside initial_scaling_strategy_'s
-  //     ctor -- distributed scaling (multi_gpu_engine_t::distributed_scaling)
+  //     ctor -- multi-GPU scaling (multi_gpu_engine_t::distributed_scaling)
   //     runs a cross-shard-coherent scaling later. Local per-shard scaling
   //     would be incoherent across shards.
   sub_pdlp = std::make_unique<pdlp_solver_t<i_t, f_t>>(
