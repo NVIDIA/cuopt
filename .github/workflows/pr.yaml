@@ -60,6 +60,7 @@ jobs:
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
       cuopt_server_test_filter: ${{ steps.set-filters.outputs.cuopt_server_test_filter }}
       cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
+      isolated_install_filter: ${{ steps.set-filters.outputs.isolated_install_filter }}
     steps:
       - name: Set matrix filters
         id: set-filters
@@ -71,6 +72,9 @@ jobs:
           echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_server_test_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER | split(\".\") | map(tonumber) | .[0]) | map(max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
+          # One amd64, latest-deps job per CUDA major: the isolated-install smoke tests only need
+          # the libcuopt-{client,mathopt,routing} packages, which are built per CUDA major.
+          echo "isolated_install_filter=map(select(.ARCH == \"amd64\" and .DEPENDENCIES == \"latest\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
 
   changed-files:
     permissions:
@@ -377,7 +381,8 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@release/26.10
     with:
       enable_check_generated_files: false
-      ignored_pr_jobs: "pr-test-summary"
+      # isolated-install-* are non-blocking until the single-component packaging fixes land.
+      ignored_pr_jobs: "pr-test-summary isolated-install-wheels isolated-install-conda"
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
     # Consumed by C++, Java, Python, and docs jobs.
@@ -792,6 +797,52 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
+  # Isolated-install smoke tests: install ONE freshly built component package (client, mathopt or
+  # routing) on its own and build + run a small gtest against it. They depend only on the
+  # packaging builds, never on a test job, so they finish roughly at build time + smoke time.
+  # NON-BLOCKING for now, because they are expected to fail until the single-component packaging
+  # fixes land: they are NOT in pr-builder's `needs` (listed in checks' ignored_pr_jobs instead) and
+  # pass `continue-on-error: true` to the shared workflows. Undo both once they are green.
+  isolated-install-wheels:
+    needs:
+      - compute-matrix-filters
+      - changed-files
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.10
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    with:
+      build_type: pull-request
+      script: ci/test_isolated_install_wheel.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.isolated_install_filter }}
+      # Expected to fail until the packaging fixes land; failures must not fail the workflow.
+      continue-on-error: true
+  isolated-install-conda:
+    needs:
+      - compute-matrix-filters
+      - changed-files
+      - conda-cpp-build
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@release/26.10
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    with:
+      build_type: pull-request
+      script: ci/test_isolated_install_conda.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.isolated_install_filter }}
+      # Expected to fail until the packaging fixes land; failures must not fail the workflow.
+      continue-on-error: true
   pr-test-summary:
     name: "PR test summary (non-blocking)"
     needs:
