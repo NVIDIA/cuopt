@@ -68,6 +68,7 @@ struct simplex_solver_settings_t {
       eliminate_singletons(true),
       print_presolve_stats(true),
       barrier_presolve(false),
+      barrier_eliminate_free_variables(true),
       cudss_deterministic(false),
       deterministic(false),
       barrier(false),
@@ -172,12 +173,10 @@ struct simplex_solver_settings_t {
   bool relaxation;                 // true to only solve the LP relaxation of a MIP
   bool
     use_left_looking_lu;  // true to use left looking LU factorization, false to use right looking
-  bool eliminate_singletons;  // true to eliminate singletons from the basis
-  bool print_presolve_stats;  // true to print presolve stats
-  bool barrier_presolve;      // true to use barrier presolve
-  // Equality substitution of zero-cost free variables. A barrier cache cannot refresh the
-  // stored pivot RHS, so a solve that fills the cache turns this off.
-  bool barrier_eliminate_free_variables = true;
+  bool eliminate_singletons;              // true to eliminate singletons from the basis
+  bool print_presolve_stats;              // true to print presolve stats
+  bool barrier_presolve;                  // true to use barrier presolve
+  bool barrier_eliminate_free_variables;  // true to eliminate zero-cost free variables
   bool cudss_deterministic;  // true to use cuDSS deterministic mode, false for non-deterministic
   bool barrier;              // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode

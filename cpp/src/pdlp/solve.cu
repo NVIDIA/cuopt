@@ -532,6 +532,14 @@ i_t effective_bound_free_variables(pdlp_solver_settings_t<i_t, f_t> const& setti
            : settings.barrier_presolve_bound_free_variables;
 }
 
+// Equality substitution stores a pivot RHS the reuse path cannot refresh, so a sequence solve
+// leaves those free columns in the barrier system.
+template <typename i_t, typename f_t>
+bool effective_eliminate_free_variables(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return !settings.sequence_solve;
+}
+
 template <typename i_t, typename f_t>
 std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_barrier(
   const simplex::user_problem_t<i_t, f_t>& user_problem,
@@ -558,22 +566,23 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.barrier_dual_initial_point            = settings.barrier_dual_initial_point;
   barrier_settings.postsolve_info                        = settings.postsolve_info;
   barrier_settings.barrier_presolve_bound_free_variables = effective_bound_free_variables(settings);
-  barrier_settings.barrier_initial_point_safeguard       = settings.barrier_initial_point_safeguard;
-  barrier_settings.barrier                               = true;
-  barrier_settings.barrier_presolve                      = true;
-  barrier_settings.crossover                             = settings.crossover;
-  barrier_settings.eliminate_dense_columns               = settings.eliminate_dense_columns;
-  barrier_settings.barrier_iterative_refinement          = settings.barrier_iterative_refinement;
-  barrier_settings.barrier_adaptive_regularization       = settings.barrier_adaptive_regularization;
-  barrier_settings.barrier_primal_regularization         = settings.barrier_primal_regularization;
-  barrier_settings.barrier_dual_regularization           = settings.barrier_dual_regularization;
-  barrier_settings.barrier_soc_threshold                 = settings.barrier_soc_threshold;
-  barrier_settings.barrier_step_scale                    = settings.barrier_step_scale;
-  barrier_settings.qcqp_ruiz_equilibration               = settings.qcqp_ruiz_equilibration;
-  barrier_settings.gpu_ruiz_nnz_threshold                = settings.gpu_ruiz_nnz_threshold;
-  barrier_settings.cudss_deterministic                   = settings.cudss_deterministic;
-  barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
-  barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
+  barrier_settings.barrier_eliminate_free_variables = effective_eliminate_free_variables(settings);
+  barrier_settings.barrier_initial_point_safeguard  = settings.barrier_initial_point_safeguard;
+  barrier_settings.barrier                          = true;
+  barrier_settings.barrier_presolve                 = true;
+  barrier_settings.crossover                        = settings.crossover;
+  barrier_settings.eliminate_dense_columns          = settings.eliminate_dense_columns;
+  barrier_settings.barrier_iterative_refinement     = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_adaptive_regularization  = settings.barrier_adaptive_regularization;
+  barrier_settings.barrier_primal_regularization    = settings.barrier_primal_regularization;
+  barrier_settings.barrier_dual_regularization      = settings.barrier_dual_regularization;
+  barrier_settings.barrier_soc_threshold            = settings.barrier_soc_threshold;
+  barrier_settings.barrier_step_scale               = settings.barrier_step_scale;
+  barrier_settings.qcqp_ruiz_equilibration          = settings.qcqp_ruiz_equilibration;
+  barrier_settings.gpu_ruiz_nnz_threshold           = settings.gpu_ruiz_nnz_threshold;
+  barrier_settings.cudss_deterministic              = settings.cudss_deterministic;
+  barrier_settings.barrier_relaxed_feasibility_tol  = settings.tolerances.relative_primal_tolerance;
+  barrier_settings.barrier_relaxed_optimality_tol   = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;
   barrier_settings.barrier_relaxed_relative_objective_gap_tol =
     settings.tolerances.relative_gap_tolerance;

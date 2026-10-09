@@ -195,7 +195,9 @@ def test_update_rhs_infeasible_empty_row_short_circuits(capfd):
     infeasible, log = _solve(model, settings, capfd)
     assert infeasible.get_termination_reason() == "PrimalInfeasible"
     assert RHS_INFEASIBLE_LOG in log
-    assert BARRIER_LOG not in log, "barrier ran despite a provably infeasible row"
+    assert BARRIER_LOG not in log, (
+        "barrier ran despite a provably infeasible row"
+    )
 
     # Same cache, feasible RHS again.
     rhs = [0.0, 4.0]

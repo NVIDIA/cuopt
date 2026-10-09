@@ -1087,22 +1087,22 @@ void scatter_sparse_hessian_into_augmented(cone_data_t<i_t, f_t>& cones,
 // exists: Hessian diagonal -Q - dual_perturb, and sparse expansion couplings and
 // diagonals at zero. The rank-2 matvec state is cleared to match that matrix.
 template <typename i_t, typename f_t>
-__global__ void __launch_bounds__(soc_block_size) restore_initial_sparse_cone_block_kernel(
-  raft::device_span<f_t> augmented_x,
-  raft::device_span<f_t> Hs_diag,
-  raft::device_span<f_t> sparse_v,
-  raft::device_span<f_t> sparse_u,
-  raft::device_span<f_t> d,
-  raft::device_span<const i_t> sparse_entry_offsets,
-  i_t n_sparse_cones,
-  raft::device_span<const i_t> hessian_diag_csr_indices,
-  raft::device_span<const f_t> q_values,
-  raft::device_span<const i_t> exp_v_col,
-  raft::device_span<const i_t> exp_u_col,
-  raft::device_span<const i_t> exp_v_row,
-  raft::device_span<const i_t> exp_u_row,
-  raft::device_span<const i_t> sparse_expansion_D,
-  f_t dual_perturb)
+__global__ void __launch_bounds__(soc_block_size)
+  restore_initial_sparse_cone_block_kernel(raft::device_span<f_t> augmented_x,
+                                           raft::device_span<f_t> Hs_diag,
+                                           raft::device_span<f_t> sparse_v,
+                                           raft::device_span<f_t> sparse_u,
+                                           raft::device_span<f_t> d,
+                                           raft::device_span<const i_t> sparse_entry_offsets,
+                                           i_t n_sparse_cones,
+                                           raft::device_span<const i_t> hessian_diag_csr_indices,
+                                           raft::device_span<const f_t> q_values,
+                                           raft::device_span<const i_t> exp_v_col,
+                                           raft::device_span<const i_t> exp_u_col,
+                                           raft::device_span<const i_t> exp_v_row,
+                                           raft::device_span<const i_t> exp_u_row,
+                                           raft::device_span<const i_t> sparse_expansion_D,
+                                           f_t dual_perturb)
 {
   const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= Hs_diag.size()) { return; }

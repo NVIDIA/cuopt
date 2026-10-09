@@ -101,9 +101,7 @@ inline i_t problem_num_cols(barrier_transform_t<i_t, f_t> const& xf)
   return xf.pre_expansion_num_cols > 0 ? xf.pre_expansion_num_cols : xf.user_num_cols;
 }
 
-// Row count an update is sized in. The column map is set whenever the expansion ran, including a
-// cone model with no linear rows, so a pre-expansion count of 0 is real. An empty map means no
-// expansion, and the user and expanded counts are the same.
+// Row count an update is sized in.
 template <typename i_t, typename f_t>
 inline i_t problem_num_rows(barrier_transform_t<i_t, f_t> const& xf)
 {
@@ -115,9 +113,8 @@ inline i_t problem_num_rows(barrier_transform_t<i_t, f_t> const& xf)
 template <typename i_t, typename f_t>
 inline i_t problem_col_to_expanded_col(barrier_transform_t<i_t, f_t> const& xf, i_t problem_col)
 {
-  return xf.original_col_to_expanded_col.empty()
-           ? problem_col
-           : xf.original_col_to_expanded_col[problem_col];
+  return xf.original_col_to_expanded_col.empty() ? problem_col
+                                                 : xf.original_col_to_expanded_col[problem_col];
 }
 
 // convert inserts the inequality slacks ahead of the cone block, pushing every cone column
@@ -307,8 +304,8 @@ inline std::vector<f_t> crush_user_linear_objective(barrier_transform_t<i_t, f_t
     std::size_t extra = pairs.size() / 2;
     presolved.resize(presolved.size() + extra);
     for (std::size_t k = 0; k < extra; ++k) {
-      i_t u                                  = pairs[2 * k];
-      i_t v                                  = pairs[2 * k + 1];
+      i_t u        = pairs[2 * k];
+      i_t v        = pairs[2 * k + 1];
       presolved[v] = -presolved[u];
     }
   }
@@ -343,8 +340,6 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf
     error = message;
     return crush_rhs_status_t::invalid;
   };
-  // An empty RHS is a null pointer of length 0. That is a real update when the model has no
-  // linear rows and the expansion appended the cone rows.
   if (m != problem_num_rows(xf) || (b == nullptr && m != 0)) {
     return invalid("update_rhs: RHS length must match the cached problem row count.");
   }
