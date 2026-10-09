@@ -6,7 +6,6 @@
 #include "../state.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <vector>
 
@@ -39,22 +38,28 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> make_equality_reduced_climber(
   std::vector<fj_equality_substitution_t<i_t, f_t>>&,
   std::vector<i_t>&);
 
-enum class cpufj_geometry_mode_t { portfolio, lns };
+struct cpufj_geometry_requirements_t {
+  int32_t min_groups{0};
+  // Zero permits arbitrary continuous scopes.
+  int32_t required_scope_size{0};
+  double min_gated_row_fraction{0};
+  bool require_matching_equality_count{false};
+  bool require_gate_per_group{false};
+  // Allow binary inequalities that do not certify an activating row.
+  bool allow_other_binary_rows{false};
+};
 
-// Recognize continuous regions selected by disjoint exact-one groups. The portfolio
-// retains its narrow shape checks; LNS permits arbitrary scopes and side constraints.
-// Side constraints still participate in the complete feasibility checks during repair.
-// Callers select eligible models and may certify an activating row with a small M.
+// Recognize continuous regions selected by disjoint exact-one groups. Callers
+// select structural requirements and may certify an activating row with a small M.
 template <typename i_t, typename f_t, typename certify_small_gate_t>
 bool has_cpufj_disjunctive_geometry(const fj_cpu_climber_t<i_t, f_t>& climber,
-                                    certify_small_gate_t certify_small_gate,
-                                    cpufj_geometry_mode_t mode = cpufj_geometry_mode_t::portfolio)
+                                    const cpufj_geometry_requirements_t& requirements,
+                                    certify_small_gate_t certify_small_gate)
 {
   if (climber.problem == nullptr) return false;
   const auto& problem = *climber.problem;
   const i_t groups    = static_cast<i_t>(problem.card_cardinalities.size());
-  const bool lns      = mode == cpufj_geometry_mode_t::lns;
-  if (lns && groups == 0) return false;
+  if (groups < requirements.min_groups) return false;
   for (i_t cardinality : problem.card_cardinalities)
     if (cardinality != 1) return false;
   for (i_t variable : climber.h_binary_indices) {
@@ -62,9 +67,9 @@ bool has_cpufj_disjunctive_geometry(const fj_cpu_climber_t<i_t, f_t>& climber,
     if (group < 0 || group >= groups) return false;
   }
 
-  std::vector<std::array<i_t, 4>> scopes(lns ? 0 : groups);
-  std::vector<i_t> scope_sizes(lns ? 0 : groups, 0);
-  std::vector<bool> gated_groups(lns ? groups : 0, false);
+  std::vector<i_t> scopes(static_cast<size_t>(groups) * requirements.required_scope_size);
+  std::vector<i_t> scope_sizes(requirements.required_scope_size > 0 ? groups : 0, 0);
+  std::vector<bool> gated_groups(requirements.require_gate_per_group ? groups : 0, false);
   i_t gated = 0, equalities = 0;
   for (i_t row = 0; row < problem.n_constraints; ++row) {
     const f_t lower = problem.cstr_lb[row], upper = problem.cstr_ub[row];
@@ -79,7 +84,7 @@ bool has_cpufj_disjunctive_geometry(const fj_cpu_climber_t<i_t, f_t>& climber,
       const i_t variable = problem.variables[q];
       if (climber.h_is_binary_variable[variable]) {
         if (binary >= 0) {
-          if (!lns) return false;
+          if (!requirements.allow_other_binary_rows) return false;
           multiple_binaries = true;
           break;
         }
@@ -94,40 +99,41 @@ bool has_cpufj_disjunctive_geometry(const fj_cpu_climber_t<i_t, f_t>& climber,
     const bool lower_row = gate_coefficient < 0 && std::isfinite(lower) && !std::isfinite(upper);
     const bool upper_row = gate_coefficient > 0 && std::isfinite(upper) && !std::isfinite(lower);
     if (group < 0 || (!lower_row && !upper_row) || !(continuous_max > 0)) {
-      if (!lns) return false;
+      if (!requirements.allow_other_binary_rows) return false;
       continue;
     }
     if (!(std::abs(gate_coefficient) >= f_t{1000} * continuous_max) &&
         !certify_small_gate(row, binary, lower_row)) {
-      if (!lns) return false;
+      if (!requirements.allow_other_binary_rows) return false;
       continue;
     }
     ++gated;
-    if (lns) {
-      gated_groups[group] = true;
-      continue;
-    }
-    auto& scope = scopes[group];
-    auto& size  = scope_sizes[group];
+    if (requirements.require_gate_per_group) gated_groups[group] = true;
+    if (requirements.required_scope_size == 0) continue;
+    const auto scope =
+      scopes.begin() + static_cast<size_t>(group) * requirements.required_scope_size;
+    auto& size = scope_sizes[group];
     for (i_t q = problem.offsets[row]; q < problem.offsets[row + 1]; ++q) {
       const i_t variable = problem.variables[q];
-      if (variable == binary ||
-          std::find(scope.begin(), scope.begin() + size, variable) != scope.begin() + size)
-        continue;
-      if (size == 4) return false;
+      if (variable == binary || std::find(scope, scope + size, variable) != scope + size) continue;
+      if (size == requirements.required_scope_size) return false;
       scope[size++] = variable;
     }
   }
-  if (lns)
-    return std::all_of(gated_groups.begin(), gated_groups.end(), [](bool gated) { return gated; });
-  return equalities == groups && gated >= 0.8 * problem.n_constraints &&
-         std::all_of(scope_sizes.begin(), scope_sizes.end(), [](i_t size) { return size == 4; });
+  return (!requirements.require_matching_equality_count || equalities == groups) &&
+         gated >= requirements.min_gated_row_fraction * problem.n_constraints &&
+         std::all_of(scope_sizes.begin(),
+                     scope_sizes.end(),
+                     [&](i_t size) { return size == requirements.required_scope_size; }) &&
+         std::all_of(gated_groups.begin(), gated_groups.end(), [](bool gated) { return gated; });
 }
 
 template <typename i_t, typename f_t>
-bool has_cpufj_disjunctive_geometry(const fj_cpu_climber_t<i_t, f_t>& climber)
+bool has_cpufj_disjunctive_geometry(const fj_cpu_climber_t<i_t, f_t>& climber,
+                                    const cpufj_geometry_requirements_t& requirements)
 {
-  return has_cpufj_disjunctive_geometry(climber, [](i_t, i_t, bool) { return false; });
+  return has_cpufj_disjunctive_geometry(
+    climber, requirements, [](i_t, i_t, bool) { return false; });
 }
 
 }  // namespace cuopt::mathematical_optimization::mip

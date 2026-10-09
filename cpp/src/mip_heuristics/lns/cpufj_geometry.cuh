@@ -6,7 +6,6 @@
 
 #include <mip_heuristics/feasibility_jump/cpu/climber.hpp>
 #include <mip_heuristics/feasibility_jump/cpu/setup/structure.hpp>
-#include <mip_heuristics/utils.cuh>
 #include <mip_heuristics/utils.hpp>
 
 #include <cmath>
@@ -62,13 +61,15 @@ bool has_cpufj_lns_geometry(const fj_cpu_climber_t<i_t, f_t>& climber)
   for (i_t variable : problem.h_objective_vars)
     if (problem.h_var_types[variable] != var_t::CONTINUOUS) return false;
   std::vector<f_t> coefficients, endpoints;
+  cpufj_geometry_requirements_t requirements;
+  requirements.min_groups              = 1;
+  requirements.require_gate_per_group  = true;
+  requirements.allow_other_binary_rows = true;
   return has_cpufj_disjunctive_geometry(
-    climber,
-    [&](i_t row, i_t gate, bool lower_row) {
+    climber, requirements, [&](i_t row, i_t gate, bool lower_row) {
       return cpufj_lns_inactive_row_redundant(
         climber, row, gate, lower_row, coefficients, endpoints);
-    },
-    cpufj_geometry_mode_t::lns);
+    });
 }
 
 template <typename i_t, typename f_t>

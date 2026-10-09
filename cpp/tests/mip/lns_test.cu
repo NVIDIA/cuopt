@@ -10,6 +10,7 @@
 #include <mip_heuristics/lns/cpufj.cuh>
 #include <mip_heuristics/lns/cpufj_validation.cuh>
 #include <mip_heuristics/lns/thread_budget.hpp>
+#include <pdlp/utils.cuh>
 
 #include <gtest/gtest.h>
 
@@ -80,6 +81,164 @@ host_model_t single_variable(
           {0},
           {0, 1},
           {integer ? opt::var_t::INTEGER : opt::var_t::CONTINUOUS}};
+}
+
+struct geometry_model_t {
+  std::atomic<bool> preemption{false};
+  std::shared_ptr<mip::fj_cpu_problem_t<int, double>> problem =
+    std::make_shared<mip::fj_cpu_problem_t<int, double>>();
+  mip::fj_cpu_climber_t<int, double> climber{preemption};
+
+  geometry_model_t(int groups, int scope_size, int gated_groups = -1)
+  {
+    const int binaries   = 2 * groups;
+    problem->n_variables = binaries + scope_size;
+    problem->tolerances  = test_tolerances();
+    problem->card_cardinalities.assign(groups, 1);
+    problem->card_group_of_variable.assign(problem->n_variables, -1);
+    problem->h_var_types.assign(problem->n_variables, opt::var_t::CONTINUOUS);
+    problem->h_obj_coeffs.assign(problem->n_variables, 0);
+    if (scope_size > 0) {
+      problem->h_objective_vars       = {binaries};
+      problem->h_obj_coeffs[binaries] = 1;
+    }
+    problem->offsets      = {0};
+    climber.problem       = problem;
+    climber.n_binary_vars = binaries;
+    climber.h_is_binary_variable.underlying().assign(problem->n_variables, 0);
+    climber.h_var_bounds.underlying().assign(problem->n_variables, make_double2(0, 10));
+    for (int variable = 0; variable < binaries; ++variable) {
+      problem->h_var_types[variable]            = opt::var_t::INTEGER;
+      problem->card_group_of_variable[variable] = variable / 2;
+      climber.h_is_binary_variable[variable]    = 1;
+      climber.h_binary_indices.push_back(variable);
+      climber.h_var_bounds[variable] = make_double2(0, 1);
+    }
+    for (int group = 0; group < groups; ++group)
+      add_row({{2 * group, 1}, {2 * group + 1, 1}}, 1, 1);
+    if (gated_groups < 0) gated_groups = groups;
+    for (int group = 0; group < gated_groups; ++group)
+      for (int coordinate = 0; coordinate < scope_size; ++coordinate)
+        add_row({{2 * group + coordinate % 2, 1000}, {binaries + coordinate, 1}},
+                -std::numeric_limits<double>::infinity(),
+                1000);
+  }
+
+  void add_row(const std::vector<std::pair<int, double>>& terms, double lower, double upper)
+  {
+    for (const auto& [variable, coefficient] : terms) {
+      problem->variables.push_back(variable);
+      problem->coefficients.push_back(coefficient);
+    }
+    problem->offsets.push_back(problem->variables.size());
+    problem->cstr_lb.push_back(lower);
+    problem->cstr_ub.push_back(upper);
+    problem->n_constraints = problem->cstr_lb.size();
+    problem->nnz           = problem->coefficients.size();
+  }
+};
+
+mip::cpufj_geometry_requirements_t portfolio_geometry_requirements()
+{
+  mip::cpufj_geometry_requirements_t requirements;
+  requirements.required_scope_size             = 4;
+  requirements.min_gated_row_fraction          = 0.8;
+  requirements.require_matching_equality_count = true;
+  return requirements;
+}
+
+TEST(Lns, GeometryRequirementsPreserveScopesAndSideRows)
+{
+  auto requirements = portfolio_geometry_requirements();
+  for (int scope_size : {3, 4, 5}) {
+    geometry_model_t model(1, scope_size);
+    EXPECT_EQ(mip::has_cpufj_disjunctive_geometry(model.climber, requirements), scope_size == 4);
+    EXPECT_TRUE(mip::has_cpufj_lns_geometry(model.climber));
+  }
+
+  geometry_model_t model(1, 4);
+  // Four activating rows out of five meet the legacy 80% threshold exactly.
+  ASSERT_TRUE(mip::has_cpufj_disjunctive_geometry(model.climber, requirements));
+  model.add_row({{2, 1}}, -std::numeric_limits<double>::infinity(), 10);
+  EXPECT_FALSE(mip::has_cpufj_disjunctive_geometry(model.climber, requirements));
+  EXPECT_TRUE(mip::has_cpufj_lns_geometry(model.climber));
+  requirements.min_gated_row_fraction = 0;
+  EXPECT_TRUE(mip::has_cpufj_disjunctive_geometry(model.climber, requirements));
+
+  model.add_row({{2, 1}, {3, -1}}, 0, 0);
+  EXPECT_FALSE(mip::has_cpufj_disjunctive_geometry(model.climber, requirements));
+  EXPECT_TRUE(mip::has_cpufj_lns_geometry(model.climber));
+  requirements.require_matching_equality_count = false;
+  EXPECT_TRUE(mip::has_cpufj_disjunctive_geometry(model.climber, requirements));
+
+  model.add_row({{0, 1}, {1, 1}}, -std::numeric_limits<double>::infinity(), 1);
+  EXPECT_FALSE(mip::has_cpufj_disjunctive_geometry(model.climber, requirements));
+  EXPECT_TRUE(mip::has_cpufj_lns_geometry(model.climber));
+  requirements.allow_other_binary_rows = true;
+  EXPECT_TRUE(mip::has_cpufj_disjunctive_geometry(model.climber, requirements));
+}
+
+TEST(Lns, GeometryRequirementsPreserveEmptyGroupsAndCoverage)
+{
+  geometry_model_t empty(0, 0);
+  const auto requirements = portfolio_geometry_requirements();
+  EXPECT_TRUE(mip::has_cpufj_disjunctive_geometry(empty.climber, requirements));
+  EXPECT_FALSE(mip::has_cpufj_lns_geometry(empty.climber));
+  auto nonempty_requirements       = requirements;
+  nonempty_requirements.min_groups = 1;
+  EXPECT_FALSE(mip::has_cpufj_disjunctive_geometry(empty.climber, nonempty_requirements));
+
+  geometry_model_t covered(2, 4);
+  EXPECT_TRUE(mip::has_cpufj_disjunctive_geometry(covered.climber, requirements));
+  EXPECT_TRUE(mip::has_cpufj_lns_geometry(covered.climber));
+  geometry_model_t uncovered(2, 4, 1);
+  EXPECT_FALSE(mip::has_cpufj_lns_geometry(uncovered.climber));
+  covered.problem->card_cardinalities[0] = 2;
+  EXPECT_FALSE(mip::has_cpufj_lns_geometry(covered.climber));
+  covered.problem->card_cardinalities[0]     = 1;
+  covered.problem->card_group_of_variable[0] = -1;
+  EXPECT_FALSE(mip::has_cpufj_lns_geometry(covered.climber));
+}
+
+TEST(Lns, GeometryRequirementsPreserveSmallGateCertification)
+{
+  geometry_model_t model(1, 4);
+  // M=10 is small relative to the continuous coefficient, but binary-zero rows
+  // are redundant on [0,10]. Only the caller with a bound certificate accepts it.
+  for (int row = 1; row < model.problem->n_constraints; ++row) {
+    model.problem->coefficients[model.problem->offsets[row]] = 10;
+    model.problem->cstr_ub[row]                              = 10;
+  }
+  EXPECT_FALSE(
+    mip::has_cpufj_disjunctive_geometry(model.climber, portfolio_geometry_requirements()));
+  EXPECT_TRUE(mip::has_cpufj_lns_geometry(model.climber));
+  for (int variable = 2; variable < model.problem->n_variables; ++variable)
+    model.climber.h_var_bounds[variable] = make_double2(0, 20);
+  EXPECT_FALSE(mip::has_cpufj_lns_geometry(model.climber));
+}
+
+template <typename f_t>
+void check_row_tolerance_parity()
+{
+  const auto inf            = std::numeric_limits<f_t>::infinity();
+  constexpr f_t large_bound = static_cast<f_t>(1e12);
+  const std::vector<f_t> bounds{
+    -inf, -large_bound, -1, -0.0, 0, 1, large_bound, inf, std::numeric_limits<f_t>::quiet_NaN()};
+  constexpr f_t abs_tol = 1e-7, rel_tol = 2e-8;
+  for (f_t lower : bounds) {
+    for (f_t upper : bounds) {
+      const f_t combined = opt::pdlp::combine_finite_abs_bounds<f_t>{}(lower, upper);
+      const f_t expected = abs_tol + combined * rel_tol;
+      EXPECT_EQ((mip::get_cstr_tolerance<int, f_t>(lower, upper, abs_tol, rel_tol)), expected);
+      EXPECT_EQ((mip::get_cstr_tolerance<int, f_t>(combined, abs_tol, rel_tol)), expected);
+    }
+  }
+}
+
+TEST(Lns, HostRowToleranceMatchesExistingBoundCombination)
+{
+  check_row_tolerance_parity<float>();
+  check_row_tolerance_parity<double>();
 }
 
 TEST(Lns, PopulationSeedUsesModelBoundsBeyondCpufjIntegerCap)

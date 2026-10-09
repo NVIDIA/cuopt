@@ -311,7 +311,11 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   c.objective_directed_perturb  = false;
   if (cardinality_dominated && c.n_integer_vars == 0 && objective_var_count > 0 &&
       continuous_objective_vars == objective_var_count) {
-    if (has_cpufj_disjunctive_geometry(c)) {
+    cpufj_geometry_requirements_t requirements;
+    requirements.required_scope_size             = 4;
+    requirements.min_gated_row_fraction          = 0.8;
+    requirements.require_matching_equality_count = true;
+    if (has_cpufj_disjunctive_geometry(c, requirements)) {
       const i_t slot                = lane % 8;
       c.continuous_perturb_fraction = f_t{0.1} * (1 << (slot % 4));
       c.objective_directed_perturb  = slot % 2 == 1;
