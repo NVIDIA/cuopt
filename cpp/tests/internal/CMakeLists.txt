@@ -11,6 +11,7 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/solve.cpp
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/primal.cpp
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/solve_barrier.cu
+    ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/barrier_saved_iterate_test.cpp
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/device_sparse_matrix_test.cu
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/right_looking_ldlt.cpp
     # linear_programming
