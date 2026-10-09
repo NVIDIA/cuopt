@@ -25,11 +25,7 @@ These branches have required status checks, DCO enforcement, and review gates. A
 
 For the fork workflow, draft-PR rule, choosing the right base branch, and pre-commit/DCO requirements, see the sections below.
 
-### Exception: Skills PRs Must Use an Upstream Branch (Not a Fork)
-
-NVSkills CI validation requires the PR to originate from a branch **in `NVIDIA/cuopt`**, not a fork. For changes under `skills/`, push to a feature branch on the upstream repo (not your personal fork) and open a PR from there.
-
-After opening the PR, a maintainer must comment `/nvskills-ci` to trigger NVSkills CI validation. The bot pushes a signature commit (`Attach NVSkills validation signatures`) that must remain in the PR — do not squash or rebase it away. Re-comment `/nvskills-ci` after any further pushes to re-sign.
+For changes under `skills/`, after opening the PR a maintainer must comment `/nvskills-ci` to trigger NVSkills CI validation. The bot pushes a signature commit (`Attach NVSkills validation signatures`) that must remain in the PR — do not squash or rebase it away. Re-comment `/nvskills-ci` after any further pushes to re-sign.
 
 ---
 
