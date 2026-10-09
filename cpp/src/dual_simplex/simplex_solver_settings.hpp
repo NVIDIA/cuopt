@@ -199,7 +199,7 @@ struct simplex_solver_settings_t {
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
   i_t initial_perturbation;  // -1 automatic, 0 to not perturb, 1 to perturb
   i_t remove_perturbation;   // -1 automatic, 0 disabled, 1 enabled
-  i_t primal_pricing;        // 0 Dantzig (default), 1 Devex
+  i_t primal_pricing;        // 0 Dantzig, 1 Devex (default)
   barrier_dual_initial_point_t
     barrier_dual_initial_point;               // -1 automatic, 0 Lustig-Marsten-Shanno,
                                               // 1 dual least squares, 2 SeDuMi mu-based

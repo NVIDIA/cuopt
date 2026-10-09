@@ -62,18 +62,18 @@ enum pdlp_solver_mode_t : int {
  * PDLP: Use the PDLP method.
  * DualSimplex: Use the dual simplex method.
  * Barrier: Use the barrier method
- * Primal: Use the (experimental) primal simplex method.
+ * PrimalSimplex: Use the primal simplex method.
  * Unset: The value was not set.
  *
  * @note Default method is Concurrent.
  */
 enum method_t : int {
-  Concurrent  = CUOPT_METHOD_CONCURRENT,
-  PDLP        = CUOPT_METHOD_PDLP,
-  DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX,
-  Barrier     = CUOPT_METHOD_BARRIER,
-  Primal      = CUOPT_METHOD_PRIMAL,
-  Unset       = CUOPT_METHOD_UNSET
+  Concurrent    = CUOPT_METHOD_CONCURRENT,
+  PDLP          = CUOPT_METHOD_PDLP,
+  DualSimplex   = CUOPT_METHOD_DUAL_SIMPLEX,
+  Barrier       = CUOPT_METHOD_BARRIER,
+  PrimalSimplex = CUOPT_METHOD_PRIMAL_SIMPLEX,
+  Unset         = CUOPT_METHOD_UNSET
 };
 
 /// Returns the corresponding string from the enum `method_t`.
@@ -84,7 +84,7 @@ inline std::string method_to_string(method_t method)
     case method_t::PDLP: return "PDLP";
     case method_t::Barrier: return "Barrier";
     case method_t::Concurrent: return "Concurrent";
-    case method_t::Primal: return "Primal Simplex";
+    case method_t::PrimalSimplex: return "Primal Simplex";
     default: return "Unset";
   }
 }

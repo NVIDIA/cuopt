@@ -160,6 +160,8 @@ outputs:
           - libcudss
           - libcusparse
           - librmm
+          - libnvjitlink
+          - nccl
     tests:
       - package_contents:
           files:
@@ -299,7 +301,6 @@ outputs:
           - libcudss
           - libcusparse
           - librmm
-          - nccl
     tests:
       - package_contents:
           files:

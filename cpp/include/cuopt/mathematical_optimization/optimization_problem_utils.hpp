@@ -16,7 +16,9 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
+#include <limits>
 #include <span>
+#include <vector>
 
 namespace cuopt::mathematical_optimization {
 
@@ -37,6 +39,32 @@ inline constexpr char var_type_to_char(var_t variable_type)
   if (variable_type == var_t::INTEGER) { return 'I'; }
   if (variable_type == var_t::SEMI_CONTINUOUS) { return 'S'; }
   return 'C';
+}
+
+// Fill ranged constraint bounds from row_types + a single RHS when the ranged
+// pair was not supplied. No-op when either ranged vector is already populated.
+template <typename i_t, typename f_t>
+void expand_rhs(io::mps_data_model_t<i_t, f_t> const& mps,
+                std::vector<f_t>& constr_lb,
+                std::vector<f_t>& constr_ub)
+{
+  if (!constr_lb.empty() || !constr_ub.empty()) { return; }
+  const auto& row_types         = mps.get_row_types();
+  const auto& constraint_bounds = mps.get_constraint_bounds();
+  constr_lb.reserve(row_types.size());
+  constr_ub.reserve(row_types.size());
+  for (size_t i = 0; i < row_types.size(); ++i) {
+    if (row_types[i] == 'L') {
+      constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
+      constr_ub.push_back(constraint_bounds[i]);
+    } else if (row_types[i] == 'G') {
+      constr_lb.push_back(constraint_bounds[i]);
+      constr_ub.push_back(std::numeric_limits<f_t>::infinity());
+    } else if (row_types[i] == 'E') {
+      constr_lb.push_back(constraint_bounds[i]);
+      constr_ub.push_back(constraint_bounds[i]);
+    }
+  }
 }
 
 /**

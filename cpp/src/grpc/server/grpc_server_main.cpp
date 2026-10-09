@@ -7,7 +7,7 @@
  * @file grpc_server_main.cpp
  * @brief gRPC-based remote solve server entry point
  *
- * This server uses gRPC for client communication with fork-based worker
+ * This server uses gRPC for client communication with exec'd worker
  * process infrastructure:
  * - Worker processes with shared memory job queues
  * - Pipe-based IPC for problem/result data
@@ -25,6 +25,7 @@
 #include <grpcpp/health_check_service_interface.h>
 
 #include <pthread.h>
+#include <cstring>
 
 // Defined in grpc_service_impl.cpp
 std::unique_ptr<grpc::Service> create_cuopt_grpc_service();
@@ -63,6 +64,12 @@ static void* create_shared_memory(const char* name, size_t size)
 
 int main(int argc, char** argv)
 {
+  // Workers are a fresh exec of this binary, not a fork of the running server.
+  // Only argv[1] is the internal mode switch. The spawner puts --worker first.
+  // A later --worker is a normal user argument and must not enter worker mode
+  // (for example `--server-log --worker`).
+  if (argc > 1 && std::strcmp(argv[1], "--worker") == 0) { return run_spawned_worker(argc, argv); }
+
   const std::string version_string =
     std::string("cuOpt gRPC Server ") + std::to_string(CUOPT_VERSION_MAJOR) + "." +
     std::to_string(CUOPT_VERSION_MINOR) + "." + std::to_string(CUOPT_VERSION_PATCH);
@@ -207,6 +214,7 @@ int main(int argc, char** argv)
     shm_unlink(SHM_JOB_QUEUE.c_str());
     shm_unlink(SHM_RESULT_QUEUE.c_str());
     shm_unlink(SHM_CONTROL.c_str());
+    shm_unlink(SHM_WORKER_READY.c_str());
 
     job_queue = static_cast<JobQueueEntry*>(
       create_shared_memory(SHM_JOB_QUEUE.c_str(), sizeof(JobQueueEntry) * MAX_JOBS));
@@ -215,6 +223,9 @@ int main(int argc, char** argv)
     shm_ctrl = static_cast<SharedMemoryControl*>(
       create_shared_memory(SHM_CONTROL.c_str(), sizeof(SharedMemoryControl)));
     new (shm_ctrl) SharedMemoryControl{};
+    worker_ready_flags = static_cast<std::atomic<bool>*>(
+      create_shared_memory(SHM_WORKER_READY.c_str(),
+                           sizeof(std::atomic<bool>) * static_cast<size_t>(config.num_workers)));
 
     for (size_t i = 0; i < MAX_JOBS; ++i) {
       new (&job_queue[i]) JobQueueEntry{};
@@ -229,6 +240,10 @@ int main(int argc, char** argv)
       result_queue[i].claimed.store(false);
       result_queue[i].ready.store(false);
       result_queue[i].retrieved.store(false);
+    }
+
+    for (int i = 0; i < config.num_workers; ++i) {
+      new (&worker_ready_flags[i]) std::atomic<bool>{false};
     }
 
     shm_ctrl->shutdown_requested.store(false);
@@ -335,7 +350,7 @@ int main(int argc, char** argv)
   // Standard grpc.health.v1.Health. Kubelet grpc probes call Check with an
   // empty service name, so that name has to be registered explicitly.
   // EnableDefaultHealthCheckService applies to ServerBuilders created after
-  // this call. Workers are already forked, so they do not build a server.
+  // this call. Workers are already exec'd, so they do not build a server.
   grpc::EnableDefaultHealthCheckService(true);
   ServerBuilder builder;
   builder.AddListeningPort(server_address, creds);
@@ -434,7 +449,7 @@ int main(int argc, char** argv)
   shutdown_watchdog_cancelled->store(true, std::memory_order_release);
 
   SERVER_LOG_INFO("[Server] Shutdown complete");
-  return fatal_gpu_failure.load(std::memory_order_acquire) ? 1 : 0;
+  return fatal_worker_failure.load(std::memory_order_acquire) ? 1 : 0;
 }
 
 #else  // !CUOPT_ENABLE_GRPC

@@ -332,6 +332,8 @@ message Incumbent {
   double objective = 2;
   repeated double assignment = 3;
   string job_id = 4;
+  // MIP solver bound at the time this incumbent was found.
+  double bound = 5;
 }
 
 message IncumbentResponse {

@@ -62,7 +62,7 @@ class SolverMethod(IntEnum):
     PDLP = auto()
     DualSimplex = auto()
     Barrier = auto()
-    Primal = auto()
+    PrimalSimplex = auto()
     Unset = auto()
 
     def __str__(self):
