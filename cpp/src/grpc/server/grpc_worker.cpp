@@ -367,7 +367,7 @@ static std::vector<T> device_to_host(const auto& device_vec)
 // Write a result entry with no payload (error, cancellation, etc.) into the
 // first free slot in the shared-memory result_queue.
 //
-// Lock-free protocol for cross-process writes (workers are forked):
+// Lock-free protocol for cross-process writes (one process per worker):
 //   1. Skip slots where ready==true (still being consumed by the reader).
 //   2. CAS claimed false→true to get exclusive write access.  Another
 //      writer (different worker process) that races on the same slot will
@@ -838,9 +838,9 @@ void worker_process(int worker_id, bool is_replacement)
 {
   SERVER_LOG_INFO("[Worker %d] Started (PID: %d)", worker_id, getpid());
 
-  // Parent owns SIGINT/SIGTERM shutdown. Ignoring here prevents the inherited
-  // soft handler from leaving mid-solve workers alive after Ctrl-C while the
-  // parent waits on them.
+  // The parent blocks SIGINT/SIGTERM before posix_spawn, and that mask survives
+  // exec. Ignore them here too so a process-group Ctrl-C does not kill a
+  // mid-solve worker while the parent is still shutting workers down.
   signal(SIGINT, SIG_IGN);
   signal(SIGTERM, SIG_IGN);
 
@@ -971,8 +971,7 @@ void worker_process(int worker_id, bool is_replacement)
 
   shm_ctrl->active_workers--;
   SERVER_LOG_INFO("[Worker %d] Stopped", worker_id);
-  // _exit() instead of exit() to avoid running atexit handlers or flushing
-  // parent-inherited stdio buffers a second time in the forked child.
+  // _exit() skips atexit handlers registered by CUDA, RMM, and the logger.
   _exit(0);
 }
 
