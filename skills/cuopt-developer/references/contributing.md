@@ -49,6 +49,15 @@ If a hook fails, the commit is blocked — fix the issues and commit again. To c
 
 Group related changes into logical commits rather than committing all files at once. Each commit should represent one coherent change (e.g., separate the C++ change from the Python binding update from the test addition). This makes `git log` and `git bisect` useful for debugging later.
 
+Keep the subject line high-level. When the change needs more than that to review — a non-obvious design decision, an unusual constraint, a performance result — add it as one or two short labeled lines instead of free-form prose:
+
+```
+Why: <the constraint or reasoning that isn't obvious from the diff>
+Perf: <numbers, when the change is performance-motivated>
+```
+
+The label keeps detail scoped to a fact a reviewer needs, not a paragraph. It still excludes call-site tallies, verification narration ("checked run X, these are the only N errors"), and notes about fixing your own tooling failures (formatting, pre-commit) — that's process, not a reason, and belongs in a PR comment if anywhere.
+
 ### 3. Sign Your Commits (DCO Required)
 
 ```bash
@@ -80,19 +89,29 @@ git push fork my-feature-branch
 
 This applies to both human contributors and AI agents. Agents must never push to the upstream repo directly — provide the push command for the user to review and execute from their fork.
 
-### Pull Requests Created by Agents
+## Pull Request Lifecycle
 
-When an AI agent creates a pull request, it **must be a draft PR** (`gh pr create --draft`). This gives the developer time to review and iterate on the changes before any reviewers get pinged. The developer marks it as ready for review when satisfied.
+### Creating
 
-### PR Descriptions
+When an AI agent creates a pull request, it **must be a draft PR** (`gh pr create --draft`). This gives the developer time to review and iterate on the changes before any reviewers get pinged. The developer marks it as ready for review when satisfied. Verify the PR actually landed as a draft afterward — `--draft` has silently not taken effect before.
 
-Keep summaries short — a paragraph or 3–5 bullets stating *what* and *why*. Skim recent merges on the target branch to calibrate.
+For changes under `skills/`, this is also when NVSkills CI validation starts: see the upstream-branch exception above for the `/nvskills-ci` comment and re-validation requirement on every later push.
+
+Keep the initial title and description short — a paragraph or 3–5 bullets stating *what* and *why*. Skim recent merges on the target branch to calibrate.
 
 Skip how-it-works walkthroughs, file-by-file tables, exhaustive test-plan checklists, prose restatements of the diff, and screenshots of output the reviewer can reproduce locally. Reviewers read the code; long structured summaries signal LLM-generated and erode trust.
 
 For extra context (a design decision, unusual constraint, follow-up), one or two sentences with a link to an issue or doc beats expanding the body.
 
-### Addressing PR Reviews
+### Maintaining
+
+Treat the title and description as living documents, not a one-time draft: re-read and update them after every round of commits or review feedback, not just once before marking ready for review. Edit in place rather than appending — a description that accretes a new paragraph per iteration is exactly the failure mode this section exists to prevent.
+
+This isn't just courtesy to the current reviewer — cuOpt squash-merges PRs, so the title and description become the permanent commit message on `main`. Whatever is stale or noisy at merge time is what `git log` shows forever.
+
+Describe only the code as it stands now, not the path taken to get there — drop mentions of earlier attempts, self-corrections, or fixes to your own pre-commit/CI failures along the way. Once the PR is up to date, those iterations are noise to a reviewer evaluating the current diff. If you need to preserve that reasoning for your own resumption later, put it in a PR comment or session memory, not the pinned description.
+
+### Addressing Reviews
 
 Collect all open comments before touching any file — fixes are easier to batch and nothing gets missed.
 
@@ -104,7 +123,7 @@ For each comment, decide whether it needs a **code change**, a **reply**, or **b
 
 ### Writing scripts and CI workflows
 
-Follow YAGNI strictly here — flags, fallbacks, env-var overrides, and config knobs without a concrete failure mode they prevent should be dropped. This applies to scripts and CI workflows specifically, not the codebase as a whole.
+Follow YAGNI strictly here — flags, restated defaults, fallbacks, env-var overrides, and config knobs without a concrete failure mode they prevent should be dropped. This applies to scripts and CI workflows specifically, not the codebase as a whole.
 
 A few non-YAGNI points worth keeping in mind:
 
