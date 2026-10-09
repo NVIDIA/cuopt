@@ -303,6 +303,14 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   CUOPT_LOG_INFO("\nRunning cuOpt presolve");
   timer_t presolve_timer(time_limit);
 
+  const f_t bounds_time_limit = std::min({ls.constraint_prop.bounds_update.settings.time_limit,
+                                          (f_t)presolve_timer.remaining_time(),
+                                          (f_t)global_timer.remaining_time()});
+  if (bounds_time_limit <= 0.0) {
+    stats.presolve_time = presolve_timer.elapsed_time();
+    return true;
+  }
+  ls.constraint_prop.bounds_update.settings.time_limit = bounds_time_limit;
   auto term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);
   if (ls.constraint_prop.bounds_update.infeas_constraints_count > 0) {
     stats.presolve_time = timer.elapsed_time();

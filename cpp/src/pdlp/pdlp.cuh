@@ -157,7 +157,7 @@ class pdlp_solver_t {
                  [[maybe_unused]] bool is_major_iteration);
   void take_adaptive_step(i_t total_pdlp_iterations, bool is_major_iteration);
   void take_constant_step(bool is_major_iteration);
-
+  void project_initial_primal_transform();
   /**
    * @brief Update current primal & dual solution by setting new solutions and triggering a
    * recomputation of the primal weight and step size

@@ -42,6 +42,7 @@ enum LPMethod {
   PDLP = 1;
   DualSimplex = 2;
   Barrier = 3;
+  PrimalSimplex = 4;
 }
 
 enum VariableType {
@@ -202,8 +203,14 @@ message PDLPSolverSettings {
   PDLPWarmStartData warm_start_data = 50;
   // set_parameter() key/value store. Keys are the CUOPT_*
   // parameter strings; values are the textual form
-  // set_parameter_from_string accepts. A key present here
-  // takes precedence over the matching deprecated field.
+  // set_parameter_from_string accepts. All or nothing, based
+  // on this serialized map. Non-empty: only these entries are
+  // applied, and every deprecated typed field in this message
+  // is ignored. Empty: an older client; those typed fields are
+  // applied and this map changes nothing. Calling
+  // set_parameter() on a settings object does not fill this
+  // map. A client writes it only by serializing it. Warm start
+  // and presolve_absolute_tolerance still apply either way.
   map<string, string> parameters = 60;
 }
 
@@ -262,8 +269,14 @@ message MIPSolverSettings {
   optional int32 papilo_probing_max_badgesize = 54 [deprecated = true];
   // set_parameter() key/value store. Keys are the CUOPT_*
   // parameter strings; values are the textual form
-  // set_parameter_from_string accepts. A key present here
-  // takes precedence over the matching deprecated field.
+  // set_parameter_from_string accepts. All or nothing, based
+  // on this serialized map. Non-empty: only these entries are
+  // applied, and every deprecated typed field in this message
+  // is ignored. Empty: an older client; those typed fields are
+  // applied and this map changes nothing. Calling
+  // set_parameter() on a settings object does not fill this
+  // map. A client writes it only by serializing it. Warm start
+  // and presolve_absolute_tolerance still apply either way.
   map<string, string> parameters = 60;
 }
 
