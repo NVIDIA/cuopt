@@ -1,0 +1,21 @@
+diff --git a/src/papilo/core/ProblemUpdate.hpp b/src/papilo/core/ProblemUpdate.hpp
+--- a/src/papilo/core/ProblemUpdate.hpp
++++ b/src/papilo/core/ProblemUpdate.hpp
+@@ -2044,6 +2044,17 @@
+             }
+             break;
+          case ColReduction::PARALLEL:
++         {
++            // An earlier merge may have made the survivor continuous.
++            // Reject this stale reduction before changing the transaction.
++            int col1 = reduction.col;
++            int col2 = static_cast<int>( reduction.newval );
++            const Vec<ColFlags>& cflags = problem.getColFlags();
++            if( cflags[col1].test( ColFlag::kIntegral ) &&
++                !cflags[col2].test( ColFlag::kIntegral ) )
++               return ConflictType::kConflict;
++            break;
++         }
+          case ColReduction::SUBSTITUTE_OBJ:
+             break;
+          case ColReduction::SUBSTITUTE:

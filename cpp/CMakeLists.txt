@@ -299,6 +299,8 @@ FetchContent_Declare(
         GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
         GIT_TAG "3a0d1d30a0a580530b37495b0ebb5926cf6e8a2c"
         GIT_PROGRESS TRUE
+        PATCH_COMMAND git -C <SOURCE_DIR> apply
+                      "${CMAKE_CURRENT_SOURCE_DIR}/patches/papilo_parallel_integrality_guard.patch"
         EXCLUDE_FROM_ALL
         SYSTEM
 )
