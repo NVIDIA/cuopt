@@ -337,6 +337,7 @@ struct fj_lane_policy_t {
   bool use_fundamental_cycle_pivot{false};
   f_t network_temperature{0};
   bool use_pmedian_start{false};
+  bool use_sat_search{false};
   bool use_bound_prop{false};
   bool low_latency{false};
   bool use_weight_donation{false};

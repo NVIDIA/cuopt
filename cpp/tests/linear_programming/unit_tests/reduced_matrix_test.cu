@@ -262,7 +262,7 @@ TEST(ReducedMatrixWorkspace, DisabledOperatorDoesNotAllocateProblemSizedBuffers)
 TEST(ReducedMatrixDistributed, ExplicitReductionIsDisabledWithOneVisibleGpu)
 {
   if (raft::device_setter::get_device_count() != 1) {
-    GTEST_SKIP() << "This regression exercises distributed PDLP with exactly one visible GPU";
+    GTEST_SKIP() << "This regression exercises multi-GPU PDLP with exactly one visible GPU";
   }
   raft::handle_t handle;
   auto model = make_reduction_test_model();
@@ -280,7 +280,7 @@ TEST(ReducedMatrixDistributed, ExplicitReductionIsDisabledWithOneVisibleGpu)
   auto result = solve_lp(&handle, model, settings);
   EXPECT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
   EXPECT_NEAR(result.get_objective_value(), 2.0, 1e-5);
-  EXPECT_NE(log.text().find("Solving with distributed PDLP on 1 GPUs"), std::string::npos);
+  EXPECT_NE(log.text().find("Solving with multi-GPU PDLP on 1 GPUs"), std::string::npos);
   EXPECT_NE(log.text().find("multi-GPU"), std::string::npos);
   const auto disabled = log.text().find("Column reduction disabled (COLUMN_REDUCTION)");
   ASSERT_NE(disabled, std::string::npos);

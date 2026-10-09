@@ -369,7 +369,7 @@ create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 find_package(CUDSS REQUIRED)
 
 # ##################################################################################################
-# - NCCL (multi-GPU distributed PDLP) -------------------------------------------------------------
+# - NCCL (multi-GPU PDLP) -------------------------------------------------------------------------
 # NCCL is shipped via the conda env; no canonical CMake config target, so look it
 # up by name in the standard lib paths (plus CONDA_PREFIX as a hint).
 set(NCCL_HINT_PREFIXES "")
@@ -397,14 +397,14 @@ set_target_properties(nccl_external PROPERTIES
 message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
 
 # ##################################################################################################
-# - KaMinPar (multi-threaded partitioning for distributed PDLP) ------------------------------------
+# - KaMinPar (multi-threaded partitioning for multi-GPU PDLP) --------------------------------------
 # Brought in the RAPIDS way (rapids_cpm_find): uses an installed KaMinPar (deb/rpm/conda,
 # discovered via its CMake config) if present, otherwise builds the pinned source via CPM.
 include(cmake/thirdparty/get_kaminpar.cmake)
 if (NOT TARGET KaMinPar::KaMinPar)
     message(FATAL_ERROR "KaMinPar::KaMinPar was not made available by get_kaminpar.cmake")
 endif ()
-message(STATUS "Using KaMinPar (distributed PDLP graph partitioner)")
+message(STATUS "Using KaMinPar (multi-GPU PDLP graph partitioner)")
 
 # ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------

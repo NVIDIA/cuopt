@@ -92,7 +92,7 @@ class optimization_problem_solution_t : public base_solution_t {
     /** Solve time in seconds */
     double solve_time{std::numeric_limits<double>::signaling_NaN()};
 
-    /** Whether the problem was solved by PDLP, Barrier or Dual Simplex */
+    /** The method that solved the problem. */
     method_t solved_by = method_t::Unset;
   };
 

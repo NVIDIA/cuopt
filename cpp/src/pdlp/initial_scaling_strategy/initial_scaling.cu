@@ -125,7 +125,7 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
                objective_rescaling_.end(),
                f_t(1));
 
-  // Distributed PDLP shards defer scaling to multi_gpu_engine_t::distributed_scaling,
+  // Multi-GPU PDLP shards defer scaling to multi_gpu_engine_t::distributed_scaling,
   // which runs a cross-shard-coherent Ruiz. Local per-shard Ruiz would be incoherent
   // across shards, so skip it here.
   if (!skip_ruiz_pock_compute) {
@@ -151,7 +151,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
 {
   raft::common::nvtx::range fun_scope("compute_scaling_vectors");
 
-  // Skip scaling entirely for a shape-0 problem (distributed PDLP builds the
+  // Skip scaling entirely for a shape-0 problem (multi-GPU PDLP builds the
   // master pdlp_solver_t from a shape-0 placeholder)
   if (primal_size_h_ == 0 || dual_size_h_ == 0) return;
 
@@ -257,7 +257,7 @@ __global__ void inf_norm_col_kernel(
 }
 
 // One iteration of Ruiz inf-norm scaling.
-// Distributed PDLP calls this per outer iteration between halo broadcasts;
+// Multi-GPU PDLP calls this per outer iteration between halo broadcasts;
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
 {
@@ -269,7 +269,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
   RAFT_CUDA_TRY(cudaMemsetAsync(
     iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_.get()));
 
-  // Inf-norm over rows and columns. Split into two kernels so the distributed path can
+  // Inf-norm over rows and columns. Split into two kernels so the multi-GPU path can
   // touch only owned entries.
   // Reading cols data from A_t allows for better cache locality on the AtomicAdd
   // than it would by reading cols data from A as it is csr-represented => scattered cols
@@ -577,7 +577,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_folding()
 // sum((log|a_ij| - row_log_scale[i] - col_log_scale[j])^2) via alternating per-row/
 // per-column log-mean fixed-point iteration. This port's sequence and defaults are
 // inspired by the HPR-LP-C codebase (https://github.com/PolyU-IOR/HPR-LP-C).
-// Single-GPU entry point. Distributed PDLP calls the init/row/col/fold pieces directly.
+// Single-GPU entry point. Multi-GPU PDLP calls the init/row/col/fold pieces directly.
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
   i_t number_of_curtis_reid_iterations)
@@ -876,7 +876,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_cummulative_scaling_to_pro
 
 // Apply the already-published bound_rescaling_ / objective_rescaling_ device
 // vectors to the scaled problem's constraint bounds, variable bounds, and
-// objective. Used in both distributed and non-distributed PDLP.
+// objective. Used in both multi-GPU and single-GPU PDLP.
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_bound_objective_rescaling_to_problem()
 {
@@ -930,7 +930,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
 
   apply_cummulative_scaling_to_problem();
 
-  // Local bound/objective rescaling. Distributed PDLP intentionally does NOT
+  // Local bound/objective rescaling. Multi-GPU PDLP intentionally does NOT
   // reach this code path - it calls apply_cummulative_scaling_to_problem()
   // directly and then applies the GLOBAL (allreduced) bound/objective factors
   // via distributed_bound_objective_rescaling() instead.

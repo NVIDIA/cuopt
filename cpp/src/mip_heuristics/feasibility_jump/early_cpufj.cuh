@@ -30,8 +30,7 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
 
   static constexpr const char* name() { return "CPUFJ"; }
 
-  // Lanes are OMP tasks that never yield, so n_lanes threads are unavailable to anything else
-  // until stop(). Callers sharing the team with other work size it accordingly.
+  // Callers sharing the team with other work reserve its capacity before sizing this portfolio.
   void start(int n_lanes, bool low_latency = false);
   void stop();
 

@@ -111,7 +111,7 @@ class pdhg_solver_t {
                              rmm::device_uvector<f_t>& restart_primal);
 
   // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
-  // the single-GPU vs distributed-GPU uses the same calls
+  // the single-GPU vs multi-GPU uses the same calls
   void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size,
                                                    rmm::device_uvector<f_t>& initial_primal);
   void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size,
@@ -127,7 +127,7 @@ class pdhg_solver_t {
   void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine) { mgpu_engine_ = engine; }
   multi_gpu_engine_t<i_t, f_t>* get_mgpu_engine() const { return mgpu_engine_; }
 
-  // True only on the master pdhg of a distributed run (the one wired to the
+  // True only on the master pdhg of a multi-GPU run (the one wired to the
   // engine, which orchestrates the shards).
   // Shards report false.
   // Single-GPU PDHG reports false.
@@ -151,7 +151,7 @@ class pdhg_solver_t {
     const i_t* d_iterations_since_last_restart,
     bool should_major);
 
-  // Fills d_halpern_weight_ from (k+1)/(k+2) on device. On the distributed
+  // Fills d_halpern_weight_ from (k+1)/(k+2) on device. On the multi-GPU
   // master this dispatches to each shard; shards and single-GPU run the transform.
   void refresh_halpern_weight(const i_t* d_iterations_since_last_restart);
 
@@ -224,7 +224,7 @@ class pdhg_solver_t {
   rmm::device_uvector<f_t> new_bounds_primal_;
   cuda::fast_mod_div<size_t> batch_size_divisor_;
 
-  // Non-owning. Set on the master pdhg_solver_ in distributed mode; null
+  // Non-owning. Set on the master pdhg_solver_ in multi-GPU mode; null
   // (default) means single-GPU path.
   multi_gpu_engine_t<i_t, f_t>* mgpu_engine_{nullptr};
 };

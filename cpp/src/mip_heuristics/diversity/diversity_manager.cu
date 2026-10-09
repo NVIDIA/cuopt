@@ -9,6 +9,7 @@
 #include "diversity_manager.cuh"
 
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
+#include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 
@@ -198,13 +199,11 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   std::vector<solution_t<i_t, f_t>>& initial_sol_vector)
 {
   raft::common::nvtx::range fun_scope("add_user_given_solutions");
-  const bool has_papilo   = problem_ptr->has_papilo_presolve_data();
-  const i_t papilo_orig_n = problem_ptr->get_papilo_original_num_variables();
-  for (size_t sol_idx = 0; sol_idx < context.settings.initial_solutions.size(); ++sol_idx) {
-    if (timer.check_time_limit()) { break; }
-    const auto& init_sol = context.settings.initial_solutions[sol_idx];
+  const bool has_papilo            = problem_ptr->has_papilo_presolve_data();
+  const i_t papilo_orig_n          = problem_ptr->get_papilo_original_num_variables();
+  auto add_original_space_solution = [&](rmm::device_uvector<f_t> init_sol_assignment,
+                                         size_t sol_idx) {
     solution_t<i_t, f_t> sol(*problem_ptr);
-    rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
 
     if (has_papilo) {
       if ((i_t)init_sol_assignment.size() != papilo_orig_n) {
@@ -214,7 +213,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
           sol_idx,
           init_sol_assignment.size(),
           papilo_orig_n);
-        continue;
+        return;
       }
       std::vector<f_t> h_original = host_copy(init_sol_assignment, sol.handle_ptr->get_stream());
       std::vector<f_t> h_crushed;
@@ -293,6 +292,16 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
         sol.assignment.size(),
         init_sol_assignment.size());
     }
+  };
+  const auto stream = problem_ptr->handle_ptr->get_stream();
+  for (size_t sol_idx = 0; sol_idx < context.settings.initial_solutions.size(); ++sol_idx) {
+    if (timer.check_time_limit()) { return; }
+    add_original_space_solution(
+      rmm::device_uvector<f_t>(*context.settings.initial_solutions[sol_idx], stream), sol_idx);
+  }
+  if (context.initial_incumbent_from_papilo_model && !timer.check_time_limit()) {
+    add_original_space_solution(cuopt::device_copy(context.initial_incumbent_assignment, stream),
+                                context.settings.initial_solutions.size());
   }
 }
 
@@ -339,8 +348,8 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     // as well as concurrency.
     const i_t held_by_cpufj =
       context.early_cpufj_ptr != nullptr ? (i_t)context.early_cpufj_ptr->lane_count() : 0;
-    ls.constraint_prop.bounds_update.settings.num_tasks =
-      std::max(1, omp_get_num_threads() - 1 - held_by_cpufj);
+    ls.constraint_prop.bounds_update.settings.num_tasks = probing_thread_budget(
+      omp_get_num_threads(), held_by_cpufj, context.early_structural_ptr != nullptr ? 1 : 0);
     f_t time_for_probing_cache = std::min(time_limit, (f_t)global_timer.remaining_time());
     timer_t probing_timer{time_for_probing_cache};
     [[maybe_unused]] const auto probing_t0 = std::chrono::steady_clock::now();
@@ -573,6 +582,9 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   // Run CPUFJ early to find quick initial solutions
   ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
   ls.start_cpufj_scratch_threads(population);
+  // Dedicated ruin-and-repair improvement worker on a spare thread; deepens the population's
+  // feasible incumbent without taking any thread away from feasibility discovery above.
+  ls.start_cpufj_lns_improvement_thread(population);
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
   lp_state_t<i_t, f_t>& lp_state = problem_ptr->lp_state;

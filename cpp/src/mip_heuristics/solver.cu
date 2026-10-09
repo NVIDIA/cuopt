@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/lns/thread_budget.hpp>
 #include "diversity/diversity_manager.cuh"
 #include "local_search/local_search.cuh"
 #include "local_search/rounding/simple_rounding.cuh"
@@ -23,11 +23,10 @@
 // Must match the setting in solve.cu
 #define DETECT_SYMMETRY_AFTER_PRESOLVE
 
+#include <raft/sparse/detail/cusparse_wrappers.h>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/structural/early_structural.cuh>
-
-#include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
 
 #include <cmath>
@@ -334,6 +333,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   mip::probing_implied_bound_t<i_t, f_t> probing_implied_bound;
 
   i_t num_threads = omp_get_num_threads();
+  const i_t lns_threads =
+    lns_worker_count(num_threads, context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
+  CUOPT_LOG_INFO(
+    "LNS thread budget: %d workers within %d OpenMP threads", lns_threads, num_threads);
 
   if (!context.settings.heuristics_only) {
     // Convert the presolved problem to user_problem_t
@@ -349,7 +352,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     // Fill in the settings for branch and bound
     branch_and_bound_settings.time_limit           = timer_.get_time_limit();
     branch_and_bound_settings.node_limit           = context.settings.node_limit;
-    branch_and_bound_settings.num_threads          = std::max(num_threads - 1, 1);
+    branch_and_bound_settings.num_threads          = std::max(num_threads - 1 - lns_threads, 1);
     branch_and_bound_settings.print_presolve_stats = false;
     branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
     branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
@@ -486,7 +489,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   }
 
   std::unique_ptr<mip::root_structural_t<i_t, f_t>> root_structural;
-  if (num_threads >= CUOPT_MIP_ROOT_STRUCTURAL_REQUIRED_THREAD_COUNT &&
+  if (num_threads - lns_threads >= CUOPT_MIP_ROOT_STRUCTURAL_REQUIRED_THREAD_COUNT &&
       context.settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
       !context.settings.heuristics_only) {
     root_structural = std::make_unique<mip::root_structural_t<i_t, f_t>>(

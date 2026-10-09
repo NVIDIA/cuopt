@@ -64,6 +64,7 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu_bridge.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu_binary.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu_binary_preprocess.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/sat/cdcl_sat.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu_binary_kernels.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/early_cpufj.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/early_gpufj.cu

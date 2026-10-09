@@ -93,7 +93,7 @@ if(CUOPT_STATIC_BUILD_DIR)
   # and this project both receive from CUOPT_JAVA_STATIC_CMAKE_PREFIX_PATH -- so they are linked
   # as shared libraries and travel as companions (see build_cuopt_java_jar.sh) like TBB/NCCL/cuDSS.
   # TBB and NCCL have no static build available (KaMinPar throws through the former; PDLP's
-  # distributed path references the latter unconditionally, and cpp/CMakeLists.txt has no switch
+  # multi-GPU path references the latter unconditionally, and cpp/CMakeLists.txt has no switch
   # to compile that out), and cuDSS is kept dynamic deliberately -- see build_cuopt_java_jar.sh's
   # companion list for why. All are found wherever the build environment put them (a dnf package
   # under /usr, a pip-installed wheel's site-packages directory, or a conda environment) rather

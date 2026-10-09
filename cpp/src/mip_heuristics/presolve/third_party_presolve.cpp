@@ -54,8 +54,6 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-static constexpr int papilo_thread_limit = 4;
-
 // Backend-agnostic normalisation of the mutable presolve fields:
 //   * sign-flip `obj_coeffs` / `objective_offset` when maximise,
 //   * materialise ranged `constr_lb` / `constr_ub` from `row_types` +
@@ -78,23 +76,7 @@ void normalize_for_presolve(io::mps_data_model_t<i_t, f_t> const& mps,
     }
     objective_offset = -objective_offset;
   }
-
-  if (constr_lb.empty() && constr_ub.empty()) {
-    const auto& row_types         = mps.get_row_types();
-    const auto& constraint_bounds = mps.get_constraint_bounds();
-    for (size_t i = 0; i < row_types.size(); ++i) {
-      if (row_types[i] == 'L') {
-        constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
-        constr_ub.push_back(constraint_bounds[i]);
-      } else if (row_types[i] == 'G') {
-        constr_lb.push_back(constraint_bounds[i]);
-        constr_ub.push_back(std::numeric_limits<f_t>::infinity());
-      } else if (row_types[i] == 'E') {
-        constr_lb.push_back(constraint_bounds[i]);
-        constr_ub.push_back(constraint_bounds[i]);
-      }
-    }
-  }
+  expand_rhs(mps, constr_lb, constr_ub);
 }
 
 // Build a papilo::Problem
@@ -791,7 +773,8 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
 {
   presolver.getPresolveOptions().tlim = time_limit;
   presolver.getPresolveOptions().threads =
-    num_cpu_threads > 0 ? std::min<i_t>(num_cpu_threads, papilo_thread_limit) : papilo_thread_limit;
+    num_cpu_threads > 0 ? std::min<i_t>(num_cpu_threads, CUOPT_MIP_PAPILO_THREAD_LIMIT)
+                        : CUOPT_MIP_PAPILO_THREAD_LIMIT;
   presolver.getPresolveOptions().feastol = 1e-5;
   if (max_rounds > 0) { presolver.getPresolveOptions().maxrounds = max_rounds; }
   if (dual_postsolve) {

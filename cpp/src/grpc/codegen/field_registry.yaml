@@ -190,6 +190,7 @@ enums:
     - PDLP
     - DualSimplex
     - Barrier
+    - PrimalSimplex
 
   variable_type:
     domain: problem
@@ -622,9 +623,10 @@ pdlp_settings:
       optional: true
   - method:
       description: >-
-        Method used to solve the LP. Concurrent runs PDLP, dual simplex and
-        barrier in parallel. Default accuracy differs per method: PDLP 1e-4
-        relative, barrier 1e-8 relative, dual simplex 1e-6 absolute.
+        Method used to solve the LP: Concurrent, PDLP, dual simplex, barrier,
+        or primal simplex. Concurrent runs PDLP, dual simplex and barrier in
+        parallel. Default accuracy differs per method: PDLP 1e-4 relative,
+        barrier 1e-8 relative, dual simplex and primal simplex 1e-6 absolute.
       default: "Concurrent"
       field_num: 15
       type: lp_method
@@ -665,7 +667,7 @@ pdlp_settings:
       description: >-
         Number of GPUs used for the solve. Relevant to LP in concurrent mode
         (up to 2 GPUs), where PDLP and barrier run on separate GPUs rather than
-        sharing one. For distributed PDLP, -1 selects all visible devices.
+        sharing one. For multi-GPU PDLP, -1 selects all visible devices.
       default: "1"
       field_num: 19
       type: int32
