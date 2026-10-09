@@ -133,9 +133,7 @@ class reduced_cost_bounds_t {
           if (((var_types[j] == simplex::variable_type_t::INTEGER && bound_j == upper_j - 1.0) ||
                var_types[j] != simplex::variable_type_t::INTEGER) &&
               std::isfinite(objective_j) && std::isfinite(bound_j)) {
-            i_t info = add_upper_bound(j, objective_j, bound_j);
-            // settings.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound.
-            // Info %d\n", objective_j, bound_j, j, info);
+            add_upper_bound(j, objective_j, bound_j);
           }
         }
 
@@ -157,9 +155,7 @@ class reduced_cost_bounds_t {
           if (((var_types[j] == simplex::variable_type_t::INTEGER && bound_j == lower_j + 1.0) ||
                var_types[j] != simplex::variable_type_t::INTEGER) &&
               std::isfinite(objective_j) && std::isfinite(bound_j)) {
-            i_t info = add_lower_bound(j, objective_j, bound_j);
-            // settings.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound.
-            // Info %d\n", objective_j, bound_j, j, info);
+            add_lower_bound(j, objective_j, bound_j);
           }
         }
       }
@@ -214,8 +210,6 @@ class reduced_cost_bounds_t {
       if (lower_bounds_[j].is_valid()) {
         if (incumbent_objective <= lower_bounds_[j].objective &&
             lower_bounds_[j].bound > lower_bounds[j]) {
-          // printf("RCF Variable %d (%d): lower %e -> %e\n", j, static_cast<int>(var_types[j]),
-          // lower_bounds[j], lower_bounds_[j].bound);
           lower_bounds[j] = lower_bounds_[j].bound;
           if (var_types[j] == simplex::variable_type_t::INTEGER) { integer_bounds_updated++; }
         }
@@ -230,8 +224,6 @@ class reduced_cost_bounds_t {
       if (upper_bounds_[j].is_valid()) {
         if (incumbent_objective <= upper_bounds_[j].objective &&
             upper_bounds_[j].bound < upper_bounds[j]) {
-          // printf("RCF Variable %d (%d): upper %e -> %e\n", j, static_cast<int>(var_types[j]),
-          // upper_bounds[j], upper_bounds_[j].bound);
           upper_bounds[j] = upper_bounds_[j].bound;
           if (var_types[j] == simplex::variable_type_t::INTEGER) { integer_bounds_updated++; }
         }

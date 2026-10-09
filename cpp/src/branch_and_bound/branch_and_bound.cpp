@@ -1676,12 +1676,12 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
       stats.total_simplex_iters += node_iter;
 
       if (lp_status == dual_status_t::OPTIMAL) {
-        std::vector<i_t> fractional;
-        i_t num_fractional =
-          fractional_variables(settings_, worker->leaf_solution.x, worker->var_types, fractional);
         if (settings_.dual_degenerate_pivots == 2 ||
             (settings_.dual_degenerate_pivots == 1 &&
              worker->search_strategy != search_strategy_t::BEST_FIRST)) {
+          std::vector<i_t> fractional;
+          i_t num_fractional =
+            fractional_variables(settings_, worker->leaf_solution.x, worker->var_types, fractional);
           auto pivot_settings          = settings_;
           pivot_settings.log           = lp_settings.log;
           pivot_settings.inside_mip    = lp_settings.inside_mip;
@@ -4202,10 +4202,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                              root_relax_soln_.iterations,
                              root_relax_elapsed_time,
                              method_to_string(root_relax_solved_by));
-  settings_.log.printf("Dual simplex iteration %d work estimate %.2e work per second %.2e\n",
-                       root_iterations,
-                       root_relax_work_estimate_,
-                       root_relax_work_estimate_ / root_relax_elapsed_time);
   settings_.log.printf("Root relaxation objective %+.8e\n\n", root_relax_soln_.user_objective);
 
   assert(root_vstatus_.size() == original_lp_.num_cols);
