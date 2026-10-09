@@ -216,9 +216,11 @@ void barrier_cache_t::update_rhs(f_t const* b, i_t m)
   impl_->rhs_dirty = true;
 }
 
+#ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template void barrier_cache_t::store_transform<int, double>(
   std::unique_ptr<barrier_transform_t<int, double>>);
 template void barrier_cache_t::update_linear_objective<int, double>(double const*, int);
 template void barrier_cache_t::update_rhs<int, double>(double const*, int);
+#endif
 
 }  // namespace cuopt::mathematical_optimization

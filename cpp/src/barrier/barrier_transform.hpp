@@ -198,7 +198,9 @@ std::vector<cone_head_bound_t<i_t, f_t>> record_cone_head_bounds(
   const i_t problem_rows = user_problem.original_num_rows;
   std::vector<i_t> row_nz(problem_rows, 0);
   for (i_t j = 0; j < user_problem.num_cols; ++j) {
-    for (i_t p = A.col_start[j]; p < A.col_start[j + 1]; ++p) {
+    const i_t col_start = A.col_start[j];
+    const i_t col_end   = A.col_start[j + 1];
+    for (i_t p = col_start; p < col_end; ++p) {
       if (A.i[p] < problem_rows) { ++row_nz[A.i[p]]; }
     }
   }
@@ -217,7 +219,9 @@ std::vector<cone_head_bound_t<i_t, f_t>> record_cone_head_bounds(
       cone_head_bound_t<i_t, f_t> bound;
       bound.head_col = head;
       // A is CSC, so the head's own column already lists every row it appears in.
-      for (i_t p = A.col_start[head]; p < A.col_start[head + 1]; ++p) {
+      const i_t col_start = A.col_start[head];
+      const i_t col_end   = A.col_start[head + 1];
+      for (i_t p = col_start; p < col_end; ++p) {
         const i_t i = A.i[p];
         if (i >= problem_rows || row_nz[i] != 1) { continue; }
         const f_t a      = A.x[p];
@@ -423,7 +427,7 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf
 
   // The quadratic constraints fix the RHS of the appended rows, so an update overwrites the
   // problem's own rows and keeps the cached tail. The tail is empty without an expansion.
-  std::vector<f_t> expanded(static_cast<std::size_t>(m));
+  std::vector<f_t> expanded(m);
   for (i_t i = 0; i < m; ++i) {
     expanded[i] = b[i];
   }
