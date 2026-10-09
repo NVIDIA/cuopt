@@ -132,6 +132,7 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   c.use_bound_prop                 = lane % 2 == 0 && !c.low_latency;
   c.use_weight_donation            = lane % 8 == 5 || lane % 8 == 6;
   c.degree_balance_mtm             = lane == 5 || lane == 6 || (lane == 9 && extreme_hub);
+  c.use_sat_search                 = lane % 2 == 1;
 
   c.use_move_batching =
     c.n_colors > 0 && (lane % 8 == 0 || lane % 8 == 2 || lane % 8 == 6 || lane == 9 || lane == 12);
