@@ -22,6 +22,7 @@ namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
 // Forward declared, not included: these structs are also compiled into cuopt_client, which
 // is CPU-only and cannot link the GPU-side barrier_cache_t destructor.
+template <typename i_t, typename f_t>
 class barrier_cache_t;
 }  // namespace CUOPT_EXPORT mathematical_optimization
 
@@ -101,7 +102,7 @@ struct linear_programming_ret_t {
   /** GPU barrier cache (stream + handle + iteration workspace), non-owning. call_solve hands
    * ownership to the caller, which wraps it in a Python capsule and deletes it there.
    */
-  mathematical_optimization::barrier_cache_t* barrier_cache{nullptr};
+  mathematical_optimization::barrier_cache_t<int, double>* barrier_cache{nullptr};
 
   bool is_gpu() const { return std::holds_alternative<lp_gpu_ptr>(solutions_); }
 };

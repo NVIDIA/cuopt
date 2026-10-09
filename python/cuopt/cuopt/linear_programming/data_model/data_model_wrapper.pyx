@@ -26,9 +26,9 @@ cdef extern from "Python.h":
     void* PyCapsule_GetPointer(object cap, const char* name)
 
 cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::mathematical_optimization":  # noqa
-    cdef cppclass barrier_cache_t:
-        void update_linear_objective(const double* c, int n) except +
-        void update_rhs(const double* b, int m) except +
+    cdef cppclass barrier_cache_t[i_t, f_t]:
+        void update_linear_objective(const f_t* c, i_t n) except +
+        void update_rhs(const f_t* b, i_t m) except +
 
 
 def type_cast(np_obj, np_type, name):
@@ -177,7 +177,7 @@ cdef class DataModel:
         so a later reuse can skip convert/presolve. Crush runs first so a
         length error leaves the DataModel coefficients unchanged.
         """
-        cdef barrier_cache_t* cache
+        cdef barrier_cache_t[int, double]* cache
         cdef double[::1] c_view
         new_c = type_cast(coefficients, np.float64, "coefficients")
         if self.barrier_cache_capsule is not None:
@@ -185,7 +185,7 @@ cdef class DataModel:
                 self.barrier_cache_capsule, b"cuopt.barrier_cache"
             ):
                 raise ValueError("Invalid barrier cache stored on DataModel.")
-            cache = <barrier_cache_t*>PyCapsule_GetPointer(
+            cache = <barrier_cache_t[int, double]*>PyCapsule_GetPointer(
                 self.barrier_cache_capsule,
                 b"cuopt.barrier_cache",
             )
@@ -203,7 +203,7 @@ cdef class DataModel:
         the barrier cache when this model owns one. Crush runs first so a
         length error leaves the DataModel RHS unchanged.
         """
-        cdef barrier_cache_t* cache
+        cdef barrier_cache_t[int, double]* cache
         cdef double[::1] b_view
         new_b = type_cast(b, np.float64, "b")
         if self.barrier_cache_capsule is not None:
@@ -211,7 +211,7 @@ cdef class DataModel:
                 self.barrier_cache_capsule, b"cuopt.barrier_cache"
             ):
                 raise ValueError("Invalid barrier cache stored on DataModel.")
-            cache = <barrier_cache_t*>PyCapsule_GetPointer(
+            cache = <barrier_cache_t[int, double]*>PyCapsule_GetPointer(
                 self.barrier_cache_capsule,
                 b"cuopt.barrier_cache",
             )

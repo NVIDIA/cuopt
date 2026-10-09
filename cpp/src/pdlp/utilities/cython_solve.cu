@@ -42,7 +42,7 @@
 namespace cuopt {
 namespace cython {
 
-using mathematical_optimization::barrier_cache_t;
+using barrier_cache_t = mathematical_optimization::barrier_cache_t<int, double>;
 
 /**
  * @brief Wrapper for linear_programming to expose the API to cython

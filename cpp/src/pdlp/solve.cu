@@ -546,20 +546,20 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
   const raft::handle_t* handle_ptr,
-  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr)
+  cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache = nullptr)
 {
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> barrier_settings;
-  barrier_settings.num_gpus                              = settings.num_gpus;
-  barrier_settings.time_limit                            = settings.time_limit;
-  barrier_settings.iteration_limit                       = settings.iteration_limit;
-  barrier_settings.concurrent_halt                       = settings.concurrent_halt;
-  barrier_settings.initial_perturbation                  = settings.initial_perturbation;
-  barrier_settings.remove_perturbation                   = settings.remove_perturbation;
-  barrier_settings.primal_pricing                        = settings.primal_pricing;
-  barrier_settings.folding                               = settings.folding;
+  barrier_settings.num_gpus             = settings.num_gpus;
+  barrier_settings.time_limit           = settings.time_limit;
+  barrier_settings.iteration_limit      = settings.iteration_limit;
+  barrier_settings.concurrent_halt      = settings.concurrent_halt;
+  barrier_settings.initial_perturbation = settings.initial_perturbation;
+  barrier_settings.remove_perturbation  = settings.remove_perturbation;
+  barrier_settings.primal_pricing       = settings.primal_pricing;
+  barrier_settings.folding              = settings.folding;
   // Folding rewrites rows, so a sequence LP cannot replay an RHS update through the cache.
   if (settings.sequence_solve && user_problem.Q_values.empty() &&
       user_problem.second_order_cone_dims.empty()) {
@@ -623,7 +623,7 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
   mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
-  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr)
+  cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache = nullptr)
 {
   // Convert data structures to dual simplex format and back
   simplex::user_problem_t<i_t, f_t> dual_simplex_problem =

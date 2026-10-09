@@ -19,10 +19,6 @@
 
 namespace cuopt::mathematical_optimization {
 
-using barrier_iteration_data_t = barrier::iteration_data_t<int, double>;
-using barrier_iteration_data_ptr =
-  std::unique_ptr<barrier_iteration_data_t, void (*)(barrier_iteration_data_t*)>;
-
 template <typename i_t, typename f_t>
 static void require_cache(barrier_transform_t<i_t, f_t> const* transform,
                           barrier::iteration_data_t<i_t, f_t> const* data,
@@ -50,7 +46,11 @@ static void add_shift(std::vector<f_t>& crushed, std::vector<f_t> const& shift)
   }
 }
 
-struct barrier_cache_t::impl {
+template <typename i_t, typename f_t>
+struct barrier_cache_t<i_t, f_t>::impl {
+  using iteration_data_t   = barrier::iteration_data_t<i_t, f_t>;
+  using iteration_data_ptr = std::unique_ptr<iteration_data_t, void (*)(iteration_data_t*)>;
+
   impl(std::unique_ptr<rmm::cuda_stream> stream_in, std::unique_ptr<raft::handle_t> handle_in)
     : stream(std::move(stream_in)),
       handle(std::move(handle_in)),
@@ -61,84 +61,114 @@ struct barrier_cache_t::impl {
   std::unique_ptr<rmm::cuda_stream> stream;
   std::unique_ptr<raft::handle_t> handle;
   // Destroy iteration_data before transform: it may const-ref A/Q stored on the transform.
-  std::unique_ptr<barrier_transform_t<int, double>> transform;
-  barrier_iteration_data_ptr iteration_data;
+  std::unique_ptr<barrier_transform_t<i_t, f_t>> transform;
+  iteration_data_ptr iteration_data;
   bool linear_objective_dirty{false};
   bool rhs_dirty{false};
   bool rhs_infeasible{false};
 };
 
-barrier_cache_t::barrier_cache_t(std::unique_ptr<rmm::cuda_stream> stream,
-                                 std::unique_ptr<raft::handle_t> handle)
+template <typename i_t, typename f_t>
+barrier_cache_t<i_t, f_t>::barrier_cache_t(std::unique_ptr<rmm::cuda_stream> stream,
+                                           std::unique_ptr<raft::handle_t> handle)
   : impl_(std::make_unique<impl>(std::move(stream), std::move(handle)))
 {
 }
 
-barrier_cache_t::~barrier_cache_t() = default;
+template <typename i_t, typename f_t>
+barrier_cache_t<i_t, f_t>::~barrier_cache_t() = default;
 
-barrier_cache_t::barrier_cache_t(barrier_cache_t&&) noexcept            = default;
-barrier_cache_t& barrier_cache_t::operator=(barrier_cache_t&&) noexcept = default;
+template <typename i_t, typename f_t>
+barrier_cache_t<i_t, f_t>::barrier_cache_t(barrier_cache_t&&) noexcept = default;
 
-std::unique_ptr<barrier_cache_t> barrier_cache_t::create(unsigned stream_flags)
+template <typename i_t, typename f_t>
+barrier_cache_t<i_t, f_t>& barrier_cache_t<i_t, f_t>::operator=(barrier_cache_t&&) noexcept =
+  default;
+
+template <typename i_t, typename f_t>
+std::unique_ptr<barrier_cache_t<i_t, f_t>> barrier_cache_t<i_t, f_t>::create(unsigned stream_flags)
 {
   auto stream =
     std::make_unique<rmm::cuda_stream>(static_cast<rmm::cuda_stream::flags>(stream_flags));
   auto handle = std::make_unique<raft::handle_t>(*stream);
-  return std::unique_ptr<barrier_cache_t>(
+  return std::unique_ptr<barrier_cache_t<i_t, f_t>>(
     new barrier_cache_t(std::move(stream), std::move(handle)));
 }
 
-raft::handle_t* barrier_cache_t::handle_ptr() { return impl_->handle.get(); }
+template <typename i_t, typename f_t>
+raft::handle_t* barrier_cache_t<i_t, f_t>::handle_ptr()
+{
+  return impl_->handle.get();
+}
 
-raft::handle_t const* barrier_cache_t::handle_ptr() const { return impl_->handle.get(); }
+template <typename i_t, typename f_t>
+raft::handle_t const* barrier_cache_t<i_t, f_t>::handle_ptr() const
+{
+  return impl_->handle.get();
+}
 
-void barrier_cache_t::clear()
+template <typename i_t, typename f_t>
+void barrier_cache_t<i_t, f_t>::clear()
 {
   impl_->iteration_data.reset();
   impl_->transform.reset();
   mark_clean();
 }
 
-void barrier_cache_t::store_iteration_data(barrier_iteration_data_t* data)
+template <typename i_t, typename f_t>
+void barrier_cache_t<i_t, f_t>::store_iteration_data(barrier::iteration_data_t<i_t, f_t>* data)
 {
   impl_->iteration_data.reset(data);
 }
 
-barrier_iteration_data_t* barrier_cache_t::release_iteration_data()
+template <typename i_t, typename f_t>
+barrier::iteration_data_t<i_t, f_t>* barrier_cache_t<i_t, f_t>::release_iteration_data()
 {
   return impl_->iteration_data.release();
 }
 
 template <typename i_t, typename f_t>
-void barrier_cache_t::store_transform(std::unique_ptr<barrier_transform_t<i_t, f_t>> transform)
+void barrier_cache_t<i_t, f_t>::store_transform(
+  std::unique_ptr<barrier_transform_t<i_t, f_t>> transform)
 {
   impl_->transform = std::move(transform);
 }
 
-barrier_transform_t<int, double>* barrier_cache_t::transform() { return impl_->transform.get(); }
-
-barrier_transform_t<int, double> const* barrier_cache_t::transform() const
+template <typename i_t, typename f_t>
+barrier_transform_t<i_t, f_t>* barrier_cache_t<i_t, f_t>::transform()
 {
   return impl_->transform.get();
 }
 
-bool barrier_cache_t::dirty() const
+template <typename i_t, typename f_t>
+barrier_transform_t<i_t, f_t> const* barrier_cache_t<i_t, f_t>::transform() const
+{
+  return impl_->transform.get();
+}
+
+template <typename i_t, typename f_t>
+bool barrier_cache_t<i_t, f_t>::dirty() const
 {
   return (impl_->linear_objective_dirty || impl_->rhs_dirty) && impl_->transform != nullptr &&
          impl_->iteration_data.get() != nullptr;
 }
 
-void barrier_cache_t::mark_clean()
+template <typename i_t, typename f_t>
+void barrier_cache_t<i_t, f_t>::mark_clean()
 {
   impl_->linear_objective_dirty = false;
   impl_->rhs_dirty              = false;
   impl_->rhs_infeasible         = false;
 }
 
-bool barrier_cache_t::rhs_infeasible() const { return impl_->rhs_infeasible; }
+template <typename i_t, typename f_t>
+bool barrier_cache_t<i_t, f_t>::rhs_infeasible() const
+{
+  return impl_->rhs_infeasible;
+}
 
 template <typename i_t, typename f_t>
-void barrier_cache_t::update_linear_objective(f_t const* c, i_t n)
+void barrier_cache_t<i_t, f_t>::update_linear_objective(f_t const* c, i_t n)
 {
   require_cache(impl_->transform.get(), impl_->iteration_data.get(), "update_linear_objective");
   // Cached Q and c are in minimization space.
@@ -187,7 +217,7 @@ void barrier_cache_t::update_linear_objective(f_t const* c, i_t n)
 }
 
 template <typename i_t, typename f_t>
-void barrier_cache_t::update_rhs(f_t const* b, i_t m)
+void barrier_cache_t<i_t, f_t>::update_rhs(f_t const* b, i_t m)
 {
   require_cache(impl_->transform.get(), impl_->iteration_data.get(), "update_rhs");
   std::vector<f_t> crushed;
@@ -217,10 +247,7 @@ void barrier_cache_t::update_rhs(f_t const* b, i_t m)
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
-template void barrier_cache_t::store_transform<int, double>(
-  std::unique_ptr<barrier_transform_t<int, double>>);
-template void barrier_cache_t::update_linear_objective<int, double>(double const*, int);
-template void barrier_cache_t::update_rhs<int, double>(double const*, int);
+template class barrier_cache_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization

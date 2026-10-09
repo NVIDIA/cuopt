@@ -525,7 +525,7 @@ lp_status_t solve_linear_program_with_barrier(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   f_t start_time,
   lp_solution_t<i_t, f_t>& solution,
-  cuopt::mathematical_optimization::barrier_cache_t* cache,
+  cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache,
   const raft::handle_t* handle_ptr)
 {
   lp_status_t status                                   = lp_status_t::UNSET;
@@ -1003,7 +1003,7 @@ lp_status_t solve_linear_program_with_barrier(
   const user_problem_t<i_t, f_t>& user_problem,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   lp_solution_t<i_t, f_t>& solution,
-  cuopt::mathematical_optimization::barrier_cache_t* cache)
+  cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache)
 {
   f_t start_time = tic();
   return solve_linear_program_with_barrier(
@@ -1016,7 +1016,7 @@ lp_status_t solve_linear_program_with_barrier(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   f_t start_time,
   lp_solution_t<i_t, f_t>& solution,
-  cuopt::mathematical_optimization::barrier_cache_t* cache)
+  cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache)
 {
   return solve_linear_program_with_barrier(
     user_problem, settings, start_time, solution, cache, user_problem.handle_ptr);
@@ -1272,7 +1272,7 @@ template lp_status_t solve_linear_program_with_barrier(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
   lp_solution_t<int, double>& solution,
-  cuopt::mathematical_optimization::barrier_cache_t* cache);
+  cuopt::mathematical_optimization::barrier_cache_t<int, double>* cache);
 
 template lp_status_t solve_linear_program_with_primal(
   const user_problem_t<int, double>& user_problem,
@@ -1285,14 +1285,14 @@ template lp_status_t solve_linear_program_with_barrier(
   const simplex_solver_settings_t<int, double>& settings,
   double start_time,
   lp_solution_t<int, double>& solution,
-  cuopt::mathematical_optimization::barrier_cache_t* cache);
+  cuopt::mathematical_optimization::barrier_cache_t<int, double>* cache);
 
 template lp_status_t solve_linear_program_with_barrier(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
   double start_time,
   lp_solution_t<int, double>& solution,
-  cuopt::mathematical_optimization::barrier_cache_t* cache,
+  cuopt::mathematical_optimization::barrier_cache_t<int, double>* cache,
   const raft::handle_t* handle_ptr);
 
 template lp_status_t solve_linear_program(const user_problem_t<int, double>& user_problem,

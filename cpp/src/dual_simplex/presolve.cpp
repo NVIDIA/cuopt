@@ -1864,9 +1864,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 
   // Free linear variables. QP/SOCP keep them. A sequence LP does too: the v-w split would
   // change the cached columns. barrier_eliminate_free_variables is false only on that path.
-  const bool direct_free_linear = settings.barrier_presolve && free_variables > 0 &&
-                                  (problem.Q.n > 0 || has_cones ||
-                                   !settings.barrier_eliminate_free_variables);
+  const bool direct_free_linear =
+    settings.barrier_presolve && free_variables > 0 &&
+    (problem.Q.n > 0 || has_cones || !settings.barrier_eliminate_free_variables);
   if (direct_free_linear) {
     presolve_info.free_variable_pairs.clear();
     presolve_info.direct_free_variables.clear();

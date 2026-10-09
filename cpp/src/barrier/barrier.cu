@@ -4923,7 +4923,7 @@ template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::solve_with_cache(
   f_t start_time,
   lp_solution_t<i_t, f_t>& solution,
-  cuopt::mathematical_optimization::barrier_cache_t* cache)
+  cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache)
 {
   settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
   try {
@@ -4980,7 +4980,7 @@ template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::solve(
   f_t start_time,
   lp_solution_t<i_t, f_t>& solution,
-  cuopt::mathematical_optimization::barrier_cache_t* cache)
+  cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache)
 {
   settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
   try {
@@ -5049,7 +5049,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(
 
 // Optimal: persist iteration_data_t on the cache. Otherwise drop it.
 template <typename i_t, typename f_t>
-lp_status_t store_or_clear_cache(cuopt::mathematical_optimization::barrier_cache_t* cache,
+lp_status_t store_or_clear_cache(cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache,
                                  std::unique_ptr<iteration_data_t<i_t, f_t>>& owned_data,
                                  lp_status_t status)
 {

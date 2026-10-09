@@ -88,8 +88,7 @@ inline bool can_reuse_barrier_cache(barrier_transform_t<i_t, f_t> const* xf,
   }
   if (user_has_soc) { return true; }
   // LP and QP reuse when the sizes match. A cached quadratic objective does not match an LP.
-  return xf->second_order_cone_dims.empty() &&
-         xf->barrier_lp->second_order_cone_dims.empty() &&
+  return xf->second_order_cone_dims.empty() && xf->barrier_lp->second_order_cone_dims.empty() &&
          static_cast<i_t>(xf->row_sense.size()) == xf->user_num_rows &&
          num_cols == xf->user_num_cols && num_rows == xf->user_num_rows &&
          (has_quadratic_objective || xf->barrier_lp->Q.n == 0);

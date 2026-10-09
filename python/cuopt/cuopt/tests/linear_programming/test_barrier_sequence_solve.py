@@ -335,10 +335,14 @@ def test_lp_barrier_update_rhs_reuses_cache(capfd):
     rhs = [6.0]
     model.update_rhs(np.asarray(rhs, dtype=np.float64))
     reused, log = _solve(model, settings, capfd)
-    assert REUSE_LOG in log, "LP barrier sequence solve fell back to a full solve"
+    assert REUSE_LOG in log, (
+        "LP barrier sequence solve fell back to a full solve"
+    )
 
     oracle_settings = solver_settings.SolverSettings()
-    oracle_settings.set_parameter("method", solver_settings.SolverMethod.Barrier)
+    oracle_settings.set_parameter(
+        "method", solver_settings.SolverMethod.Barrier
+    )
     oracle = solver.Solve(
         _build(**dict(PURE_LP, rhs=rhs), quadratic=False), oracle_settings
     )

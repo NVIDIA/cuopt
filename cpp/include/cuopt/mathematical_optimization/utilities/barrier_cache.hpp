@@ -40,6 +40,7 @@ struct barrier_transform_t;
  * The update APIs crush new user data into that workspace and marks the cache dirty so the
  * next solve reuses it (skip convert/presolve/scaling).
  */
+template <typename i_t, typename f_t>
 class barrier_cache_t {
  public:
   static std::unique_ptr<barrier_cache_t> create(unsigned stream_flags);
@@ -57,17 +58,16 @@ class barrier_cache_t {
   /**
    * @brief Take ownership of barrier iteration workspace. @p data may be null (clears).
    */
-  void store_iteration_data(barrier::iteration_data_t<int, double>* data);
+  void store_iteration_data(barrier::iteration_data_t<i_t, f_t>* data);
 
   /**
    * @brief Release ownership of cached iteration workspace; caller must delete or wrap it.
    */
-  barrier::iteration_data_t<int, double>* release_iteration_data();
+  barrier::iteration_data_t<i_t, f_t>* release_iteration_data();
 
-  template <typename i_t, typename f_t>
   void store_transform(std::unique_ptr<barrier_transform_t<i_t, f_t>> transform);
-  [[nodiscard]] barrier_transform_t<int, double>* transform();
-  [[nodiscard]] barrier_transform_t<int, double> const* transform() const;
+  [[nodiscard]] barrier_transform_t<i_t, f_t>* transform();
+  [[nodiscard]] barrier_transform_t<i_t, f_t> const* transform() const;
   /** True when an update API has staged new data that the next solve should reuse. */
   [[nodiscard]] bool dirty() const;
   void mark_clean();
@@ -79,14 +79,12 @@ class barrier_cache_t {
    * Crush the input linear objective into cached iteration_data_t.c / d_c_ and mark dirty.
    * Requires a stored transform and iteration_data from an Optimal solve.
    */
-  template <typename i_t, typename f_t>
   void update_linear_objective(f_t const* c, i_t n);
 
   /**
    * Crush the input constraint RHS into cached iteration_data_t.b / d_b_ and mark dirty.
    * Requires a stored transform and iteration_data from an Optimal solve.
    */
-  template <typename i_t, typename f_t>
   void update_rhs(f_t const* b, i_t m);
 
  private:
