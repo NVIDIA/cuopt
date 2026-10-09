@@ -14,6 +14,7 @@
 #include <raft/core/handle.hpp>
 
 #include <string>
+#include <utility>
 
 namespace cuopt::mathematical_optimization::simplex {
 
@@ -31,6 +32,15 @@ struct objective_step_t {
   f_t bias{0};
 
   bool has_step() const { return step_size > 0; }
+};
+
+// Singleton rows that force a cone head nonnegative. Recorded while the expansion proves the
+// head, so an RHS update can re-check them.
+template <typename i_t, typename f_t>
+struct cone_head_bound_t {
+  i_t head_col{0};
+  // (row, coefficient) pairs, each implying head >= rhs[row] / coefficient.
+  std::vector<std::pair<i_t, f_t>> rows;
 };
 
 template <typename i_t, typename f_t>
@@ -72,6 +82,7 @@ struct user_problem_t {
   // Row count before QCMATRIX->SOC expansion. The expansion only appends rows, so rows
   // [0, original_num_rows) still hold the model's own constraints at their original indices.
   i_t original_num_rows{0};
+  std::vector<cone_head_bound_t<i_t, f_t>> cone_head_bounds;
 };
 
 }  // namespace cuopt::mathematical_optimization::simplex

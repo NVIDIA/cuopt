@@ -644,7 +644,7 @@ lp_status_t solve_linear_program_with_barrier(
     xf->original_col_to_expanded_col = user_problem.original_col_to_expanded_col;
     xf->pre_expansion_num_rows       = user_problem.original_num_rows;
     xf->converted_cone_var_start     = original_lp.cone_var_start;
-    xf->cone_head_bounds = cuopt::mathematical_optimization::record_cone_head_bounds(user_problem);
+    xf->cone_head_bounds             = user_problem.cone_head_bounds;
     // Rows the expansion appended past the model's own. The column map is non-empty whenever
     // the expansion ran, including a cone model with no linear rows (original_num_rows == 0).
     if (!user_problem.original_col_to_expanded_col.empty()) {

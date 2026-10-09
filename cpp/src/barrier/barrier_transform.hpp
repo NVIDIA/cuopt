@@ -23,18 +23,6 @@
 namespace cuopt::mathematical_optimization {
 
 /**
- * Singleton rows that force a cone head nonnegative. The SOC expansion requires every head to be
- * provably >= 0, and proves it from these rows when the head has no explicit bound, so a new RHS
- * can invalidate a cached expansion. Only heads that need the proof are recorded.
- */
-template <typename i_t, typename f_t>
-struct cone_head_bound_t {
-  i_t head_col{0};
-  // (row, coefficient) pairs, each implying head >= rhs[row] / coefficient.
-  std::vector<std::pair<i_t, f_t>> rows;
-};
-
-/**
  * User space to presolved space transform retained on barrier_cache_t after Optimal:
  * convert / presolve / scaling, plus the scaled LP.
  * Enough to crush new linear objective or RHS data from the original problem into
@@ -66,7 +54,7 @@ struct barrier_transform_t {
   // RHS of the rows the expansion appended. Fixed by the quadratic constraints, so an RHS
   // update keeps them and only overwrites the problem's own rows.
   std::vector<f_t> cone_row_rhs;
-  std::vector<cone_head_bound_t<i_t, f_t>> cone_head_bounds;
+  std::vector<simplex::cone_head_bound_t<i_t, f_t>> cone_head_bounds;
 
   cuopt::mathematical_optimization::simplex::presolve_info_t<i_t, f_t> presolve_info;
   std::vector<f_t> column_scales;
@@ -181,60 +169,6 @@ bool cone_layout_matches(barrier_transform_t<i_t, f_t> const& xf,
                     user_problem.second_order_cone_dims.end(),
                     xf.second_order_cone_dims.begin(),
                     [](i_t dim, i_t cached) { return dim == cached; });
-}
-
-// A cone head with no explicit nonnegative bound is only admissible because some singleton row
-// forces it nonnegative. The expansion checks that once; collect the rows it relied on so an RHS
-// update can re-check them against the new RHS.
-template <typename i_t, typename f_t>
-std::vector<cone_head_bound_t<i_t, f_t>> record_cone_head_bounds(
-  simplex::user_problem_t<i_t, f_t> const& user_problem)
-{
-  std::vector<cone_head_bound_t<i_t, f_t>> bounds;
-  if (user_problem.second_order_cone_dims.empty()) { return bounds; }
-
-  // Cones only reach here via the expansion, which always sets original_num_rows.
-  const auto& A          = user_problem.A;
-  const i_t problem_rows = user_problem.original_num_rows;
-  std::vector<i_t> row_nz(problem_rows, 0);
-  for (i_t j = 0; j < user_problem.num_cols; ++j) {
-    const i_t col_start = A.col_start[j];
-    const i_t col_end   = A.col_start[j + 1];
-    for (i_t p = col_start; p < col_end; ++p) {
-      if (A.i[p] < problem_rows) { ++row_nz[A.i[p]]; }
-    }
-  }
-
-  // Only heads that were already problem variables carry the precondition. A head the expansion
-  // created is nonnegative by cone membership, so no row has to prove it.
-  std::vector<char> is_problem_col(user_problem.num_cols, 0);
-  for (i_t expanded : user_problem.original_col_to_expanded_col) {
-    if (expanded >= 0 && expanded < user_problem.num_cols) { is_problem_col[expanded] = 1; }
-  }
-
-  i_t head = user_problem.cone_var_start;
-  for (i_t q_k : user_problem.second_order_cone_dims) {
-    if (head < 0 || head >= user_problem.num_cols) { break; }
-    if (is_problem_col[head] && !(user_problem.lower[head] >= 0.0)) {
-      cone_head_bound_t<i_t, f_t> bound;
-      bound.head_col = head;
-      // A is CSC, so the head's own column already lists every row it appears in.
-      const i_t col_start = A.col_start[head];
-      const i_t col_end   = A.col_start[head + 1];
-      for (i_t p = col_start; p < col_end; ++p) {
-        const i_t i = A.i[p];
-        if (i >= problem_rows || row_nz[i] != 1) { continue; }
-        const f_t a      = A.x[p];
-        const char sense = user_problem.row_sense[i];
-        if ((sense == 'G' && a > 0.0) || (sense == 'L' && a < 0.0)) {
-          bound.rows.emplace_back(i, a);
-        }
-      }
-      bounds.push_back(std::move(bound));
-    }
-    head += q_k;
-  }
-  return bounds;
 }
 
 // Equality substitution is the last presolve step and is not represented by remaining_variables
@@ -440,7 +374,7 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf
 
   // The expansion proved these heads nonnegative from the old RHS. A full solve rejects the
   // problem once that no longer holds, so re-prove it here rather than trust the cached verdict.
-  for (cone_head_bound_t<i_t, f_t> const& bound : xf.cone_head_bounds) {
+  for (simplex::cone_head_bound_t<i_t, f_t> const& bound : xf.cone_head_bounds) {
     f_t implied = -std::numeric_limits<f_t>::infinity();
     for (auto const& [row, coefficient] : bound.rows) {
       implied = std::max(implied, expanded[row] / coefficient);
@@ -454,8 +388,8 @@ inline crush_rhs_status_t crush_user_rhs(barrier_transform_t<i_t, f_t> const& xf
 
   // convert turns 'G' rows into 'L' rows by negating the row and its RHS.
   std::vector<f_t> original(static_cast<std::size_t>(xf.original_num_rows));
-  const std::size_t user_num_rows = xf.user_num_rows;
-  for (std::size_t i = 0; i < user_num_rows; ++i) {
+  const i_t user_num_rows = xf.user_num_rows;
+  for (i_t i = 0; i < user_num_rows; ++i) {
     original[i] = xf.row_sense[i] == 'G' ? -expanded[i] : expanded[i];
   }
 
