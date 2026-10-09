@@ -1,9 +1,8 @@
 diff --git a/src/papilo/core/ProblemUpdate.hpp b/src/papilo/core/ProblemUpdate.hpp
+index 6211cea5..1fff31b9 100644
 --- a/src/papilo/core/ProblemUpdate.hpp
 +++ b/src/papilo/core/ProblemUpdate.hpp
-@@ -2044,6 +2044,17 @@
-             }
-             break;
+@@ -2046,2 +2046,13 @@ ProblemUpdate<REAL>::checkTransactionConflicts( const Reduction<REAL>* first,
           case ColReduction::PARALLEL:
 +         {
 +            // An earlier merge may have made the survivor continuous.
@@ -17,5 +16,8 @@ diff --git a/src/papilo/core/ProblemUpdate.hpp b/src/papilo/core/ProblemUpdate.h
 +            break;
 +         }
           case ColReduction::SUBSTITUTE_OBJ:
-             break;
-          case ColReduction::SUBSTITUTE:
+@@ -3228,2 +3239,4 @@ ProblemUpdate<REAL>::merge_parallel_columns(
+    ubs[col2] = newub;
++   if( col2int != newflags.test( ColFlag::kIntegral ) )
++      setColState( col2, State::kModified );
+    cflags[col2] = newflags;
