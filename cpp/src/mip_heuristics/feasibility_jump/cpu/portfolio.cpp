@@ -9,6 +9,7 @@
 #include "internal.hpp"
 #include "problem.hpp"
 #include "setup/bounds.hpp"
+#include "setup/structure.hpp"
 #include "starts/starts.hpp"
 
 namespace cuopt::mathematical_optimization::mip {
@@ -311,61 +312,11 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   c.objective_directed_perturb  = false;
   if (cardinality_dominated && c.n_integer_vars == 0 && objective_var_count > 0 &&
       continuous_objective_vars == objective_var_count) {
-    const auto& p    = *c.problem;
-    const i_t groups = static_cast<i_t>(p.card_cardinalities.size());
-    bool valid       = true;
-    for (i_t cardinality : p.card_cardinalities)
-      valid &= cardinality == 1;
-    for (i_t variable : c.h_binary_indices)
-      valid &= p.card_group_of_variable[variable] >= 0;
-
-    std::vector<std::vector<i_t>> scopes(groups);
-    std::vector<i_t> row_gate(p.n_constraints, -2);
-    i_t gated      = 0;
-    i_t equalities = 0;
-    for (i_t row = 0; valid && row < p.n_constraints; ++row) {
-      if (p.cstr_lb[row] == p.cstr_ub[row]) {
-        ++equalities;
-        continue;
-      }
-      i_t binary           = -1;
-      f_t gate_coefficient = 0;
-      f_t continuous_max   = 0;
-      for (i_t q = p.offsets[row]; q < p.offsets[row + 1]; ++q) {
-        const i_t variable = p.variables[q];
-        if (c.h_is_binary_variable[variable]) {
-          if (binary >= 0) valid = false;
-          binary           = variable;
-          gate_coefficient = p.coefficients[q];
-        } else {
-          continuous_max = std::max(continuous_max, std::abs(p.coefficients[q]));
-        }
-      }
-      if (binary < 0) {
-        if (continuous_max > 0) row_gate[row] = -1;
-        continue;
-      }
-      const i_t group = p.card_group_of_variable[binary];
-      const bool activating =
-        (gate_coefficient < 0 && std::isfinite(p.cstr_lb[row]) && !std::isfinite(p.cstr_ub[row])) ||
-        (gate_coefficient > 0 && std::isfinite(p.cstr_ub[row]) && !std::isfinite(p.cstr_lb[row]));
-      valid &= group >= 0 && activating && continuous_max > 0 &&
-               std::abs(gate_coefficient) >= 1000 * continuous_max;
-      if (!valid) break;
-      row_gate[row] = binary;
-      ++gated;
-      auto& scope = scopes[group];
-      for (i_t q = p.offsets[row]; q < p.offsets[row + 1]; ++q) {
-        const i_t variable = p.variables[q];
-        if (variable != binary && std::find(scope.begin(), scope.end(), variable) == scope.end())
-          scope.push_back(variable);
-      }
-      valid &= scope.size() <= 4;
-    }
-    for (const auto& scope : scopes)
-      valid &= scope.size() == 4;
-
-    if (valid && equalities == groups && gated >= 0.8 * p.n_constraints) {
+    cpufj_geometry_requirements_t requirements;
+    requirements.required_scope_size             = 4;
+    requirements.min_gated_row_fraction          = 0.8;
+    requirements.require_matching_equality_count = true;
+    if (has_cpufj_disjunctive_geometry(c, requirements)) {
       const i_t slot                = lane % 8;
       c.continuous_perturb_fraction = f_t{0.1} * (1 << (slot % 4));
       c.objective_directed_perturb  = slot % 2 == 1;

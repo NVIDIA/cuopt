@@ -9,6 +9,7 @@
 
 #include <mip_heuristics/diversity/population.cuh>
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
+#include <mip_heuristics/lns/population_feed.cuh>
 #include <mip_heuristics/local_search/feasibility_pump/feasibility_pump.cuh>
 #include <mip_heuristics/local_search/line_segment_search/line_segment_search.cuh>
 #include <mip_heuristics/solver.cuh>
@@ -46,6 +47,9 @@ class local_search_t {
 
   void start_cpufj_scratch_threads(population_t<i_t, f_t>& population);
   void start_cpufj_lptopt_scratch_threads(population_t<i_t, f_t>& population);
+  // Reserve one persistent CPUFJ worker to improve the population's best feasible incumbent
+  // by reusing its private climber across ruin-and-repair iterations.
+  void start_cpufj_lns_improvement_thread(population_t<i_t, f_t>& population);
   void stop_cpufj_scratch_threads();
   void generate_fast_solution(solution_t<i_t, f_t>& solution, timer_t timer);
   bool generate_solution(solution_t<i_t, f_t>& solution,
@@ -119,6 +123,13 @@ class local_search_t {
   std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>> scratch_cpu_fj;
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> scratch_cpu_fj_on_lp_opt;
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> deterministic_cpu_fj;
+  // Single persistent climber reused across every ruin-and-repair iteration of the LNS
+  // improvement worker, so that only the first iteration pays the O(nnz) climber construction.
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> scratch_cpu_fj_lns;
+  std::unique_ptr<lns_population_feed_t<i_t, f_t>> lns_population_feed;
+  // Validate population seeds against the model before CPUFJ caps or strengthens its domains.
+  std::vector<typename type_2<f_t>::type> lns_original_bounds;
+  std::vector<var_t> lns_original_types;
   problem_t<i_t, f_t> problem_with_objective_cut;
   bool cutting_plane_added_for_active_run{false};
 

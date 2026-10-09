@@ -51,7 +51,11 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
 
   // Tasks are not preempted, so a lane posted beyond the team size would sit in the queue for the
   // whole of presolve without running an iteration.
-  n_lanes = threaded ? 1 : std::clamp(n_lanes, 1, omp_get_num_threads());
+  n_lanes =
+    threaded
+      ? 1
+      : std::clamp(
+          n_lanes, 1, std::max(1, omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS));
   cuopt::splitmix64_t seed_rng(seed_);
   const int64_t base_seed = seed_rng.next_i64();
   climbers_.resize(n_lanes);
@@ -83,6 +87,10 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
   for (int k = 0; k < n_lanes; ++k)
     climbers_[k]->shared_incumbent = shared;
 
+  if (!threaded)
+    CUOPT_LOG_INFO("Early CPUFJ budget: %d feasibility workers within %d OpenMP threads",
+                   n_lanes,
+                   omp_get_num_threads());
   CUOPT_LOG_DEBUG("Launching %d early CPUFJ %s", n_lanes, threaded ? "thread" : "tasks");
   if (threaded) {
     auto* climber = climbers_[0].get();
