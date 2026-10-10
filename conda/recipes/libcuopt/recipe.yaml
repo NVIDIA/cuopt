@@ -111,6 +111,8 @@ outputs:
         content: |
           cmake --install cpp/build --component client
           cmake --install cpp/build --component client-dev
+          # cuopt-config.cmake lives here so any single component is findable.
+          cmake --install cpp/build --component cuopt
           # --require-leaf: the client must resolve without the GPU stack (#1890).
           ./ci/check_symbols.sh cpp/build/libcuopt_client.so --no-public-api-check --require-leaf
       dynamic_linking:
@@ -168,6 +170,7 @@ outputs:
             - lib/libcuopt_client.so
             - include/cuopt/error.hpp
             - include/cuopt/export.hpp
+            - lib/cmake/cuopt/cuopt-config.cmake
       # Loads the library in an environment holding only this package and its declared
       # dependencies, with RTLD_NOW so every relocation has to resolve. A component that
       # quietly needs another engine fails here rather than passing because some other
@@ -378,9 +381,6 @@ outputs:
       script:
         content: |
           cmake --install cpp/build --component dev
-          # rapids_export puts cuopt-config.cmake and the export set in a component named
-          # after the project, so find_package(cuopt) breaks without this.
-          cmake --install cpp/build --component cuopt
       string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
     requirements:
       build:

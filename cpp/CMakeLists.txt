@@ -85,9 +85,9 @@ message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 # CUDA runtime
 rapids_cuda_init_runtime(USE_STATIC ON)
 
+# CUDAToolkit, CCCL, rmm and raft are not exported to the install tree; see FINAL_CODE_BLOCK.
 rapids_find_package(CUDAToolkit REQUIRED
         BUILD_EXPORT_SET cuopt-exports
-        INSTALL_EXPORT_SET cuopt-exports
 )
 
 set(CUOPT_CXX_FLAGS "")
@@ -882,9 +882,10 @@ target_link_libraries(cuopt_client_objs
 target_link_libraries(cuopt_client
         PUBLIC
         rapids_logger::rapids_logger
-        CCCL::CCCL
-        $<COMPILE_ONLY:rmm::rmm>
-        $<COMPILE_ONLY:raft::raft>
+        # Build tree only: a client-only install needs none of these (error.hpp needs raft).
+        $<BUILD_INTERFACE:CCCL::CCCL>
+        $<BUILD_INTERFACE:$<COMPILE_ONLY:rmm::rmm>>
+        $<BUILD_INTERFACE:$<COMPILE_ONLY:raft::raft>>
         # dl is PUBLIC because the public headers pull in nvtx, whose inline init calls
         # dlopen/dlsym, so a consumer compiling them needs -ldl on its own link line.
         # rmm::rmm used to supply that transitively; dropping it broke the arm64 link of
@@ -1095,7 +1096,8 @@ target_link_libraries(cuopt_mathopt
         raft::raft
         CUDA::cublas
         CUDA::cusparse
-        ${CUDSS_LIB_FILE}
+        # Build tree only: the installed target must not carry this build-machine path.
+        $<BUILD_INTERFACE:${CUDSS_LIB_FILE}>
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         OpenMP::OpenMP_CUDA
@@ -1457,6 +1459,8 @@ endif()
 # wheel install resolve them from sibling package directories (#1635).
 string(APPEND cuopt_code_string [=[
 
+include(CMakeFindDependencyMacro)
+
 foreach(_cuopt_component cuopt_client cuopt_mathopt cuopt_routing)
   set(_cuopt_targets "${CMAKE_CURRENT_LIST_DIR}/${_cuopt_component}-targets.cmake")
   if(NOT EXISTS "${_cuopt_targets}")
@@ -1466,6 +1470,19 @@ foreach(_cuopt_component cuopt_client cuopt_mathopt cuopt_routing)
     set(_cuopt_targets "${_cuopt_found_targets}")
   endif()
   if(_cuopt_targets AND EXISTS "${_cuopt_targets}")
+    # GPU components only; each is found unless the consumer already has it.
+    if(NOT _cuopt_component STREQUAL "cuopt_client")
+      if(NOT TARGET CUDA::cudart)
+        find_dependency(CUDAToolkit)
+      endif()
+      # CCCL comes in through rmm, which ships its own copy.
+      if(NOT TARGET rmm::rmm)
+        find_dependency(rmm)
+      endif()
+      if(NOT TARGET raft::raft)
+        find_dependency(raft)
+      endif()
+    endif()
     include("${_cuopt_targets}")
   endif()
 endforeach()

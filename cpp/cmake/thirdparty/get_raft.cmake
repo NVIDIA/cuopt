@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -17,7 +17,6 @@ function(find_and_configure_raft)
     rapids_cpm_find(raft ${PKG_VERSION}
         GLOBAL_TARGETS raft::raft
         BUILD_EXPORT_SET cuopt-exports
-        INSTALL_EXPORT_SET cuopt-exports
         CPM_ARGS
         GIT_REPOSITORY https://github.com/${PKG_FORK}/raft.git
         GIT_TAG ${PKG_PINNED_TAG}
