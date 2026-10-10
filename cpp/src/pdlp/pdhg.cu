@@ -40,6 +40,7 @@
 
 #include <cusparse_v2.h>
 
+#include <cstdint>
 #include <set>
 #include <utility>
 #include <vector>
@@ -54,7 +55,9 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
   const pdlp::pdlp_hyper_params_t& hyper_params,
   const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
-  bool enable_mixed_precision_spmv)
+  int concurrent_nnz_cutoff,
+  bool enable_mixed_precision_spmv,
+  bool is_distributed)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
@@ -95,6 +98,16 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
                    climber_strategies,
                    hyper_params,
                    enable_mixed_precision_spmv},
+    reduced_matrix_{handle_ptr_,
+                    op_problem_scaled,
+                    reduced_matrix_enabled(hyper_params,
+                                           op_problem_scaled.nnz,
+                                           concurrent_nnz_cutoff,
+                                           is_legacy_batch_mode,
+                                           batch_mode_,
+                                           enable_mixed_precision_spmv,
+                                           !op_problem_scaled.Q_values.empty(),
+                                           is_distributed)},
     reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
     reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
     reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_},
@@ -522,6 +535,11 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
     return;
   }
 
+  if (reduced_matrix_.active()) {
+    reduced_matrix_.compute_At_y(current_saddle_point_state_.get_dual_solution());
+    return;
+  }
+
   if (!batch_mode_) {
     if constexpr (std::is_same_v<f_t, double>) {
       if (cusparse_view_.mixed_precision_enabled_) {
@@ -577,6 +595,11 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
   // per-shard local cusparse SpMV.
   if (is_distributed_master()) {
     mgpu_engine_->distributed_compute_A_x();
+    return;
+  }
+
+  if (reduced_matrix_.active()) {
+    reduced_matrix_.compute_A_x(current_saddle_point_state_.get_dual_gradient(), d_halpern_weight_);
     return;
   }
 
@@ -1565,6 +1588,8 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
             sub_pdlp.get_primal_step_size(),
             sub_pdlp.get_restart_strategy().last_restart_duality_gap_.primal_solution_);
         });
+      } else if (reduced_matrix_.active()) {
+        reduced_matrix_.update_primal(primal_step_size, d_halpern_weight_);
       } else if (!batch_mode_) {
         primal_reflected_projection_transform(primal_step_size, initial_primal);
       } else {
@@ -1687,6 +1712,21 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
   std::cout << "Take Step:" << std::endl;
 #endif
 
+  const bool should_major =
+    is_major_iteration ||
+    ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0;
+  // Every externally observed step must use the full operators, including the first
+  // step after a restart: fixed-point error consumes the full cached A^T*y.
+  const bool reduced_check_step =
+    should_major || total_pdlp_iterations < hyper_params_.min_iteration_restart ||
+    (hyper_params_.use_conditional_major &&
+     (total_pdlp_iterations + 1) % conditional_major<i_t>(total_pdlp_iterations + 1) == 0);
+  if (reduced_check_step &&
+      reduced_matrix_.request_refresh(
+        true, current_saddle_point_state_.get_primal_solution(), initial_primal)) {
+    reset_iteration_graphs();
+  }
+  const bool finish_reduced_refresh = reduced_matrix_.refresh_pending();
   if (!hyper_params_.use_reflected_primal_dual) {
     cuopt_expects(!batch_mode_,
                   error_type_t::ValidationError,
@@ -1697,17 +1737,52 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
                                       dual_step_size,
                                       total_pdlp_iterations);
   } else {
-    compute_next_primal_dual_solution_reflected(
-      primal_step_size,
-      dual_step_size,
-      bound_rescaling,
-      initial_primal,
-      initial_dual,
-      d_iterations_since_last_restart,
-      is_major_iteration ||
-        ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0);
+    compute_next_primal_dual_solution_reflected(primal_step_size,
+                                                dual_step_size,
+                                                bound_rescaling,
+                                                initial_primal,
+                                                initial_dual,
+                                                d_iterations_since_last_restart,
+                                                should_major || finish_reduced_refresh);
+  }
+  if (finish_reduced_refresh &&
+      reduced_matrix_.finish_refresh(potential_next_primal_solution_,
+                                     current_saddle_point_state_.get_primal_solution(),
+                                     initial_primal,
+                                     total_pdlp_iterations + 1)) {
+    reset_iteration_graphs();
   }
   total_pdhg_iterations_ += 1;
+}
+
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::redirect_reduced_csr_structure(
+  const mip::problem_t<i_t, f_t>& original_problem)
+{
+  reduced_matrix_.redirect_csr_structure(original_problem);
+}
+
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::reset_iteration_graphs()
+{
+  graph_all                     = ping_pong_graph_t<i_t>{stream_view_};
+  graph_prim_proj_gradient_dual = ping_pong_graph_t<i_t>{stream_view_};
+}
+
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::update_reduced_matrix(f_t relative_kkt,
+                                                    bool restarted,
+                                                    rmm::device_uvector<f_t>& restart_primal)
+{
+  if (is_distributed_master()) { return; }
+  if (reduced_matrix_.update_mode(relative_kkt,
+                                  restarted,
+                                  potential_next_primal_solution_,
+                                  current_saddle_point_state_.get_primal_solution(),
+                                  restart_primal,
+                                  total_pdhg_iterations_)) {
+    reset_iteration_graphs();
+  }
 }
 
 template <typename i_t, typename f_t>

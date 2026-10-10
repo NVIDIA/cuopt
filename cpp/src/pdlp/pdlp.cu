@@ -199,7 +199,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                  climber_strategies_,
                  settings_.hyper_params,
                  settings_.new_bounds,
-                 settings_.pdlp_precision == pdlp_precision_t::MixedPrecision},
+                 settings_.concurrent_nnz_cutoff,
+                 settings_.pdlp_precision == pdlp_precision_t::MixedPrecision,
+                 is_distributed_sub_pdlp},
     initial_scaling_strategy_{handle_ptr_,
                               op_problem_scaled_,
                               settings_.hyper_params.default_l_inf_ruiz_iterations,
@@ -388,6 +390,17 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
   }
 }
 
+template <typename i_t, typename f_t>
+static pdlp_solver_settings_t<i_t, f_t> without_distributed_reduction(
+  pdlp_solver_settings_t<i_t, f_t> settings)
+{
+  // Resolve this before constructing the shape-zero master; shards must inherit OFF as well.
+  reduced_matrix_enabled(
+    settings.hyper_params, 0, settings.concurrent_nnz_cutoff, false, false, false, false, true);
+  settings.hyper_params.reduced_matrix = reduced_matrix_mode_t::OFF;
+  return settings;
+}
+
 // ============================================================================
 // Multi-GPU ctor.
 // needs placeholder_problem to be a shape-0 problem
@@ -400,7 +413,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
   pdlp_solver_settings_t<i_t, f_t> const& settings)
   // Makes all inner feilds of master 0 size
-  : pdlp_solver_t(placeholder_problem, settings, /*is_legacy_batch_mode=*/false)
+  : pdlp_solver_t(placeholder_problem,
+                  without_distributed_reduction(settings),
+                  /*is_legacy_batch_mode=*/false)
 {
   cuopt_expects(placeholder_problem.n_variables == 0 && placeholder_problem.n_constraints == 0 &&
                   placeholder_problem.nnz == 0,
@@ -531,6 +546,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
   sub_pdlp_settings.num_gpus                         = 1;
+  sub_pdlp_settings.hyper_params.reduced_matrix      = reduced_matrix_mode_t::OFF;
   // Disable automatic matrix scaling in the initial_scaling ctor: the
   // multi-GPU pipeline computes Curtis-Reid, Ruiz, and Pock-Chambolle via
   // distributed_scaling using the global problem.
@@ -2630,6 +2646,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   if (!is_distributed_master()) {
     // Update FP32 matrix copies for mixed precision SpMV after scaling
     pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
+    pdhg_solver_.redirect_reduced_csr_structure(*problem_ptr);
 
     // Redirect cuSPARSE descriptors to use the original problem's structural data (offsets,
     // indices), then free the duplicated structural vectors from the scaled copy to save device
@@ -3000,6 +3017,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
       if (solution.has_value()) { return std::move(solution.value()); }
 
+      const auto& convergence      = current_termination_strategy_.get_convergence_information();
+      const f_t reduced_matrix_kkt = std::max({convergence.get_relative_l2_primal_residual_value(),
+                                               convergence.get_relative_l2_dual_residual_value(),
+                                               convergence.get_relative_gap_value()});
+
       if (settings_.hyper_params.rescale_for_restart) {
         if (!settings_.hyper_params.never_restart_to_average) {
           initial_scaling_strategy_.scale_solutions(unscaled_primal_avg_solution_,
@@ -3062,6 +3084,13 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
             pdhg_solver_.get_dual_slack());
         }
       }
+
+      const bool checkpoint_restarted = std::any_of(
+        has_restarted.begin(), has_restarted.end(), [](int restarted) { return restarted == 1; });
+      pdhg_solver_.update_reduced_matrix(
+        reduced_matrix_kkt,
+        checkpoint_restarted,
+        restart_strategy_.last_restart_duality_gap_.primal_solution_);
 
       // In batch mode, after having checked for termination and restart
       // We transpose back to row for the PDHG iterations

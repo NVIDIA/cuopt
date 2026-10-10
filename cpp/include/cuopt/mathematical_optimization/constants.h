@@ -175,6 +175,9 @@
 /* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
 #define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
 
+/* @brief PDLP reduced-matrix mode */
+#define CUOPT_PDLP_HYPER_REDUCED_MATRIX "pdlp_hyper_reduced_matrix"
+
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
@@ -242,6 +245,11 @@
 #define CUOPT_PDLP_SINGLE_PRECISION  0
 #define CUOPT_PDLP_DOUBLE_PRECISION  1
 #define CUOPT_PDLP_MIXED_PRECISION   2
+
+/* @brief PDLP reduced-matrix mode constants */
+#define CUOPT_PDLP_REDUCED_MATRIX_DEFAULT          -1
+#define CUOPT_PDLP_REDUCED_MATRIX_OFF              0
+#define CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION 1
 
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0

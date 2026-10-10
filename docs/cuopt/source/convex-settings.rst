@@ -114,6 +114,37 @@ C API users should use the constants defined in :ref:`pdlp-solver-mode-constants
 
 Server Thin client users should use the :class:`cuopt_sh_client.PDLPSolverMode` for this parameter.
 
+PDLP Reduced Matrix
+^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_PDLP_HYPER_REDUCED_MATRIX`` (``pdlp_hyper_reduced_matrix``) is an integer
+parameter controlling adaptive column reduction during PDLP iterations:
+
+* ``-1`` (default): Enable column reduction when the constraint matrix
+  entering PDLP has **at least** ``CUOPT_CONCURRENT_NNZ_CUTOFF``
+  (``concurrent_nnz_cutoff``) nonzeros, **50,000,000 by default**. This is the same
+  cutoff used to skip barrier and dual simplex in concurrent solves. Setting the
+  cutoff to -1 disables automatic column reduction as well as that solver cutoff.
+  A cutoff of 0 makes all problem sizes eligible for automatic column reduction.
+  When presolve is enabled, the size is that of the post-presolve matrix, not the
+  original input matrix. The reduction gate also applies in PDLP-only mode.
+* ``0``: Disable column reduction.
+* ``1``: Request column reduction regardless of problem size.
+
+For example, the CLI accepts
+``--pdlp-hyper-reduced-matrix 1``. C API users should use the
+constants in :ref:`pdlp-reduced-matrix-constants` with :c:func:`cuOptSetIntegerParameter`.
+
+All enabled modes retain compatibility checks: column reduction is unavailable
+on the multi-GPU PDLP path, for batched solves, quadratic objectives, mixed-precision
+SpMV, or incompatible PDLP update/restart modes. Explicitly requesting
+``1`` bypasses the size gate, not these checks. The solver logs the
+reason when a requested mode is disabled and announces automatic enablement.
+
+Enablement does not mean iterations immediately use a reduced matrix: PDLP first
+identifies a suitable active set of columns. When it starts using a reduced matrix,
+it reports that event in the log.
+
 Iteration Limit
 ^^^^^^^^^^^^^^^
 
