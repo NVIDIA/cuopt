@@ -7,8 +7,6 @@ set -e -u -o pipefail
 # shellcheck source=ci/utils/crash_helpers.sh
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../utils/crash_helpers.sh"
 
-echo "building 'cvxpy' from source"
-
 PYTHON_VERSION=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
 PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
 PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
@@ -18,18 +16,31 @@ if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR"
     exit 0
 fi
 
-git clone https://github.com/cvxpy/cvxpy.git
-pushd ./cvxpy || exit 1
-pip wheel \
-    -w dist \
-    .
+if command -v g++ >/dev/null 2>&1; then
+    echo "building 'cvxpy' from source"
+    git clone https://github.com/cvxpy/cvxpy.git
+    pushd ./cvxpy || exit 1
+    pip wheel \
+        -w dist \
+        .
+    CVXPY_FROM_SOURCE=1
+    CVXPY_REQUIREMENT="$(echo ./dist/cvxpy*.whl)[CUOPT,testing]"
+else
+    # Building cvxpy needs a C++ compiler for its '_cvxcore' extension, and
+    # some test images (e.g. Rocky Linux 8) do not ship one. Test against the
+    # latest cvxpy release instead, whose manylinux wheels need no compiler,
+    # so these configurations still run the cuOpt tests.
+    echo "No C++ compiler (g++) found: testing against the latest cvxpy release from PyPI instead of master"
+    CVXPY_FROM_SOURCE=0
+    CVXPY_REQUIREMENT="cvxpy[testing]"
+fi
 
-# NOTE: installing cvxpy[CUOPT] alongside CI artifacts is helpful to catch dependency conflicts
+# NOTE: installing cvxpy alongside CI artifacts is helpful to catch dependency conflicts
 echo "installing 'cvxpy' with cuopt"
 python -m pip install \
     --constraint "${PIP_CONSTRAINT}" \
     'pytest-error-for-skips>=2.0.2' \
-    "$(echo ./dist/cvxpy*.whl)[CUOPT,testing]"
+    "${CVXPY_REQUIREMENT}"
 
 # ensure that environment is still consistent (i.e. cvxpy requirements do not conflict with cuopt's)
 pip check
@@ -48,7 +59,9 @@ RAPIDS_TESTS_DIR="$(cd -- "${RAPIDS_TESTS_DIR}" && pwd -P)"
 # tree -- producing "ImportError: cannot import name '_cvxcore'" even on a
 # perfectly good build/install. This is the actual root cause of the
 # nightly failure fixed here.
-popd
+if [ "${CVXPY_FROM_SOURCE}" -eq 1 ]; then
+    popd
+fi
 
 echo "running 'cvxpy' tests"
 pytest_rc=0
