@@ -1698,6 +1698,69 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution(
 }
 
 template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution_pslp(
+  const optimization_problem_t<i_t, f_t>& presolved_problem,
+  const std::vector<f_t>& x_original,
+  const std::vector<f_t>& y_original,
+  std::vector<f_t>& x_presolved,
+  std::vector<f_t>& y_presolved) const
+{
+  cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP,
+                error_type_t::RuntimeError,
+                "crush_primal_dual_solution_pslp requires PSLP presolve");
+  cuopt_assert(pslp_presolver_ != nullptr, "No PSLP presolver available");
+
+  // PSLP's result was not trusted and the original problem is being solved as is
+  // (see apply_presolve_from_mps_data), so the solution is already in the right space.
+  if (pslp_postsolve_skip_) {
+    x_presolved = x_original;
+    y_presolved = y_original;
+    return;
+  }
+
+  if constexpr (std::is_same_v<f_t, double>) {
+    const size_t n_cols_original  = pslp_presolver_->sol->dim_x;
+    const size_t n_rows_original  = pslp_presolver_->sol->dim_y;
+    const size_t n_cols_presolved = pslp_presolver_->stats->n_cols_reduced;
+    const size_t n_rows_presolved = pslp_presolver_->stats->n_rows_reduced;
+    cuopt_expects(x_original.size() == n_cols_original,
+                  error_type_t::ValidationError,
+                  "Initial primal solution size does not match the number of variables");
+    cuopt_expects(y_original.size() == n_rows_original,
+                  error_type_t::ValidationError,
+                  "Initial dual solution size does not match the number of constraints");
+    cuopt_assert(presolved_problem.get_n_variables() == static_cast<i_t>(n_cols_presolved) &&
+                   presolved_problem.get_n_constraints() == static_cast<i_t>(n_rows_presolved),
+                 "presolved_problem does not match this presolver");
+
+    x_presolved.assign(n_cols_presolved, f_t{0});
+    y_presolved.assign(n_rows_presolved, f_t{0});
+
+    // The dual mapping is applied in PSLP's (minimization) sign convention, which matches the
+    // convention PDLP uses internally for its initial dual, so y is passed through unchanged.
+    // Presolved reduced costs (PSLP's z_red) are not requested: PDLP does not take reduced costs
+    // as a starting point.
+    map_original_sol_to_reduced(pslp_presolver_,
+                                x_original.data(),
+                                y_original.data(),
+                                x_presolved.data(),
+                                y_presolved.data(),
+                                nullptr);
+
+    // PSLP clips the primal to the presolved bounds only while it still owns the presolved
+    // problem, which apply_presolve_from_mps_data frees right after copying it, so clip here.
+    const std::vector<f_t> lb = presolved_problem.get_variable_lower_bounds_host();
+    const std::vector<f_t> ub = presolved_problem.get_variable_upper_bounds_host();
+    for (size_t j = 0; j < x_presolved.size(); ++j) {
+      x_presolved[j] = std::clamp(x_presolved[j], lb[j], ub[j]);
+    }
+  } else {
+    cuopt_expects(
+      false, error_type_t::ValidationError, "PSLP crushing only supports double precision");
+  }
+}
+
+template <typename i_t, typename f_t>
 third_party_presolve_t<i_t, f_t>::~third_party_presolve_t()
 {
   if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }

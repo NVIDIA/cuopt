@@ -653,6 +653,43 @@ def test_warm_start():
         solver.BatchSolve(data_model_list, settings)
 
 
+@pytest.mark.parametrize("presolve", [2, 1])  # PSLP, Papilo
+def test_initial_solution_with_presolve(presolve):
+    # An initial primal/dual solution set on the DataModel is in the original
+    # problem's space. PSLP maps it into the presolved problem; Papilo cannot,
+    # so presolve is skipped. Either way, starting from the optimum should
+    # converge to the same objective in fewer iterations.
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
+    data_model_obj = Read(file_path)
+
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    settings.set_parameter(CUOPT_PRESOLVE, presolve)
+
+    cold = solver.Solve(data_model_obj, settings)
+    assert cold.get_termination_reason() == "Optimal"
+    primal = np.array(cold.get_primal_solution())
+    dual = np.array(cold.get_dual_solution())
+    assert len(primal) == len(data_model_obj.get_objective_coefficients())
+    assert len(dual) == len(data_model_obj.get_constraint_matrix_offsets()) - 1
+
+    data_model_obj.set_initial_primal_solution(primal)
+    data_model_obj.set_initial_dual_solution(dual)
+    warm = solver.Solve(data_model_obj, settings)
+    assert warm.get_termination_reason() == "Optimal"
+    assert warm.get_primal_objective() == pytest.approx(
+        cold.get_primal_objective(), rel=1e-3
+    )
+    assert len(warm.get_primal_solution()) == len(primal)
+    assert len(warm.get_dual_solution()) == len(dual)
+    assert (
+        warm.get_lp_stats()["nb_iterations"]
+        < cold.get_lp_stats()["nb_iterations"]
+    )
+
+
 def test_solved_by():
     # maximize   5*xs + 20*xl
     # subject to  1*xs +  3*xl <= 200

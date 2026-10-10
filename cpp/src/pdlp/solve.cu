@@ -2185,6 +2185,48 @@ static optimization_problem_solution_t<i_t, f_t> build_presolve_optimal_solution
                                                    std::move(status_vec));
 }
 
+// A user's initial primal is often a previous PDLP solution, which (after postsolve) can sit
+// slightly outside the variable bounds. Clip it to the bounds instead of rejecting it.
+// Semi-continuous variables are left alone, since 0 may legitimately lie outside their bounds.
+template <typename i_t, typename f_t>
+static void clip_initial_primal_to_bounds(const optimization_problem_t<i_t, f_t>& op_problem,
+                                          pdlp_solver_settings_t<i_t, f_t>& settings)
+{
+  cuopt_expects(settings.has_initial_primal_solution(),
+                error_type_t::RuntimeError,
+                "clip_initial_primal_to_bounds requires an initial primal solution");
+  const auto& d_x = settings.get_initial_primal_solution();
+  // A size mismatch is reported by check_initial_solution_representation.
+  if (d_x.size() != static_cast<size_t>(op_problem.get_n_variables())) { return; }
+
+  auto stream     = op_problem.get_handle_ptr()->get_stream();
+  auto x          = cuopt::host_copy(d_x, stream);
+  const auto lb   = op_problem.get_variable_lower_bounds_host();
+  const auto ub   = op_problem.get_variable_upper_bounds_host();
+  const auto type = op_problem.get_variable_types_host();
+  // Bound and type vectors of the wrong size are reported by check_problem_representation (and
+  // may reach here unchecked when problem checking is off), so only use ones that match.
+  const bool has_lb   = lb.size() == x.size();
+  const bool has_ub   = ub.size() == x.size();
+  const bool has_type = type.size() == x.size();
+  i_t n_clipped       = 0;
+  for (size_t j = 0; j < x.size(); ++j) {
+    if (has_type && type[j] == var_t::SEMI_CONTINUOUS) { continue; }
+    f_t clipped = x[j];
+    if (has_lb) { clipped = std::max(clipped, lb[j]); }
+    if (has_ub) { clipped = std::min(clipped, ub[j]); }
+    if (clipped != x[j]) {
+      x[j] = clipped;
+      ++n_clipped;
+    }
+  }
+  if (n_clipped > 0) {
+    CUOPT_LOG_INFO("Clipped %d initial primal values to the variable bounds", n_clipped);
+    settings.set_initial_primal_solution(x.data(), x.size(), stream);
+    op_problem.get_handle_ptr()->sync_stream();
+  }
+}
+
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(
   optimization_problem_t<i_t, f_t>& op_problem,
@@ -2210,15 +2252,24 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     raft::common::nvtx::range fun_scope("Running solver");
 
+    // In batch PDLP for strong branching, the initial solutions will be by design out of bounds.
+    // Batch mode also skips the initial-solution clipping and check: fixed_batch_size > 0 means the
+    // caller has already expanded per-climber fields on the problem, which would fail
+    // single-problem size checks.
+    const bool single_problem = settings.new_bounds.size() == 0 && settings.fixed_batch_size == 0;
+
     if (problem_checking) {
       raft::common::nvtx::range fun_scope("Check problem representation");
       // This is required as user might forget to set some fields
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
-      // In batch PDLP for strong branching, the initial solutions will be by design out of bounds.
-      // Batch mode also disables this check: fixed_batch_size > 0 means the caller has already
-      // expanded per-climber fields on the problem, which would fail single-problem size checks.
-      if (settings.new_bounds.size() == 0 && settings.fixed_batch_size == 0)
-        problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
+    }
+    // Clip after the problem (including its bound sizes) has been validated, and before the
+    // initial solution is checked against the bounds.
+    if (single_problem && settings.has_initial_primal_solution()) {
+      clip_initial_primal_to_bounds(op_problem, settings);
+    }
+    if (problem_checking && single_problem) {
+      problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
     }
 
     if (!settings_const.inside_mip) {
@@ -2265,6 +2316,30 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     run_presolve = run_presolve && settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1;
     // The barrier cache stores the user's LP. PSLP would reduce a different problem each update.
     if (settings.sequence_solve && settings.method == method_t::Barrier) { run_presolve = false; }
+
+    // A user-provided LP initial primal/dual solution lives in the original space. PSLP maps it
+    // into the presolved space when both an initial primal and an initial dual solution of the
+    // original dimensions are given. Otherwise (Papilo, only one of the two, or batch-sized
+    // initial solutions) presolve is skipped rather than handing PDLP a starting point of the
+    // wrong dimension. MIP presolve does not go through here and still crushes MIP starts through
+    // Papilo.
+    const bool has_initial_primal = settings.has_initial_primal_solution();
+    const bool has_initial_dual   = settings.has_initial_dual_solution();
+    bool map_initial_solution     = false;
+    if (run_presolve && (has_initial_primal || has_initial_dual)) {
+      map_initial_solution = settings.presolver == presolver_t::PSLP && has_initial_primal &&
+                             has_initial_dual &&
+                             settings.get_initial_primal_solution().size() ==
+                               static_cast<size_t>(op_problem.get_n_variables()) &&
+                             settings.get_initial_dual_solution().size() ==
+                               static_cast<size_t>(op_problem.get_n_constraints());
+      if (!map_initial_solution) {
+        CUOPT_LOG_INFO(
+          "Skipping LP presolve: an initial solution can only be mapped through PSLP presolve, "
+          "and only when both an initial primal and an initial dual solution are given");
+        run_presolve = false;
+      }
+    }
 
     // Declare result at outer scope so that result.reduced_problem (which may be
     // referenced by problem.original_problem_ptr) remains alive through the solve.
@@ -2322,6 +2397,26 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
           op_problem.get_objective_name(),
           op_problem.get_variable_names(),
           op_problem.get_row_names());
+      }
+
+      if (map_initial_solution) {
+        auto stream     = op_problem.get_handle_ptr()->get_stream();
+        auto x_original = cuopt::host_copy(settings.get_initial_primal_solution(), stream);
+        auto y_original = cuopt::host_copy(settings.get_initial_dual_solution(), stream);
+        std::vector<f_t> x_presolved, y_presolved;
+        presolver->crush_primal_dual_solution_pslp(
+          result->reduced_problem, x_original, y_original, x_presolved, y_presolved);
+        // If presolve removed every variable (or every constraint), the presolved primal (or dual)
+        // is empty: there is nothing to set, and set_initial_* would reject the null data pointer
+        // of an empty vector. PDLP then reads zero elements from the old setting.
+        if (!x_presolved.empty()) {
+          settings.set_initial_primal_solution(x_presolved.data(), x_presolved.size(), stream);
+        }
+        if (!y_presolved.empty()) {
+          settings.set_initial_dual_solution(y_presolved.data(), y_presolved.size(), stream);
+        }
+        op_problem.get_handle_ptr()->sync_stream();
+        CUOPT_LOG_INFO("Mapped the initial solution into the presolved space");
       }
 
       problem.emplace(result->reduced_problem,
