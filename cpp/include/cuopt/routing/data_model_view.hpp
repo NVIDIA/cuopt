@@ -77,6 +77,16 @@ class data_model_view_t {
   void add_cost_matrix(f_t const* matrix, uint8_t vehicle_type = 0);
 
   /**
+   * @brief Register an optional physical distance matrix, separate from cost and time.
+   *
+   * @param[in] matrix Non-owning device pointer to a square row-major matrix.
+   * @param[in]
+   * vehicle_type Vehicle-type identifier.
+   * @throws cuopt::logic_error if matrix is null.
+   */
+  void add_distance_matrix(f_t const* matrix, uint8_t vehicle_type = 0);
+
+  /**
    * @brief Set a transit time matrix for all locations (depot included) at
    * once. The time matrix is used to check constraints satisfiability rather
    * than participating in cost optimization. For instance, the time matrix
@@ -436,6 +446,9 @@ class data_model_view_t {
    */
   f_t const* get_cost_matrix(uint8_t vehicle_type = 0) const noexcept;
 
+  /** @brief Return the distance matrix for a vehicle type, or nullptr if not set. */
+  f_t const* get_distance_matrix(uint8_t vehicle_type = 0) const noexcept;
+
   /**
    * @brief Get transit time matrix
    * @return Matrix pointer
@@ -447,6 +460,9 @@ class data_model_view_t {
    * @return map of vehicle type to cost matrix
    */
   std::unordered_map<uint8_t, f_t const*> get_cost_matrices() const noexcept;
+
+  /** @brief Return all registered physical distance matrices. */
+  std::unordered_map<uint8_t, f_t const*> get_distance_matrices() const noexcept;
 
   /**
    * @brief Get all transit time matrices as a map
@@ -661,6 +677,7 @@ class data_model_view_t {
   i_t n_requests_{};
   raft::device_span<uint8_t const> vehicle_types_;
   std::unordered_map<uint8_t, f_t const*> cost_matrices_{};
+  std::unordered_map<uint8_t, f_t const*> distance_matrices_{};
   std::unordered_map<uint8_t, f_t const*> transit_time_matrices_{};
   i_t const* order_locations_{nullptr};
   i_t const* break_locations_{nullptr};
