@@ -371,6 +371,10 @@ class pdlp_solver_settings_t {
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
   pdlp::pdlp_hyper_params_t hyper_params;
+  // Engaged only when the user sets CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL.
+  // set_pdlp_solver_mode writes its preset first, then this value wins.
+  // nullopt leaves the preset in charge.
+  std::optional<bool> project_initial_primal_override{};
   // Holds per-climber variable-bound overrides in the format:
   // (climber id, variable index, new lower bound, new upper bound).
   // Per-climber objective coefficients / offsets / constraint bounds must be pre-expanded directly

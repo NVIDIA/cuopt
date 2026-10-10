@@ -62,6 +62,16 @@ std::string quote_if_needed(const std::string& s)
   return out;
 }
 
+template <typename i_t, typename f_t>
+void record_user_pdlp_hyper_override(pdlp_solver_settings_t<i_t, f_t>& pdlp_settings,
+                                     const std::string& name)
+{
+  if (name == CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL) {
+    pdlp_settings.project_initial_primal_override =
+      pdlp_settings.hyper_params.project_initial_primal;
+  }
+}
+
 bool string_to_bool(const std::string& value, bool& result)
 {
   if (value == "true" || value == "True" || value == "TRUE" || value == "1" || value == "t" ||
@@ -126,7 +136,8 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
       bool value_bool;
       if (string_to_bool(value, value_bool)) {
         *param.value_ptr = value_bool;
-        found            = true;
+        record_user_pdlp_hyper_override(pdlp_settings, name);
+        found = true;
         if (!output) {
           CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value_bool ? "true" : "false");
           output = true;
@@ -191,6 +202,7 @@ void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value
     for (auto& param : bool_parameters) {
       if (param.param_name == name) {
         *param.value_ptr = value;
+        record_user_pdlp_hyper_override(pdlp_settings, name);
         if (!output) {
           CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value ? "true" : "false");
           output = true;

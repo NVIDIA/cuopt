@@ -175,6 +175,9 @@
 /* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
 #define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
 
+/* @brief PDLP hyper-parameter that overrides the solver-mode preset when set */
+#define CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL "pdlp_hyper_project_initial_primal"
+
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
