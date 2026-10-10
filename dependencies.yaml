@@ -489,7 +489,7 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
-          - libcuopt-tests==26.10.*,>=0.0.0a0
+          - libcuopt-tests==26.12.*,>=0.0.0a0
   build_wheels:
     common:
       - output_types: [requirements, pyproject]
@@ -612,18 +612,18 @@ dependencies:
     common:
       - output_types: [requirements, pyproject]
         packages:
-          - cuopt-cu13==26.10.*,>=0.0.0a0
+          - cuopt-cu13==26.12.*,>=0.0.0a0
   # One unsuffixed libcuopt-client, for every CUDA version and every output type.
   depends_on_libcuopt_client:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - libcuopt-client==26.10.*,>=0.0.0a0
+          - libcuopt-client==26.12.*,>=0.0.0a0
   depends_on_libcuopt_mathopt:
     common:
       - output_types: conda
         packages:
-          - &libcuopt_mathopt_unsuffixed libcuopt-mathopt==26.10.*,>=0.0.0a0
+          - &libcuopt_mathopt_unsuffixed libcuopt-mathopt==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -631,12 +631,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - libcuopt-mathopt-cu12==26.10.*,>=0.0.0a0
+              - libcuopt-mathopt-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - libcuopt-mathopt-cu13==26.10.*,>=0.0.0a0
+              - libcuopt-mathopt-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
@@ -645,7 +645,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &libcuopt_routing_unsuffixed libcuopt-routing==26.10.*,>=0.0.0a0
+          - &libcuopt_routing_unsuffixed libcuopt-routing==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -653,12 +653,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - libcuopt-routing-cu12==26.10.*,>=0.0.0a0
+              - libcuopt-routing-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - libcuopt-routing-cu13==26.10.*,>=0.0.0a0
+              - libcuopt-routing-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
@@ -667,7 +667,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &libcuopt_unsuffixed libcuopt==26.10.*,>=0.0.0a0
+          - &libcuopt_unsuffixed libcuopt==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -675,12 +675,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - libcuopt-cu12==26.10.*,>=0.0.0a0
+              - libcuopt-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - libcuopt-cu13==26.10.*,>=0.0.0a0
+              - libcuopt-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
@@ -689,7 +689,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &cuopt_unsuffixed cuopt==26.10.*,>=0.0.0a0
+          - &cuopt_unsuffixed cuopt==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -697,12 +697,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - cuopt-cu12==26.10.*,>=0.0.0a0
+              - cuopt-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - cuopt-cu13==26.10.*,>=0.0.0a0
+              - cuopt-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
@@ -711,7 +711,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &cuopt_server_unsuffixed cuopt-server==26.10.*,>=0.0.0a0
+          - &cuopt_server_unsuffixed cuopt-server==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -719,12 +719,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - cuopt-server-cu12==26.10.*,>=0.0.0a0
+              - cuopt-server-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - cuopt-server-cu13==26.10.*,>=0.0.0a0
+              - cuopt-server-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
@@ -733,7 +733,7 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - cuopt-sh-client==26.10.*,>=0.0.0a0
+          - cuopt-sh-client==26.12.*,>=0.0.0a0
   # cuopt/routing/data_model_view.hpp is a public header and includes raft/core/handle.hpp
   # and raft/core/device_span.hpp, so anything compiling against cuOpt needs raft's headers.
   # The wheel that carries them is named libraft; the conda package is libraft-headers.
@@ -741,7 +741,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - libraft-headers==26.10.*,>=0.0.0a0
+          - libraft-headers==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -763,7 +763,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &librmm_unsuffixed librmm==26.10.*,>=0.0.0a0
+          - &librmm_unsuffixed librmm==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -771,12 +771,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - librmm-cu12==26.10.*,>=0.0.0a0
+              - librmm-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - librmm-cu13==26.10.*,>=0.0.0a0
+              - librmm-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
@@ -831,7 +831,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &rmm_unsuffixed rmm==26.10.*,>=0.0.0a0
+          - &rmm_unsuffixed rmm==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -839,12 +839,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - rmm-cu12==26.10.*,>=0.0.0a0
+              - rmm-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - rmm-cu13==26.10.*,>=0.0.0a0
+              - rmm-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
@@ -854,7 +854,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &cudf_unsuffixed cudf==26.10.*,>=0.0.0a0
+          - &cudf_unsuffixed cudf==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -862,12 +862,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - cudf-cu12==26.10.*,>=0.0.0a0
+              - cudf-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - cudf-cu13==26.10.*,>=0.0.0a0
+              - cudf-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
@@ -877,7 +877,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &pylibraft_unsuffixed pylibraft==26.10.*,>=0.0.0a0
+          - &pylibraft_unsuffixed pylibraft==26.12.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -885,12 +885,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - pylibraft-cu12==26.10.*,>=0.0.0a0
+              - pylibraft-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - pylibraft-cu13==26.10.*,>=0.0.0a0
+              - pylibraft-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
@@ -1126,10 +1126,6 @@ dependencies:
       - output_types: conda
         matrices:
           - matrix:
-              py: "3.11"
-            packages:
-              - python=3.11
-          - matrix:
               py: "3.12"
             packages:
               - python=3.12
@@ -1143,7 +1139,7 @@ dependencies:
               - python=3.14
           - matrix:
             packages:
-              - python>=3.11,<3.15
+              - python>=3.12,<3.15
   test_cufile:
     specific:
       # The `cufile` extra was added to the `cuda-toolkit` metapackage in 12.6.3

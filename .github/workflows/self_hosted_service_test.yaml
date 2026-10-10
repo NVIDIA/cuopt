@@ -44,7 +44,7 @@ permissions:
 jobs:
   cuopt-service-matrix:
     name: Compute matrix
-    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@release/26.10
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
       matrix_name: wheels-test

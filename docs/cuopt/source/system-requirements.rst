@@ -26,7 +26,7 @@ Dependencies are installed automatically when using the pip and Conda installati
       - 12.0+
 
    * Python:
-      - >= 3.11.* and <= 3.14.*
+      - >= 3.12.* and <= 3.14.*
 
    * OpenSSL:
       - 3.x runtime (``libssl.so.3`` and ``libcrypto.so.3``) must be present on the host
@@ -109,4 +109,4 @@ Thin-Client for Self-Hosted
    - x86-64
    - ARM64
 
-* Python >= 3.11.x <= 3.14.x
+* Python >= 3.12.x <= 3.14.x
