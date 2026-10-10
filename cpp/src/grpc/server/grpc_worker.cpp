@@ -643,8 +643,15 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     auto gpu_problem = to_optimization_problem(dj.problem, &handle);
 
     SERVER_LOG_INFO("[Worker] Calling solve_lp...");
+    // Multi-GPU PDLP needs the host-resident mps_data_model_t overload, not the GPU problem.
+    auto& pdlp_settings = dj.settings.get_pdlp_settings();
     auto gpu_solution =
-      cuopt::mathematical_optimization::solve_lp(*gpu_problem, dj.settings.get_pdlp_settings());
+      cuopt::mathematical_optimization::is_multigpu_pdlp_requested(pdlp_settings)
+        ? cuopt::mathematical_optimization::solve_lp(
+            &handle,
+            cuopt::mathematical_optimization::op_problem_to_mps_data_model(*gpu_problem),
+            pdlp_settings)
+        : cuopt::mathematical_optimization::solve_lp(*gpu_problem, pdlp_settings);
     SERVER_LOG_INFO("[Worker] solve_lp done");
 
     // solve_lp / solve_qcqp catch cuopt::logic_error internally and stash it
