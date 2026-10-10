@@ -172,6 +172,16 @@ The following functions are used to set and get parameters. You can find more de
 .. doxygenfunction:: cuOptSetFloatParameter
 .. doxygenfunction:: cuOptGetFloatParameter
 
+Solver Log Callback
+-------------------
+
+A callback can be registered on the solver settings to receive each standard solver log line, for example to display or forward solver output in a GUI.
+The callback is invoked in addition to any console or file logging enabled with ``CUOPT_LOG_TO_CONSOLE`` and ``CUOPT_LOG_FILE``.
+Pass ``NULL`` to remove a registered callback.
+
+.. doxygentypedef:: cuOptLogCallback
+.. doxygenfunction:: cuOptSetLogCallback
+
 .. _parameter-constants:
 
 Parameter Constants
@@ -194,6 +204,10 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_TIME_LIMIT
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE
 .. doxygendefine:: CUOPT_METHOD
+.. doxygendefine:: CUOPT_CONCURRENT_NNZ_CUTOFF
+.. doxygendefine:: CUOPT_PRIMAL_SIMPLEX_PRICING
+.. doxygendefine:: CUOPT_DUAL_SIMPLEX_INITIAL_PERTURBATION
+.. doxygendefine:: CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION
 .. doxygendefine:: CUOPT_PER_CONSTRAINT_RESIDUAL
 .. doxygendefine:: CUOPT_SAVE_BEST_PRIMAL_SO_FAR
 .. doxygendefine:: CUOPT_FIRST_PRIMAL_FEASIBLE
@@ -210,6 +224,12 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT
 .. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT
 .. doxygendefine:: CUOPT_BARRIER_STEP_SCALE
+.. doxygendefine:: CUOPT_BARRIER_ADAPTIVE_REGULARIZATION
+.. doxygendefine:: CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES
+.. doxygendefine:: CUOPT_BARRIER_PRIMAL_REGULARIZATION
+.. doxygendefine:: CUOPT_BARRIER_DUAL_REGULARIZATION
+.. doxygendefine:: CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD
+.. doxygendefine:: CUOPT_SEQUENCE_SOLVE
 .. doxygendefine:: CUOPT_DUAL_POSTSOLVE
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
@@ -254,7 +274,31 @@ These constants are used to configure `CUOPT_METHOD` via :c:func:`cuOptSetIntege
 .. doxygendefine:: CUOPT_METHOD_PDLP
 .. doxygendefine:: CUOPT_METHOD_DUAL_SIMPLEX
 .. doxygendefine:: CUOPT_METHOD_BARRIER
+.. doxygendefine:: CUOPT_METHOD_PRIMAL
 .. doxygendefine:: CUOPT_METHOD_UNSET
+
+.. _barrier-dual-initial-point-constants:
+
+Barrier Dual Initial Point Constants
+------------------------------------
+
+These constants are used to configure `CUOPT_BARRIER_DUAL_INITIAL_POINT` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT_LEAST_SQUARES
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT_SEDUMI_MU
+
+.. _multigpu-pdlp-partitioner-constants:
+
+Multi-GPU PDLP Partitioner Constants
+------------------------------------
+
+These constants are used to configure `CUOPT_MULTIGPU_PDLP_PARTITIONER` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO
+.. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER_KAMINPAR
+.. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER_ROUND_ROBIN
 
 .. _barrier-iterative-refinement-constants:
 

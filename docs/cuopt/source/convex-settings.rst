@@ -78,12 +78,13 @@ We now describe the parameter settings used to control cuOpt's Linear Programmin
 Method
 ^^^^^^
 
-``CUOPT_METHOD`` controls the method to solve the linear programming problem. Four methods are available:
+``CUOPT_METHOD`` controls the method to solve the linear program. Five methods are available:
 
 * ``Concurrent``: Use PDLP, dual simplex, and barrier in parallel (default).
 * ``PDLP``: Use the PDLP method.
 * ``Dual Simplex``: Use the dual simplex method.
 * ``Barrier``: Use the barrier (interior-point) method.
+* ``Primal Simplex``: Use the primal simplex method.
 
 .. note:: The default method is ``Concurrent``.
 
@@ -91,11 +92,21 @@ Default accuracy for each method:
 
 * PDLP solves to 1e-4 relative accuracy by default.
 * Barrier solves to 1e-8 relative accuracy by default.
-* Dual Simplex solves to 1e-6 *absolute* accuracy by default.
+* Simplex solves to 1e-6 *absolute* accuracy by default.
 
 C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
 Server Thin client users should use the :class:`cuopt_sh_client.SolverMethod` for this parameter.
+
+Concurrent NNZ Cutoff
+^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_CONCURRENT_NNZ_CUTOFF`` controls when concurrent mode stops running barrier and dual simplex. When the number of
+nonzeros in the (presolved) constraint matrix is at or above this value, barrier and dual simplex are skipped and
+only PDLP runs. Set it to ``-1`` to disable the cutoff, so that barrier and dual simplex run regardless of problem size.
+The same setting is also accepted for the root relaxation in MIP.
+
+.. note:: The default value is ``50000000``.
 
 PDLP Solver Mode
 ^^^^^^^^^^^^^^^^
@@ -144,11 +155,7 @@ Multi-GPU PDLP Partitioner
 ``CUOPT_MULTIGPU_PDLP_PARTITIONER`` selects how multi-GPU PDLP splits the problem across GPUs:
 ``0`` Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), ``1`` KaMinPar (multi-threaded
 graph partitioner, better balanced shards at the cost of extra partitioning time), or ``2``
-RoundRobin (no partitioning graph built). This constant was previously named
-``CUOPT_DISTRIBUTED_PDLP_PARTITIONER`` (``distributed_pdlp_partitioner`` as a Server Thin client
-key, now ``multigpu_pdlp_partitioner``); the separate ``CUOPT_USE_DISTRIBUTED_PDLP`` toggle has
-been removed.
-
+RoundRobin (no partitioning graph built).
 
 Infeasibility Detection
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -230,6 +237,44 @@ available:
 
 .. note:: The default value is 0 (default precision).
 
+Simplex Settings
+^^^^^^^^^^^^^^^^
+
+The following settings control the behavior of the simplex methods:
+
+Primal Simplex Pricing
+""""""""""""""""""""""
+
+``CUOPT_PRIMAL_SIMPLEX_PRICING`` controls the pricing rule used by the primal simplex algorithm.
+
+* ``0``: Dantzig pricing
+* ``1``: Devex pricing (default)
+
+.. note:: The default value is ``1`` (Devex).
+
+Dual Simplex Initial Perturbation
+"""""""""""""""""""""""""""""""""
+
+``CUOPT_DUAL_SIMPLEX_INITIAL_PERTURBATION`` controls whether the dual simplex method perturbs the objective at the start of solve.
+
+* ``-1``: Automatic (default) - cuOpt decides whether and how strongly to perturb
+* ``0``: Do not perturb
+* ``1``: Perturb
+
+.. note:: The default value is ``-1`` (automatic).
+
+Dual Simplex Remove Perturbation
+""""""""""""""""""""""""""""""""
+
+``CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION`` controls whether dual simplex removes the cost perturbation during the solve, when variables leave the basis,
+rather than only at the end. Removing perturbations earlier helps avoid clean up at the end of the solve. 
+
+* ``-1``: Automatic (default)
+* ``0``: Disabled
+* ``1``: Enabled
+
+.. note:: The default value is ``-1`` (automatic).
+
 Barrier Solver Settings
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -310,8 +355,9 @@ Dual Initial Point
 ``CUOPT_BARRIER_DUAL_INITIAL_POINT`` controls the method used to compute the dual initial point for the barrier solver. The choice of initial point will affect the number of iterations performed by barrier.
 
 * ``-1``: Automatic (default) - cuOpt selects the best method
-* ``0``: Use an initial point from a heuristic approach based on the paper "On Implementing Mehrotra's Predictor–Corrector Interior-Point Method for Linear Programming" (SIAM J. Optimization, 1992) by Lustig, Martsten, Shanno.
-* ``1``: Use an initial point from solving a least squares problem that minimizes the norms of the dual variables and reduced costs while statisfying the dual equality constraints.
+* ``0``: Use an initial point from a heuristic approach based on the paper "On Implementing Mehrotra's Predictor–Corrector Interior-Point Method for Linear Programming" (SIAM J. Optimization, 1992) by Lustig, Martsten, Shanno
+* ``1``: Use an initial point from solving a least squares problem that minimizes the norms of the dual variables and reduced costs while statisfying the dual equality constraints
+* ``2``: Use an initial point from a heurisitic approach based on SeDuMi by Jos Sturm
 
 .. note:: The default value is ``-1`` (automatic).
 
@@ -419,3 +465,50 @@ Barrier Adaptive Regularization
 * ``1``: Enable adaptive regularization
 
 .. note:: The default value is ``-1`` (automatic).
+
+Barrier Presolve Bound Free Variables
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES`` controls whether the barrier presolve bounds free variables.
+
+* ``-1``: Automatic (default) - cuOpt decides based on the problem
+* ``0``: Disable bounding of free variables
+* ``1``: Enable bounding of free variables
+
+.. note:: The default value is ``-1`` (automatic).
+
+Barrier Primal and Dual Regularization
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_PRIMAL_REGULARIZATION`` and ``CUOPT_BARRIER_DUAL_REGULARIZATION`` set the initial primal and dual regularization
+applied to the barrier method's augmented system. They apply to the first factorization only. If adaptive regularization is enabled
+(see ``CUOPT_BARRIER_ADAPTIVE_REGULARIZATION``), it can still scale the regularization up or down in later iterations.
+
+* ``-1``: Automatic (default) - cuOpt uses its built-in heuristic
+* A value greater than or equal to ``0``: Use this value as the starting regularization
+
+.. note:: The default value of both settings is ``-1`` (automatic).
+
+Barrier Initial Point Safeguard
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD`` sets the margin used to push the barrier method's initial point into the interior of the
+nonnegative orthant and, for second-order cone problems, into the interior of the cones. The initial point is shifted so that it is
+at least this far from the boundary. The value must be greater than or equal to ``0``.
+
+.. note:: The default value is ``10.0``.
+
+Sequence Solve
+^^^^^^^^^^^^^^
+
+``CUOPT_SEQUENCE_SOLVE`` controls whether cuOpt caches the ordering and symbolic factorization so that a sequence of related barrier solves can reuse it.
+When enabled, and the first solve with the barrier method finishes with an optimal solution, cuOpt stores information about the factorization. In subsequent solves, 
+the linear objective and the right-hand side of the linear equality constraints may be changed with :meth:`~cuopt.linear_programming.data_model.DataModel.update_linear_objective` or
+:meth:`~cuopt.linear_programming.data_model.DataModel.update_rhs` without requiring new ordering or symbolic factorization.
+
+* ``true``: Cache the ordering and symbolic factorization for later solves
+* ``false``: Do not cache (default)
+
+.. note:: The default value is ``false``.
+
+.. note:: Reuse requires that the quadratic objective, the constraint matrix, the row senses, and the variable bounds stay unchanged between solves. Problems with range rows or folding in the first solve are not supported. When sequence solve is enabled, the automatic value of ``CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES`` resolves to disabled.

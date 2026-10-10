@@ -361,6 +361,29 @@ Set this to a positive value that is at least as large as the upper bound of any
 
 .. note:: By default cuOpt derives the Big-M from the variable's upper bound.
 
+RENS
+^^^^
+
+``CUOPT_MIP_RENS`` controls whether the RENS (Relaxation Enforced Neighborhood Search) heuristic is used. RENS builds a sub-MIP from the solution of the LP relaxation:
+integer variables that already take integral values in the relaxation are fixed, and the remaining integer variables are restricted to their neighboring integer values.
+The sub-MIP is then solved to look for improved feasible solutions.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use RENS.
+Set this value to 0 to disable RENS.
+Set this value to 1 to enable RENS.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Mutation
+^^^^^^^^
+
+``CUOPT_MIP_MUTATION`` controls whether the mutation heuristic is used. Mutation fixes a random subset of the integer variables to their values in the current incumbent
+and solves the resulting sub-MIP. It only runs once an incumbent solution is available.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use mutation.
+Set this value to 0 to disable mutation.
+Set this value to 1 to enable mutation.
+
+.. note:: The default value is ``-1`` (automatic).
+
 Work Limit
 ^^^^^^^^^^
 

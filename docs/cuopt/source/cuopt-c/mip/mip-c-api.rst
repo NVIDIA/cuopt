@@ -63,6 +63,8 @@ These constants configure MIP-specific solver behavior. Use them with :c:func:`c
 .. doxygendefine:: CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING
 .. doxygendefine:: CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT
 .. doxygendefine:: CUOPT_MIP_SEMICONTINUOUS_BIG_M
+.. doxygendefine:: CUOPT_MIP_RENS
+.. doxygendefine:: CUOPT_MIP_MUTATION
 
 .. _mip-determinism-mode-constants:
 
