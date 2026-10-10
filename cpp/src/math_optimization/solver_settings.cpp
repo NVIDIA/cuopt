@@ -541,4 +541,12 @@ template CUOPT_EXPORT std::string solver_settings_t<int, double>::get_parameter(
   const std::string& name) const;
 #endif
 
+namespace detail {
+// Compiled here, in cuopt_client, so the value reflects the client's view of the layout.
+std::size_t client_solver_settings_size() noexcept
+{
+  return sizeof(solver_settings_t<int, double>);
+}
+}  // namespace detail
+
 }  // namespace cuopt::mathematical_optimization

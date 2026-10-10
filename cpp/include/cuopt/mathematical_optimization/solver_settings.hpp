@@ -20,11 +20,25 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
+#include <cstddef>
 #include <optional>
 #include <vector>
 
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
+
+namespace detail {
+/**
+ * @brief sizeof(solver_settings_t<int, double>) as compiled into cuopt_client.
+ *
+ * The class is built by cuopt_mathopt and mutated by cuopt_client, so the two have to agree
+ * on its layout. They are separate shared libraries, built independently, and the layout
+ * depends on third-party headers, so agreement is an assumption rather than a guarantee.
+ * cuOptCreateSolverSettings compares this against its own sizeof and refuses to hand back a
+ * handle when they differ -- a clear error instead of writing through a wrong offset.
+ */
+CUOPT_EXPORT std::size_t client_solver_settings_size() noexcept;
+}  // namespace detail
 
 template <typename i_t, typename f_t>
 class solver_settings_t {
@@ -113,6 +127,12 @@ class solver_settings_t {
   std::vector<parameter_info_t<bool>> bool_parameters;
   std::vector<parameter_info_t<std::string>> string_parameters;
 };
+
+// Forces every consumer except solver_settings.cu (the explicit instantiation site) to bind
+// to cuopt_mathopt's ctor/dtor instead of generating its own local copy.
+#ifndef CUOPT_SOLVER_SETTINGS_T_EXPLICIT_INSTANTIATION
+extern template class solver_settings_t<int, double>;
+#endif
 
 }  // namespace CUOPT_EXPORT mathematical_optimization
 }  // namespace cuopt

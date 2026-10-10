@@ -17,12 +17,17 @@
 // either. The `template class` below covers the class as a whole for libcuopt; members
 // defined in the CUDA-free TU are instantiated individually there.
 
+// This TU does the explicit instantiation itself, so it must not see the extern declaration.
+#define CUOPT_SOLVER_SETTINGS_T_EXPLICIT_INSTANTIATION
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
+
+#include <stdexcept>
+#include <type_traits>
 
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
@@ -120,6 +125,18 @@ void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
 template <typename i_t, typename f_t>
 solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings()
 {
+  // Checked here, not only at the C API boundary, so Cython's direct `new` also sees it.
+  if constexpr (std::is_same_v<i_t, int> && std::is_same_v<f_t, double>) {
+    if (const auto client_size = detail::client_solver_settings_size();
+        client_size != sizeof(solver_settings_t<i_t, f_t>)) {
+      throw std::runtime_error(
+        "ABI mismatch: cuopt_client sees sizeof(solver_settings_t)=" +
+        std::to_string(client_size) +
+        ", cuopt_mathopt sees " + std::to_string(sizeof(solver_settings_t<i_t, f_t>)) +
+        ". These libraries were built against different dependency versions and cannot be "
+        "mixed.");
+    }
+  }
   // clang-format off
   // Float parameters
   float_parameters = {

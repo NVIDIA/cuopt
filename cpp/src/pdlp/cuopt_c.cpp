@@ -891,9 +891,15 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
 cuopt_int_t cuOptCreateSolverSettings(cuOptSolverSettings* settings_ptr)
 {
   if (settings_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
-  solver_settings_handle_t* settings_handle = new solver_settings_handle_t();
-  *settings_ptr                             = static_cast<cuOptSolverSettings>(settings_handle);
-  return CUOPT_SUCCESS;
+  // The constructor throws on an ABI mismatch; convert to the C API's error-code contract.
+  try {
+    solver_settings_handle_t* settings_handle = new solver_settings_handle_t();
+    *settings_ptr                             = static_cast<cuOptSolverSettings>(settings_handle);
+    return CUOPT_SUCCESS;
+  } catch (const std::exception& e) {
+    CUOPT_LOG_ERROR("Failed to create solver settings: %s", e.what());
+    return CUOPT_RUNTIME_ERROR;
+  }
 }
 
 void cuOptDestroySolverSettings(cuOptSolverSettings* settings_ptr)

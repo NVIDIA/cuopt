@@ -19,6 +19,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
+#include <memory>
 #include <tuple>
 
 #include <cuda/std/span>
@@ -401,8 +402,18 @@ class pdlp_solver_settings_t {
   /** Initial pdlp iteration */
   // TODO batch mode: tmp
   std::optional<i_t> initial_pdlp_iteration_;
-  /** GPU-backed warm start data (device_uvector), used by C++ API and local GPU solves */
-  pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
+  /** GPU-backed warm start data (device_uvector), used by C++ API and local GPU solves.
+   *
+   * Held by pointer, not by value. Nine rmm::device_uvector members inline here would put
+   * rmm's ABI into sizeof(pdlp_solver_settings_t), and so into sizeof(solver_settings_t),
+   * which cuopt_client and cuopt_mathopt both compile. Two libraries built against
+   * different rmm headers then disagree on where the later members start. A shared_ptr is
+   * the same size whatever the pointee looks like, and stays null until mathopt fills it,
+   * so the client never constructs device storage either. */
+  mutable std::shared_ptr<pdlp_warm_start_data_t<i_t, f_t>> pdlp_warm_start_data_;
+  /** Allocates pdlp_warm_start_data_ if it is still null. Defined in cuopt_mathopt, which
+   *  is the only component that can build device storage. */
+  void ensure_warm_start_data() const noexcept;
   /** Warm start data as spans over external memory, used by Cython/Python interface */
   pdlp_warm_start_data_view_t<i_t, f_t> pdlp_warm_start_data_view_;
   /** CPU-backed warm start data (std::vector), used for remote execution on CPU-only hosts */
