@@ -3,14 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "../linear_programming/utilities/pdlp_test_utilities.cuh"
+
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <mip_heuristics/diversity/diversity_manager.cuh>
 #include <mip_heuristics/lns/population_feed.cuh>
+#include <mip_heuristics/presolve/semi_continuous.cuh>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/utils.cuh>
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
+#include <numeric>
+#include <optional>
+#include <tuple>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::test {
@@ -34,6 +44,41 @@ void init_population_test_problem(opt::optimization_problem_t<int, double>& op)
   op.set_constraint_lower_bounds(row_lower.data(), 1);
   op.set_constraint_upper_bounds(row_upper.data(), 1);
 }
+
+class injected_solution_callback_t : public cuopt::internals::set_solution_callback_t {
+ public:
+  void set_solution(void* data, void* cost, void* bound, void* user_data) override
+  {
+    EXPECT_EQ(user_data, this);
+    EXPECT_FALSE(std::isnan(*static_cast<double*>(bound)));
+    ++n_calls;
+    std::copy(assignment.begin(), assignment.end(), static_cast<double*>(data));
+    *static_cast<double*>(cost) = objective;
+  }
+
+  std::vector<double> assignment;
+  double objective;
+  int n_calls = 0;
+};
+
+class recorded_solution_callback_t : public cuopt::internals::get_solution_callback_t {
+ public:
+  explicit recorded_solution_callback_t(int num_variables) : assignment(num_variables) {}
+
+  void get_solution(void* data, void* cost, void* bound, void* user_data) override
+  {
+    EXPECT_EQ(user_data, this);
+    EXPECT_FALSE(std::isnan(*static_cast<double*>(bound)));
+    ++n_calls;
+    auto values = static_cast<double*>(data);
+    std::copy(values, values + assignment.size(), assignment.begin());
+    objective = *static_cast<double*>(cost);
+  }
+
+  std::vector<double> assignment;
+  double objective;
+  int n_calls = 0;
+};
 
 class origin_callback_t : public cuopt::internals::get_solution_callback_with_data_t {
  public:
@@ -261,6 +306,145 @@ TEST(Population, ExternalQueueDrainAllowsReentrantProducerAndLeavesNewHeapPendin
   EXPECT_FALSE(dm.population.solutions_in_external_queue_.load());
   EXPECT_EQ(dm.population.best_feasible().get_objective(), 1.0 / 128);
 }
+
+class presolved_solution_callback_test
+  : public testing::TestWithParam<std::tuple<bool, bool, bool>> {};
+
+TEST_P(presolved_solution_callback_test, original_space_injection)
+{
+  const auto [presolve, maximize, semi_continuous] = GetParam();
+  const raft::handle_t handle{};
+  auto model = io::read_lp_from_string<int, double>(R"LP(
+Minimize
+ obj: 11 fixed + 7 x0 + 5 x1 + 8 x2 + 3 x3 + 9 x4 + 2 x5 + 6 x6 + 4 x7
+Subject To
+ capacity: fixed + 4 x0 + 3 x1 + 5 x2 + 2 x3 + 6 x4 + x5 + 4 x6 + 3 x7 <= 14
+Bounds
+ fixed = 2
+Binary
+ x0 x1 x2 x3 x4 x5 x6 x7
+End
+)LP");
+  model.set_maximize(maximize);
+  model.set_objective_offset(7.25);
+  model.set_objective_scaling_factor(2.5);
+  const auto& names = model.get_variable_names();
+  const auto fixed  = std::find(names.begin(), names.end(), "fixed") - names.begin();
+  if (semi_continuous) {
+    auto variable_types   = model.get_variable_types();
+    variable_types[fixed] = 'S';
+    model.set_variable_types(variable_types);
+  }
+  auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
+  auto settings   = mip_solver_settings_t<int, double>{};
+  if (semi_continuous) {
+    std::vector<int> binary_to_original;
+    ASSERT_TRUE(
+      mip::reformulate_semi_continuous(op_problem, settings, nullptr, &binary_to_original));
+    mip_solver_settings_accessor<int, double>::set_semi_continuous_callback_translation(
+      settings, model.get_n_variables(), binary_to_original);
+  }
+
+  mip::third_party_presolve_t<int, double> presolver;
+  std::optional<mip::third_party_presolve_device_result_t<int, double>> reduced;
+  if (presolve) {
+    presolver.set_dual_reductions(false);
+    reduced.emplace(presolver.apply_presolve_from_op_problem(
+      op_problem, problem_category_t::MIP, presolver_t::Papilo, false, 1e-6, 1e-12, 20., 1));
+    ASSERT_EQ(reduced->status, mip::third_party_presolve_status_t::REDUCED);
+    ASSERT_GT(reduced->reduced_problem.get_n_variables(), 0);
+    ASSERT_LT(reduced->reduced_problem.get_n_variables(), op_problem.get_n_variables());
+  }
+  mip::problem_t<int, double> problem(reduced ? reduced->reduced_problem : op_problem);
+  if (presolve) {
+    problem.set_papilo_presolve_data(&presolver,
+                                     reduced->reduced_to_original_map,
+                                     reduced->original_to_reduced_map,
+                                     op_problem.get_n_variables());
+  }
+  problem.preprocess_problem();
+  mip::trivial_presolve(problem);
+
+  std::vector<double> assignment(model.get_n_variables(), 0.);
+  for (size_t i = 0; i < names.size(); ++i) {
+    if (names[i] == "fixed") {
+      assignment[i] = 2.;
+    } else if (names[i] == "x0" || names[i] == "x1" || names[i] == "x3" || names[i] == "x5") {
+      assignment[i] = 1.;
+    }
+  }
+  const auto& objective_coefficients = model.get_objective_coefficients();
+  const double objective =
+    model.get_objective_scaling_factor() * std::inner_product(assignment.begin(),
+                                                              assignment.end(),
+                                                              objective_coefficients.begin(),
+                                                              model.get_objective_offset());
+  injected_solution_callback_t set_callback;
+  set_callback.assignment = assignment;
+  set_callback.objective  = objective;
+  recorded_solution_callback_t get_callback(model.get_n_variables());
+  settings.set_mip_callback(&set_callback, &set_callback);
+  settings.set_mip_callback(&get_callback, &get_callback);
+  mip::mip_solver_context_t<int, double> context(&handle, &problem, settings);
+  mip::diversity_manager_t<int, double> dm(context);
+
+  // An infeasible seed prevents the solver from producing an incumbent on its own.
+  mip::solution_t<int, double> seed(problem);
+  seed.copy_new_assignment(std::vector<double>(problem.n_variables, 1.));
+  seed.compute_feasibility();
+  ASSERT_FALSE(seed.get_feasible());
+  if (presolve && !semi_continuous) {
+    ASSERT_EQ(reduced->original_to_reduced_map[fixed], -1);
+    set_callback.assignment[fixed] = 1.;
+    set_callback.objective =
+      objective - model.get_objective_scaling_factor() * objective_coefficients[fixed];
+    dm.population.run_solution_callbacks(seed);
+    EXPECT_EQ(dm.population.get_external_solution_size(), 0);
+    EXPECT_EQ(get_callback.n_calls, 0);
+    set_callback.assignment = assignment;
+    set_callback.objective  = objective;
+  }
+  const int previous_set_calls = set_callback.n_calls;
+  dm.population.run_solution_callbacks(seed);
+  EXPECT_EQ(set_callback.n_calls, previous_set_calls + 1);
+  auto injected = dm.population.get_external_solutions();
+  ASSERT_EQ(injected.size(), 1);
+  EXPECT_EQ(injected.front().assignment.size(), problem.n_variables);
+  EXPECT_TRUE(injected.front().get_feasible());
+  EXPECT_NEAR(injected.front().get_user_objective(), objective, 1e-6);
+  ASSERT_EQ(get_callback.n_calls, 1);
+  EXPECT_NEAR(get_callback.objective, objective, 1e-6);
+  for (size_t i = 0; i < assignment.size(); ++i) {
+    EXPECT_NEAR(get_callback.assignment[i], assignment[i], 1e-6);
+  }
+
+  // Reject invalid candidates before they can be queued or published as incumbents.
+  const auto x0    = std::find(names.begin(), names.end(), "x0") - names.begin();
+  const double inf = std::numeric_limits<double>::infinity();
+  for (int invalid_case = 0; invalid_case < 3; ++invalid_case) {
+    SCOPED_TRACE(invalid_case);
+    set_callback.assignment = assignment;
+    set_callback.objective  = objective;
+    auto& values            = set_callback.assignment;
+    auto& cost              = set_callback.objective;
+    switch (invalid_case) {
+      case 0:
+        for (size_t i = 0; i < names.size(); ++i) {
+          values[i] = names[i] == "fixed" ? 2. : 1.;
+        }
+        break;
+      case 1: values[x0] = 0.5; break;
+      case 2: cost = inf; break;
+    }
+    dm.population.run_solution_callbacks(seed);
+    EXPECT_EQ(dm.population.get_external_solution_size(), 0);
+    EXPECT_EQ(get_callback.n_calls, 1);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(presolve_and_objective_sense,
+                         presolved_solution_callback_test,
+                         testing::Combine(testing::Bool(), testing::Bool(), testing::Bool()));
 
 TEST(Population, LnsFeedTracksOnlyBestSlotAndDetachesOnDestruction)
 {

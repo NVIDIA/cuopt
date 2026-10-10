@@ -926,7 +926,10 @@ cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
  * @param[in] callback - Callback function to inject solutions.
  * @param[in] user_data - User-defined pointer passed through to the callback.
  *  It will be forwarded to ``cuOptMIPSetSolutionCallback`` when invoked.
- * @note Registering a set-solution callback disables presolve.
+ * @note Registration preserves the configured presolve setting. Dual presolve reductions are
+ * disabled so injected feasible solutions remain representable. Supply values in the original
+ * variable order and the objective value in the original model's units. The solver transforms
+ * injected solutions into its presolved representation.
  * @note The callback arguments refer to host memory and are only valid during the callback
  * invocation. Do not pass device/GPU pointers. Copy any data you need to keep after the callback
  * returns.

@@ -11,6 +11,7 @@
 #include <thrust/for_each.h>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/semi_continuous.cuh>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/utils.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
@@ -326,6 +327,8 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       auto set_sol_callback       = static_cast<internals::set_solution_callback_t*>(callback);
       f_t user_bound              = context.stats.get_solution_bound();
       auto callback_num_variables = problem_ptr->original_problem_ptr->get_n_variables();
+      const bool has_papilo       = problem_ptr->has_papilo_presolve_data();
+      if (has_papilo) { callback_num_variables = problem_ptr->get_papilo_original_num_variables(); }
       const bool has_semi_continuous_callback_translation =
         mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
           context.settings);
@@ -349,9 +352,8 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                                      h_user_bound.data(),
                                      set_sol_callback->get_user_data());
       f_t outside_sol_objective = h_outside_sol_objective[0];
-      // The callback might be called without setting any valid solution or objective which triggers
-      // asserts
-      if (outside_sol_objective == inf) { return; }
+      // An unchanged infinite objective means the callback did not provide a candidate.
+      if (outside_sol_objective == inf) { continue; }
       d_outside_sol_objective.set_value_async(outside_sol_objective, sol.handle_ptr->get_stream());
       if (has_semi_continuous_callback_translation) {
         mip::append_semi_continuous_auxiliaries_to_assignment(
@@ -360,6 +362,21 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
             context.settings),
           context.settings.get_tolerances());
       }
+      if (has_papilo) {
+        const auto* presolver = problem_ptr->presolve_data.papilo_presolve_ptr;
+        // Crushing can discard invalid values in eliminated columns or clamp them to bounds.
+        const auto& tolerances = problem_ptr->tolerances;
+        if (!presolver->is_original_primal_solution_feasible(h_incumbent_assignment,
+                                                             tolerances.absolute_tolerance,
+                                                             tolerances.relative_tolerance,
+                                                             tolerances.integrality_tolerance)) {
+          continue;
+        }
+        std::vector<f_t> h_crushed_assignment;
+        presolver->crush_primal_solution(
+          *problem_ptr->original_problem_ptr, h_incumbent_assignment, h_crushed_assignment);
+        h_incumbent_assignment = std::move(h_crushed_assignment);
+      }
       incumbent_assignment.resize(h_incumbent_assignment.size(), sol.handle_ptr->get_stream());
       raft::copy(incumbent_assignment.data(),
                  h_incumbent_assignment.data(),
@@ -367,7 +384,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                  sol.handle_ptr->get_stream());
 
       bool is_valid = problem_ptr->pre_process_assignment(incumbent_assignment);
-      if (!is_valid) { return; }
+      if (!is_valid) { continue; }
       cuopt_assert(outside_sol.assignment.size() == incumbent_assignment.size(),
                    "Incumbent assignment size mismatch");
       raft::copy(outside_sol.assignment.data(),
@@ -380,6 +397,9 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                       outside_sol.get_feasible(),
                       outside_sol.get_user_objective(),
                       outside_sol.get_total_excess());
+      // External solutions are published as incumbents when queued, so validate the
+      // transformed point before it can update the primal bound or reach GET callbacks.
+      if (!outside_sol.get_feasible()) { continue; }
       if (std::abs(outside_sol.get_user_objective() - outside_sol_objective) > 1e-6) {
         cuopt_func_call(
           CUOPT_LOG_DEBUG("External solution objective mismatch: outside_sol.get_user_objective() "
@@ -387,8 +407,11 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                           outside_sol.get_user_objective(),
                           outside_sol_objective));
       }
-      cuopt_assert(std::abs(outside_sol.get_user_objective() - outside_sol_objective) <= 1e-6,
-                   "External solution objective mismatch");
+      // Crushing can adjust eliminated variables and bounds. Queue the validated point's
+      // recomputed objective rather than requiring it to equal the callback's input objective.
+      cuopt_assert(
+        has_papilo || std::abs(outside_sol.get_user_objective() - outside_sol_objective) <= 1e-6,
+        "External solution objective mismatch");
       auto h_outside_sol = outside_sol.get_host_assignment();
       add_external_solution(
         h_outside_sol, outside_sol.get_objective(), solution_origin_t::EXTERNAL);
