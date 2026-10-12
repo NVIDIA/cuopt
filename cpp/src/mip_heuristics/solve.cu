@@ -66,6 +66,7 @@
 #include <cuda_profiler_api.h>
 #include <omp.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <mutex>
@@ -325,6 +326,12 @@ mip_solution_t<i_t, f_t> run_mip_solver(
         settings.get_tolerances(),
         incumbent_callback,
         mip::derive_seed(solver.context.base_seed, mip::rng_id_t::early_cpufj));
+      std::vector<f_t> papilo_incumbent;
+      if (!solver.context.initial_incumbent_assignment.empty()) {
+        presolver_ptr->crush_primal_solution(*problem.original_problem_ptr,
+                                             solver.context.initial_incumbent_assignment,
+                                             papilo_incumbent);
+      }
       // Convert initial_upper_bound from user-space to the CPUFJ's solver-space (papilo-presolved).
       // problem.get_solver_obj_from_user_obj uses the papilo offset/scale (matching the CPUFJ).
       if (std::isfinite(initial_upper_bound)) {
@@ -333,7 +340,9 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       early_cpufj->start(mip::presolve_early_worker_budget(omp_get_num_threads(),
                                                            CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS,
                                                            0,
-                                                           early_structural ? 1 : 0));
+                                                           early_structural ? 1 : 0),
+                         false,
+                         papilo_incumbent);
       solver.context.early_cpufj_ptr = early_cpufj.get();
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
 
@@ -470,19 +479,13 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     }
 #endif
 
-    auto run_presolve              = settings.presolver != presolver_t::None;
-    bool has_set_solution_callback = false;
-    for (auto callback : settings.get_mip_callbacks()) {
-      if (callback != nullptr &&
-          callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION) {
-        has_set_solution_callback = true;
-        break;
-      }
-    }
-    if (run_presolve && has_set_solution_callback) {
-      CUOPT_LOG_INFO("Presolve is disabled because set_solution callbacks are provided.");
-      run_presolve = false;
-    }
+    const bool run_presolve   = settings.presolver != presolver_t::None;
+    const auto& mip_callbacks = settings.get_mip_callbacks();
+    const bool has_set_solution_callback =
+      std::any_of(mip_callbacks.begin(), mip_callbacks.end(), [](auto* callback) {
+        return callback != nullptr &&
+               callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION;
+      });
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
@@ -677,6 +680,9 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         omp_get_num_threads());
       presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
       presolver->set_indicator_strengthening(settings.indicator_strengthening);
+      // Dual reductions can remove feasible user assignments that callbacks may later inject.
+      // Keep primal reductions so those assignments can be crushed into the presolved problem.
+      presolver->set_dual_reductions(!has_set_solution_callback);
       auto result = presolver->apply_presolve_from_op_problem(
         op_problem,
         cuopt::mathematical_optimization::problem_category_t::MIP,

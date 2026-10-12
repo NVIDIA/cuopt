@@ -1862,9 +1862,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
   problem.Q.check_matrix("Before free variable expansion");
 
-  // Free linear variables. We handle them directly in QP/SOCP or split them in LP.
+  // Free linear variables. QP/SOCP keep them. A sequence LP does too: the v-w split would
+  // change the cached columns. barrier_eliminate_free_variables is false only on that path.
   const bool direct_free_linear =
-    settings.barrier_presolve && free_variables > 0 && (problem.Q.n > 0 || has_cones);
+    settings.barrier_presolve && free_variables > 0 &&
+    (problem.Q.n > 0 || has_cones || !settings.barrier_eliminate_free_variables);
   if (direct_free_linear) {
     presolve_info.free_variable_pairs.clear();
     presolve_info.direct_free_variables.clear();
@@ -1963,8 +1965,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     settings.log.printf("Dependent row check in %.2fs\n", toc(dependent_row_start));
   }
 
-  // LP already goes through PSLP; this substitution is for QP/SOCP only.
-  if (settings.barrier_presolve && (has_cones || problem.Q.n > 0)) {
+  // LP already goes through PSLP; this substitution is for QP/SOCP only. A cache fill skips it.
+  if (settings.barrier_presolve && settings.barrier_eliminate_free_variables &&
+      (has_cones || problem.Q.n > 0)) {
     const i_t old_free_count         = static_cast<i_t>(presolve_info.direct_free_variables.size());
     const f_t free_elimination_start = tic();
     const i_t pivot_rejected         = eliminate_free_variables(problem, presolve_info);

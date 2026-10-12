@@ -8,6 +8,7 @@
 #pragma once
 
 #include <linear_algebra/sparse_matrix.hpp>
+#include <linear_algebra/vector_math.cuh>
 #include <math_optimization/types.hpp>
 #include <raft/core/handle.hpp>
 
@@ -49,51 +50,6 @@ struct sum_reduce_helper_t {
     buffer_data.resize(buffer_size, stream_view);
     cub::DeviceReduce::Sum(
       buffer_data.data(), buffer_size, input, out.data(), size, stream_view.get());
-    return out.value(stream_view);
-  }
-};
-
-template <typename f_t>
-struct transform_reduce_helper_t {
-  rmm::device_buffer buffer_data;
-  rmm::device_scalar<f_t> out;
-  size_t buffer_size;
-
-  transform_reduce_helper_t(cuda::stream_ref stream_view)
-    : buffer_data(0, stream_view), out(stream_view)
-  {
-  }
-
-  template <typename InputIteratorT, typename ReductionOpT, typename TransformOpT, typename i_t>
-  f_t transform_reduce(InputIteratorT input,
-                       ReductionOpT reduce_op,
-                       TransformOpT transform_op,
-                       f_t init,
-                       i_t size,
-                       cuda::stream_ref stream_view)
-  {
-    cub::DeviceReduce::TransformReduce(nullptr,
-                                       buffer_size,
-                                       input,
-                                       out.data(),
-                                       size,
-                                       reduce_op,
-                                       transform_op,
-                                       init,
-                                       stream_view.get());
-
-    buffer_data.resize(buffer_size, stream_view);
-
-    cub::DeviceReduce::TransformReduce(buffer_data.data(),
-                                       buffer_size,
-                                       input,
-                                       out.data(),
-                                       size,
-                                       reduce_op,
-                                       transform_op,
-                                       init,
-                                       stream_view.get());
-
     return out.value(stream_view);
   }
 };

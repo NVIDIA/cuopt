@@ -25,6 +25,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
@@ -2853,6 +2854,28 @@ TEST(MapperRoundtrip, ParameterMapRejectsDivergentSharedTimeLimit)
 
   cuopt::remote::MIPSolverSettings pb;
   EXPECT_THROW(append_solver_parameters(settings, pb.mutable_parameters()), std::invalid_argument);
+}
+
+// is_multigpu_pdlp_requested is what grpc_worker.cpp uses to pick the solve_lp overload.
+TEST(MultiGpuPdlpDispatch, DecisionFromSettings)
+{
+  using cuopt::mathematical_optimization::is_multigpu_pdlp_requested;
+
+  auto make = [](method_t method, int num_gpus) {
+    pdlp_solver_settings_t<int32_t, double> settings;
+    settings.method   = method;
+    settings.num_gpus = num_gpus;
+    return settings;
+  };
+
+  // Default (Concurrent, num_gpus=1) and PDLP with num_gpus=1: single-GPU.
+  EXPECT_FALSE(is_multigpu_pdlp_requested(pdlp_solver_settings_t<int32_t, double>{}));
+  EXPECT_FALSE(is_multigpu_pdlp_requested(make(method_t::PDLP, 1)));
+  // method=PDLP with num_gpus=-1 (all visible devices) or >1: multi-GPU.
+  EXPECT_TRUE(is_multigpu_pdlp_requested(make(method_t::PDLP, -1)));
+  EXPECT_TRUE(is_multigpu_pdlp_requested(make(method_t::PDLP, 4)));
+  // Barrier with num_gpus=4 (concurrent-mode GPU count) is not multi-GPU PDLP.
+  EXPECT_FALSE(is_multigpu_pdlp_requested(make(method_t::Barrier, 4)));
 }
 
 TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)

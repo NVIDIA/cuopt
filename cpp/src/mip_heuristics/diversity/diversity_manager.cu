@@ -481,7 +481,7 @@ void diversity_manager_t<i_t, f_t>::run_fj_alone(solution_t<i_t, f_t>& solution)
   ls.fj.settings.update_weights         = true;
   ls.fj.settings.feasibility_run        = false;
   ls.fj.settings.time_limit             = timer.remaining_time();
-  ls.fj.solve(solution);
+  ls.fj.solve(solution, ls.make_fj_improvement_callback(solution.problem_ptr));
   CUOPT_LOG_INFO("FJ alone finished!");
 }
 

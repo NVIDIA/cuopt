@@ -68,6 +68,7 @@ struct simplex_solver_settings_t {
       eliminate_singletons(true),
       print_presolve_stats(true),
       barrier_presolve(false),
+      barrier_eliminate_free_variables(true),
       cudss_deterministic(false),
       deterministic(false),
       barrier(false),
@@ -109,6 +110,9 @@ struct simplex_solver_settings_t {
       strong_chvatal_gomory_cuts(-1),
       symmetry(-1),
       reduced_cost_strengthening(-1),
+      dual_degenerate_feasibility_pump(0),
+      primal_degenerate_pivots(1),
+      dual_degenerate_pivots(0),
       cut_change_threshold(1e-3),
       cut_min_orthogonality(0.5),
       mip_batch_pdlp_strong_branching(0),
@@ -172,11 +176,12 @@ struct simplex_solver_settings_t {
   bool relaxation;                 // true to only solve the LP relaxation of a MIP
   bool
     use_left_looking_lu;  // true to use left looking LU factorization, false to use right looking
-  bool eliminate_singletons;  // true to eliminate singletons from the basis
-  bool print_presolve_stats;  // true to print presolve stats
-  bool barrier_presolve;      // true to use barrier presolve
-  bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
-  bool barrier;               // true to use barrier method, false to use dual simplex method
+  bool eliminate_singletons;              // true to eliminate singletons from the basis
+  bool print_presolve_stats;              // true to print presolve stats
+  bool barrier_presolve;                  // true to use barrier presolve
+  bool barrier_eliminate_free_variables;  // true to eliminate zero-cost free variables
+  bool cudss_deterministic;  // true to use cuDSS deterministic mode, false for non-deterministic
+  bool barrier;              // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
   bool eliminate_dense_columns;         // true to eliminate dense columns from A*D*A^T
   bool barrier_iterative_refinement;    // true to use iterative refinement for barrier method
@@ -229,10 +234,13 @@ struct simplex_solver_settings_t {
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
   i_t symmetry;  // -1 automatic, 0 to disable, >0 to enable different symmetry methods
-  i_t reduced_cost_strengthening;  // -1 automatic, 0 to disable, >0 to enable reduced cost
-                                   // strengthening
-  f_t cut_change_threshold;        // threshold for cut change
-  f_t cut_min_orthogonality;       // minimum orthogonality for cuts
+  i_t reduced_cost_strengthening;        // -1 automatic, 0 to disable, >0 to enable reduced cost
+                                         // strengthening
+  i_t dual_degenerate_feasibility_pump;  // 0 to disable, 1 to enable
+  i_t primal_degenerate_pivots;          // 0 to disable, 1 to enable
+  i_t dual_degenerate_pivots;            // 0 = off, 1 = root/dives, 2 = everywhere
+  f_t cut_change_threshold;              // threshold for cut change
+  f_t cut_min_orthogonality;             // minimum orthogonality for cuts
   i_t
     mip_batch_pdlp_strong_branching;  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
   i_t mip_batch_pdlp_reliability_branching;  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch

@@ -38,6 +38,7 @@
 #include <mip_heuristics/presolve/indicator_strengthening.hpp>
 #include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <mip_heuristics/utils.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
@@ -931,6 +932,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
                                  dual_postsolve,
                                  num_cpu_threads,
                                  max_rounds);
+  if (!dual_reductions_) { papilo_presolver.getPresolveOptions().dualreds = 0; }
   set_presolve_parameters(papilo_presolver,
                           category,
                           original_n_cons,
@@ -1397,6 +1399,55 @@ void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
 }
 
 template <typename i_t, typename f_t>
+bool third_party_presolve_t<i_t, f_t>::is_original_primal_solution_feasible(
+  const std::vector<f_t>& original_primal,
+  f_t absolute_tolerance,
+  f_t relative_tolerance,
+  f_t integrality_tolerance) const
+{
+  cuopt_assert(papilo_post_solve_storage_ != nullptr, "No postsolve storage available");
+  const auto& problem = papilo_post_solve_storage_->getOriginalProblem();
+  if (original_primal.size() != static_cast<size_t>(problem.getNCols())) { return false; }
+
+  const auto& col_flags = problem.getColFlags();
+  const auto& lower     = problem.getLowerBounds();
+  const auto& upper     = problem.getUpperBounds();
+  for (i_t col = 0; col < problem.getNCols(); ++col) {
+    const f_t value = original_primal[col];
+    if (!std::isfinite(value) ||
+        (!col_flags[col].test(papilo::ColFlag::kLbInf) &&
+         value < lower[col] - integrality_tolerance) ||
+        (!col_flags[col].test(papilo::ColFlag::kUbInf) &&
+         value > upper[col] + integrality_tolerance) ||
+        (col_flags[col].test(papilo::ColFlag::kIntegral) &&
+         std::abs(value - std::round(value)) > integrality_tolerance)) {
+      return false;
+    }
+  }
+
+  const auto& matrix    = problem.getConstraintMatrix();
+  const auto& row_flags = problem.getRowFlags();
+  const f_t inf         = std::numeric_limits<f_t>::infinity();
+  for (i_t row = 0; row < problem.getNRows(); ++row) {
+    const auto coefficients = matrix.getRowCoefficients(row);
+    const f_t activity      = compensated_dot2_csr(coefficients.getValues(),
+                                              coefficients.getIndices(),
+                                              original_primal.data(),
+                                              coefficients.getLength());
+    const f_t lb =
+      row_flags[row].test(papilo::RowFlag::kLhsInf) ? -inf : matrix.getLeftHandSides()[row];
+    const f_t ub =
+      row_flags[row].test(papilo::RowFlag::kRhsInf) ? inf : matrix.getRightHandSides()[row];
+    const f_t tolerance =
+      get_cstr_tolerance<i_t, f_t>(lb, ub, absolute_tolerance, relative_tolerance);
+    if (!std::isfinite(activity) || activity < lb - tolerance || activity > ub + tolerance) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
   const optimization_problem_t<i_t, f_t>& reduced_problem,
   const std::vector<f_t>& original_primal,
@@ -1694,6 +1745,69 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution(
     for (size_t k = 0; k < col_map.size(); ++k) {
       z_reduced[k] = z[col_map[k]];
     }
+  }
+}
+
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution_pslp(
+  const optimization_problem_t<i_t, f_t>& presolved_problem,
+  const std::vector<f_t>& x_original,
+  const std::vector<f_t>& y_original,
+  std::vector<f_t>& x_presolved,
+  std::vector<f_t>& y_presolved) const
+{
+  cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP,
+                error_type_t::RuntimeError,
+                "crush_primal_dual_solution_pslp requires PSLP presolve");
+  cuopt_assert(pslp_presolver_ != nullptr, "No PSLP presolver available");
+
+  // PSLP's result was not trusted and the original problem is being solved as is
+  // (see apply_presolve_from_mps_data), so the solution is already in the right space.
+  if (pslp_postsolve_skip_) {
+    x_presolved = x_original;
+    y_presolved = y_original;
+    return;
+  }
+
+  if constexpr (std::is_same_v<f_t, double>) {
+    const size_t n_cols_original  = pslp_presolver_->sol->dim_x;
+    const size_t n_rows_original  = pslp_presolver_->sol->dim_y;
+    const size_t n_cols_presolved = pslp_presolver_->stats->n_cols_reduced;
+    const size_t n_rows_presolved = pslp_presolver_->stats->n_rows_reduced;
+    cuopt_expects(x_original.size() == n_cols_original,
+                  error_type_t::ValidationError,
+                  "Initial primal solution size does not match the number of variables");
+    cuopt_expects(y_original.size() == n_rows_original,
+                  error_type_t::ValidationError,
+                  "Initial dual solution size does not match the number of constraints");
+    cuopt_assert(presolved_problem.get_n_variables() == static_cast<i_t>(n_cols_presolved) &&
+                   presolved_problem.get_n_constraints() == static_cast<i_t>(n_rows_presolved),
+                 "presolved_problem does not match this presolver");
+
+    x_presolved.assign(n_cols_presolved, f_t{0});
+    y_presolved.assign(n_rows_presolved, f_t{0});
+
+    // The dual mapping is applied in PSLP's (minimization) sign convention, which matches the
+    // convention PDLP uses internally for its initial dual, so y is passed through unchanged.
+    // Presolved reduced costs (PSLP's z_red) are not requested: PDLP does not take reduced costs
+    // as a starting point.
+    map_original_sol_to_reduced(pslp_presolver_,
+                                x_original.data(),
+                                y_original.data(),
+                                x_presolved.data(),
+                                y_presolved.data(),
+                                nullptr);
+
+    // PSLP clips the primal to the presolved bounds only while it still owns the presolved
+    // problem, which apply_presolve_from_mps_data frees right after copying it, so clip here.
+    const std::vector<f_t> lb = presolved_problem.get_variable_lower_bounds_host();
+    const std::vector<f_t> ub = presolved_problem.get_variable_upper_bounds_host();
+    for (size_t j = 0; j < x_presolved.size(); ++j) {
+      x_presolved[j] = std::clamp(x_presolved[j], lb[j], ub[j]);
+    }
+  } else {
+    cuopt_expects(
+      false, error_type_t::ValidationError, "PSLP crushing only supports double precision");
   }
 }
 
