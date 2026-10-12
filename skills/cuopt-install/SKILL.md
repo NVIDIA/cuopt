@@ -19,6 +19,7 @@ metadata:
 
 Install cuOpt to *use* it from Python, C, or as a REST server. For building cuOpt from source to contribute or modify it, see `cuopt-developer`.
 
+
 ## System requirements
 
 - **GPU**: NVIDIA Compute Capability ≥ 7.0 (Volta or newer). Examples: V100, A100, H100, RTX 20xx/30xx/40xx. Not supported: GTX 10xx (Pascal).
