@@ -9,14 +9,14 @@
 - Support for reusing the barrier ordering and symbolic factorization when solving a sequence of problems with different linear objectives and right-hand sides
 - Add RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics to MIP
 - MIP solver now runs diving and recursive RINS heuristics during the cut passes 
-- New primal simplex method for LPs
-- New HTTP proxy server on top of gRPC, replacing the deprecated legacy HTTP server
-- VRP is now supported over gRPC, with a compiled C++/Cython client
-- New `cuOptSetLogCallback` for capturing solver logs in C API
 - New primal heuristic for MIPs with arc-flow formulations
 - New techniques for exploiting degeneracy in MIP
+- New primal simplex method for LPs
 - Add Implied Indicator and Capacity Lifting presolve reductions for fixed-charge MIP models (#1983)
 - The C API now exposes solver statistics as scalar solution attributes
+- New `cuOptSetLogCallback` for capturing solver logs in C API
+- New HTTP proxy server on top of gRPC, replacing the deprecated legacy HTTP server
+- VRP is now supported over gRPC, with a compiled C++/Cython client
 - Routing: add distance breaks (#1196)
 - gRPC: add cancel and status APIs to the routing client (#1886)
 - gRPC: send solver parameters as a map<string, string> from the client (#2022)
