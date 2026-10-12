@@ -85,25 +85,6 @@ under active development.
 
 We now describe parameter settings for the MIP solver.
 
-
-Heuristics Only
-^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run for the MIP problem. When set to true, only the primal
-bound is improved via the GPU. When set to false, both the GPU and CPU are used and
-the dual bound is improved on the CPU.
-
-.. note:: The default value is false.
-
-Scaling
-^^^^^^^
-
-``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem.
-
-* ``0``: Scaling is off.
-* ``1``: Scaling is on.
-* ``2``: Scaling is not applied to the objective (default).
-
 Absolute Tolerance
 ^^^^^^^^^^^^^^^^^^
 
@@ -153,6 +134,23 @@ If the Best Objective and the Dual Bound are both zero the gap is zero. If the b
 gap is infinity.
 
 .. note:: The default value is ``1e-4``.
+
+Heuristics Only
+^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run for the MIP problem. When set to true, only the primal
+bound is improved via the GPU. When set to false, both the GPU and CPU are used and the dual bound is improved on the CPU.
+
+.. note:: The default value is false.
+
+Scaling
+^^^^^^^
+
+``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem.
+
+* ``0``: Scaling is off.
+* ``1``: Scaling is on.
+* ``2``: Scaling is not applied to the objective (default).
 
 
 Node Limit
@@ -206,6 +204,46 @@ Knapsack Cuts
 The default value of ``-1`` (automatic) means that the solver will decide whether to use knapsack cuts based on the problem characteristics.
 Set this value to 1 to enable knapsack cuts.
 Set this value to 0 to disable knapsack cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Flow Cover Cuts
+^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_FLOW_COVER_CUTS`` controls whether to use flow cover cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable flow cover cuts.
+Set this value to ``1`` to enable flow cover cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Implied Bound Cuts
+^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_IMPLIED_BOUND_CUTS`` controls whether to use implied bound cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable implied bound cuts.
+Set this value to ``1`` to enable implied bound cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Clique Cuts
+^^^^^^^^^^^^
+
+``CUOPT_MIP_CLIQUE_CUTS`` controls whether to use clique cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable clique cuts.
+Set this value to ``1`` to enable clique cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Zero-Half Cuts
+^^^^^^^^^^^^^^
+
+``CUOPT_MIP_ZERO_HALF_CUTS`` controls whether to use zero-half cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable zero-half cuts.
+Set this value to ``1`` to enable zero-half cuts.
 
 .. note:: The default value is ``-1`` (automatic).
 
@@ -302,45 +340,6 @@ MIP Symmetry
 
 .. note:: The default value is ``-1`` (automatic).
 
-Flow Cover Cuts
-^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_FLOW_COVER_CUTS`` controls whether to use flow cover cuts.
-Set this value to ``-1`` (automatic) to let the solver decide.
-Set this value to ``0`` to disable flow cover cuts.
-Set this value to ``1`` to enable flow cover cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Implied Bound Cuts
-^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_IMPLIED_BOUND_CUTS`` controls whether to use implied bound cuts.
-Set this value to ``-1`` (automatic) to let the solver decide.
-Set this value to ``0`` to disable implied bound cuts.
-Set this value to ``1`` to enable implied bound cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Clique Cuts
-^^^^^^^^^^^^
-
-``CUOPT_MIP_CLIQUE_CUTS`` controls whether to use clique cuts.
-Set this value to ``-1`` (automatic) to let the solver decide.
-Set this value to ``0`` to disable clique cuts.
-Set this value to ``1`` to enable clique cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Zero-Half Cuts
-^^^^^^^^^^^^^^
-
-``CUOPT_MIP_ZERO_HALF_CUTS`` controls whether to use zero-half cuts.
-Set this value to ``-1`` (automatic) to let the solver decide.
-Set this value to ``0`` to disable zero-half cuts.
-Set this value to ``1`` to enable zero-half cuts.
-
-.. note:: The default value is ``-1`` (automatic).
 
 Objective Step
 ^^^^^^^^^^^^^^^
