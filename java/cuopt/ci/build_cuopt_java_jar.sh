@@ -102,7 +102,7 @@ echo "  native library -> ${RESOURCE_DIR}/libcuopt_jni.so"
 #   - the CUDA math libraries (libcublas*, libcusparse*), which NativeLibraryLoader's
 #     preloadCudaLibraries() resolves from the CUDA toolkit layout at runtime instead (they are
 #     large, and assumed already present on any CUDA-capable system -- see its own comment).
-# Everything else DT_NEEDED names -- TBB (KaMinPar throws through it), NCCL (PDLP's distributed
+# Everything else DT_NEEDED names -- TBB (KaMinPar throws through it), NCCL (PDLP's multi-GPU
 # path references it unconditionally), cuDSS (kept dynamic deliberately, matching
 # CMakeLists.txt's CUOPT_CUDSS_LIBRARY comment), rmm and rapids_logger (prebuilt RAPIDS wheels,
 # not a static build -- see CMakeLists.txt and setup_java_static_env.sh), and the build host's

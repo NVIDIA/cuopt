@@ -339,7 +339,7 @@ void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_to_master_buf(
   raft::copy(master_dst.data_handle(), shard_scalars[0].data_handle(), 1, master_stream);
 }
 
-// -------- Distributed dot / L2 norm -----------------------------------------
+// -------- Multi-GPU dot / L2 norm -------------------------------------------
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_dot_bufs(
   std::vector<raft::device_span<f_t>> const& a_bufs,

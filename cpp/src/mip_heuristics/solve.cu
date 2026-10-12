@@ -66,6 +66,7 @@
 #include <cuda_profiler_api.h>
 #include <omp.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <mutex>
@@ -470,19 +471,13 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     }
 #endif
 
-    auto run_presolve              = settings.presolver != presolver_t::None;
-    bool has_set_solution_callback = false;
-    for (auto callback : settings.get_mip_callbacks()) {
-      if (callback != nullptr &&
-          callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION) {
-        has_set_solution_callback = true;
-        break;
-      }
-    }
-    if (run_presolve && has_set_solution_callback) {
-      CUOPT_LOG_INFO("Presolve is disabled because set_solution callbacks are provided.");
-      run_presolve = false;
-    }
+    const bool run_presolve   = settings.presolver != presolver_t::None;
+    const auto& mip_callbacks = settings.get_mip_callbacks();
+    const bool has_set_solution_callback =
+      std::any_of(mip_callbacks.begin(), mip_callbacks.end(), [](auto* callback) {
+        return callback != nullptr &&
+               callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION;
+      });
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
@@ -677,6 +672,9 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         omp_get_num_threads());
       presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
       presolver->set_indicator_strengthening(settings.indicator_strengthening);
+      // Dual reductions can remove feasible user assignments that callbacks may later inject.
+      // Keep primal reductions so those assignments can be crushed into the presolved problem.
+      presolver->set_dual_reductions(!has_set_solution_callback);
       auto result = presolver->apply_presolve_from_op_problem(
         op_problem,
         cuopt::mathematical_optimization::problem_category_t::MIP,

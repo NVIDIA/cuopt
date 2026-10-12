@@ -137,14 +137,14 @@ class convergence_information_t {
   void resize_context(i_t new_size);
 
  private:
-  // Non-batch single and distrivuted PDLP shared dot kernel.
+  // Non-batch single-GPU and multi-GPU PDLP shared dot kernel.
   // primal_objective_ = dot(objective_coefficients, primal_solution)
-  // In distributed mode n_owned = shard's owned var prefix and the caller
+  // In multi-GPU mode n_owned = shard's owned var prefix and the caller
   // allreduces across shards; in single-GPU n_owned = primal_size_h_.
   void compute_primal_objective_owned_partial(const rmm::device_uvector<f_t>& primal_solution,
                                               i_t n_owned);
 
-  // Non-batch single and distributed PDLP shared reflected-dual kernel.
+  // Non-batch single-GPU and multi-GPU PDLP shared reflected-dual kernel.
   // dual_objective_ = dot(dual_slack, primal_solution) + sum(primal_slack_)
   void compute_dual_objective_owned_partial(const rmm::device_uvector<f_t>& primal_solution,
                                             const rmm::device_uvector<f_t>& dual_slack,
@@ -174,7 +174,7 @@ class convergence_information_t {
 
   void compute_reduced_costs_dual_objective_contribution();
 
-  // ----- Distributed-PDLP sub-steps of compute_convergence_information -----
+  // ----- Multi-GPU PDLP sub-steps of compute_convergence_information -----
   // Halo exchange, per-shard primal/residual + partial (owned) primal/dual objective, allreduce and
   // apply scaling+offset.
   void distributed_compute_primal_residual_and_objective(

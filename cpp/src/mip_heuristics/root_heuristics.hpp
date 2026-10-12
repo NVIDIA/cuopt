@@ -29,6 +29,7 @@ struct cut_pass_heuristics_t {
   csr_matrix_t<i_t, f_t> Arow_;
   std::vector<f_t> root_solution_;
   std::vector<f_t> root_edge_norm_;
+  std::vector<i_t> new_slacks_;
   pseudo_costs_t<i_t, f_t> pseudo_costs_;
   omp_atomic_t<i_t> active_workers_;
   std::atomic<int> halt_;
@@ -42,11 +43,13 @@ struct cut_pass_heuristics_t {
                         const std::vector<simplex::variable_type_t>& var_types,
                         const std::vector<f_t>& root_solution,
                         const std::vector<f_t>& root_edge_norm,
+                        const std::vector<i_t>& new_slacks,
                         const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
     : var_types_(var_types),
       Arow_(Arow),
       root_solution_(root_solution),
       root_edge_norm_(root_edge_norm),
+      new_slacks_(new_slacks),
       pseudo_costs_(root_solution.size(), settings),
       active_workers_(0),
       halt_(false),
@@ -98,8 +101,15 @@ struct cut_pass_heuristics_t {
     const std::vector<f_t>& sol,
     search_strategy_t type)
   {
-    submip_worker_ = std::make_unique<diving_worker_t<i_t, f_t>>(
-      id, lp, Arow_, var_types_, settings, pseudo_costs_, root_solution_, root_edge_norm_);
+    submip_worker_                  = std::make_unique<diving_worker_t<i_t, f_t>>(id,
+                                                                 lp,
+                                                                 Arow_,
+                                                                 var_types_,
+                                                                 settings,
+                                                                 pseudo_costs_,
+                                                                 root_solution_,
+                                                                 root_edge_norm_,
+                                                                 new_slacks_);
     submip_worker_->start_node      = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
     submip_worker_->leaf_vstatus    = root_vstatus;
     submip_worker_->leaf_solution.x = sol;
@@ -117,8 +127,15 @@ struct cut_pass_heuristics_t {
     const std::vector<simplex::variable_status_t>& root_vstatus,
     const std::vector<f_t>& sol)
   {
-    mutation_worker_ = std::make_unique<diving_worker_t<i_t, f_t>>(
-      id, lp, Arow_, var_types_, settings, pseudo_costs_, root_solution_, root_edge_norm_);
+    mutation_worker_                  = std::make_unique<diving_worker_t<i_t, f_t>>(id,
+                                                                   lp,
+                                                                   Arow_,
+                                                                   var_types_,
+                                                                   settings,
+                                                                   pseudo_costs_,
+                                                                   root_solution_,
+                                                                   root_edge_norm_,
+                                                                   new_slacks_);
     mutation_worker_->start_node      = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
     mutation_worker_->leaf_vstatus    = root_vstatus;
     mutation_worker_->leaf_solution.x = sol;
@@ -154,7 +171,8 @@ struct cut_pass_heuristics_t {
                                                   settings,
                                                   pseudo_costs_,
                                                   root_solution_,
-                                                  root_edge_norm_));
+                                                  root_edge_norm_,
+                                                  new_slacks_));
     worker->start_node      = root_node.detach_copy();
     worker->start_lower     = lp.lower;
     worker->start_upper     = lp.upper;
@@ -291,11 +309,12 @@ struct root_heuristics_t {
     const std::vector<simplex::variable_type_t>& var_types,
     const std::vector<f_t>& root_solution,
     const std::vector<f_t>& root_edge_norm,
+    const std::vector<i_t>& new_slacks,
     const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
     auto& heuristic =
       cut_passes_heuristics_.emplace_back(std::make_shared<cut_pass_heuristics_t<i_t, f_t>>(
-        Arow, var_types, root_solution, root_edge_norm, settings));
+        Arow, var_types, root_solution, root_edge_norm, new_slacks, settings));
     // Read by create_worker, so it has to be in place before the caller builds the climber.
     heuristic->fj_cpu_worker_.shared_incumbent = shared_incumbent_;
     return heuristic;

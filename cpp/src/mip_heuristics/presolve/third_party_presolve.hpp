@@ -116,6 +116,7 @@ class third_party_presolve_t {
   }
 
   void set_indicator_strengthening(bool enabled) { indicator_strengthening_ = enabled; }
+  void set_dual_reductions(bool enabled) { dual_reductions_ = enabled; }
 
   // Apply the presolve on an simplex::user_problem in-place. Used in sub MIP and (in the future)
   // restarts.
@@ -146,6 +147,11 @@ class third_party_presolve_t {
   void uncrush_primal_solution(const std::vector<f_t>& reduced_primal,
                                std::vector<f_t>& full_primal,
                                bool check_postsolve = true) const;
+
+  bool is_original_primal_solution_feasible(const std::vector<f_t>& original_primal,
+                                            f_t absolute_tolerance,
+                                            f_t relative_tolerance,
+                                            f_t integrality_tolerance) const;
 
   void crush_primal_solution(const optimization_problem_t<i_t, f_t>& reduced_problem,
                              const std::vector<f_t>& original_primal,
@@ -228,6 +234,7 @@ class third_party_presolve_t {
 
   std::optional<std::unordered_set<std::string>> reduction_allowlist_{};
   bool indicator_strengthening_{true};
+  bool dual_reductions_{true};
 };
 
 // Just for testing the conversion: user_problem -> Papilo problem -> user_problem.

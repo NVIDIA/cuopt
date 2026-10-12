@@ -50,7 +50,7 @@ struct pdlp_shard_t {
   // Out-of-line (in shard.cu) because pdlp_solver_t is incomplete here.
   ~pdlp_shard_t();
 
-  // sub worker for distributed pdlp. Owns its own view on scaled problem and unscaled problem
+  // sub worker for multi-GPU PDLP. Owns its own view on scaled problem and unscaled problem
   // Owns necessary multi-gpu data (rank_data, device_id, nccl_comm)
   pdlp_shard_t(int device_id,
                rank_data_t<i_t, f_t>&& rd,

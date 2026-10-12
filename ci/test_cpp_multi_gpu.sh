@@ -11,7 +11,7 @@
 #   multiple communicators/ranks on one device are unsupported, and using the
 #   same CUDA device as multiple ranks of one communicator may hang. Algorithmic
 #   validity is covered by the single-GPU C++ tests (ci/test_cpp.sh); this script
-#   only exercises the cross-GPU communication paths (e.g. distributed PDLP).
+#   only exercises the cross-GPU communication paths (e.g. multi-GPU PDLP).
 #
 # Convention:
 #   Multi-GPU gtest binaries are named with a "_MG_TEST" suffix so this script
@@ -78,7 +78,7 @@ if [ "${GPU_COUNT}" -lt 2 ]; then
   exit 1
 fi
 
-# Distributed PDLP parity tests use a small set of git-ignored MPS instances.
+# Multi-GPU PDLP parity tests use a small set of git-ignored MPS instances.
 # Download only those direct-MPS fixtures here: downloading the full PDLP suite
 # falls back to netlib conversion when S3 credentials are not available, and that
 # path needs gcc (not present in this test environment).
@@ -108,7 +108,7 @@ shopt -u nullglob
 
 if [ "${#mg_tests[@]}" -eq 0 ]; then
   rapids-logger "No multi-GPU gtest binaries (*_MG_TEST) found in ${GTEST_DIR}; nothing to run."
-  echo "::notice::No multi-GPU tests present yet — skipping. This job lights up once *_MG_TEST binaries land (distributed PDLP)."
+  echo "::notice::No multi-GPU tests present yet — skipping. This job lights up once *_MG_TEST binaries land (multi-GPU PDLP)."
   exit 0
 fi
 

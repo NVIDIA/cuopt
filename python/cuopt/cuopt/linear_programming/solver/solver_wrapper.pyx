@@ -93,7 +93,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp":
     {
       void *p = PyCapsule_GetPointer(cap, "cuopt.barrier_cache");
       if (p != nullptr) {
-        delete reinterpret_cast<cuopt::mathematical_optimization::barrier_cache_t *>(p);
+        delete reinterpret_cast<cuopt::mathematical_optimization::barrier_cache_t<int, double> *>(p);
       }
     }
     """
@@ -551,8 +551,8 @@ def prepare_solver_settings(SolverSettings settings, data_model=None, mip=False)
 def Solve(py_data_model_obj, SolverSettings settings, mip=False):
 
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
-    cdef barrier_cache_t* cache_in = NULL
-    cdef barrier_cache_t* cache_out = NULL
+    cdef barrier_cache_t[int, double]* cache_in = NULL
+    cdef barrier_cache_t[int, double]* cache_out = NULL
     cdef solver_ret_t* sol_ret
 
     if (
@@ -564,7 +564,7 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
             b"cuopt.barrier_cache",
         ):
             raise ValueError("Invalid barrier cache stored on DataModel.")
-        cache_in = <barrier_cache_t*>PyCapsule_GetPointer(
+        cache_in = <barrier_cache_t[int, double]*>PyCapsule_GetPointer(
             data_model_obj.barrier_cache_capsule,
             b"cuopt.barrier_cache",
         )
