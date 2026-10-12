@@ -11,9 +11,12 @@ ways:
 
 1. **Remote execution** — set ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT``
    on the client; the same Python, C (``cuOptSolve``), or ``cuopt_cli`` APIs
-   you use locally forward to the GPU server with **no code changes**.
-2. **Python async gRPC client** — the same LP, with host and port passed to
-   ``Client(...)`` for explicit job control (submit / wait / result / delete).
+   you use locally forward an LP, MIP, or QP to the GPU server with **no
+   code changes**. Modeling-language integrations that call those APIs do
+   the same.
+2. **gRPC linear programming client** — the same LP, with host and port
+   passed to ``Client(...)`` for explicit job control (submit / wait /
+   result / delete).
 
 Start the GPU server, then try remote execution first; the gRPC-client
 variant follows immediately after that demo. Full client docs:
@@ -23,11 +26,10 @@ directly (see :doc:`api`).
 .. note::
 
    **Problem types:** **LP**, **MIP**, and **QP** support remote execution
-   (this guide) and gRPC clients. **Routing** (VRP, TSP, PDP) supports the
-   explicit :doc:`VRP gRPC client <routing>` only -- it does not read
-   ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` the way this guide's LP does.
-   The HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>` is
-   also available for remote routing. This guide is **not** the REST server.
+   (this guide) and the :doc:`gRPC linear programming client
+   <python-async-client>`. **Routing** (VRP, TSP, PDP) uses the
+   :doc:`gRPC routing client <routing>` or a custom client. It does not read
+   ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT``.
 
 How Remote Execution Works
 ==========================
@@ -95,9 +97,7 @@ Or invoke the binary explicitly:
      <CUOPT_IMAGE> \
      cuopt_grpc_server --port 5001 --workers 1
 
-.. note::
-
-   ``CUOPT_SERVER_TYPE`` always takes precedence and selects the server. ``proxy`` (the default when the variable is unset) starts the HTTP proxy plus ``cuopt_grpc_server``. ``grpc`` is gRPC only. ``legacy`` is the Python REST server. When the variable is unset, those same words can be passed as the container command. Extra environment variables (``CUOPT_SERVER_PORT``, ``CUOPT_GRPC_PORT``, ``CUOPT_GPU_COUNT``, ``CUOPT_GRPC_ARGS``) and TLS are documented in :doc:`Advanced configuration <advanced>`.
+For further startup options, including how to specify the container mode in a Kubernetes environment, see :doc:`Advanced configuration <advanced>`.
 
 Minimal Python Example
 ======================
@@ -143,11 +143,12 @@ You should see an optimal termination. To solve **locally**, unset the remote va
    unset CUOPT_REMOTE_HOST CUOPT_REMOTE_PORT
    python remote_lp_demo.py
 
-.. rubric:: Same LP via the Python Async gRPC Client
+.. rubric:: Same LP via the gRPC Linear Programming Client
    :class: large-rubric
 
 Remote execution needs no code changes. If you want **explicit** job control
-instead, leave ``CUOPT_REMOTE_*`` unset and use the Python async gRPC client.
+instead, leave ``CUOPT_REMOTE_*`` unset and use the gRPC linear programming
+client.
 Pass the GPU server's network location in the ``Client`` constructor
 (``host`` and ``port``); it does not read ``CUOPT_REMOTE_*``.
 
@@ -222,7 +223,8 @@ Next Steps
 ==========
 
 * :doc:`../install` — Top-level install selector (all interfaces), including **Container** pulls.
-* :doc:`python-async-client` — Python async gRPC client (explicit jobs).
+* :doc:`python-async-client` — gRPC linear programming client (explicit jobs).
+* :doc:`routing` — gRPC routing client (VRP, TSP, PDP).
 * :doc:`advanced` — TLS / mTLS, Docker environment reference, tuning, limitations, troubleshooting.
 * :doc:`examples` — Additional client examples and links to LP/MIP sample collections.
 * :doc:`api` and :doc:`grpc-server-architecture` — RPC summary and server behavior overview.

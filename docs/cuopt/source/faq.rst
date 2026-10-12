@@ -49,8 +49,20 @@ General FAQ
 
 .. dropdown:: Does cuOpt use multiple GPUs/multi-GPUs/multi GPUs?
 
-    #. Yes, in cuOpt self-hosted server, a solver process per GPU can be configured to run multiple solvers. Requests are accepted in a round-robin queue. More details are available in :doc:`server api <cuopt-server/server-api/server-cli>`.
-    #. There is no support for leveraging multiple GPUs to solve a single problem or oversubscribing a single GPU for multiple solvers.
+    Yes. ``cuopt_grpc_server`` runs one worker process per concurrent solve. Set ``--workers`` to the number of GPUs so each worker uses a different GPU. Worker 0 uses the first visible GPU, worker 1 the second, and so on. On a node with two GPUs:
+
+    .. code-block:: bash
+
+        cuopt_grpc_server --port 5001 --workers 2
+
+    Call that server directly, or start the HTTP proxy against it. The proxy forwards each request to the same workers:
+
+    .. code-block:: bash
+
+        cuopt_grpc_server --port 5001 --workers 2 &
+        python -m cuopt_server.cuopt_proxy --port 5000 --grpc-port 5001
+
+    In the container, ``CUOPT_GPU_COUNT`` is passed as ``--workers`` for both the default proxy command and ``grpc``. See :doc:`cuopt-grpc/advanced`.
 
 .. dropdown:: The cuOpt Service is not starting: Issue with port?
 

@@ -2,13 +2,10 @@
 LP Python Examples
 ===============================
 
-The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple LP problem in normal mode and batch mode (where multiple problems are solved at once).
+The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple LP problem. The batch portion of ``basic_lp_example.py`` submits a JSON list of LP problems. The HTTP proxy returns 501 for that body. See :ref:`legacy-http-differences`.
 
 .. note::
-   LP batch mode is deprecated and will be removed in a future release. Prefer
-   sequential ``cuopt.linear_programming.Solve`` calls. Server and CLI batch
-   paths still use batch solve today; check response ``warnings`` or logs for the
-   deprecation notice.
+   LP batch mode remains on the :doc:`legacy HTTP server <../legacy-http-server>`. Prefer sequential ``cuopt.linear_programming.Solve`` calls.
 
 The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData under "POST /cuopt/request" <../../open-api>` under schema section. LP and MIP share same spec.
 
@@ -19,7 +16,8 @@ If you want to run server locally, please run the following command in a termina
 
     export ip="localhost"
     export port=5000
-    python -m cuopt_server.cuopt_service --ip $ip --port $port
+    cuopt_grpc_server --port 5001 &
+    python -m cuopt_server.cuopt_proxy --ip $ip --port $port --grpc-port 5001
 
 .. _generic-example-with-normal-and-batch-mode:
 

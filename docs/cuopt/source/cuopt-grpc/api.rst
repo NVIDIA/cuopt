@@ -15,12 +15,15 @@ The **CuOptRemoteService** gRPC API is defined in Protocol Buffers under the ``c
 
 Most users do **not** call these RPCs directly:
 
-* **Remote execution** — Python, C (``cuOptSolve``), and ``cuopt_cli`` forward
-  LP/MIP/QP solves when ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are
-  set (:doc:`quick-start`, :doc:`advanced`).
-* **Python async gRPC client** — ``cuopt.grpc.linear_programming.Client`` for
-  LP/MIP/QP (:doc:`python-async-client`), ``cuopt.grpc.routing.RoutingClient``
-  for VRP (:doc:`routing`).
+* **Remote execution** — Python, C (``cuOptSolve``), ``cuopt_cli``, and
+  modeling-language integrations that call those APIs forward LP, MIP, and
+  QP solves when ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are set
+  (:doc:`quick-start`, :doc:`advanced`).
+* **gRPC linear programming client** —
+  ``cuopt.grpc.linear_programming.Client`` for LP, MIP, and QP
+  (:doc:`python-async-client`).
+* **gRPC routing client** — ``cuopt.grpc.routing.RoutingClient`` for VRP,
+  TSP, and PDP (:doc:`routing`).
 
 **Custom** clients call ``CuOptRemoteService`` over gRPC using these definitions.
 This page summarizes the service for custom integrators and debugging.
@@ -110,8 +113,8 @@ Messages and Constraints
   ``cpp/src/grpc/routing/cuopt_routing.proto`` (problem) and
   ``cuopt_routing_solution.proto`` (result) -- not a separate service. There
   is no ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` remote-execution path for
-  routing yet; use ``cuopt.grpc.routing.RoutingClient`` (:doc:`routing`) or
-  REST for remote routing today.
+  routing; use the gRPC routing client (:doc:`routing`) or REST for remote
+  routing.
 * **Solver settings** — Carried as ``PDLPSolverSettings`` or ``MIPSolverSettings`` inside the request or chunked header, aligned with the NVIDIA cuOpt solver options documentation.
 * **Errors** — Transport failures use gRPC status codes. Some outcomes use
   ``Status::OK`` with response fields: ``CheckStatus`` reports unknown jobs as
@@ -123,6 +126,6 @@ Messages and Constraints
 Further Reading
 ===============
 
-* :doc:`python-async-client` / :doc:`python-async-client-api` — Python job client (``cuopt.grpc``) built on these RPCs.
+* :doc:`python-async-client` / :doc:`python-async-client-api` — gRPC linear programming client (``cuopt.grpc.linear_programming``) built on these RPCs. :doc:`routing` / :doc:`routing-api` — gRPC routing client.
 * :doc:`grpc-server-architecture` — Server process model and job lifecycle (overview); :doc:`advanced` for ``cuopt_grpc_server`` flags. Contributor details: ``cpp/docs/grpc-server-architecture.md``.
 * :doc:`advanced` — TLS, Docker, client environment variables, and limitations.
