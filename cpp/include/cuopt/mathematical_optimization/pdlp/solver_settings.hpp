@@ -300,6 +300,7 @@ class pdlp_solver_settings_t {
   bool per_constraint_residual{false};
   bool crossover{false};
   bool cudss_deterministic{false};
+  i_t project_initial_primal{-1};
   i_t folding{-1};
   i_t augmented{-1};
   i_t dualize{-1};
@@ -371,9 +372,6 @@ class pdlp_solver_settings_t {
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
   pdlp::pdlp_hyper_params_t hyper_params;
-  // -1: hyper_params.project_initial_primal stays at the solver-mode preset.
-  // 0: force off. 1: force on. Applied after set_pdlp_solver_mode.
-  i_t project_initial_primal{-1};
   // Holds per-climber variable-bound overrides in the format:
   // (climber id, variable index, new lower bound, new upper bound).
   // Per-climber objective coefficients / offsets / constraint bounds must be pre-expanded directly
