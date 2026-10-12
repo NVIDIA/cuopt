@@ -9,11 +9,10 @@
 - Support for reusing the barrier ordering and symbolic factorization when solving a sequence of problems with different linear objectives and right-hand sides
 - Add RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics to MIP
 - MIP solver now runs diving and recursive RINS heuristics during the cut passes 
-- New Primal Simplex method for LPs
+- New primal simplex method for LPs
 - New HTTP proxy server on top of gRPC, replacing the deprecated legacy HTTP server
 - VRP is now supported over gRPC, with a compiled C++/Cython client
 - New `cuOptSetLogCallback` for capturing solver logs in C API
-- New barrier setting to control adaptive regularization (enabled for cone problems by default)
 - New primal heuristic for MIPs with arc-flow formulations
 - New techniques for exploiting degeneracy in MIP
 - Add Implied Indicator and Capacity Lifting presolve reductions for fixed-charge MIP models (#1983)
@@ -54,6 +53,7 @@
 - Barrier now prints the cumulative setup time before the solve
 - Barrier now removes empty columns from separable QPs
 - Barrier termination check now has reduced GPU/host synchronization overhead
+- Barrier now has parameters to control adaptive regularization (enabled for SOCP by default)
 - Barrier now has parameters for tuning primal and dual regularization
 - Barrier now has a parameter to control bounding free variables 
 - Barrier now has improved performance when computing the initial point
