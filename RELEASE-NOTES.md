@@ -84,61 +84,61 @@
 
 ### Bug Fixes (26.10)
 
-- Fix an issue in Barrier on QPs where duality gap was not included in the termination criteria
-- Fix an issue in MIP where flow cover cut generation was accidentally O(n^2) (#1842)
+- Fix issue in MPS writer on problems with no linear constraints
+- Fix ranged constraint conversion and MPS writing/reading round trips
+- Fix an issue in PDLP where reduced costs where not returned for the default PDLP preset (Stable3)
+- Fix a barrier crash when concurrent LP solving returned from cuDSS before its asynchronous work finished
+- Fix several issues in barrier related to the cuDSS threading layer
+- Fix a bug on QCQP/SOCP problems with ranged rows
+- Fix nondeterminism in barrier when `--cudss-deterministic=1`
+- Fix an issue with QPs where duality gap was not included in the termination criteria
+- Fix QCQP dual solution overrun and constraint count reporting
+- Fix an issue in QCQP/SOCP where the dual residual of the final solution was incorrect 
+- Fix an issue in dual simplex logs where bound flips were not accounted for in objective
+- Fix an issue in MIP where flow cover cut generation was accidentally O(n^2)
+- Fix issue in dual simplex inside MIP where cut off incorrectly used the perturbed objective
+- Fix an issue in dual simplex where dual variables and dual feasibility was not recomputed after basis repair
+- Fix several issues in MIP where the time limit was not respected
+- Fix MIP presolve incorrectly fixing continuous variables using integer-variable tolerance
+- Fix false optimality declaration in MIP determinsitic mode
+- Fix issue in MIP where a large amount of time could elapse between logs
+- Fix issue in MIP when converting knapsack constraints to rational coefficients could remove integer solutions
+- Fix issue in MIP where termination was delayed during root cut passes
+- Fix an issue in MIP where the sub-MIP was not correctly stopped when the main solve finished
+- XXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explaination
+- Fix early termination caused by an uninitialized dual bound before B&B starts (#2037)
+- Upgrade CMake to include the PSLP objective offset fix (#1695)
+- Fix vendored PSLP writing a stray infeasible-message printf to native stdout (#1836)
+- Multi-GPU PDLP: add the missing header to the solve log (#2017)
+- Fix asynchronous clique table handoff (#1834)
+- Disable clique/zero-half cuts in determinism mode (#1841)
+- Guard against nullptr dereference when checking concurrent solver status (#1845)
+- Restore logging of `cuopt_cli` arguments (#1996)
+- Fix concurrent clique table publication (#1775)
+- Limit the population solution queue to 50 solutions to prevent memory overflow (#2002)
+- Add extra termination checks in LP, and bound sub-MIP time by the global time limit (#2054)
+- Fix `cuopt_cli` printing no log when `--num-gpu` exceeds the available GPUs (#1935)
 - GF2 presolve rank-deficiency fix (#1660)
 - Fix uninitialized FJ constraint weights when the problem grows (#1698)
 - Use configured feasibility tolerance in Papilo (#1688)
 - Fix GF2 incorrectly treating some one-sided rows as equality (#1707)
-- Fix dual residual computation in final solution output (#1718)
 - Report absent solution values instead of returning success (#1734)
 - Avoid uncapturable RMM copies inside routing CUDA graph captures (#1753)
 - Keep host sources alive for async route-view copies (#1759)
-- Fix QCQP dual solution overrun and constraint count reporting (#1761)
 - Use an absolute instead of relative tolerance for mod-2 row integrality (#1770)
-- Return reduced costs for the default PDLP preset (Stable3) (#1797)
 - Add missing TransactionGuard in the SLDA presolver (#1815)
-- Fix asynchronous clique table handoff (#1834)
-- Disable clique/zero-half cuts in determinism mode (#1841)
-- Forward routing gRPC settings and map node name strings to ints (#1837)
-- Python gRPC client: run the wait loop in Python so other threads are not blocked by the GIL (#1857)
-- Fix a barrier crash when concurrent LP solving returned from cuDSS before its asynchronous work finished (#1810)
 - Routing: avoid division by zero when vehicle capacity is zero (#1853)
-- Guard against nullptr dereference when checking concurrent solver status (#1845)
 - Routing: Guard diagonal element lookup against negative offsets in top_k (#1855)
 - Refresh the cached linear column count after removing empty… (#1923)
-- Fix issue in dual simplex where cut off used perturbed objective; use original objective and require dual feasibility (#1901)
-- grpc server align ping handling with client behavior (#1937)
-- gRPC: transfer MIP initial solutions to the server (#1868)
-- Correctly stop sub-MIP when main solve finishes (#1911)
-- Recompute dual variables and check dual feasibility after basis repair (#1965)
-- Fix false optimality declaration in the determinsitic mode (#1954)
 - Escape parser error messages (#1947)
 - Handle cuda graph errors (#1945)
-- Restore logging of `cuopt_cli` arguments (#1996)
-- Fix run-to-run nondeterminism in barrier with `--cudss-deterministic 1` (#1856)
-- Fix concurrent clique table publication (#1775)
-- Limit the population solution queue to 50 solutions to prevent memory overflow (#2002)
-- Fix delayed termination during root loop (#2003)
-- Fix long interval between progress report (#2019)
-- Fix ranged constraint conversion and MPS round trips (#2027)
-- Fix early termination caused by an uninitialized dual bound before B&B starts (#2037)
-- Fix/mip time limit overruns (#2046)
 - gRPC: transmit PDLP warmstart data and apply it on the server (#2041)
-- Barrier: keep the [linear | slacks | cone] column layout for range rows in presolve (#2029)
-- Fix MPS writing for empty CSR constraint matrices (#2039)
-- Fix knapsack rational coefficient scaling (#1754)
+- grpc server align ping handling with client behavior (#1937)
+- gRPC: transfer MIP initial solutions to the server (#1868)
 - grpc server add a check for successful cuda init in worker (#2063)
-- Fix MIP presolve fixing continuous variables with the integer-variable tolerance (#2066)
-- Add extra termination checks in LP, and bound sub-MIP time by the global time limit (#2054)
-- Dual simplex: account for bound flips and use original costs consistently in objective logging (#2072)
-- Fix `cuopt_cli` printing no log when `--num-gpu` exceeds the available GPUs (#1935)
-- Upgrade CMake to include the PSLP objective offset fix (#1695)
+- Forward routing gRPC settings and map node name strings to ints (#1837)
+- Python gRPC client: run the wait loop in Python so other threads are not blocked by the GIL (#1857)
 - Exec the binary from the `cuopt_cli` and `cuopt_grpc_server` console-script wrappers so signals reach it (#1723)
-- Fix vendored PSLP writing a stray infeasible-message printf to native stdout (#1836)
-
-- Multi-GPU PDLP: add the missing header to the solve log (#2017)
-- Make the cuDSS threading layer robust in barrier: fix a teardown race, no longer abort the process when the plugin fails to load, resolve the plugin path at runtime, and use cuOpt's own OpenMP runtime in wheels (#1883, #1897, #1905, #1982)
 
 ### Documentation (26.10)
 
