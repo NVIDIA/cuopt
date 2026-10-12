@@ -322,6 +322,8 @@ When a sequence of convex optimization problems with the same constraint matrix 
 
 The quadratic objective, the constraint matrix, the row senses, and the variable bounds must stay unchanged between solves. See ``CUOPT_SEQUENCE_SOLVE`` in :doc:`convex-settings` for details and limits.
 
+.. note:: Sequence solves are currently only supported with the Python API.
+
 PDLP Precision Modes
 --------------------
 
