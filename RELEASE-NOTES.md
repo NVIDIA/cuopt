@@ -15,6 +15,7 @@
 - New `cuOptSetLogCallback` for capturing solver logs in C API
 - New barrier setting to control adaptive regularization (enabled for cone problems by default)
 - New primal heuristic for MIPs with arc-flow formulations
+- New techniques for exploiting degeneracy in MIP
 - Add Implied Indicator and Capacity Lifting presolve reductions for fixed-charge MIP models (#1983)
 - The C API now exposes solver statistics as scalar solution attributes
 - Routing: add distance breaks (#1196)
@@ -45,39 +46,40 @@
 - PDLP now fuses the Halpern update into the projection kernels to improve performance
 - Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
 - Free memory after LP presolve: the transpose matrix and PSLP reduced problem are now freed
+- LPs with poor scaling are now attempted without presolve, even if PSLP declares infeasibility
+- LP presolve now uses PSLP version 0.1.1
 - Barrier now preforms Ruiz scaling and builds the augmented system on the GPU
 - Barrier now scales QCQP/SOCP constraint by variable bounds before Ruiz equilibriation
 - Barrier now performs iterative refinement on GPU when using the normal equations
 - Barrier now prints the cumulative setup time before the solve
 - Barrier now removes empty columns from separable QPs
 - Barrier termination check now has reduced GPU/host synchronization overhead
-- QCQP to SOCP conversion performance is improved 
+- Barrier now has parameters for tuning primal and dual regularization
+- Barrier now has a parameter to control bounding free variables 
+- Barrier now has improved performance when computing the initial point
+- QCQP to SOCP conversion performance is improved and memory required is reduced
+- QCQP/SOCP presolve now eliminates free variables with zero cost 
 - MIP root relaxation now honors the LP method selected
 - MIP performance improvement in duplicate cut detection
 - MIP diving is now performed on separate threads during root cut passes
-- New Mod-2 cut separator for zero-half cuts (#1726)
-- Add a hyperparameter that controls bounding of free variables (#1713)
+- MIP root heuristics now use more threads, recursive RINS is now run at the root node
+- MIP reduced cost strengthening now stores bound implications based on incumbent objective value
+- MIP now includes a new Mod-2 cut separator for zero-half cuts
+- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explanations 
 - Block Bounded Value Elimination presolving pass for binary problems (#1683)
 - Add a binary 2opt move fed from the probing cache into CPUFJ (#1738)
-- MIP: make root heuristics modular with support for more workers, and run recursive RINS at the root node (#1700)
 - Add a dual aggregation presolver for binary variables with a single lock (#901)
 - Allow stopping B&B through `concurrent_halt` in the simplex solver settings, including during cut passes (#1760)
-- Add parameters for tuning barrier primal and dual regularization (#1807)
-- Add more strategies of init point computation in barrier (#1577)
 - Exhaustive coefficient reduction for binary rows (#1686)
-- RoutingClient: match Client's (host, port, tls=...) signature (#1840)
-- Replace process-wide seed_generator with per-worker RNGs in MIP heuristics (#1809)
-- Reduce memory and time in QCQP canonicalization and the symmetry check (#1864)
 - Improve time-to-first-incumbent, unify solution callback publication, scaffolding changes (#1880)
 - Add a fast-path to the CPUFJ engine for binary problems with integer activities (#1881)
 - Standardize cost terminology (#1299)
-- Barrier: show residual information only in debug mode (#1866)
-- Update PSLP to v0.0.12 (#1943)
 - Modular CPUFJ engine, simple portfolio (#1950)
 - Improve primal and dual simplex performance, and make primal simplex a first-class method for LPs (#1889)
-- Eliminate zero-cost free variables by equality substitution in QP/SOCP barrier presolve (#1912)
 - Structure-aware starts and repairs for CPUFJ (#1951)
 - Portfolio diversification, more starts, move batching (#1953)
+- RoutingClient: match Client's (host, port, tls=...) signature (#1840)
+- Replace process-wide seed_generator with per-worker RNGs in MIP heuristics (#1809)
 - Give each solver its own seed instead of a process-wide counter (#1717)
 
 ### Bug Fixes (26.10)
@@ -134,7 +136,7 @@
 - Upgrade CMake to include the PSLP objective offset fix (#1695)
 - Exec the binary from the `cuopt_cli` and `cuopt_grpc_server` console-script wrappers so signals reach it (#1723)
 - Fix vendored PSLP writing a stray infeasible-message printf to native stdout (#1836)
-- Handle PSLP false-infeasible on badly-scaled LPs (#1922)
+
 - Multi-GPU PDLP: add the missing header to the solve log (#2017)
 - Make the cuDSS threading layer robust in barrier: fix a teardown race, no longer abort the process when the plugin fails to load, resolve the plugin path at runtime, and use cuOpt's own OpenMP runtime in wheels (#1883, #1897, #1905, #1982)
 
