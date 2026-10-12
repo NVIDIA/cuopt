@@ -7,15 +7,14 @@
 - New Java interface for LP, QP, QCQP, SOCP and MIP
 - New Curtis-Reid scaling for PDLP
 - Support for reusing the barrier ordering and symbolic factorization when solving a sequence of problems with different linear objectives and right-hand sides
-- Add RENS (Relaxation Enforced Neighboorhood Search) and Mutation heuristics to MIP
+- Add RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics to MIP
 - MIP solver now runs a set of heuristics during the cut passes 
 - New Primal Simplex method for LPs
-- New Mod-2 cut separator for zero-half cuts (#1726)
 - New HTTP proxy server on top of gRPC, replacing the deprecated legacy HTTP server
 - VRP is now supported over gRPC, with a compiled C++/Cython client
 - New `cuOptSetLogCallback` for capturing solver logs in C API
 - New barrier setting to control adaptive regularization (enabled for cone problems by default)
-- Add a primal heuristic for arc-flow formulations in MIP (#1833)
+- New primal heuristic for MIPs with arc-flow formulations
 - Add Implied Indicator and Capacity Lifting presolve reductions for fixed-charge MIP models (#1983)
 - The C API now exposes solver statistics as scalar solution attributes
 - Routing: add distance breaks (#1196)
@@ -43,50 +42,49 @@
 - QP/QCQP problems solve 1.33X faster (geomean over QPLIB and Hans Mittelmann test set)
 - SOCP problems solve 1.53X faster (geomean over Hans Mittelmann SOCP test set)
 - Dual simplex is 1.4X faster (geomean over MIPLIB root relaxations)
-- Add iterative refinement to the GPU ADAT solve path (#1680)
+- PDLP now fuses the Halpern update into the projection kernels to improve performance
+- Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
+- Free memory after LP presolve: the transpose matrix and PSLP reduced problem are now freed
+- Barrier now preforms Ruiz scaling and builds the augmented system on the GPU
+- Barrier now scales QCQP/SOCP constraint by variable bounds before Ruiz equilibriation
+- Barrier now performs iterative refinement on GPU when using the normal equations
+- Barrier now prints the cumulative setup time before the solve
+- Barrier now removes empty columns from separable QPs
+- Barrier termination check now has reduced GPU/host synchronization overhead
+- QCQP to SOCP conversion performance is improved 
+- MIP root relaxation now honors the LP method selected
+- MIP performance improvement in duplicate cut detection
+- MIP diving is now performed on separate threads during root cut passes
+- New Mod-2 cut separator for zero-half cuts (#1726)
 - Add a hyperparameter that controls bounding of free variables (#1713)
-- Barrier: print the cumulative setup time before the barrier solve (#1714)
-- Release pslp presolve memory (#1735)
 - Block Bounded Value Elimination presolving pass for binary problems (#1683)
 - Add a binary 2opt move fed from the probing cache into CPUFJ (#1738)
-- Give each solver its own seed instead of a process-wide counter (#1717)
 - MIP: make root heuristics modular with support for more workers, and run recursive RINS at the root node (#1700)
 - Add a dual aggregation presolver for binary variables with a single lock (#901)
 - Allow stopping B&B through `concurrent_halt` in the simplex solver settings, including during cut passes (#1760)
 - Add parameters for tuning barrier primal and dual regularization (#1807)
-- Make MIP root relaxation honor LP method (#1829)
-- Reduce Python API overhead on repeated solves (#1615)
 - Add more strategies of init point computation in barrier (#1577)
-- Reduce GPU/host synchronization overhead in barrier termination check (#1808)
 - Exhaustive coefficient reduction for binary rows (#1686)
 - RoutingClient: match Client's (host, port, tls=...) signature (#1840)
-- Diving on cut passes (#1812)
 - Replace process-wide seed_generator with per-worker RNGs in MIP heuristics (#1809)
-- Improve duplicate cut detection (#1764)
 - Reduce memory and time in QCQP canonicalization and the symmetry check (#1864)
-- Presolve: remove empty columns with a diagonal quadratic term (#1885)
 - Improve time-to-first-incumbent, unify solution callback publication, scaffolding changes (#1880)
 - Add a fast-path to the CPUFJ engine for binary problems with integer activities (#1881)
-- Speedup barrier second-order cone conversion in general path (#1914)
 - Standardize cost terminology (#1299)
 - Barrier: show residual information only in debug mode (#1866)
-- Pre-scale QP/SOCP columns by variable bound magnitude before Ruiz equilibration (#1652)
-- Fuse the Halpern update into PDLP projection kernels for faster solves (#1904)
 - Update PSLP to v0.0.12 (#1943)
-- Add NNZ cutoff for concurrent mode (#1932)
 - Modular CPUFJ engine, simple portfolio (#1950)
 - Improve primal and dual simplex performance, and make primal simplex a first-class method for LPs (#1889)
 - Eliminate zero-cost free variables by equality substitution in QP/SOCP barrier presolve (#1912)
-- Fix O(n^2) loop in the flow cover cut generation (#1842)
 - Structure-aware starts and repairs for CPUFJ (#1951)
-- Include objective gap in QP termination criteria (#1733)
 - Portfolio diversification, more starts, move batching (#1953)
-- Move Ruiz scaling and building KKT system to the GPU (#1913)
+- Give each solver its own seed instead of a process-wide counter (#1717)
 
 ### Bug Fixes (26.10)
 
+- Fix an issue in Barrier on QPs where duality gap was not included in the termination criteria
+- Fix an issue in MIP where flow cover cut generation was accidentally O(n^2) (#1842)
 - GF2 presolve rank-deficiency fix (#1660)
-- Fix an out-of-bounds access when symmetry generators are pruned between restarts (#1689)
 - Fix uninitialized FJ constraint weights when the problem grows (#1698)
 - Use configured feasibility tolerance in Papilo (#1688)
 - Fix GF2 incorrectly treating some one-sided rows as equality (#1707)
