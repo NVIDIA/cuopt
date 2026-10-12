@@ -24,12 +24,13 @@ namespace cuopt::mathematical_optimization::pdlp {
 /** Resolve the requested mode against the PDLP matrix and execution path, logging the decision. */
 bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
                             int64_t nnz,
-                            int concurrent_nnz_cutoff,
+                            int reduced_matrix_nnz_cutoff,
                             bool is_legacy_batch_mode,
                             bool batch_mode,
                             bool enable_mixed_precision_spmv,
                             bool has_quadratic_objective,
-                            bool is_distributed);
+                            bool is_distributed,
+                            bool has_bound_overrides = false);
 
 /**
  * @brief Adaptive column-reduced operator for single-problem reflected PDLP.
@@ -38,8 +39,11 @@ bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
  * sparse matrix. Their contribution to A*x is advanced analytically until a
  * full refresh iteration allows them to leave the bound again.
  *
- * This design follows the column-reduction strategy in HPR-LP-C:
+ * Column selection is inspired by HPR-LP-C:
  * https://github.com/PolyU-IOR/HPR-LP-C
+ * Analytically advancing omitted Halpern iterates and their aggregate activity
+ * is cuOpt-specific: the projected values are held at bounds between refreshes,
+ * but the Halpern iterates continue to advance rather than being clamped.
  */
 template <typename i_t, typename f_t>
 class reduced_matrix_t {
@@ -55,7 +59,7 @@ class reduced_matrix_t {
     structure_problem_ptr_ = &original_problem;
   }
   bool refresh_pending() const { return refresh_pending_; }
-  bool request_refresh(bool update_mask,
+  void request_refresh(bool update_mask,
                        rmm::device_uvector<f_t>& current_primal,
                        const rmm::device_uvector<f_t>& restart_primal);
 
@@ -67,8 +71,8 @@ class reduced_matrix_t {
                    const rmm::device_uvector<f_t>& restart_primal,
                    i_t iteration = 0);
 
-  /** Rebuild after the one full iteration requested by update_mode(). */
-  bool finish_refresh(const rmm::device_uvector<f_t>& projected_primal,
+  /** Rebuild after the one full iteration requested by request_refresh(). */
+  void finish_refresh(const rmm::device_uvector<f_t>& projected_primal,
                       const rmm::device_uvector<f_t>& current_primal,
                       const rmm::device_uvector<f_t>& restart_primal,
                       i_t iteration = 0);

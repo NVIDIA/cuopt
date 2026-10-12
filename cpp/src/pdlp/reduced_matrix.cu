@@ -10,6 +10,7 @@
 #include <cuopt/error.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/pdlp_constants.hpp>
+#include <pdlp/primal_projection.cuh>
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/logger.hpp>
 
@@ -20,8 +21,11 @@
 #include <thrust/copy.h>
 #include <thrust/count.h>
 #include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/scan.h>
 #include <cub/device/device_for.cuh>
+#include <cub/device/device_transform.cuh>
+#include <cuda/std/bit>
 
 #include <algorithm>
 #include <cinttypes>
@@ -175,28 +179,6 @@ struct materialize_fixed_primal_op {
   }
 };
 
-template <typename i_t, typename f_t>
-struct compact_primal_op {
-  f_t* current;
-  const f_t* initial;
-  const f_t* objective;
-  const typename type_2<f_t>::type* bounds;
-  const f_t* At_y;
-  const f_t* step_size;
-  const f_t* weight;
-  f_t* reflected;
-
-  __device__ void operator()(i_t column) const
-  {
-    const f_t next            = current[column] - *step_size * (objective[column] - At_y[column]);
-    const auto bound          = bounds[column];
-    const f_t projected       = raft::max<f_t>(raft::min<f_t>(next, bound.y), bound.x);
-    const f_t reflected_value = f_t(2) * projected - current[column];
-    reflected[column]         = reflected_value;
-    current[column]           = *weight * reflected_value + (f_t(1) - *weight) * initial[column];
-  }
-};
-
 template <typename f_t>
 __global__ void advance_fixed_coefficients(f_t* alpha, f_t* beta, const f_t* weight)
 {
@@ -247,12 +229,13 @@ struct add_fixed_reflected_activity_op {
 
 bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
                             int64_t nnz,
-                            int concurrent_nnz_cutoff,
+                            int reduced_matrix_nnz_cutoff,
                             bool is_legacy_batch_mode,
                             bool batch_mode,
                             bool enable_mixed_precision_spmv,
                             bool has_quadratic_objective,
-                            bool is_distributed)
+                            bool is_distributed,
+                            bool has_bound_overrides)
 {
   const auto mode = hyper_params.reduced_matrix;
   if (mode == reduced_matrix_mode_t::OFF) { return false; }
@@ -268,12 +251,16 @@ bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
     reason = "legacy stream batching is not supported";
   } else if (batch_mode) {
     reason = "multiple PDLP climbers are not supported";
+  } else if (has_bound_overrides) {
+    reason = "PDLP bound overrides are not supported";
   } else if (!hyper_params.use_reflected_primal_dual) {
     reason = "reflected primal-dual updates are required";
   } else if (enable_mixed_precision_spmv) {
     reason = "mixed-precision SpMV is not supported";
   } else if (hyper_params.use_adaptive_step_size_strategy) {
     reason = "adaptive step sizes are not supported";
+  } else if (!hyper_params.rescale_for_restart) {
+    reason = "restart rescaling is required";
   } else if (hyper_params.artificial_restart_in_main_loop) {
     reason = "artificial restarts in the main loop are not supported";
   } else if (hyper_params.reflection_coefficient != 1.0) {
@@ -286,23 +273,24 @@ bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
     return false;
   }
   if (mode == reduced_matrix_mode_t::DEFAULT) {
-    if (!should_skip_concurrent_cpu_solvers(static_cast<std::size_t>(nnz), concurrent_nnz_cutoff)) {
-      if (concurrent_nnz_cutoff < 0) {
+    if (!should_skip_concurrent_cpu_solvers(static_cast<std::size_t>(nnz),
+                                            reduced_matrix_nnz_cutoff)) {
+      if (reduced_matrix_nnz_cutoff < 0) {
         CUOPT_LOG_INFO(
-          "Column reduction disabled (DEFAULT): CONCURRENT_NNZ_CUTOFF=-1 disables "
+          "Column reduction disabled (DEFAULT): LARGE_NNZ_COUNT=-1 disables "
           "automatic reduction");
       } else {
         CUOPT_LOG_INFO("Column reduction disabled (DEFAULT): PDLP matrix nnz=%" PRId64
-                       " is below CONCURRENT_NNZ_CUTOFF=%d",
+                       " is below LARGE_NNZ_COUNT=%d",
                        nnz,
-                       concurrent_nnz_cutoff);
+                       reduced_matrix_nnz_cutoff);
       }
       return false;
     }
     CUOPT_LOG_INFO("Column reduction enabled (DEFAULT): PDLP matrix nnz=%" PRId64
-                   " meets CONCURRENT_NNZ_CUTOFF=%d",
+                   " meets LARGE_NNZ_COUNT=%d",
                    nnz,
-                   concurrent_nnz_cutoff);
+                   reduced_matrix_nnz_cutoff);
   } else {
     CUOPT_LOG_INFO("Column reduction enabled (%s): PDLP matrix nnz=%" PRId64, mode_name, nnz);
   }
@@ -413,30 +401,29 @@ bool reduced_matrix_t<i_t, f_t>::update_mode(f_t relative_kkt,
 }
 
 template <typename i_t, typename f_t>
-bool reduced_matrix_t<i_t, f_t>::request_refresh(bool update_mask,
+void reduced_matrix_t<i_t, f_t>::request_refresh(bool update_mask,
                                                  rmm::device_uvector<f_t>& current_primal,
                                                  const rmm::device_uvector<f_t>& restart_primal)
 {
-  if (!active_) { return false; }
+  if (!active_) { return; }
   materialize_primal(current_primal, restart_primal);
   active_               = false;
   refresh_pending_      = true;
   refresh_mask_pending_ = update_mask;
-  return true;
 }
 
 template <typename i_t, typename f_t>
-bool reduced_matrix_t<i_t, f_t>::finish_refresh(const rmm::device_uvector<f_t>& projected_primal,
+void reduced_matrix_t<i_t, f_t>::finish_refresh(const rmm::device_uvector<f_t>& projected_primal,
                                                 const rmm::device_uvector<f_t>& current_primal,
                                                 const rmm::device_uvector<f_t>& restart_primal,
                                                 i_t iteration)
 {
-  if (!refresh_pending_) { return false; }
+  if (!refresh_pending_) { return; }
   refresh_pending_ = false;
   if (!refresh_mask_pending_) {
     build_fixed_activities(current_primal, restart_primal);
     active_ = true;
-    return true;
+    return;
   }
   refresh_mask_pending_         = false;
   const i_t previous_free_count = free_count_;
@@ -449,15 +436,14 @@ bool reduced_matrix_t<i_t, f_t>::finish_refresh(const rmm::device_uvector<f_t>& 
   if (ratio >= static_cast<f_t>(enter_ratio)) {
     clear_operator();
     active_ = false;
-    return true;
+    return;
   }
   if (free_count_ == previous_free_count) {
     build_fixed_activities(current_primal, restart_primal);
     active_ = true;
-    return true;
+    return;
   }
   rebuild(projected_primal, current_primal, restart_primal, false, iteration);
-  return true;
 }
 
 template <typename i_t, typename f_t>
@@ -523,15 +509,17 @@ void reduced_matrix_t<i_t, f_t>::build_compact_operator()
   reduced_At_offsets_.resize(static_cast<size_t>(free_count_) + 1, stream_view_);
   RAFT_CUDA_TRY(cudaMemsetAsync(reduced_At_offsets_.data(), 0, sizeof(i_t), stream_view_.get()));
   constexpr int block_size = 256;
-  selected_row_lengths_kernel<<<(free_count_ + block_size - 1) / block_size,
-                                block_size,
-                                0,
-                                stream_view_.get()>>>(
-    structure_problem_ptr_->reverse_offsets.data(),
-    free_to_original_.data(),
-    reduced_At_offsets_.data(),
-    free_count_);
-  RAFT_CUDA_TRY(cudaPeekAtLastError());
+  if (free_count_ > 0) {
+    selected_row_lengths_kernel<<<(free_count_ + block_size - 1) / block_size,
+                                  block_size,
+                                  0,
+                                  stream_view_.get()>>>(
+      structure_problem_ptr_->reverse_offsets.data(),
+      free_to_original_.data(),
+      reduced_At_offsets_.data(),
+      free_count_);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  }
   thrust::inclusive_scan(handle_ptr_->get_thrust_policy(),
                          reduced_At_offsets_.begin() + 1,
                          reduced_At_offsets_.end(),
@@ -604,6 +592,8 @@ void reduced_matrix_t<i_t, f_t>::build_fixed_activities(
                          free_to_original_.data(), initial_primal.data(), reduced_initial_.data()},
                        stream_view_.get());
   constexpr int block_size = 256;
+  static_assert(cuda::std::has_single_bit(static_cast<unsigned>(block_size)),
+                "Fixed-activity reduction requires a power-of-two block size");
   const size_t shared_size = 3 * block_size * sizeof(f_t);
   fixed_activities_kernel<<<problem_ptr_->n_constraints,
                             block_size,
@@ -718,16 +708,16 @@ template <typename i_t, typename f_t>
 void reduced_matrix_t<i_t, f_t>::update_primal(const rmm::device_uvector<f_t>& primal_step_size,
                                                const rmm::device_scalar<f_t>& halpern_weight)
 {
-  cub::DeviceFor::Bulk(free_count_,
-                       compact_primal_op<i_t, f_t>{reduced_current_.data(),
-                                                   reduced_initial_.data(),
-                                                   reduced_objective_.data(),
-                                                   reduced_bounds_.data(),
-                                                   reduced_At_y_.data(),
-                                                   primal_step_size.data(),
-                                                   halpern_weight.data(),
-                                                   reduced_x_.data()},
-                       stream_view_.get());
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(reduced_current_.data(),
+                          reduced_initial_.data(),
+                          reduced_objective_.data(),
+                          reduced_At_y_.data(),
+                          reduced_bounds_.data()),
+    thrust::make_zip_iterator(reduced_x_.data(), reduced_current_.data()),
+    free_count_,
+    primal_reflected_projection<f_t>(primal_step_size.data(), halpern_weight.data(), f_t(1)),
+    stream_view_.get());
 }
 
 template <typename i_t, typename f_t>
