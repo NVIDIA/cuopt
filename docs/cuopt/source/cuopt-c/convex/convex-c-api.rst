@@ -274,7 +274,7 @@ These constants are used to configure `CUOPT_METHOD` via :c:func:`cuOptSetIntege
 .. doxygendefine:: CUOPT_METHOD_PDLP
 .. doxygendefine:: CUOPT_METHOD_DUAL_SIMPLEX
 .. doxygendefine:: CUOPT_METHOD_BARRIER
-.. doxygendefine:: CUOPT_METHOD_PRIMAL
+.. doxygendefine:: CUOPT_METHOD_PRIMAL_SIMPLEX
 .. doxygendefine:: CUOPT_METHOD_UNSET
 
 .. _barrier-dual-initial-point-constants:
