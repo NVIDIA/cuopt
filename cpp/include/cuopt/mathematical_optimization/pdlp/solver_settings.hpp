@@ -26,6 +26,7 @@
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
 
+template <typename i_t, typename f_t>
 class barrier_cache_t;
 
 // Forward declare solver_settings_t for friend class
@@ -384,7 +385,7 @@ class pdlp_solver_settings_t {
   /** When true, the first GPU barrier/QCQP solve retains cache state for later reuse. */
   bool sequence_solve{false};
   /** Non-owning cache pointer set by ``call_solve`` for barrier cache reuse. */
-  barrier_cache_t* barrier_cache{nullptr};
+  barrier_cache_t<i_t, f_t>* barrier_cache{nullptr};
 
  private:
   /** Initial primal solution */
