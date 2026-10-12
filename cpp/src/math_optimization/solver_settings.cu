@@ -242,6 +242,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     // QCQP (barrier) scaling hyper-parameter
     {CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION, &pdlp_settings.qcqp_ruiz_equilibration, -1, 1, -1, "Ruiz equilibration for QCQP barrier scaling: -1 automatic (row/column imbalance heuristic), 0 disabled, 1 enabled"},
     {CUOPT_BARRIER_HYPER_GPU_RUIZ_NNZ_THRESHOLD, &pdlp_settings.gpu_ruiz_nnz_threshold, 0, std::numeric_limits<i_t>::max(), 500000, "nnz(A)+nnz(Q) at or above which barrier Ruiz equilibration runs on GPU instead of CPU"},
+    // Overrides the pdlp_solver_mode preset when not -1 (hidden: name contains "hyper_")
+    {CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL, &pdlp_settings.project_initial_primal, -1, 1, -1, "project the initial primal onto its bounds: -1 solver-mode preset, 0 off, 1 on"},
   };
 
     // Bool parameters
@@ -269,8 +271,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING, &mip_settings.indicator_strengthening, true, "append implied indicator rows and lift capacity rows before Papilo presolve"},
     // PDLP scaling hyper-parameter (hidden from default --help: name contains "hyper_")
     {CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, &pdlp_settings.hyper_params.do_curtis_reid_scaling, true, "Curtis-Reid prescaling, run before Ruiz/Pock-Chambolle scaling"},
-    // Overrides the pdlp_solver_mode preset when set (hidden: name contains "hyper_")
-    {CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL, &pdlp_settings.hyper_params.project_initial_primal, true, "project the initial primal solution onto its bounds"},
   };
   // String parameters
   string_parameters = {

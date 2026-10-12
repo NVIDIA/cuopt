@@ -362,9 +362,9 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings)
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable3)
     set_Stable3(settings.hyper_params);
 
-  // A value passed through set_parameter outranks the mode preset.
-  if (settings.project_initial_primal_override.has_value()) {
-    settings.hyper_params.project_initial_primal = *settings.project_initial_primal_override;
+  // -1 leaves the preset. 0 and 1 force the bool the solver reads.
+  if (settings.project_initial_primal != -1) {
+    settings.hyper_params.project_initial_primal = settings.project_initial_primal != 0;
   }
 }
 
