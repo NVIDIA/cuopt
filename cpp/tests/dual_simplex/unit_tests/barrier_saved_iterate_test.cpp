@@ -21,6 +21,10 @@ constexpr residuals_t tolerance{1e-6, 1e-6, 1e-6, 1e-6};
 // A QP trajectory can improve its objective gap while primal and dual residuals increase.
 constexpr residuals_t before_gap_convergence{1.70e-8, 1.42e-13, 9.76e-7, 5.87e-2};
 constexpr residuals_t relaxed_solution{2.62e-7, 9.31e-10, 3.37e-13, 3.50e-8};
+constexpr double residuals_t::* residual_members[]{&residuals_t::primal,
+                                                   &residuals_t::dual,
+                                                   &residuals_t::complementarity,
+                                                   &residuals_t::objective_gap};
 
 }  // namespace
 
@@ -35,12 +39,14 @@ TEST(BarrierSavedIterate, RetainsRelaxedSolutionWhenObjectiveGapDeteriorates)
   EXPECT_FALSE(should_save_iterate(better_residuals_bad_gap, relaxed_solution, tolerance, true));
 }
 
-TEST(BarrierSavedIterate, SavesImprovedWorstMetricBeforeGapConvergence)
+TEST(BarrierSavedIterate, RequiresGapConvergenceEvenWhenWorstMetricImproves)
 {
   const residuals_t all_improve{1e-9, 1e-14, 1e-8, 1e-2};
   const residuals_t worse_primal{2e-8, 1e-14, 1e-8, 1e-2};
-  EXPECT_TRUE(should_save_iterate(all_improve, before_gap_convergence, tolerance, true));
-  EXPECT_TRUE(should_save_iterate(worse_primal, before_gap_convergence, tolerance, true));
+  EXPECT_FALSE(should_save_iterate(all_improve, before_gap_convergence, tolerance, true));
+  EXPECT_FALSE(should_save_iterate(worse_primal, before_gap_convergence, tolerance, true));
+  EXPECT_TRUE(should_save_iterate(all_improve, before_gap_convergence, tolerance, false));
+  EXPECT_TRUE(should_save_iterate(worse_primal, before_gap_convergence, tolerance, false));
   const residuals_t better_residuals_worse_gap{1e-9, 1e-14, 1e-8, 1e-1};
   EXPECT_FALSE(
     should_save_iterate(better_residuals_worse_gap, before_gap_convergence, tolerance, true));
@@ -117,25 +123,30 @@ TEST(BarrierSavedIterate, LinearProblemUsesWorstResidualWithoutGapCheck)
     should_save_iterate(worse_primal_smaller_other_residuals, relaxed_solution, tolerance, false));
 }
 
-TEST(BarrierSavedIterate, SavesFirstFiniteCandidate)
+TEST(BarrierSavedIterate, SavesFirstCandidatePassingAllEnabledTolerances)
 {
   constexpr double inf = std::numeric_limits<double>::infinity();
   const residuals_t empty_saved{inf, inf, inf, inf};
   EXPECT_TRUE(should_save_iterate(relaxed_solution, empty_saved, tolerance, true));
-  EXPECT_TRUE(should_save_iterate(before_gap_convergence, empty_saved, tolerance, true));
+  EXPECT_FALSE(should_save_iterate(before_gap_convergence, empty_saved, tolerance, true));
+  EXPECT_TRUE(should_save_iterate(before_gap_convergence, empty_saved, tolerance, false));
 }
 
-TEST(BarrierSavedIterate, RejectsCandidateOutsideRelaxedResidualTolerances)
+TEST(BarrierSavedIterate, AppliesSameRelaxedToleranceBoundaryToEveryEnabledMetric)
 {
-  residuals_t current = relaxed_solution;
-  current.primal      = tolerance.primal;
-  EXPECT_FALSE(should_save_iterate(current, before_gap_convergence, tolerance, true));
-  current      = relaxed_solution;
-  current.dual = tolerance.dual;
-  EXPECT_FALSE(should_save_iterate(current, before_gap_convergence, tolerance, true));
-  current                 = relaxed_solution;
-  current.complementarity = tolerance.complementarity;
-  EXPECT_FALSE(should_save_iterate(current, before_gap_convergence, tolerance, true));
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  const residuals_t empty_saved{inf, inf, inf, inf};
+  for (bool check_objective_gap : {false, true}) {
+    for (auto member : residual_members) {
+      for (double factor : {0.5, 1.0, 2.0}) {
+        residuals_t current = relaxed_solution;
+        current.*member     = factor * (tolerance.*member);
+        const bool ignored  = !check_objective_gap && member == &residuals_t::objective_gap;
+        EXPECT_EQ(should_save_iterate(current, empty_saved, tolerance, check_objective_gap),
+                  ignored || factor < 1.0);
+      }
+    }
+  }
 }
 
 TEST(BarrierSavedIterate, ObjectiveGapAtToleranceDoesNotReplaceRelaxedSolution)
@@ -160,30 +171,31 @@ TEST(BarrierSavedIterate, RejectsNonfiniteResiduals)
   for (double residual : {std::numeric_limits<double>::quiet_NaN(),
                           std::numeric_limits<double>::infinity(),
                           -std::numeric_limits<double>::infinity()}) {
-    residuals_t current = relaxed_solution;
-    current.primal      = residual;
-    EXPECT_FALSE(should_save_iterate(current, before_gap_convergence, tolerance, true));
-    current      = relaxed_solution;
-    current.dual = residual;
-    EXPECT_FALSE(should_save_iterate(current, before_gap_convergence, tolerance, true));
-    current                 = relaxed_solution;
-    current.complementarity = residual;
-    EXPECT_FALSE(should_save_iterate(current, before_gap_convergence, tolerance, true));
+    for (auto member : residual_members) {
+      residuals_t current = relaxed_solution;
+      current.*member     = residual;
+      EXPECT_FALSE(should_save_iterate(current, before_gap_convergence, tolerance, true));
+      EXPECT_EQ(should_save_iterate(current, before_gap_convergence, tolerance, false),
+                member == &residuals_t::objective_gap);
+    }
   }
 }
 
-TEST(BarrierSavedIterate, RejectsInvalidGapToleranceWhenRequired)
+TEST(BarrierSavedIterate, RejectsInvalidToleranceForEveryEnabledMetric)
 {
-  for (double gap_tolerance : {0.0,
-                               -1e-6,
-                               std::numeric_limits<double>::quiet_NaN(),
-                               std::numeric_limits<double>::infinity(),
-                               -std::numeric_limits<double>::infinity()}) {
-    residuals_t invalid_tolerance   = tolerance;
-    invalid_tolerance.objective_gap = gap_tolerance;
-    const residuals_t current{1e-8, 1e-12, 1e-14, 0.0};
-    EXPECT_FALSE(should_save_iterate(current, relaxed_solution, invalid_tolerance, true));
-    EXPECT_TRUE(should_save_iterate(current, relaxed_solution, invalid_tolerance, false));
+  for (double invalid : {0.0,
+                         -1e-6,
+                         std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::infinity(),
+                         -std::numeric_limits<double>::infinity()}) {
+    for (auto member : residual_members) {
+      residuals_t invalid_tolerance = tolerance;
+      invalid_tolerance.*member     = invalid;
+      const residuals_t current{1e-8, 1e-12, 1e-14, 0.0};
+      EXPECT_FALSE(should_save_iterate(current, relaxed_solution, invalid_tolerance, true));
+      EXPECT_EQ(should_save_iterate(current, relaxed_solution, invalid_tolerance, false),
+                member == &residuals_t::objective_gap);
+    }
   }
 }
 
