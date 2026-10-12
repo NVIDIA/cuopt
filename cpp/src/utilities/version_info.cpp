@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -260,6 +261,10 @@ static host_memory_info_t get_host_memory_info()
 
 void print_version_info(int num_devices)
 {
+  // Print only once per process
+  static std::atomic<bool> printed{false};
+  if (printed.exchange(true)) { return; }
+
   int version = 0;
   if (cudaRuntimeGetVersion(&version) != cudaSuccess) {
     CUOPT_LOG_WARN("Failed to query CUDA runtime version");
