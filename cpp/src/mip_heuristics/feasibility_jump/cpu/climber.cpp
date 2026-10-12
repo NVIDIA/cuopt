@@ -531,8 +531,11 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_clone(
 
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
-  std::vector<f_t> default_weights(tmpl.problem->n_constraints, 1.0);
-  init_fj_cpu_from_template(*fj_cpu, tmpl, default_weights, default_weights, f_t{0});
+  init_fj_cpu_from_template(*fj_cpu,
+                            tmpl,
+                            tmpl.h_initial_left_weights.underlying(),
+                            tmpl.h_initial_right_weights.underlying(),
+                            tmpl.h_objective_weight);
   fj_cpu->settings = settings;
 
   return fj_cpu;

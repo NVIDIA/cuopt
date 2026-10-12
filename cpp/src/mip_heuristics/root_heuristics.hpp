@@ -228,24 +228,29 @@ struct root_heuristics_t {
   void start_persistent_lanes(const simplex::lp_problem_t<i_t, f_t>& lp,
                               const std::vector<simplex::variable_type_t>& var_types,
                               i_t n_structural,
-                              const std::vector<f_t>& start_assignment,
+                              const std::vector<f_t>& incumbent_assignment,
                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                               f_t time_limit,
                               std::function<void(f_t, const std::vector<f_t>&, double)> callback)
   {
     persistent_lanes_.reserve(persistent_lane_count_);
+    const std::vector<f_t> scratch_assignment;
     for (i_t k = 0; k < persistent_lane_count_; ++k) {
+      const bool incumbent_seeded =
+        !incumbent_assignment.empty() && (persistent_lane_count_ == 1 || k % 2 == 1);
+      const auto& lane_start     = incumbent_seeded ? incumbent_assignment : scratch_assignment;
       auto lane                  = std::make_unique<fj_cpu_worker_t<i_t, f_t>>();
       lane->improvement_callback = callback;
       lane->shared_incumbent     = shared_incumbent_;
       lane->create_worker(lp,
                           var_types,
                           n_structural,
-                          start_assignment,
+                          lane_start,
                           settings,
                           "[Root FJ lane " + std::to_string(k) + "] ",
                           seed_rng_.next_i32(),
-                          k);
+                          k,
+                          !incumbent_seeded);
       lane->run_async(time_limit);
       persistent_lanes_.push_back(std::move(lane));
     }

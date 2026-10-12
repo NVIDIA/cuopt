@@ -83,6 +83,8 @@ class local_search_t {
                    fj_t<i_t, f_t>& fj,
                    f_t time_limit,
                    const std::string& source);
+  fj_improvement_callback_t<f_t> make_fj_improvement_callback(
+    problem_t<i_t, f_t>* publication_problem);
 
   i_t ls_threads() const { return ls_cpu_fj.size() + scratch_cpu_fj.size(); }
 

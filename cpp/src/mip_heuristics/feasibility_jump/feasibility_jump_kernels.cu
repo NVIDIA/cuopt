@@ -308,9 +308,9 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
     }
 
     // fallback
-    if (!fj.pb.check_variable_within_bounds(var_idx, new_val)) {
+    if (new_val < v_lb || new_val > v_ub) {
       if (fj.settings->feasibility_run) {
-        new_val = min(max(new_val, v_lb), v_ub);
+        new_val = std::clamp(new_val, v_lb, v_ub);
       } else {
         new_val = cstr_coeff * sign > 0 ? v_lb : v_ub;
       }
@@ -322,7 +322,7 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
 
     if (threadIdx.x == 0) {
       cuopt_assert(isfinite(new_val), "");
-      cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, new_val), "");
+      cuopt_assert(new_val >= v_lb && new_val <= v_ub, "");
     }
 
     auto new_score_info = compute_new_score<i_t, f_t, TPB>(fj, var_idx, new_val - old_val);
@@ -340,7 +340,7 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
   }
 
   if (threadIdx.x == 0) {
-    cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, best_val), "Var not within bounds!");
+    cuopt_assert(best_val >= v_lb && best_val <= v_ub, "Var not within bounds!");
     cuopt_assert(isfinite(fj.incumbent_assignment[var_idx]), "");
     cuopt_assert(isfinite(best_val - fj.incumbent_assignment[var_idx]),
                  "Jump move delta is not finite!");
@@ -592,9 +592,12 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
 
   // update the assignment and objective proper
   if (FIRST_THREAD) {
-    f_t new_val = fj.incumbent_assignment[var_idx] + fj.jump_move_delta[var_idx];
+    auto bounds = fj.pb.variable_bounds[var_idx];
+    f_t new_val = std::clamp(fj.incumbent_assignment[var_idx] + fj.jump_move_delta[var_idx],
+                             get_lower(bounds),
+                             get_upper(bounds));
 
-    cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, new_val),
+    cuopt_assert(new_val >= get_lower(bounds) && new_val <= get_upper(bounds),
                  "assignment not within bounds");
     cuopt_assert(isfinite(new_val), "assignment is not finite");
 
@@ -620,7 +623,6 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
       }
     }
 
-    auto bounds          = fj.pb.variable_bounds[var_idx];
     i_t var_range        = get_upper(bounds) - get_lower(bounds);
     double delta_rel_err = fabs(fj.jump_move_delta[var_idx]) / var_range;
     if (delta_rel_err < fj.settings->parameters.small_move_tabu_threshold) {
@@ -1032,6 +1034,17 @@ __global__ void compute_mtm_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t
 }
 
 template <typename i_t, typename f_t>
+DI f_t clamp_move_delta(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
+                        i_t variable,
+                        f_t delta)
+{
+  const f_t old_value = fj.incumbent_assignment[variable];
+  const auto bounds   = fj.pb.variable_bounds[variable];
+  const f_t new_value = std::clamp(old_value + delta, get_lower(bounds), get_upper(bounds));
+  return new_value - old_value;
+}
+
+template <typename i_t, typename f_t>
 __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
 {
   // in a graph mode, we run multiple iterations and we want to stop when break condition is reached
@@ -1109,8 +1122,10 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
     *fj.candidate_variables.set_size = 0;
     *fj.selected_var                 = selected_var;
     if (selected_var != std::numeric_limits<i_t>::max()) {
+      auto bounds = fj.pb.variable_bounds[selected_var];
+      fj.jump_move_delta[selected_var] =
+        clamp_move_delta<i_t, f_t>(fj, selected_var, fj.jump_move_delta[selected_var]);
 #if FJ_SINGLE_STEP
-      auto bounds          = fj.pb.variable_bounds[selected_var];
       i_t var_range        = get_upper(bounds) - get_lower(bounds);
       double delta_rel_err = fabs(fj.jump_move_delta[selected_var]) / var_range * 100;
       DEVICE_LOG_INFO(
@@ -1354,7 +1369,7 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
       }
 
       if (FIRST_THREAD) {
-        fj.jump_move_delta[selected] = delta;
+        fj.jump_move_delta[selected] = clamp_move_delta<i_t, f_t>(fj, selected, delta);
         *fj.selected_var             = selected;
         auto bounds                  = fj.pb.variable_bounds[*fj.selected_var];
         DEVICE_LOG_TRACE("selected_var: %d bounds [%.4g/%.4g], delta %g, old val %g\n",
@@ -1428,7 +1443,7 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
       cuopt_assert(fj.pb.check_variable_within_bounds(
                      best_var, fj.incumbent_assignment[best_var] + best_delta),
                    "assignment not within bounds");
-      fj.jump_move_delta[best_var] = best_delta;
+      fj.jump_move_delta[best_var] = clamp_move_delta<i_t, f_t>(fj, best_var, best_delta);
     }
   }
 }
