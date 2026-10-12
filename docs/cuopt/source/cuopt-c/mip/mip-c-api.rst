@@ -65,6 +65,9 @@ These constants configure MIP-specific solver behavior. Use them with :c:func:`c
 .. doxygendefine:: CUOPT_MIP_SEMICONTINUOUS_BIG_M
 .. doxygendefine:: CUOPT_MIP_RENS
 .. doxygendefine:: CUOPT_MIP_MUTATION
+.. doxygendefine:: CUOPT_MIP_PRIMAL_DEGENERATE_PIVOTS
+.. doxygendefine:: CUOPT_MIP_DUAL_DEGENERATE_PIVOTS
+.. doxygendefine:: CUOPT_MIP_DUAL_DEGENERATE_FEASIBILITY_PUMP
 
 .. _mip-determinism-mode-constants:
 
