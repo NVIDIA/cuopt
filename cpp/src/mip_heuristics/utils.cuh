@@ -52,27 +52,6 @@ inline uint32_t compute_hash(const rmm::device_uvector<i_t>& values, cuda::strea
 }
 
 template <typename i_t, typename f_t>
-HDI f_t get_cstr_tolerance(f_t combined_bound, f_t abs_tol, f_t rel_tol)
-{
-  f_t tolerance = abs_tol;
-  if (USE_REL_TOLERANCE) { tolerance += combined_bound * rel_tol; }
-  return tolerance;
-}
-
-template <typename i_t, typename f_t>
-HDI f_t get_cstr_tolerance(f_t lb, f_t ub, f_t abs_tol, f_t rel_tol)
-{
-  f_t tolerance = abs_tol;
-  // we normally have combined bounds in the problem, but to reduce a memory request we can
-  // recompute here
-  if (USE_REL_TOLERANCE) {
-    f_t max_bound = pdlp::combine_finite_abs_bounds<f_t>{}(lb, ub);
-    tolerance += max_bound * rel_tol;
-  }
-  return tolerance;
-}
-
-template <typename i_t, typename f_t>
 HDI bool is_constraint_feasible(f_t cstr_val,
                                 f_t lb,
                                 f_t ub,

@@ -14,6 +14,7 @@
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
+#include <exception>
 #include <limits>
 #include <memory>
 
@@ -64,6 +65,9 @@ struct mip_solver_context_t {
   mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr{nullptr};
   diversity_manager_t<i_t, f_t>* diversity_manager_ptr{nullptr};
   std::atomic<bool> preempt_heuristic_solver_ = false;
+  // Owned by solve_mip and rethrown after its OpenMP team joins. Tasks write it inside
+  // omp critical(cuopt_mip_task_exception).
+  std::exception_ptr* task_exception{nullptr};
   const mip_solver_settings_t<i_t, f_t> settings;
 
   // Base seed, all random number generators derive a seed and strem from it.
@@ -88,6 +92,9 @@ struct mip_solver_context_t {
 
   // Matching incumbent assignment in original output space from early heuristics.
   std::vector<f_t> initial_incumbent_assignment{};
+  // Set when heuristics on the Papilo model improved the incumbent. Those runs start after
+  // the earlier incumbents were copied into settings.initial_solutions.
+  bool initial_incumbent_from_papilo_model{false};
 
   // Symmetry information for orbital fixing during B&B. Null if no exploitable symmetry.
   std::unique_ptr<mip::mip_symmetry_t<i_t, f_t>> symmetry;

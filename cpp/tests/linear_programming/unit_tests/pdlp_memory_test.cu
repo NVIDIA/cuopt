@@ -210,7 +210,7 @@ INSTANTIATE_TEST_SUITE_P(PresolversAndMethods,
                                                           method_t::Concurrent,
                                                           method_t::DualSimplex,
                                                           method_t::Barrier,
-                                                          method_t::Primal)));
+                                                          method_t::PrimalSimplex)));
 
 TEST(PdlpMemoryProblem, PresolvedCsrRemainsAvailableForFp32Conversion)
 {

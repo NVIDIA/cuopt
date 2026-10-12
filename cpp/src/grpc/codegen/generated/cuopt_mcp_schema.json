@@ -84,15 +84,17 @@
             "Concurrent",
             "PDLP",
             "DualSimplex",
-            "Barrier"
+            "Barrier",
+            "PrimalSimplex"
           ],
           "x-enum-values": {
             "Concurrent": 0,
             "PDLP": 1,
             "DualSimplex": 2,
-            "Barrier": 3
+            "Barrier": 3,
+            "PrimalSimplex": 4
           },
-          "description": "Method used to solve the LP. Concurrent runs PDLP, dual simplex and barrier in parallel. Default accuracy differs per method: PDLP 1e-4 relative, barrier 1e-8 relative, dual simplex 1e-6 absolute. Default: Concurrent."
+          "description": "Method used to solve the LP: Concurrent, PDLP, dual simplex, barrier, or primal simplex. Concurrent runs PDLP, dual simplex and barrier in parallel. Default accuracy differs per method: PDLP 1e-4 relative, barrier 1e-8 relative, dual simplex and primal simplex 1e-6 absolute. Default: Concurrent."
         },
         "presolver": {
           "type": "integer",
@@ -109,7 +111,7 @@
         },
         "num_gpus": {
           "type": "integer",
-          "description": "Number of GPUs used for the solve. Relevant to LP in concurrent mode (up to 2 GPUs), where PDLP and barrier run on separate GPUs rather than sharing one. For distributed PDLP, -1 selects all visible devices. Default: 1."
+          "description": "Number of GPUs used for the solve. Relevant to LP in concurrent mode (up to 2 GPUs), where PDLP and barrier run on separate GPUs rather than sharing one. For multi-GPU PDLP, -1 selects all visible devices. Default: 1."
         },
         "per_constraint_residual": {
           "type": "boolean",

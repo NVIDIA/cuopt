@@ -85,6 +85,9 @@
 #define CUOPT_MIP_ZERO_HALF_CUTS                    "mip_zero_half_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS        "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING        "mip_reduced_cost_strengthening"
+#define CUOPT_MIP_DUAL_DEGENERATE_FEASIBILITY_PUMP  "mip_dual_degenerate_feasibility_pump"
+#define CUOPT_MIP_PRIMAL_DEGENERATE_PIVOTS          "mip_primal_degenerate_pivots"
+#define CUOPT_MIP_DUAL_DEGENERATE_PIVOTS            "mip_dual_degenerate_pivots"
 #define CUOPT_MIP_RINS                              "mip_rins"
 #define CUOPT_MIP_RENS                              "mip_rens"
 #define CUOPT_MIP_MUTATION                          "mip_mutation"
@@ -172,6 +175,9 @@
 /* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
 #define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
 
+/* @brief PDLP hyper-parameter: -1 solver-mode preset, 0 off, 1 on */
+#define CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL "pdlp_hyper_project_initial_primal"
+
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
@@ -222,12 +228,12 @@
 #define CUOPT_PDLP_SOLVER_MODE_FAST1       3
 #define CUOPT_PDLP_SOLVER_MODE_STABLE3     4
 
-#define CUOPT_METHOD_CONCURRENT   0
-#define CUOPT_METHOD_PDLP         1
-#define CUOPT_METHOD_DUAL_SIMPLEX 2
-#define CUOPT_METHOD_BARRIER      3
-#define CUOPT_METHOD_PRIMAL       4
-#define CUOPT_METHOD_UNSET        5
+#define CUOPT_METHOD_CONCURRENT     0
+#define CUOPT_METHOD_PDLP           1
+#define CUOPT_METHOD_DUAL_SIMPLEX   2
+#define CUOPT_METHOD_BARRIER        3
+#define CUOPT_METHOD_PRIMAL_SIMPLEX 4
+#define CUOPT_METHOD_UNSET          5
 
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC             -1
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO 0

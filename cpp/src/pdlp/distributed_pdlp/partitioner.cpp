@@ -24,7 +24,7 @@
 namespace cuopt::mathematical_optimization::pdlp {
 
 // Max relative imbalance KaMinPar may leave between parts. Constant for now, but candidate to
-// promote into a distributed-PDLP hyperparameter when we start tuning partition quality vs. SpMV
+// promote into a multi-GPU PDLP hyperparameter when we start tuning partition quality vs. SpMV
 // balance.
 constexpr double kaminpar_max_block_weight_imbalance = 0.03;
 

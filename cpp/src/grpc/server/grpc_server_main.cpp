@@ -7,7 +7,7 @@
  * @file grpc_server_main.cpp
  * @brief gRPC-based remote solve server entry point
  *
- * This server uses gRPC for client communication with fork-based worker
+ * This server uses gRPC for client communication with exec'd worker
  * process infrastructure:
  * - Worker processes with shared memory job queues
  * - Pipe-based IPC for problem/result data
@@ -25,6 +25,7 @@
 #include <grpcpp/health_check_service_interface.h>
 
 #include <pthread.h>
+#include <cstring>
 
 // Defined in grpc_service_impl.cpp
 std::unique_ptr<grpc::Service> create_cuopt_grpc_service();
@@ -63,6 +64,12 @@ static void* create_shared_memory(const char* name, size_t size)
 
 int main(int argc, char** argv)
 {
+  // Workers are a fresh exec of this binary, not a fork of the running server.
+  // Only argv[1] is the internal mode switch. The spawner puts --worker first.
+  // A later --worker is a normal user argument and must not enter worker mode
+  // (for example `--server-log --worker`).
+  if (argc > 1 && std::strcmp(argv[1], "--worker") == 0) { return run_spawned_worker(argc, argv); }
+
   const std::string version_string =
     std::string("cuOpt gRPC Server ") + std::to_string(CUOPT_VERSION_MAJOR) + "." +
     std::to_string(CUOPT_VERSION_MINOR) + "." + std::to_string(CUOPT_VERSION_PATCH);
@@ -343,7 +350,7 @@ int main(int argc, char** argv)
   // Standard grpc.health.v1.Health. Kubelet grpc probes call Check with an
   // empty service name, so that name has to be registered explicitly.
   // EnableDefaultHealthCheckService applies to ServerBuilders created after
-  // this call. Workers are already forked, so they do not build a server.
+  // this call. Workers are already exec'd, so they do not build a server.
   grpc::EnableDefaultHealthCheckService(true);
   ServerBuilder builder;
   builder.AddListeningPort(server_address, creds);

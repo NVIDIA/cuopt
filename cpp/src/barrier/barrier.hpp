@@ -24,6 +24,7 @@
 #include <utility>
 
 namespace cuopt::mathematical_optimization {
+template <typename i_t, typename f_t>
 class barrier_cache_t;
 }
 
@@ -65,15 +66,17 @@ class barrier_solver_t {
                    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                    device_csc_matrix_ptr_t<i_t, f_t> device_A = nullptr,
                    device_csc_matrix_ptr_t<i_t, f_t> device_Q = nullptr);
-  simplex::lp_status_t solve(f_t start_time,
-                             simplex::lp_solution_t<i_t, f_t>& solution,
-                             cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr);
+  simplex::lp_status_t solve(
+    f_t start_time,
+    simplex::lp_solution_t<i_t, f_t>& solution,
+    cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache = nullptr);
   // Cache reuse: cached iteration_data_t already has the updated linear objective.
   // Reset iterate state, compute a new initial point, run barrier. Same status/solution contract as
   // solve().
-  simplex::lp_status_t solve_with_cache(f_t start_time,
-                                        simplex::lp_solution_t<i_t, f_t>& solution,
-                                        cuopt::mathematical_optimization::barrier_cache_t* cache);
+  simplex::lp_status_t solve_with_cache(
+    f_t start_time,
+    simplex::lp_solution_t<i_t, f_t>& solution,
+    cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache);
 
  private:
   simplex::lp_status_t barrier_advanced_solve(f_t start_time,

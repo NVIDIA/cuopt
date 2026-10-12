@@ -62,11 +62,11 @@ constexpr ncclDataType_t nccl_data_type()
 }
 
 /**
- * @brief Distributed PDLP terminology and ownership model.
+ * @brief Multi-GPU PDLP terminology and ownership model.
  *
  * - Master: the top-level `pdlp_solver_t` that owns the global, developer-facing
  *   solve.
- * - Multi-GPU engine: the host-side coordinator for one distributed solve. It
+ * - Multi-GPU engine: the host-side coordinator for one multi-GPU solve. It
  *   owns all shards and centralizes collective operations.
  * - Rank: Rank `r`, partition `r`, NCCL rank `r`, and `shards[r]` refer to the
  *   same worker on CUDA device `r`. A peer is any other rank participating in
@@ -353,7 +353,7 @@ struct multi_gpu_engine_t {
     synchronize_shards();
   }
 
-  // -------- Distributed dot / L2 norm -------------------------------------
+  // -------- Multi-GPU dot / L2 norm ---------------------------------------
   // Computes the dot product of two vectors for each shard. Returns the global result in
   // out_scalars.
   void distributed_dot_bufs(std::vector<raft::device_span<f_t>> const& a_bufs,
@@ -437,18 +437,18 @@ struct multi_gpu_engine_t {
   }
 
   // -------- High-level: A @ x and A_T @ y ---------------------------------
-  // Distributed counterpart to pdhg_solver_t::compute_A_x() / compute_At_y().
+  // Multi-GPU counterpart to pdhg_solver_t::compute_A_x() / compute_At_y().
   void distributed_compute_A_x();
   void distributed_compute_At_y();
 
-  // Distributed A^T @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
+  // Multi-GPU A^T @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
   // (cstr axis, since the input is cstr-shaped), then dispatches each shard's
   // local spmv_At_into that reads from in_descs[r] and writes into out_descs[r].
   void distributed_spmv_At(std::vector<rmm::device_uvector<f_t>>& in_bufs,
                            std::vector<cusparse_dn_vec_uptr>& in_descs,
                            std::vector<cusparse_dn_vec_uptr>& out_descs);
 
-  // Distributed A @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
+  // Multi-GPU A @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
   // (var axis, since the input is var-shaped), then dispatches each shard's
   // local spmv_A_into. Caller owns / sizes the descriptor vectors as above
   // (in_descs to var_total, out_descs to cstr_total).
@@ -466,22 +466,22 @@ struct multi_gpu_engine_t {
   // scalar on every shard.
   void distributed_bound_objective_rescaling(f_t c_scaling_weight);
 
-  // Distributed Curtis-Reid prescaling. Each iteration is a shard-local row log-mean,
+  // Multi-GPU Curtis-Reid prescaling. Each iteration is a shard-local row log-mean,
   // a constraint-halo exchange of that log-scale, a shard-local column log-mean, and a
   // variable-halo exchange. After the last iteration every shard folds
   // cumulative *= exp(clamp(log_scale)) and the cumulative halo is refreshed.
   void distributed_curtis_reid_scaling(int num_iter, i_t n_global_vars);
 
-  // Distributed Ruiz inf-scaling (num_iter passes). Each shard computes both its
+  // Multi-GPU Ruiz inf-scaling (num_iter passes). Each shard computes both its
   // owned-row and owned-column inf-norms locally then broadcasts the cumulative scalings to all
   // shards.
   void distributed_ruiz_inf_scaling(int num_iter, i_t n_global_vars);
 
-  // Distributed Pock-Chambolle scaling (one pass), mirroring the single-GPU
+  // Multi-GPU Pock-Chambolle scaling (one pass), mirroring the single-GPU
   // pock_chambolle_scaling.
   void distributed_pock_chambolle_scaling(f_t alpha, i_t n_global_vars);
 
-  // Full distributed scaling entry point. Mirrors what scale_problem() does in
+  // Full multi-GPU scaling entry point. Mirrors what scale_problem() does in
   // single-GPU by orchestrating:
   //   - Curtis-Reid prescaling (skipped inside MIP) -> populates cumulative row/col scalings
   //   - Ruiz inf-scaling -> same
@@ -492,21 +492,21 @@ struct multi_gpu_engine_t {
                            i_t n_global_vars,
                            bool inside_mip);
 
-  // Distributed sigma_max(A)^2 via power iteration (used to seed the initial
+  // Multi-GPU sigma_max(A)^2 via power iteration (used to seed the initial
   // step size). Returns the square of the largest singular value of the scaled
   // constraint matrix.
   f_t distributed_max_singular_value_squared(i_t n_global_cstrs,
                                              int max_iterations = 5000,
                                              f_t tolerance      = 1e-4);
 
-  // Distributed counterpart of pdlp_solver_t::compute_initial_step_size.
+  // Multi-GPU counterpart of pdlp_solver_t::compute_initial_step_size.
   void distributed_compute_initial_step_size(pdlp_hyper_params_t const& hyper_params,
                                              i_t n_global_cstrs,
                                              f_t scaling_factor,
                                              int max_iterations,
                                              f_t tolerance);
 
-  // Distributed counterpart of pdlp_solver_t::compute_initial_primal_weight.
+  // Multi-GPU counterpart of pdlp_solver_t::compute_initial_primal_weight.
   // Writes primal_weight = best_primal_weight = 1 onto master + every shard,
   // mirroring the Stable3-shaped short-circuit
   // (!initial_primal_weight_combined_bounds && bound_objective_rescaling).
