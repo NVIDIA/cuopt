@@ -438,6 +438,15 @@ Dual Initial Point
 
 .. note:: The default value is ``-1`` (automatic).
 
+Barrier Initial Point Safeguard
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD`` sets the margin used to push the barrier method's initial point into the interior of the
+nonnegative orthant and, for second-order cone problems, into the interior of the cones. The initial point is shifted so that it is
+at least this far from the boundary. The value must be greater than or equal to ``0``. This setting only has an effect when ``CUOPT_BARRIER_DUAL_INITIAL_POINT=0``.
+
+.. note:: The default value is ``10.0``.
+
 
 Barrier Iterative Refinement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -492,14 +501,6 @@ applied to the barrier method's augmented system. They apply to the first factor
 
 .. note:: The default value of both settings is ``-1`` (automatic).
 
-Barrier Initial Point Safeguard
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD`` sets the margin used to push the barrier method's initial point into the interior of the
-nonnegative orthant and, for second-order cone problems, into the interior of the cones. The initial point is shifted so that it is
-at least this far from the boundary. The value must be greater than or equal to ``0``.
-
-.. note:: The default value is ``10.0``.
 
 Sequence Solve
 ^^^^^^^^^^^^^^
