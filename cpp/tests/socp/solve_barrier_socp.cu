@@ -1393,7 +1393,7 @@ TEST(barrier, cached_solve_can_enable_iterative_refinement)
   // create it for the retained system, including the ADAT case whose size is only m.
   for (int augmented : {0, 1}) {
     SCOPED_TRACE(augmented);
-    auto cache = barrier_cache_t::create(cudaStreamNonBlocking);
+    auto cache = barrier_cache_t<int, double>::create(cudaStreamNonBlocking);
     init_handler(cache->handle_ptr());
     user_problem_t<int, double> user_problem(cache->handle_ptr());
     user_problem.num_range_rows = 0;
