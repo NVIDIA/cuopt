@@ -383,6 +383,35 @@ Set this value to 1 to enable mutation.
 
 .. note:: The default value is ``-1`` (automatic).
 
+Primal Degenerate Pivots
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_PRIMAL_DEGENERATE_PIVOTS`` controls whether primal degenerate pivots are performed to improve reduced cost strengthening. These pivots attempt to move
+basic integer variables on their bound out of the basis. This can lead to more reduced cost bound strengthening. This setting only has an affect when 
+``CUOPT_REDUCED_COST_STRENGTHENING`` is enabled.
+The default value of ``-1`` (automatic) means the solver will decide whether to do primal degenerate pivots. 
+Set this value to 0 to disable primal degenerate pivots. 
+Set this value to 1 to enable primal degenerate pivots.
+
+Dual Degenerate Pivots
+^^^^^^^^^^^^^^^^^^^^^^
+``CUOPT_MIP_DUAL_DEGENERATE_PIVOTS`` controls whether dual degenerate pivots are performed. These pivots attempt to remove fractional integer variables from the basis.
+This can lead to less integer infeasibilities.
+The default value of ``-1`` (automatic) means the solver will decide whether to do dual degenerate pivots. 
+Set this value to 0 to disable dual degenerate pivots.
+Set this value to 1 to enable dual degenerate pivots at the root node.
+Set this value to 2 to enable dual degenerate pivots at all branch and bound nodes. 
+
+Dual Degenerate Feasibility Pump
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``CUOPT_MIP_DUAL_DEGENERATE_FEASIBILITY_PUMP`` controls whether the dual degenerate feasibility pump is run. If the solution of the root relaxation is dual degenerate,
+an auxillarly LP is constructed that is restricted to the optimal face; the feasibility pump is used to alter the objective of the LP to attempt to reduce the number of integer infeasibilities
+in the relaxation solution. This LP is solved with the primal simplex method. 
+The default value of ``-1`` (automatic) means the solver will decide whether to run the dual degenerate feasibility pump. 
+Set this value to 0 to disable the dual degenerate feasibility pump.
+Set this value to 1 to enable the dual degenerate feasibility pump.
+
+
 Work Limit
 ^^^^^^^^^^
 
