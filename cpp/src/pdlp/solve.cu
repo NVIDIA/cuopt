@@ -541,6 +541,13 @@ bool effective_eliminate_free_variables(pdlp_solver_settings_t<i_t, f_t> const& 
 }
 
 template <typename i_t, typename f_t>
+bool is_cached_sequence_resolve(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return settings.sequence_solve && settings.barrier_cache != nullptr &&
+         settings.barrier_cache->transform() != nullptr;
+}
+
+template <typename i_t, typename f_t>
 std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_barrier(
   const simplex::user_problem_t<i_t, f_t>& user_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
@@ -2001,7 +2008,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
   try {
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
-    print_version_info();
+    if (!is_cached_sequence_resolve(settings)) { print_version_info(); }
 
     // Init libraries before to not include it in solve time
     init_handler(op_problem.get_handle_ptr());
@@ -2202,7 +2209,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
 
-    if (!settings_const.inside_mip) print_version_info();
+    if (!settings_const.inside_mip && !is_cached_sequence_resolve(settings_const)) {
+      print_version_info();
+    }
 
     // Init libraries before to not include it in solve time
     // This needs to be called before pdlp is initialized
