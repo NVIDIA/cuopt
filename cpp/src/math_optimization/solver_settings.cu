@@ -246,7 +246,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION, &pdlp_settings.qcqp_ruiz_equilibration, -1, 1, -1, "Ruiz equilibration for QCQP barrier scaling: -1 automatic (row/column imbalance heuristic), 0 disabled, 1 enabled"},
     {CUOPT_BARRIER_HYPER_GPU_RUIZ_NNZ_THRESHOLD, &pdlp_settings.gpu_ruiz_nnz_threshold, 0, std::numeric_limits<i_t>::max(), 500000, "nnz(A)+nnz(Q) at or above which barrier Ruiz equilibration runs on GPU instead of CPU"},
     // Overrides the pdlp_solver_mode preset when not -1 (hidden: name contains "hyper_")
-    {CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL, &pdlp_settings.project_initial_primal, -1, 1, -1, "project the initial primal onto its bounds: -1 solver-mode preset, 0 off, 1 on"},
+    {CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL, &pdlp_settings.project_initial_primal_override, -1, 1, -1, "project the initial primal onto its bounds: -1 solver-mode preset, 0 off, 1 on"},
   };
 
     // Bool parameters
