@@ -6,6 +6,7 @@
 /* clang-format on */
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 
 namespace cuopt::mathematical_optimization::barrier {
@@ -28,17 +29,29 @@ bool should_save_iterate(const iterate_residuals_t<f_t>& current,
         current.complementarity < tolerance.complementarity)) {
     return false;
   }
-  if (check_objective_gap && !std::isfinite(current.objective_gap)) { return false; }
+  if (!std::isfinite(current.primal) || !std::isfinite(current.dual) ||
+      !std::isfinite(current.complementarity)) {
+    return false;
+  }
+  if (check_objective_gap &&
+      (!std::isfinite(current.objective_gap) || !std::isfinite(tolerance.objective_gap) ||
+       !(tolerance.objective_gap > 0))) {
+    return false;
+  }
 
-  const bool current_gap_pass =
-    !check_objective_gap || current.objective_gap < tolerance.objective_gap;
-  const bool saved_gap_pass = !check_objective_gap || saved.objective_gap < tolerance.objective_gap;
-
-  // Preserve a recoverable iterate even when better feasibility comes with a worse objective gap.
-  if (current_gap_pass != saved_gap_pass) { return current_gap_pass; }
-
-  return current.primal < saved.primal && current.dual < saved.dual &&
-         current.complementarity < saved.complementarity;
+  // Rank by the worst fraction of a relaxed tolerance. Once the merit is below one,
+  // a strict improvement cannot replace a recoverable iterate with an unacceptable one.
+  f_t current_merit = std::max({current.primal / tolerance.primal,
+                                current.dual / tolerance.dual,
+                                current.complementarity / tolerance.complementarity});
+  f_t saved_merit   = std::max({saved.primal / tolerance.primal,
+                                saved.dual / tolerance.dual,
+                                saved.complementarity / tolerance.complementarity});
+  if (check_objective_gap) {
+    current_merit = std::max(current_merit, current.objective_gap / tolerance.objective_gap);
+    saved_merit   = std::max(saved_merit, saved.objective_gap / tolerance.objective_gap);
+  }
+  return current_merit < saved_merit;
 }
 
 }  // namespace cuopt::mathematical_optimization::barrier

@@ -35,15 +35,18 @@ TEST(BarrierSavedIterate, RetainsRelaxedSolutionWhenObjectiveGapDeteriorates)
   EXPECT_FALSE(should_save_iterate(better_residuals_bad_gap, relaxed_solution, tolerance, true));
 }
 
-TEST(BarrierSavedIterate, RequiresAllResidualsToImproveBeforeGapConvergence)
+TEST(BarrierSavedIterate, SavesImprovedWorstMetricBeforeGapConvergence)
 {
   const residuals_t all_improve{1e-9, 1e-14, 1e-8, 1e-2};
   const residuals_t worse_primal{2e-8, 1e-14, 1e-8, 1e-2};
   EXPECT_TRUE(should_save_iterate(all_improve, before_gap_convergence, tolerance, true));
-  EXPECT_FALSE(should_save_iterate(worse_primal, before_gap_convergence, tolerance, true));
+  EXPECT_TRUE(should_save_iterate(worse_primal, before_gap_convergence, tolerance, true));
+  const residuals_t better_residuals_worse_gap{1e-9, 1e-14, 1e-8, 1e-1};
+  EXPECT_FALSE(
+    should_save_iterate(better_residuals_worse_gap, before_gap_convergence, tolerance, true));
 }
 
-TEST(BarrierSavedIterate, RequiresAllResidualsToImproveBetweenRelaxedSolutions)
+TEST(BarrierSavedIterate, RequiresWorstMetricToImproveBetweenRelaxedSolutions)
 {
   const residuals_t all_improve{1e-8, 1e-12, 1e-14, 1e-8};
   const residuals_t worse_primal{3e-7, 1e-12, 1e-14, 1e-9};
@@ -52,11 +55,66 @@ TEST(BarrierSavedIterate, RequiresAllResidualsToImproveBetweenRelaxedSolutions)
   EXPECT_FALSE(should_save_iterate(relaxed_solution, relaxed_solution, tolerance, true));
 }
 
-TEST(BarrierSavedIterate, LinearProblemPreservesResidualSelectionWithoutGapCheck)
+TEST(BarrierSavedIterate, SavesImprovedWorstMetricDespiteLargerOtherResiduals)
+{
+  const residuals_t saved{8e-7, 2e-7, 1e-7, 3e-7};
+  const residuals_t current{6e-7, 4e-7, 2e-7, 5e-7};
+  EXPECT_TRUE(should_save_iterate(current, saved, tolerance, true));
+}
+
+TEST(BarrierSavedIterate, RejectsWorseMeritEvenWhenAllMetricsPassRelaxedTolerances)
+{
+  const residuals_t saved{2e-7, 2e-7, 2e-7, 4e-7};
+  const residuals_t current{1e-7, 1e-7, 1e-7, 6e-7};
+  EXPECT_FALSE(should_save_iterate(current, saved, tolerance, true));
+}
+
+TEST(BarrierSavedIterate, SavesObjectiveGapImprovementWithUnchangedOtherResiduals)
+{
+  const residuals_t saved{1e-7, 1e-7, 1e-7, 8e-7};
+  const residuals_t current{1e-7, 1e-7, 1e-7, 4e-7};
+  EXPECT_TRUE(should_save_iterate(current, saved, tolerance, true));
+}
+
+TEST(BarrierSavedIterate, RetainsSavedIterateOnEqualMerit)
+{
+  const residuals_t saved{4e-7, 2e-7, 1e-7, 2e-7};
+  const residuals_t current{3e-7, 1e-7, 5e-8, 4e-7};
+  EXPECT_FALSE(should_save_iterate(current, saved, tolerance, true));
+}
+
+TEST(BarrierSavedIterate, NormalizesEachMetricByItsRelaxedTolerance)
+{
+  const residuals_t unequal_tolerances{1e-4, 1e-6, 1e-3, 1e-8};
+  const residuals_t saved{5e-5, 5e-7, 5e-4, 5e-9};
+  // The raw maximum decreases, but the gap uses more of its allowed tolerance.
+  const residuals_t worse_normalized_gap{4e-5, 4e-7, 4e-4, 8e-9};
+  EXPECT_FALSE(should_save_iterate(worse_normalized_gap, saved, unequal_tolerances, true));
+  // The raw maximum increases, but the largest fraction of a tolerance decreases.
+  const residuals_t better_normalized_merit{3e-5, 3e-7, 6e-4, 6e-9};
+  EXPECT_TRUE(
+    should_save_iterate(better_normalized_merit, worse_normalized_gap, unequal_tolerances, true));
+}
+
+TEST(BarrierSavedIterate, PreservesRecoverableIterateWithUnequalTolerances)
+{
+  const residuals_t unequal_tolerances{1e-4, 1e-6, 1e-3, 1e-8};
+  const residuals_t saved{5e-5, 5e-7, 5e-4, 5e-9};
+  for (double gap : {1e-8, 2e-8}) {
+    const residuals_t current{4e-5, 4e-7, 4e-4, gap};
+    EXPECT_FALSE(should_save_iterate(current, saved, unequal_tolerances, true));
+    EXPECT_TRUE(should_save_iterate(saved, current, unequal_tolerances, true));
+  }
+}
+
+TEST(BarrierSavedIterate, LinearProblemUsesWorstResidualWithoutGapCheck)
 {
   const residuals_t all_improve_large_gap{1e-8, 1e-12, 1e-14, 1.0};
   EXPECT_TRUE(should_save_iterate(all_improve_large_gap, relaxed_solution, tolerance, false));
-  EXPECT_FALSE(should_save_iterate(relaxed_solution, before_gap_convergence, tolerance, false));
+  EXPECT_TRUE(should_save_iterate(relaxed_solution, before_gap_convergence, tolerance, false));
+  const residuals_t worse_primal_smaller_other_residuals{3e-7, 1e-12, 1e-14, 0.0};
+  EXPECT_FALSE(
+    should_save_iterate(worse_primal_smaller_other_residuals, relaxed_solution, tolerance, false));
 }
 
 TEST(BarrierSavedIterate, SavesFirstFiniteCandidate)
@@ -99,8 +157,9 @@ TEST(BarrierSavedIterate, RejectsNonfiniteObjectiveGapWhenRequired)
 
 TEST(BarrierSavedIterate, RejectsNonfiniteResiduals)
 {
-  for (double residual :
-       {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()}) {
+  for (double residual : {std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::infinity(),
+                          -std::numeric_limits<double>::infinity()}) {
     residuals_t current = relaxed_solution;
     current.primal      = residual;
     EXPECT_FALSE(should_save_iterate(current, before_gap_convergence, tolerance, true));
@@ -110,6 +169,21 @@ TEST(BarrierSavedIterate, RejectsNonfiniteResiduals)
     current                 = relaxed_solution;
     current.complementarity = residual;
     EXPECT_FALSE(should_save_iterate(current, before_gap_convergence, tolerance, true));
+  }
+}
+
+TEST(BarrierSavedIterate, RejectsInvalidGapToleranceWhenRequired)
+{
+  for (double gap_tolerance : {0.0,
+                               -1e-6,
+                               std::numeric_limits<double>::quiet_NaN(),
+                               std::numeric_limits<double>::infinity(),
+                               -std::numeric_limits<double>::infinity()}) {
+    residuals_t invalid_tolerance   = tolerance;
+    invalid_tolerance.objective_gap = gap_tolerance;
+    const residuals_t current{1e-8, 1e-12, 1e-14, 0.0};
+    EXPECT_FALSE(should_save_iterate(current, relaxed_solution, invalid_tolerance, true));
+    EXPECT_TRUE(should_save_iterate(current, relaxed_solution, invalid_tolerance, false));
   }
 }
 
