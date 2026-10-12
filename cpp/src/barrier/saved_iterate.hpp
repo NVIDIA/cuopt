@@ -31,19 +31,24 @@ bool should_save_iterate(const iterate_residuals_t<f_t>& current,
   const f_t tolerances[]{
     tolerance.primal, tolerance.dual, tolerance.complementarity, tolerance.objective_gap};
 
-  f_t current_merit     = 0;
-  f_t saved_merit       = 0;
   const int num_metrics = check_objective_gap ? 4 : 3;
+
+  // Only consider candidates that satisfy every enabled relaxed tolerance.
   for (int i = 0; i < num_metrics; ++i) {
     if (!std::isfinite(current_residuals[i]) || !std::isfinite(tolerances[i]) ||
         !(tolerances[i] > 0) || !(current_residuals[i] < tolerances[i])) {
       return false;
     }
+  }
+
+  // Rank eligible candidates by their worst tolerance-normalized residual.
+  f_t current_merit = 0;
+  f_t saved_merit   = 0;
+  for (int i = 0; i < num_metrics; ++i) {
     current_merit = std::max(current_merit, current_residuals[i] / tolerances[i]);
     saved_merit   = std::max(saved_merit, saved_residuals[i] / tolerances[i]);
   }
 
-  // All enabled metrics pass their relaxed tolerances; rank by the worst fraction used.
   return current_merit < saved_merit;
 }
 

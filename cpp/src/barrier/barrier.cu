@@ -4672,6 +4672,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
       }
 
       if (status < 0) {
+        settings.log.printf("Search direction computation failed (affine step)\n");
         return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
@@ -4714,6 +4715,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
         return lp_status_t::CONCURRENT_LIMIT;
       }
       if (status < 0) {
+        settings.log.printf("Search direction computation failed (corrector step)\n");
         return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
