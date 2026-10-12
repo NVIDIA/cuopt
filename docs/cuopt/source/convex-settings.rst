@@ -88,15 +88,92 @@ Method
 
 .. note:: The default method is ``Concurrent``.
 
-Default accuracy for each method:
+Default tolerances for each method:
 
-* PDLP solves to 1e-4 relative accuracy by default.
-* Barrier solves to 1e-8 relative accuracy by default.
-* Simplex solves to 1e-6 *absolute* accuracy by default.
+* PDLP solves to 1e-4 relative tolerance by default.
+* Barrier solves to 1e-8 relative tolerance by default.
+* Simplex solves to 1e-6 *absolute* tolerance by default.
+
+See below for how to change the default tolerances. 
 
 C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
 Server Thin client users should use the :class:`cuopt_sh_client.SolverMethod` for this parameter.
+
+Absolute Primal Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_ABSOLUTE_PRIMAL_TOLERANCE`` controls the absolute primal tolerance used in the primal feasibility check.
+Changing this value might have a significant impact on accuracy and runtime if the relative part
+(the right-hand side vector b L2 norm) is close to, or equal to, 0.
+
+
+The primal feasibility condition is computed as follows::
+
+   primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
+
+Default value is ``1e-4``.
+
+
+Relative Primal Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_RELATIVE_PRIMAL_TOLERANCE`` controls the relative primal tolerance used in the primal feasibility check.
+Changing this value has a significant impact on accuracy and runtime.
+The primal feasibility condition is computed as follows::
+
+   primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
+
+.. note:: The default value is ``1e-4``.
+
+Absolute Dual Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_ABSOLUTE_DUAL_TOLERANCE`` controls the absolute dual tolerance used in the dual feasibility check.
+Changing this value might have a significant impact on accuracy and runtime if the relative part
+(the objective vector L2 norm) is close to, or equal to, 0.
+
+The dual feasibility condition is computed as follows::
+
+   dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
+
+.. note:: The default value is ``1e-4``.
+
+Relative Dual Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_RELATIVE_DUAL_TOLERANCE`` controls the relative dual tolerance used in the dual feasibility check.
+Changing this value has a significant impact on accuracy and runtime.
+The dual feasibility condition is computed as follows::
+
+   dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
+
+.. note:: The default value is ``1e-4``.
+
+
+Absolute Gap Tolerance
+^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_ABSOLUTE_GAP_TOLERANCE`` controls the absolute gap tolerance used in the duality gap check.
+Changing this value might have a significant impact on accuracy and runtime if the relative part ``(|primal_objective| + |dual_objective|)`` is close to, or equal to, 0.
+
+The duality gap is computed as follows::
+
+   duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
+
+.. note:: The default value is ``1e-4``.
+
+
+Relative Gap Tolerance
+^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_RELATIVE_GAP_TOLERANCE`` controls the relative gap tolerance used in the duality gap check.
+Changing this value has a significant impact on accuracy and runtime.
+The duality gap is computed as follows::
+
+   duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
+
+.. note:: The default value is ``1e-4``.
 
 Concurrent NNZ Cutoff
 ^^^^^^^^^^^^^^^^^^^^^
@@ -361,80 +438,6 @@ Dual Initial Point
 
 .. note:: The default value is ``-1`` (automatic).
 
-Absolute Primal Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_ABSOLUTE_PRIMAL_TOLERANCE`` controls the absolute primal tolerance used in the primal feasibility check.
-Changing this value might have a significant impact on accuracy and runtime if the relative part
-(the right-hand side vector b L2 norm) is close to, or equal to, 0.
-
-
-The primal feasibility condition is computed as follows::
-
-   primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
-
-Default value is ``1e-4``.
-
-
-Relative Primal Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_RELATIVE_PRIMAL_TOLERANCE`` controls the relative primal tolerance used in PDLP's primal feasibility check.
-Changing this value has a significant impact on accuracy and runtime.
-The primal feasibility condition is computed as follows::
-
-   primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
-
-.. note:: The default value is ``1e-4``.
-
-Absolute Dual Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_ABSOLUTE_DUAL_TOLERANCE`` controls the absolute dual tolerance used in PDLP's dual feasibility check.
-Changing this value might have a significant impact on accuracy and runtime if the relative part
-(the objective vector L2 norm) is close to, or equal to, 0.
-
-The dual feasibility condition is computed as follows::
-
-   dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
-
-.. note:: The default value is ``1e-4``.
-
-Relative Dual Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_RELATIVE_DUAL_TOLERANCE`` controls the relative dual tolerance used in PDLP's dual feasibility check.
-Changing this value has a significant impact on accuracy and runtime.
-The dual feasibility condition is computed as follows::
-
-   dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
-
-.. note:: The default value is ``1e-4``.
-
-
-Absolute Gap Tolerance
-^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_ABSOLUTE_GAP_TOLERANCE`` controls the absolute gap tolerance used in PDLP's duality gap check.
-Changing this value might have a significant impact on accuracy and runtime if the relative part ``(|primal_objective| + |dual_objective|)`` is close to, or equal to, 0.
-
-The duality gap is computed as follows::
-
-   duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
-
-.. note:: The default value is ``1e-4``.
-
-
-Relative Gap Tolerance
-^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_RELATIVE_GAP_TOLERANCE`` controls the relative gap tolerance used in PDLP's duality gap check.
-Changing this value has a significant impact on accuracy and runtime.
-The duality gap is computed as follows::
-
-   duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
-
-.. note:: The default value is ``1e-4``.
 
 Barrier Iterative Refinement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
