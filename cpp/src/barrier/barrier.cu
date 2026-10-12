@@ -4788,12 +4788,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
           std::isfinite(primal_objective) && std::isfinite(dual_objective)) {
         settings.log.debug(
           "Saving solution at iter %d: feasibility %.2e, optimality %.2e, complementarity "
-          "%.2e, objective gap %.2e\n",
+          "%.2e\n",
           iter + 1,
           relative_primal_residual,
           relative_dual_residual,
-          relative_complementarity_residual,
-          relative_objective_gap);
+          relative_complementarity_residual);
         raft::copy(data.w.data(), data.d_w_.data(), data.d_w_.size(), stream_view_);
         raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
         raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
@@ -4857,25 +4856,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
         settings.log.printf("\n");
         settings.log.printf(
           "Optimal solution found in %d iterations and %.3fs\n", iter, toc(start_time));
-        const f_t user_dual_objective = compute_user_objective(lp, dual_objective);
-        const f_t user_objective_gap  = std::abs(user_primal_objective - user_dual_objective);
-        const f_t complementarity_sum =
-          mu * data.complementarity_degree(data.x.size(), data.n_upper_bounds);
-        settings.log.printf("Objective mapping      : user = %.17e * (solver + %.17e)\n",
-                            lp.obj_scale,
-                            lp.obj_constant);
-        settings.log.printf("Solver objectives      : primal %+.17e, dual %+.17e, gap %.17e\n",
-                            primal_objective,
-                            dual_objective,
-                            objective_gap);
-        settings.log.printf("User objectives        : primal %+.17e, dual %+.17e, gap %.17e\n",
-                            user_primal_objective,
-                            user_dual_objective,
-                            user_objective_gap);
-        settings.log.printf("Complementarity detail : max %.17e, average %.17e, sum %.17e\n",
-                            complementarity_residual_norm,
-                            mu,
-                            complementarity_sum);
         settings.log.printf("Objective %+.8e\n", compute_user_objective(lp, primal_objective));
         settings.log.printf("Primal infeasibility (abs/rel): %8.2e/%8.2e\n",
                             primal_residual_norm,
