@@ -8,7 +8,7 @@
 - New Curtis-Reid scaling for PDLP
 - Support for reusing the barrier ordering and symbolic factorization when solving a sequence of problems with different linear objectives and right-hand sides
 - Add RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics to MIP
-- MIP solver now runs a set of heuristics during the cut passes 
+- MIP solver now runs diving and recursive RINS heuristics during the cut passes 
 - New Primal Simplex method for LPs
 - New HTTP proxy server on top of gRPC, replacing the deprecated legacy HTTP server
 - VRP is now supported over gRPC, with a compiled C++/Cython client
