@@ -363,6 +363,11 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings)
     set_Fast1(settings.hyper_params);
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable3)
     set_Stable3(settings.hyper_params);
+
+  // -1 leaves the preset. 0 and 1 force the bool the solver reads.
+  if (settings.project_initial_primal_override != -1) {
+    settings.hyper_params.project_initial_primal = settings.project_initial_primal_override;
+  }
 }
 
 std::atomic<int> global_concurrent_halt{0};
@@ -538,6 +543,13 @@ template <typename i_t, typename f_t>
 bool effective_eliminate_free_variables(pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
   return !settings.sequence_solve;
+}
+
+template <typename i_t, typename f_t>
+bool is_cached_sequence_resolve(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return settings.sequence_solve && settings.barrier_cache != nullptr &&
+         settings.barrier_cache->transform() != nullptr;
 }
 
 template <typename i_t, typename f_t>
@@ -2002,7 +2014,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
   try {
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
-    print_version_info();
+    if (!is_cached_sequence_resolve(settings)) { print_version_info(); }
 
     // Init libraries before to not include it in solve time
     init_handler(op_problem.get_handle_ptr());
@@ -2245,7 +2257,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
 
-    if (!settings_const.inside_mip) print_version_info();
+    if (!settings_const.inside_mip && !is_cached_sequence_resolve(settings_const)) {
+      print_version_info();
+    }
 
     // Init libraries before to not include it in solve time
     // This needs to be called before pdlp is initialized

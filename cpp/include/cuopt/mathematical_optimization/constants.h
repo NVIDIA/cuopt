@@ -178,6 +178,9 @@
 /* @brief PDLP reduced-matrix mode */
 #define CUOPT_PDLP_HYPER_REDUCED_MATRIX "pdlp_hyper_reduced_matrix"
 
+/* @brief PDLP hyper-parameter: -1 solver-mode preset, 0 off, 1 on */
+#define CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL "pdlp_hyper_project_initial_primal"
+
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
