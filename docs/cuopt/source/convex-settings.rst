@@ -472,7 +472,7 @@ Barrier Adaptive Regularization
 Barrier Presolve Bound Free Variables
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES`` controls whether the barrier presolve bounds free variables.
+``CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES`` controls whether the barrier presolve attempts to put bounds on free variables using the linear constraints.
 
 * ``-1``: Automatic (default) - cuOpt decides based on the problem
 * ``0``: Disable bounding of free variables
@@ -484,7 +484,7 @@ Barrier Primal and Dual Regularization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_BARRIER_PRIMAL_REGULARIZATION`` and ``CUOPT_BARRIER_DUAL_REGULARIZATION`` set the initial primal and dual regularization
-applied to the barrier method's augmented system. They apply to the first factorization only. If adaptive regularization is enabled
+applied to the augmented system. They apply to the first factorization only. If adaptive regularization is enabled
 (see ``CUOPT_BARRIER_ADAPTIVE_REGULARIZATION``), it can still scale the regularization up or down in later iterations.
 
 * ``-1``: Automatic (default) - cuOpt uses its built-in heuristic
@@ -499,7 +499,7 @@ Sequence Solve
 ``CUOPT_SEQUENCE_SOLVE`` controls whether cuOpt caches the ordering and symbolic factorization so that a sequence of related barrier solves can reuse it.
 When enabled, and the first solve with the barrier method finishes with an optimal solution, cuOpt stores information about the factorization. In subsequent solves,
 the linear objective and the right-hand side of the linear equality constraints may be changed with :meth:`~cuopt.linear_programming.data_model.DataModel.update_linear_objective` or
-:meth:`~cuopt.linear_programming.data_model.DataModel.update_rhs` without requiring new ordering or symbolic factorization.
+:meth:`~cuopt.linear_programming.data_model.DataModel.update_rhs` without recomputing the ordering or the symbolic factorization.
 
 * ``true``: Cache the ordering and symbolic factorization for later solves
 * ``false``: Do not cache (default)
