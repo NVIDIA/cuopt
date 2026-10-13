@@ -341,6 +341,6 @@ Multi-GPU Mode
 Multiple GPUs may be used to solve a linear program by specifying the ``num_gpus`` parameter. Multiple GPUs are used differently depending on the ``method`` parameter:
 
 * When the PDLP method is specified, multi-GPU PDLP is used to solve LPs faster or solve very large LPs that do not fit in the memory of a single GPU.
-* When the concurrent method is specified, setting ``num_gpus=2``, will run PDLP and barrier concurrently on two GPUs to avoid sharing resources on a single GPU. Increasing ``num_gpus`` beyond two has no effect in this mode. 
+* When the concurrent method is specified, setting ``num_gpus=2``, will run PDLP and barrier concurrently on two GPUs to avoid sharing resources on a single GPU. Increasing ``num_gpus`` beyond two has no effect in this mode.
 
-.. note:: Concurrent is the default method; to run multi-GPU PDLP, users must specify the PDLP method. Multi-GPU mode is not supported on QP, QCQP, or SOCP problems. 
+.. note:: Concurrent is the default method; to run multi-GPU PDLP, users must specify the PDLP method. Multi-GPU mode is not supported on QP, QCQP, or SOCP problems.

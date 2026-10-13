@@ -94,7 +94,7 @@ Default tolerances for each method:
 * Barrier solves to 1e-8 relative tolerance by default.
 * Simplex solves to 1e-6 *absolute* tolerance by default.
 
-See below for how to change the default tolerances. 
+See below for how to change the default tolerances.
 
 C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
@@ -344,7 +344,7 @@ Dual Simplex Remove Perturbation
 """"""""""""""""""""""""""""""""
 
 ``CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION`` controls whether dual simplex removes the cost perturbation during the solve, when variables leave the basis,
-rather than only at the end. Removing perturbations earlier helps avoid clean up at the end of the solve. 
+rather than only at the end. Removing perturbations earlier helps avoid clean up at the end of the solve.
 
 * ``-1``: Automatic (default)
 * ``0``: Disabled
@@ -443,7 +443,7 @@ Barrier Initial Point Safeguard
 
 ``CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD`` sets the margin used to push the barrier method's initial point into the interior of the
 nonnegative orthant and, for second-order cone problems, into the interior of the cones. The initial point is shifted so that it is
-at least this far from the boundary. The value must be greater than or equal to ``0``. This setting only has an effect when ``CUOPT_BARRIER_DUAL_INITIAL_POINT=0``.
+at least this far from the boundary. The value must be greater than or equal to ``0``. This setting only has an effect when ``CUOPT_BARRIER_DUAL_INITIAL_POINT`` is ``0`` or ``1``.
 
 .. note:: The default value is ``10.0``.
 
@@ -506,7 +506,7 @@ Sequence Solve
 ^^^^^^^^^^^^^^
 
 ``CUOPT_SEQUENCE_SOLVE`` controls whether cuOpt caches the ordering and symbolic factorization so that a sequence of related barrier solves can reuse it.
-When enabled, and the first solve with the barrier method finishes with an optimal solution, cuOpt stores information about the factorization. In subsequent solves, 
+When enabled, and the first solve with the barrier method finishes with an optimal solution, cuOpt stores information about the factorization. In subsequent solves,
 the linear objective and the right-hand side of the linear equality constraints may be changed with :meth:`~cuopt.linear_programming.data_model.DataModel.update_linear_objective` or
 :meth:`~cuopt.linear_programming.data_model.DataModel.update_rhs` without requiring new ordering or symbolic factorization.
 
@@ -515,4 +515,4 @@ the linear objective and the right-hand side of the linear equality constraints 
 
 .. note:: The default value is ``false``.
 
-.. note:: Reuse requires that the quadratic objective, the constraint matrix, the row senses, and the variable bounds stay unchanged between solves. Problems with range rows or folding in the first solve are not supported. When sequence solve is enabled, the automatic value of ``CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES`` resolves to disabled.
+.. note:: Reuse requires that the quadratic objective, the constraint matrix, the row senses, and the variable bounds stay unchanged between solves. Problems with range rows are not supported. When sequence solve is enabled, ``CUOPT_FOLDING`` and ``CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES`` are disabled.
