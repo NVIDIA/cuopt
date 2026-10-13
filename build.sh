@@ -12,7 +12,7 @@ ARGS=$*
 # NOTE: ensure all dir changes are relative to the location of this
 # script, and that this script resides in the repo dir!
 REPODIR=$(cd "$(dirname "$0")"; pwd)
-LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
+LIBCUOPT_BUILD_DIR=$(realpath -m "${LIBCUOPT_BUILD_DIR:-${REPODIR}/cpp/build}")
 
 VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client java docs deb --run-java-tests -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo --export-debug-symbols --split-compile [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
