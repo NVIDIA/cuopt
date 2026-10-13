@@ -40,7 +40,7 @@
 
 - Significant performance improvements in MIP heuristics
 - QP/QCQP problems solve 1.33X faster (geomean over QPLIB and Hans Mittelmann test set)
-- SOCP problems solve 1.53X faster (geomean over Hans Mittelmann SOCP test set)
+- SOCP problems now solve to a tighter default tolerance of 1e-6 (previously 1e-4) without a performance regression
 - Dual simplex is 1.4X faster (geomean over MIPLIB root relaxations)
 - PDLP now fuses the Halpern update into the projection kernels to improve performance
 - Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
