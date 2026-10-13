@@ -66,7 +66,7 @@ The container starts both processes. With no command, it runs ``cuopt_grpc_serve
 
     docker run --gpus all -it --rm -p 5000:5000 <CONTAINER_IMAGE_PATH>
 
-``python -m cuopt_server.cuopt_proxy --help`` lists the proxy flags. For further startup options, including how to specify the container mode in a Kubernetes environment, see :doc:`../cuopt-grpc/advanced`.
+``python -m cuopt_server.cuopt_proxy --help`` lists the HTTP proxy server flags. For further startup options, including how to specify the container mode in a Kubernetes environment, see :doc:`advanced`.
 
 Smoke Test
 ----------
@@ -95,6 +95,7 @@ Run the server and test
     GRPC_PID=$!
     python3 -m cuopt_server.cuopt_proxy --ip $SERVER_IP --port $SERVER_PORT --grpc-port 5001 > cuopt_server.log 2>&1 &
     SERVER_PID=$!
+    trap 'kill $SERVER_PID $GRPC_PID 2>/dev/null || true' EXIT
 
     # The proxy health check waits until it can reach gRPC
     for i in {1..30}; do
@@ -153,9 +154,6 @@ Run the server and test
         echo "Waiting for solution..."
         sleep 1
     done
-
-    # Shutdown the proxy and gRPC
-    kill $SERVER_PID $GRPC_PID
 
 The Open API specification for the server is available in :doc:`open-api spec <../open-api>`.
 

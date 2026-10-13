@@ -6,7 +6,7 @@
 Advanced Configuration
 =======================
 
-This page lists **configuration parameters** first, then **usage** walkthroughs (TLS, Docker, private CA). Complete :doc:`quick-start` first (install, plain TCP server, and minimal example).
+This page lists **configuration parameters** for ``cuopt_grpc_server``, then **usage** walkthroughs (TLS and private CA). Complete :doc:`quick-start` first (install, plain TCP server, and minimal example).
 
 For RPC summaries, see the :doc:`gRPC API reference <api>`. Example entry
 points using ``CUOPT_REMOTE_*`` can be found under :doc:`Examples <examples>`.
@@ -17,10 +17,10 @@ Behavior <grpc-server-architecture>`. Implementation details are in
 Configuration Parameters
 ========================
 
-``cuopt_grpc_server`` (Host or Explicit Container Command)
-------------------------------------------------------------
+Command-Line Flags
+------------------
 
-Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable inside ``CUOPT_GRPC_ARGS`` when using the container entrypoint):
+Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable inside ``CUOPT_GRPC_ARGS`` when the container starts ``cuopt_grpc_server``):
 
 .. code-block:: text
 
@@ -43,10 +43,10 @@ Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable
          --tls-root PATH          Root CA certificate (for client verification)
          --require-client-cert    Require client certificate (mTLS)
 
-NVIDIA cuOpt Container (Entrypoint)
------------------------------------
+gRPC Container Variables
+------------------------
 
-These variables select the server and configure ``cuopt_grpc_server`` when the entrypoint starts it. Start commands are on the :doc:`HTTP server quick start <../cuopt-server/quick-start>`, the :doc:`gRPC quick start <quick-start>`, and the :doc:`Legacy HTTP Server <../cuopt-server/legacy-http-server>` page.
+In Kubernetes, set ``CUOPT_SERVER_TYPE=grpc`` on the pod. When the variable is unset, the container command ``grpc`` starts ``cuopt_grpc_server`` only. Command-line start is on the :doc:`gRPC quick start <quick-start>`.
 
 .. list-table::
    :header-rows: 1
@@ -57,19 +57,36 @@ These variables select the server and configure ``cuopt_grpc_server`` when the e
      - Description
    * - ``CUOPT_SERVER_TYPE``
      - *(unset)*
-     - Selects the server and overrides the container command. Unset, or the command ``proxy``: HTTP proxy and ``cuopt_grpc_server``. ``grpc``: gRPC only. ``legacy``: see the :doc:`Legacy HTTP Server <../cuopt-server/legacy-http-server>` page. Any other command runs as given.
-   * - ``CUOPT_SERVER_PORT``
-     - ``5000`` (HTTP) / ``5001`` (``grpc``)
-     - HTTP listen port for the proxy (default ``5000``). ``CUOPT_SERVER_TYPE=grpc``: passed as ``--port`` to ``cuopt_grpc_server`` (overridden by ``CUOPT_GRPC_PORT`` if set).
+     - ``grpc``: ``cuopt_grpc_server`` only. The variable overrides the container command.
    * - ``CUOPT_GRPC_PORT``
      - ``5001``
-     - Combined mode: gRPC listen port and the port the proxy dials on ``127.0.0.1``. Also used as the gRPC port when ``CUOPT_SERVER_TYPE=grpc``.
+     - Passed as ``--port``. When unset, ``CUOPT_SERVER_PORT`` is used, then ``5001``.
    * - ``CUOPT_GPU_COUNT``
      - *(unset)*
-     - When set, passed as ``--workers`` for the default proxy command and for ``grpc``. When unset, ``--workers`` is omitted (server default, 1). Use one worker per GPU. Worker ``n`` uses visible GPU ``n``. The HTTP proxy forwards to those workers.
+     - Passed as ``--workers``. When unset, ``--workers`` is omitted (server default, 1). Use one worker per GPU. Worker ``n`` uses visible GPU ``n``.
    * - ``CUOPT_GRPC_ARGS``
      - *(empty)*
-     - Extra flags split on **whitespace** and appended (TLS, ``--max-message-mb``, ``--log-to-console``, etc.). Paths with spaces: prefer mounts without spaces or run ``cuopt_grpc_server`` manually with proper quoting.
+     - Extra flags split on whitespace (TLS, ``--max-message-mb``, ``--log-to-console``). Paths with spaces: run ``cuopt_grpc_server`` directly.
+
+These examples publish the gRPC port and pass extra server flags. Set ``CUOPT_SERVER_TYPE=grpc``, or pass the command ``grpc`` when that variable is unset. ``--gpus all`` requires NVIDIA GPUs on the host and Docker with the `NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_.
+
+TLS example with a cert volume:
+
+.. code-block:: bash
+
+   docker run --gpus all -p 5001:5001 \
+     -e CUOPT_GRPC_ARGS="--tls --tls-cert /certs/server.crt --tls-key /certs/server.key --log-to-console" \
+     -v ./certs:/certs:ro \
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
+     grpc
+
+Bypass the entrypoint:
+
+.. code-block:: bash
+
+   docker run --gpus all -p 5001:5001 \
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
+     cuopt_grpc_server --port 5001 --workers 2
 
 Integrated Remote Client (Python, C API, ``cuopt_cli``)
 -------------------------------------------------------
@@ -279,40 +296,6 @@ Repeat for each authorized client. Keep ``ca.key`` private; distribute ``ca.crt`
 
 **Revocation:** built-in gRPC TLS does **not** implement CRL or OCSP. To revoke a client, rotate the CA, stop issuing from a compromised CA, or terminate TLS at a reverse proxy (e.g., Envoy) that supports revocation.
 
-Docker: Servers in Container
-----------------------------
-
-The examples below add port publishing and extra gRPC flags. Which server starts is the container variables above. Basic start commands are on the quick-start pages linked there. To start the legacy HTTP server, see the :doc:`Legacy HTTP Server <../cuopt-server/legacy-http-server>` page.
-
-.. note::
-
-   Examples use ``--gpus all``. That requires NVIDIA GPUs on the host and Docker with the `NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_ so devices are visible inside the container.
-
-Publish only the HTTP port. ``cuopt_grpc_server`` listens on port 5001 inside the container so the proxy can reach it. Docker does not publish that port unless you add ``-p 5001:5001``. In Kubernetes, expose only port 5000 through the Service. Use a NetworkPolicy that permits ingress only to port 5000 if other pods must also be prevented from connecting directly to the pod's gRPC port.
-
-.. code-block:: bash
-
-   docker run --gpus all -p 5000:5000 \
-     nvcr.io/nvidia/cuopt/cuopt:latest-cu12
-
-TLS example with a cert volume:
-
-.. code-block:: bash
-
-   docker run --gpus all -p 5001:5001 \
-     -e CUOPT_GRPC_ARGS="--tls --tls-cert /certs/server.crt --tls-key /certs/server.key --log-to-console" \
-     -v ./certs:/certs:ro \
-     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
-     grpc
-
-Bypass the entrypoint:
-
-.. code-block:: bash
-
-   docker run --gpus all -p 5001:5001 \
-     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
-     cuopt_grpc_server --port 5001 --workers 2
-
 Client Environment (Examples)
 ------------------------------
 
@@ -371,7 +354,7 @@ See :doc:`python-async-client` for the full job API.
 Limitations and Scope
 =====================
 
-* **Problem types** — **LP**, **MIP**, and **QP** support remote execution and the :doc:`gRPC linear programming client <python-async-client>`. **Routing** (VRP, TSP, PDP) uses the :doc:`gRPC routing client <routing>` or a custom client. Routing does not read ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT``. The :doc:`REST self-hosted server <../cuopt-server/index>` is also available for remote routing.
+* **Problem types** — **LP**, **MIP**, and **QP** support remote execution and the :doc:`gRPC linear programming client <python-async-client>`. **Routing** (VRP, TSP, PDP) uses the :doc:`gRPC routing client <routing>` or a custom client. Routing does not read ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT``.
 * **Message size** — Large problems use chunking; very large models can still hit gRPC max message / timeout limits. Tune ``CUOPT_CHUNK_SIZE``, ``CUOPT_MAX_MESSAGE_BYTES``, server ``--max-message-mb``, and solver ``time_limit`` as needed.
 * **``CUOPT_GRPC_ARGS``** — Parsed on whitespace only; arguments containing spaces are awkward unless you invoke ``cuopt_grpc_server`` directly.
 * **CRL / OCSP** — Not handled by the integrated gRPC TLS stack; use a private CA rotation strategy or a TLS-terminating proxy if you need revocation workflows.

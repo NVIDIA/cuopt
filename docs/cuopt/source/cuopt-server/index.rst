@@ -21,7 +21,7 @@ interface which forwards requests to ``cuopt_grpc_server``. Use
 
 .. _legacy-http-differences:
 
-Deprecated Interfaces not Provided by the Proxy Server
+Deprecated Interfaces Not Provided by the Proxy Server
 ======================================================
 
 This section lists HTTP behavior the proxy does not carry forward from the legacy server.
@@ -40,6 +40,7 @@ This section lists HTTP behavior the proxy does not carry forward from the legac
    :name: cuopt-server-contents
 
    quick-start.rst
+   advanced.rst
    server-api/index.rst
    client-api/index.rst
    examples/index.rst

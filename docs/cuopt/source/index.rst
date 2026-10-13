@@ -71,6 +71,7 @@ HTTP Server (cuopt-server)
    :name: HTTP Server
 
    Server Overview <cuopt-server/index.rst>
+   Advanced Configuration <cuopt-server/advanced.rst>
    Legacy HTTP Server <cuopt-server/legacy-http-server.rst>
 
 ==================================

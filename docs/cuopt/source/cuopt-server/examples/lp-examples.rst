@@ -76,7 +76,9 @@ Normal mode response:
 
 
 
-Batch mode response:
+Batch mode response (legacy HTTP server):
+
+The commands above start the HTTP proxy. The proxy returns 501 for a JSON list of LP problems. This response is from the :doc:`legacy HTTP server <../legacy-http-server>`.
 
 .. code-block:: json
     :linenos:
@@ -425,14 +427,7 @@ In case the user needs to update solver settings through CLI, the option ``-ss``
    export port=5000
    cuopt_sh data.json -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
 
-In the case of batch mode, you can send a bunch of ``mps`` files at once, and acquire results. The batch mode works only for ``mps`` in the case of CLI:
-
-.. note::
-   LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
-   :doc:`../../convex-features`.
-
-.. note::
-   Batch mode is not available for MIP problems.
+A multi-file ``cuopt_sh`` LP submission is batch LP. The HTTP proxy returns 501 for it. Only the :doc:`legacy HTTP server <../legacy-http-server>` accepts it, and that batch is deprecated (see :ref:`Batch Mode <batch-mode>` in :doc:`../../convex-features`). The sample below is for the legacy HTTP server. It works only for ``mps`` files, and it is not available for MIP problems.
 
 A sample MPS file (:download:`sample.mps <lp/examples/sample.mps>`):
 

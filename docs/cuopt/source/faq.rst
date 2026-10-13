@@ -62,7 +62,7 @@ General FAQ
         cuopt_grpc_server --port 5001 --workers 2 &
         python -m cuopt_server.cuopt_proxy --port 5000 --grpc-port 5001
 
-    In the container, ``CUOPT_GPU_COUNT`` is passed as ``--workers`` for both the default proxy command and ``grpc``. See :doc:`cuopt-grpc/advanced`.
+    In the container, ``CUOPT_GPU_COUNT`` is passed as ``--workers`` for the HTTP proxy server and for ``grpc``. See :doc:`cuopt-server/advanced` and :doc:`cuopt-grpc/advanced`.
 
 .. dropdown:: The cuOpt Service is not starting: Issue with port?
 
@@ -395,8 +395,7 @@ Linear Programming FAQs
 
 .. dropdown:: How small and how many problems can I give when using the batch mode?
 
-    LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
-    :doc:`convex-features`.
+    LP batch mode in Python is ``cuopt.linear_programming.BatchSolve``. It is deprecated; see :ref:`Batch Mode <batch-mode>` in :doc:`convex-features`. The HTTP proxy does not accept a batch. Only the legacy HTTP server does.
 
     The batch mode allows solving many LPs in parallel to try to fully utilize the GPU when LP problems are too small. Using H100 SXM, the problem should be of at least 1K elements, and giving more than 100 LPs will usually not increase performance.
 
@@ -418,7 +417,7 @@ Linear Programming FAQs
     - Hardware: If using self-hosted, you should use a recent server-grade GPU. We recommend H100 SXM (not the PCIE version).
     - Tolerance: The set tolerance usually has a massive impact on performance. Try the lowest possible value using ``set_optimality_tolerance`` until you have reached your lowest possible acceptable accuracy.
     - PDLP Solver mode: PDLP solver mode will change the way PDLP internally optimizes the problem. The mode choice can drastically impact how fast a specific problem will be solved. You should test the different modes to see which one fits your problem best.
-    - Batch mode: Deprecated for LP; prefer sequential ``cuopt.linear_programming.Solve`` calls (see :ref:`Batch Mode <batch-mode>`). While available, batch mode can solve multiple LPs in parallel.
+    - Batch mode: ``cuopt.linear_programming.BatchSolve`` is deprecated; prefer sequential ``cuopt.linear_programming.Solve`` calls (see :ref:`Batch Mode <batch-mode>`). The HTTP proxy does not accept a batch. Only the legacy HTTP server does.
     - Presolve: Presolve can reduce problem size and improve solve time.
 
 .. dropdown:: What solver mode should I choose?
