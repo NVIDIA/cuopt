@@ -8,6 +8,7 @@ import datetime
 import cuopt
 import yaml
 from packaging.version import Version
+import shutil
 import subprocess
 import sys
 import os
@@ -34,6 +35,21 @@ subprocess.run(
 subprocess.run(
     ["cuopt_cli", "--help"], stdout=open("cuopt-cli/cuopt-cli-help.txt", "w")
 )
+
+# Copy the gRPC protos next to the docs so api.rst can offer them for download. They import
+# each other by file name, so they share one directory.
+_grpc_src = Path(__file__).resolve().parents[3] / "cpp" / "src" / "grpc"
+_proto_dir = Path("cuopt-grpc/protos")
+_proto_dir.mkdir(exist_ok=True)
+for _proto in (
+    "cuopt_remote_service.proto",
+    "cuopt_remote.proto",
+    "codegen/generated/cuopt_remote_data.proto",
+    "routing/cuopt_routing.proto",
+    "routing/cuopt_routing_solution.proto",
+):
+    shutil.copy(_grpc_src / _proto, _proto_dir)
+shutil.make_archive("cuopt-grpc/cuopt-protos", "zip", _proto_dir)
 
 with open("cuopt_spec.yaml", "w") as f:
     yaml.dump(
