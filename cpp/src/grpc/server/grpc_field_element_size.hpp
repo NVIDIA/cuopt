@@ -8,6 +8,7 @@
 #ifdef CUOPT_ENABLE_GRPC
 
 #include <cstdint>
+#include "../routing/grpc_routing_chunk_ids.hpp"
 #include "cuopt_remote.pb.h"
 
 // Element byte size for a chunk's payload, dispatched on the chunk's
@@ -24,6 +25,12 @@
 // produce garbage.
 inline int64_t array_field_element_size(int32_t container_field_num, int32_t field_id)
 {
+  // VRP matrices are float arrays inside RoutingProblem's repeated matrix messages.
+  if (container_field_num == cuopt::routing::kCostMatricesContainer ||
+      container_field_num == cuopt::routing::kTransitMatricesContainer) {
+    return field_id == cuopt::routing::kMatrixValuesFieldId ? static_cast<int64_t>(sizeof(float))
+                                                            : -1;
+  }
 #include "generated_array_field_element_size.inc"
 }
 

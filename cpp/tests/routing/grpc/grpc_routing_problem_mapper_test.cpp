@@ -132,3 +132,27 @@ TEST(RoutingProblemMapper, VehicleDistanceBreaksRoundTrip)
   EXPECT_FLOAT_EQ(back.vehicle_distance_breaks[1][1].distance_max, 300.f);
   EXPECT_EQ(back.vehicle_distance_breaks[1][1].locations, (std::vector<int32_t>{1, 4}));
 }
+
+TEST(RoutingProblemMapper, MatrixValuesSkippedKeepsMatrixEntries)
+{
+  auto p = make_base_problem();
+  p.cost_matrices.push_back({0, std::vector<float>(25, 1.0f)});
+  p.cost_matrices.push_back({1, std::vector<float>(25, 2.0f)});
+  p.transit_time_matrices.push_back({1, std::vector<float>(25, 3.0f)});
+
+  cuopt::remote::RoutingProblem pb;
+  cuopt::routing::map_routing_problem_to_proto(p, &pb, false);
+  ASSERT_EQ(pb.cost_matrices_size(), 2);
+  ASSERT_EQ(pb.transit_time_matrices_size(), 1);
+  EXPECT_EQ(pb.cost_matrices(1).vehicle_type(), 1u);
+  EXPECT_EQ(pb.cost_matrices(0).values_size(), 0);
+  EXPECT_EQ(pb.transit_time_matrices(0).values_size(), 0);
+
+  cuopt::routing::cpu_routing_problem_t back;
+  cuopt::routing::map_proto_to_routing_problem(pb, back);
+  ASSERT_EQ(back.cost_matrices.size(), 2u);
+  ASSERT_EQ(back.transit_time_matrices.size(), 1u);
+  EXPECT_EQ(back.cost_matrices[1].vehicle_type, 1);
+  EXPECT_TRUE(back.cost_matrices[0].matrix.empty());
+  EXPECT_TRUE(back.transit_time_matrices[0].matrix.empty());
+}

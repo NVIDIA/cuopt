@@ -3668,3 +3668,12 @@ TEST(SolveMipRemoteCallbacks, EmptyVariableListKeepsCallbacksEnabled)
   settings.set_mip_callback(&callback, nullptr);
   EXPECT_FALSE(should_disable_unsupported(problem, settings));
 }
+
+TEST(ArrayFieldElementSize, VrpMatrixContainers)
+{
+  using namespace cuopt::routing;
+  EXPECT_EQ(array_field_element_size(kCostMatricesContainer, kMatrixValuesFieldId), 4);
+  EXPECT_EQ(array_field_element_size(kTransitMatricesContainer, kMatrixValuesFieldId), 4);
+  EXPECT_EQ(array_field_element_size(kCostMatricesContainer, kMatrixValuesFieldId + 1), -1);
+  EXPECT_EQ(array_field_element_size(kTransitMatricesContainer, kMatrixValuesFieldId + 1), -1);
+}

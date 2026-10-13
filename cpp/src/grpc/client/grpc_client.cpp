@@ -1002,6 +1002,18 @@ bool grpc_client_t::upload_chunked_arrays(const cpu_optimization_problem_t<i_t, 
                                           const cuopt::remote::ChunkedProblemHeader& header,
                                           std::string& job_id_out)
 {
+  return upload_chunked(
+    header,
+    [&](const std::string& upload_id, int64_t chunk_data_budget) {
+      return build_array_chunk_requests(problem, upload_id, chunk_data_budget);
+    },
+    job_id_out);
+}
+
+bool grpc_client_t::upload_chunked(const cuopt::remote::ChunkedProblemHeader& header,
+                                   const chunk_builder_t& build_chunks,
+                                   std::string& job_id_out)
+{
   job_id_out.clear();
   auto upload_t0 = std::chrono::steady_clock::now();
 
@@ -1029,13 +1041,13 @@ bool grpc_client_t::upload_chunked_arrays(const cpu_optimization_problem_t<i_t, 
 
   GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] ChunkedUpload started, upload_id=" << upload_id);
 
-  // --- 2. Build chunk requests directly from problem arrays ---
+  // --- 2. Build chunk requests directly from the problem arrays ---
   int64_t chunk_data_budget = config_.chunk_size_bytes;
   if (chunk_data_budget <= 0) { chunk_data_budget = 1LL * 1024 * 1024; }
   int64_t srv_max = server_max_message_bytes_.load(std::memory_order_relaxed);
   if (srv_max > 0 && chunk_data_budget > srv_max * 9 / 10) { chunk_data_budget = srv_max * 9 / 10; }
 
-  auto chunk_requests = build_array_chunk_requests(problem, upload_id, chunk_data_budget);
+  auto chunk_requests = build_chunks(upload_id, chunk_data_budget);
 
   // --- 3. Send each chunk request ---
   int total_chunks         = 0;

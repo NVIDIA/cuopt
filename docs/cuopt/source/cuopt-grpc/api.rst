@@ -42,7 +42,7 @@ Asynchronous Jobs
      - Purpose
    * - ``SubmitJob``
      - Submit an LP, MIP, or VRP job in one message (within gRPC message size
-       limits; VRP is unary-only today, see :doc:`routing`).
+       limits; larger problems use the chunked upload RPCs below).
    * - ``CheckStatus``
      - Poll job status by ``job_id``.
    * - ``GetResult``
