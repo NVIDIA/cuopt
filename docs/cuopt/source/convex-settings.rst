@@ -175,15 +175,6 @@ The duality gap is computed as follows::
 
 .. note:: The default value is ``1e-4``.
 
-Concurrent NNZ Cutoff
-^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_CONCURRENT_NNZ_CUTOFF`` controls when concurrent mode stops running barrier and dual simplex. When the number of
-nonzeros in the (presolved) constraint matrix is at or above this value, barrier and dual simplex are skipped and
-only PDLP runs. Set it to ``-1`` to disable the cutoff, so that barrier and dual simplex run regardless of problem size.
-The same setting is also accepted for the root relaxation in MIP.
-
-.. note:: The default value is ``50000000``.
 
 PDLP Solver Mode
 ^^^^^^^^^^^^^^^^
