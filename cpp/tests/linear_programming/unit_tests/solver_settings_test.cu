@@ -91,15 +91,15 @@ TEST(SolverSettingsTest, SequenceSolveParameter)
   EXPECT_TRUE(settings.get_pdlp_settings().sequence_solve);
 }
 
-TEST(SolverSettingsTest, LargeNnzCountParameter)
+TEST(SolverSettingsTest, LargeNnzThresholdParameter)
 {
   solver_settings_t<int, double> settings;
-  EXPECT_EQ(settings.get_pdlp_settings().large_nnz_count, 50'000'000);
-  EXPECT_EQ(settings.get_mip_settings().large_nnz_count, 50'000'000);
+  EXPECT_EQ(settings.get_pdlp_settings().large_nnz_threshold, 50'000'000);
+  EXPECT_EQ(settings.get_mip_settings().large_nnz_threshold, 50'000'000);
 
-  settings.set_parameter_from_string(CUOPT_LARGE_NNZ_COUNT, "-1");
-  EXPECT_EQ(settings.get_pdlp_settings().large_nnz_count, -1);
-  EXPECT_EQ(settings.get_mip_settings().large_nnz_count, -1);
+  settings.set_parameter_from_string(CUOPT_LARGE_NNZ_THRESHOLD, "-1");
+  EXPECT_EQ(settings.get_pdlp_settings().large_nnz_threshold, -1);
+  EXPECT_EQ(settings.get_mip_settings().large_nnz_threshold, -1);
 }
 
 TEST(SolverSettingsTest, warm_start_smaller_vector)

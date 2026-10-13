@@ -114,20 +114,28 @@ C API users should use the constants defined in :ref:`pdlp-solver-mode-constants
 
 Server Thin client users should use the :class:`cuopt_sh_client.PDLPSolverMode` for this parameter.
 
-Large Problem Threshold
-^^^^^^^^^^^^^^^^^^^^^^^
+Large Number of Nonzeros Threshold
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``CUOPT_LARGE_NNZ_COUNT`` (``large_nnz_count``, CLI ``--large-nnz-count``) sets
-the matrix nonzero threshold for large-problem solver decisions. The default is
-50,000,000. At or above this threshold, concurrent solves skip barrier and dual
-simplex, and compatible PDLP solves become eligible for automatic column reduction.
-When presolve is enabled, the threshold applies to the post-presolve matrix, not
-the original input matrix. Column-reduction eligibility also applies in PDLP-only
-mode; it does not mean reduction activates immediately.
+``CUOPT_LARGE_NNZ_THRESHOLD`` sets a threshold for what cuOpt considers to be a
+large linear program. When the number of nonzeros in the constraint matrix exceeds
+this threshold, cuOpt uses different algorithmic strategies.
 
-Setting the threshold to ``-1`` disables both automatic decisions. Setting it to
-``0`` makes every problem size meet the threshold; solver compatibility checks
-still apply.
+The default threshold is 50 million nonzeros. When presolve is enabled, the threshold
+applies to the matrix after presolve, not the original input matrix.
+
+At or above the threshold:
+
+* Concurrent solves run only PDLP, skipping barrier and dual simplex.
+* PDLP column reduction is enabled for certain PDLP modes.
+
+Below the threshold, concurrent solves use their normal solver selection,
+and PDLP column reduction is off unless explicitly enabled.
+
+A special value is available:
+
+* ``-1``: Concurrent solves use their normal solver selection regardless of
+  matrix nonzeros. PDLP column reduction is off unless explicitly enabled.
 
 Iteration Limit
 ^^^^^^^^^^^^^^^

@@ -854,7 +854,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.hyper_params                    = settings.hyper_params;
   fs.presolver                       = settings.presolver;
   fs.num_gpus                        = settings.num_gpus;
-  fs.large_nnz_count                 = settings.large_nnz_count;
+  fs.large_nnz_threshold             = settings.large_nnz_threshold;
   fs.concurrent_halt                 = settings.concurrent_halt;
 
   pdlp::pdlp_solver_t<i_t, float> solver(float_problem, fs, is_batch_mode);
@@ -1698,11 +1698,11 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   const auto num_nonzeros     = problem.coefficients.size();
   const int available_threads = omp_in_parallel() ? omp_get_num_threads() : omp_get_max_threads();
   const bool skip_cpu_solvers =
-    pdlp::should_skip_concurrent_cpu_solvers(num_nonzeros, settings.large_nnz_count);
+    pdlp::should_skip_concurrent_cpu_solvers(num_nonzeros, settings.large_nnz_threshold);
   const bool enable_barrier = pdlp::should_enable_concurrent_barrier(
-    num_nonzeros, settings.large_nnz_count, settings.inside_mip, available_threads);
+    num_nonzeros, settings.large_nnz_threshold, settings.inside_mip, available_threads);
   const bool enable_dual_simplex = pdlp::should_enable_concurrent_dual_simplex(
-    num_nonzeros, settings.large_nnz_count, settings.inside_mip);
+    num_nonzeros, settings.large_nnz_threshold, settings.inside_mip);
 
   if (settings.num_gpus > 1) {
     int device_count = raft::device_setter::get_device_count();
@@ -1739,13 +1739,13 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     CUOPT_LOG_CONDITIONAL_INFO(
       !settings.inside_mip,
       "Skipping concurrent barrier and dual simplex: reduced problem has %zu nonzeros "
-      "(LARGE_NNZ_COUNT: %d).",
+      "(LARGE_NNZ_THRESHOLD: %d).",
       num_nonzeros,
-      settings.large_nnz_count);
+      settings.large_nnz_threshold);
     CUOPT_LOG_DEBUG(
       "Skipping concurrent CPU solvers: reduced problem has %zu nonzeros (cutoff: %d).",
       num_nonzeros,
-      settings.large_nnz_count);
+      settings.large_nnz_threshold);
   } else if (!enable_barrier) {
     CUOPT_LOG_DEBUG("MIP: skipping concurrent Barrier, %d threads available < %d required.",
                     available_threads,

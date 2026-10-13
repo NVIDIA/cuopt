@@ -232,9 +232,9 @@ TEST(ReducedMatrixPrecision, SinglePrecisionWithAutomaticSizeSetting)
   auto model = make_reduction_test_model();
   for (int threshold : {-1, 0}) {
     SCOPED_TRACE(threshold);
-    auto settings            = make_settings(reduced_matrix_mode_t::DEFAULT);
-    settings.pdlp_precision  = pdlp_precision_t::SinglePrecision;
-    settings.large_nnz_count = threshold;
+    auto settings                = make_settings(reduced_matrix_mode_t::DEFAULT);
+    settings.pdlp_precision      = pdlp_precision_t::SinglePrecision;
+    settings.large_nnz_threshold = threshold;
     settings.set_optimality_tolerance(1e-5);
     auto result = solve_lp(&handle, model, settings);
     expect_optimal_solution(model, result, 2.0, handle, 1e-4);

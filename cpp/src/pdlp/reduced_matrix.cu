@@ -243,8 +243,7 @@ bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
     mode == reduced_matrix_mode_t::DEFAULT || mode == reduced_matrix_mode_t::COLUMN_REDUCTION,
     error_type_t::ValidationError,
     "Unknown reduced matrix mode");
-  const char* mode_name = mode == reduced_matrix_mode_t::DEFAULT ? "DEFAULT" : "COLUMN_REDUCTION";
-  const char* reason    = nullptr;
+  const char* reason = nullptr;
   if (is_distributed) {
     reason = "multi-GPU PDLP is not supported";
   } else if (is_legacy_batch_mode) {
@@ -269,30 +268,26 @@ bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
     reason = "quadratic objectives are not supported";
   }
   if (reason != nullptr) {
-    CUOPT_LOG_INFO("Column reduction disabled (%s): %s", mode_name, reason);
+    if (mode == reduced_matrix_mode_t::COLUMN_REDUCTION) {
+      CUOPT_LOG_INFO("Column reduction disabled: %s", reason);
+    } else {
+      CUOPT_LOG_DEBUG("Column reduction disabled: %s", reason);
+    }
     return false;
   }
   if (mode == reduced_matrix_mode_t::DEFAULT) {
     if (!should_skip_concurrent_cpu_solvers(static_cast<std::size_t>(nnz),
                                             reduced_matrix_nnz_cutoff)) {
       if (reduced_matrix_nnz_cutoff < 0) {
-        CUOPT_LOG_INFO(
-          "Column reduction disabled (DEFAULT): LARGE_NNZ_COUNT=-1 disables "
-          "automatic reduction");
+        CUOPT_LOG_DEBUG("Column reduction disabled: LARGE_NNZ_THRESHOLD=-1");
       } else {
-        CUOPT_LOG_INFO("Column reduction disabled (DEFAULT): PDLP matrix nnz=%" PRId64
-                       " is below LARGE_NNZ_COUNT=%d",
-                       nnz,
-                       reduced_matrix_nnz_cutoff);
+        CUOPT_LOG_DEBUG("Column reduction disabled: PDLP matrix nnz=%" PRId64
+                        " is below LARGE_NNZ_THRESHOLD=%d",
+                        nnz,
+                        reduced_matrix_nnz_cutoff);
       }
       return false;
     }
-    CUOPT_LOG_INFO("Column reduction enabled (DEFAULT): PDLP matrix nnz=%" PRId64
-                   " meets LARGE_NNZ_COUNT=%d",
-                   nnz,
-                   reduced_matrix_nnz_cutoff);
-  } else {
-    CUOPT_LOG_INFO("Column reduction enabled (%s): PDLP matrix nnz=%" PRId64, mode_name, nnz);
   }
   return true;
 }

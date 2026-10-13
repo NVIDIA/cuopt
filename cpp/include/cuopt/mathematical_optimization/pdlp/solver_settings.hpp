@@ -366,7 +366,7 @@ class pdlp_solver_settings_t {
   // on compatible PDLP paths. -1 disables both automatic decisions.
   // TODO: Remove the concurrent CPU solver bypass once their memory usage and cuDSS long running
   // kernels are resolved; retain the size threshold for automatic column reduction.
-  i_t large_nnz_count{50'000'000};
+  i_t large_nnz_threshold{50'000'000};
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
