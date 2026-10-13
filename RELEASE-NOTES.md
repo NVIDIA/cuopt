@@ -53,7 +53,7 @@
 - Barrier now prints the cumulative setup time before the solve
 - Barrier now removes empty columns from separable QPs
 - Barrier termination check now has reduced GPU/host synchronization overhead
-- Barrier now has parameters to control adaptive regularization (enabled for SOCP by default)
+- Barrier now has parameters to control adaptive regularization
 - Barrier now has parameters for tuning primal and dual regularization
 - Barrier now has a parameter to control bounding free variables 
 - Barrier now has improved performance when computing the initial point
