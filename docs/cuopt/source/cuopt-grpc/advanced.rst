@@ -63,7 +63,7 @@ In Kubernetes, set ``CUOPT_SERVER_TYPE=grpc`` on the pod. When the variable is u
      - Passed as ``--port``. When unset, ``CUOPT_SERVER_PORT`` is used, then ``5001``.
    * - ``CUOPT_GPU_COUNT``
      - *(unset)*
-     - Passed as ``--workers``. When unset, ``--workers`` is omitted (server default, 1). Use one worker per GPU. Worker ``n`` uses visible GPU ``n``.
+     - Passed as ``--workers``. When unset, ``--workers`` is omitted (server default, 1). Set this to the number of visible GPUs, one worker per GPU.
    * - ``CUOPT_GRPC_ARGS``
      - *(empty)*
      - Extra flags split on whitespace (TLS, ``--max-message-mb``, ``--log-to-console``). Paths with spaces: run ``cuopt_grpc_server`` directly.

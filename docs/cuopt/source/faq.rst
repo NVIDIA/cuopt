@@ -49,7 +49,7 @@ General FAQ
 
 .. dropdown:: Does cuOpt use multiple GPUs/multi-GPUs/multi GPUs?
 
-    Yes. ``cuopt_grpc_server`` runs one worker process per concurrent solve. Set ``--workers`` to the number of GPUs so each worker uses a different GPU. Worker 0 uses the first visible GPU, worker 1 the second, and so on. On a node with two GPUs:
+    Yes. ``cuopt_grpc_server`` runs one worker process per concurrent solve. Set ``--workers`` to the number of visible GPUs, one worker per GPU. On a node with two GPUs:
 
     .. code-block:: bash
 

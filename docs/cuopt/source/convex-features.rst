@@ -275,7 +275,7 @@ Logging Callback in the Service
 
 In the cuOpt service API, the ``log_file`` value in ``solver_configs`` is ignored.
 
-If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Examples <generic-example-with-normal-and-batch-mode>` on the self-hosted page.
+If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Examples <generic-lp-example>` on the self-hosted page.
 
 
 Infeasibility Detection

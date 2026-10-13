@@ -16,7 +16,7 @@ If you want to run server locally, please run the following command in a termina
     cuopt_grpc_server --port 5001 &
     python -m cuopt_server.cuopt_proxy --ip $ip --port $port --grpc-port 5001
 
-.. _generic-example-with-normal-and-batch-mode:
+.. _generic-lp-example:
 
 Generic LP Example
 ------------------
