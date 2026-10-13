@@ -112,8 +112,6 @@ Multi-GPU PDLP
 
 Multi-GPU PDLP shards a linear program across GPUs. ``--method 1`` selects PDLP, and ``--num-gpus -1`` uses every GPU visible to the process. A value greater than 1 selects that many GPUs. The problem is sharded when more than one GPU is selected.
 
-See :doc:`../convex-settings` for the parameter details.
-
 :download:`multigpu_pdlp_example.sh <examples/lp/examples/multigpu_pdlp_example.sh>`
 
 .. literalinclude:: examples/lp/examples/multigpu_pdlp_example.sh
