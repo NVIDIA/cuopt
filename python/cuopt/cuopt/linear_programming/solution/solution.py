@@ -63,8 +63,9 @@ class Solution:
     ----------
     problem_category : int
         Whether it is a LP-0, MIP-1 or IP-2 solution
-    vars : Dict[str, float64]
-        Dictionary mapping each variable (name) to its value.
+    vars : Dict[str, float64] or callable
+        Dictionary mapping each variable (name) to its value, or a
+        zero-argument function returning it, called on first access.
     primal_solution : numpy.array
         Primal solution of the LP problem
     dual_solution : numpy.array
@@ -333,6 +334,16 @@ class Solution:
         Returns the method that solved the LP. See SolverMethod for all possible values.
         """
         return self.solved_by
+
+    @property
+    def vars(self):
+        if callable(self._vars):
+            self._vars = self._vars()
+        return self._vars
+
+    @vars.setter
+    def vars(self, value):
+        self._vars = value
 
     def get_vars(self):
         """
