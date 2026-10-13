@@ -137,6 +137,10 @@
 - Python gRPC client: run the wait loop in Python so other threads are not blocked by the GIL (#1857)
 - Exec the binary from the `cuopt_cli` and `cuopt_grpc_server` console-script wrappers so signals reach it (#1723)
 
+### Deprecations (26.10)
+
+- The container's default server is now the HTTP proxy plus `cuopt_grpc_server`, in place of the legacy HTTP server. The legacy HTTP server is still shipped in 26.10 and will be removed in 26.12. See "Starting the Container" on the Legacy HTTP Server page for the legacy container command and for `CUOPT_SERVER_TYPE=legacy` in Kubernetes. That page links to the 26.08 guide. Differences are in "Deprecated Interfaces Not Provided by the Proxy Server".
+
 ### Documentation (26.10)
 
 - Show mamba commands directly instead of a conda-then-swap note (#1827)
