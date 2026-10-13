@@ -122,6 +122,7 @@ class reduced_matrix_t {
   const mip::problem_t<i_t, f_t>* structure_problem_ptr_;
   bool enabled_;
   bool active_{false};
+  bool disable_hint_logged_{false};
   bool refresh_pending_{false};
   bool refresh_mask_pending_{false};
   bool mask_started_{false};

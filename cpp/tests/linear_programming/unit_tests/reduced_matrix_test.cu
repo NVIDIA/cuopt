@@ -10,6 +10,7 @@
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/logger.hpp>
 
 #include <raft/core/handle.hpp>
 
@@ -17,6 +18,7 @@
 
 #include <numeric>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::test {
@@ -198,7 +200,56 @@ TEST_P(ReducedMatrixSolve, SingleClimberBoundOverrideChangesOptimum)
   expect_optimal_solution(expected_model, result, -294.8, handle);
 }
 
+TEST_P(ReducedMatrixSolve, DisableHintOncePerSolveAtActivation)
+{
+  raft::handle_t handle;
+  const std::string activated = "Reduced matrix activated";
+  const std::string hint = "To disable column reduction, set CUOPT_PDLP_HYPER_REDUCED_MATRIX to 0.";
+  for (int solve = 0; solve < 2; ++solve) {
+    SCOPED_TRACE(solve);
+    auto model    = make_bound_dominated_model();
+    auto settings = make_settings(static_cast<reduced_matrix_mode_t>(GetParam()));
+    settings.hyper_params.do_ruiz_scaling           = false;
+    settings.hyper_params.do_pock_chambolle_scaling = false;
+    settings.hyper_params.do_curtis_reid_scaling    = false;
+    set_near_optimal_start(settings, model, handle);
+    std::string log;
+    cuopt::scoped_log_callback_t capture(
+      [](const char* message, void* data) { static_cast<std::string*>(data)->append(message); },
+      &log);
+    auto result = solve_lp(&handle, model, settings, true, false);
+    expect_optimal_solution(model, result, -304.8, handle);
+    EXPECT_EQ(log.find("Column reduction enabled"), std::string::npos);
+    const auto first_hint = log.find(hint);
+    if (GetParam() == 0) {
+      EXPECT_EQ(log.find(activated), std::string::npos);
+      EXPECT_EQ(first_hint, std::string::npos);
+    } else {
+      ASSERT_NE(first_hint, std::string::npos) << log;
+      EXPECT_LT(log.find(activated), first_hint);
+      EXPECT_EQ(log.find(hint, first_hint + hint.size()), std::string::npos);
+    }
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(DisabledAndEnabled, ReducedMatrixSolve, testing::Values(0, 1));
+
+TEST(ReducedMatrixSolve, NoDisableHintBeforeActivation)
+{
+  raft::handle_t handle;
+  auto model               = make_bound_dominated_model();
+  auto settings            = make_settings(reduced_matrix_mode_t::COLUMN_REDUCTION);
+  settings.iteration_limit = 0;
+  set_near_optimal_start(settings, model, handle);
+  std::string log;
+  cuopt::scoped_log_callback_t capture(
+    [](const char* message, void* data) { static_cast<std::string*>(data)->append(message); },
+    &log);
+  auto result = solve_lp(&handle, model, settings);
+  EXPECT_EQ(result.get_termination_status(), pdlp_termination_status_t::IterationLimit);
+  EXPECT_EQ(log.find("Reduced matrix activated"), std::string::npos);
+  EXPECT_EQ(log.find("To disable column reduction"), std::string::npos);
+}
 
 TEST(ReducedMatrixFallback, UnsupportedRestartScalingMatchesFullSolver)
 {

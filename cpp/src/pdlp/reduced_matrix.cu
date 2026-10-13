@@ -460,6 +460,10 @@ bool reduced_matrix_t<i_t, f_t>::rebuild(const rmm::device_uvector<f_t>& project
                  static_cast<long long>(reduced_At_values_.size()),
                  static_cast<long long>(problem_ptr_->nnz),
                  static_cast<long long>(iteration));
+  if (!disable_hint_logged_) {
+    CUOPT_LOG_INFO("To disable column reduction, set CUOPT_PDLP_HYPER_REDUCED_MATRIX to 0.");
+    disable_hint_logged_ = true;
+  }
   return true;
 }
 
