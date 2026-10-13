@@ -175,7 +175,7 @@ The following functions are used to set and get parameters. You can find more de
 Solver Log Callback
 -------------------
 
-A callback can be registered on the solver settings to receive each standard solver log line, for example to display or forward solver output in a GUI.
+A callback can be registered to receive each solver log line, for example to display or forward solver output in a GUI.
 The callback is invoked in addition to any console or file logging enabled with ``CUOPT_LOG_TO_CONSOLE`` and ``CUOPT_LOG_FILE``.
 Pass ``NULL`` to remove a registered callback.
 
