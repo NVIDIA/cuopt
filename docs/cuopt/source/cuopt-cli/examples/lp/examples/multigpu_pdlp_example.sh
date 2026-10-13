@@ -20,4 +20,3 @@ cuopt_cli --method 1 --num-gpus 1 ./datasets/linear_programming/afiro_original.m
 echo ""
 echo "=== mPDLP on all visible GPUs ==="
 cuopt_cli --method 1 --num-gpus -1 ./datasets/linear_programming/afiro_original.mps
-
