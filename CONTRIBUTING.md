@@ -177,9 +177,9 @@ mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env
   installing them into the conda environment. Pass `--install` to also install `libcuopt` into the
   active conda environment (`$CONDA_PREFIX`, or a custom location via `$PREFIX`). Note that
   the script depends on the `nvcc` executable being on your path, or defined in `$CUDACXX`.
-  The Python packages need `libcuopt` at import time, so `--install` is the recommended way to build
-  them. Without it, the libraries stay in `$CUOPT_HOME/cpp/build` and you must run Python with
-  `LD_LIBRARY_PATH=$CUOPT_HOME/cpp/build` (or `$LIBCUOPT_BUILD_DIR` if you set it).
+  `--install` is the recommended way to build the Python packages. Without it, they load the
+  libraries from `$CUOPT_HOME/cpp/build` (or `$LIBCUOPT_BUILD_DIR` if you set it) through an
+  embedded RPATH, so that directory must stay in place.
 
 ```bash
 cd $CUOPT_HOME
