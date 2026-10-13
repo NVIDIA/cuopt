@@ -19,10 +19,9 @@
 - VRP is now supported over gRPC, with a compiled C++/Cython client
 - Routing: add distance breaks (#1196)
 - gRPC: add cancel and status APIs to the routing client (#1886)
-- gRPC: send solver parameters as a map<string, string> from the client (#2022)
+- Solver parameters are now sent over gRPC as a string map. A new client requires a new server. An older client still works with a new server. (#2010, #2022, #2057)
 - gRPC: add a GPU health check before each job and after idle (#2031)
 - gRPC: add the standard gRPC health-probe endpoints (#2047)
-- gRPC: accept solver parameters as a map<string, string> in the server (#2010)
 
 
 ### Breaking Changes (26.10)
@@ -139,7 +138,7 @@
 
 ### Deprecations (26.10)
 
-- The container's default server is now the HTTP proxy plus `cuopt_grpc_server`, in place of the legacy HTTP server. The legacy HTTP server is still shipped in 26.10 and will be removed in 26.12. See "Starting the Container" on the Legacy HTTP Server page for the legacy container command and for `CUOPT_SERVER_TYPE=legacy` in Kubernetes. That page links to the 26.08 guide. Differences are in "Deprecated Interfaces Not Provided by the Proxy Server".
+- The container's default server is now the HTTP proxy plus `cuopt_grpc_server`, in place of the legacy HTTP server. The legacy HTTP server is still shipped in 26.10 and will be removed in 26.12. See "Starting the Container" on the Legacy HTTP Server page in the 26.10 user guide for the legacy container command and for `CUOPT_SERVER_TYPE=legacy` in Kubernetes. That page links to the 26.08 guide. Differences are in "Deprecated Interfaces Not Provided by the Proxy Server" in the 26.10 user guide.
 
 ### Documentation (26.10)
 
