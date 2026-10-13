@@ -1,11 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-# TEST_SKIP: Batch LP is available only with the legacy HTTP server
 """
-Basic LP Server Example (Normal and Batch Mode)
+Basic LP Server Example
 
 This example demonstrates how to use the cuOpt Self-Hosted Service Client
-to solve LP problems via the cuOpt server in both normal and batch modes.
+to solve an LP problem via the cuOpt server.
 
 Requirements:
     - cuOpt server running (default: localhost:5000)
@@ -26,8 +25,7 @@ The data is structured according to the OpenAPI specification (LPData):
     - solver_config: Solver settings
 
 Expected Response:
-    Normal mode: Single solution
-    Batch mode: Array of solutions (one per problem)
+    A single LP solution
 """
 
 from cuopt_sh_client import CuOptServiceSelfHostClient
@@ -58,7 +56,7 @@ def repoll(cuopt_service_client, solution, repoll_tries):
 
 
 def main():
-    """Run the basic LP example in normal and batch modes."""
+    """Run the basic LP example."""
     # Example data for LP problem
     # The data is structured as per the OpenAPI specification for the server
     data = {
@@ -97,24 +95,12 @@ def main():
         for i in log:
             print("server-log: ", i)
 
-    print("=== Solving in Normal Mode ===")
     solution = cuopt_service_client.get_LP_solve(
         data, response_type="dict", logging_callback=log_callback
     )
 
     solution = repoll(cuopt_service_client, solution, repoll_tries)
 
-    print("---------- Normal mode ---------------")
-    print(json.dumps(solution, indent=4))
-
-    print("\n=== Solving in Batch Mode ===")
-    # For batch mode send list of mps/dict/DataModel
-    solution = cuopt_service_client.get_LP_solve(
-        [data, data], response_type="dict", logging_callback=log_callback
-    )
-    solution = repoll(cuopt_service_client, solution, repoll_tries)
-
-    print("---------- Batch mode -----------------")
     print(json.dumps(solution, indent=4))
 
 

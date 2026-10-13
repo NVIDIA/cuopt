@@ -15,6 +15,7 @@
 #include <barrier/device_sparse_matrix.cuh>
 #include <barrier/iterative_refinement.hpp>
 #include <barrier/pinned_host_allocator.hpp>
+#include <barrier/saved_iterate.hpp>
 #include <barrier/second_order_cone_kernels.cuh>
 #include <barrier/sparse_cholesky.cuh>
 #include <barrier/sparse_matrix_kernels.cuh>
@@ -504,6 +505,7 @@ class iteration_data_t {
       relative_primal_residual_save(inf),
       relative_dual_residual_save(inf),
       relative_complementarity_residual_save(inf),
+      relative_objective_gap_save(inf),
       primal_residual_norm_save(inf),
       dual_residual_norm_save(inf),
       complementarity_residual_norm_save(inf),
@@ -1007,6 +1009,7 @@ class iteration_data_t {
     relative_primal_residual_save          = inf;
     relative_dual_residual_save            = inf;
     relative_complementarity_residual_save = inf;
+    relative_objective_gap_save            = inf;
     primal_residual_norm_save              = inf;
     dual_residual_norm_save                = inf;
     complementarity_residual_norm_save     = inf;
@@ -2303,6 +2306,7 @@ class iteration_data_t {
   f_t relative_primal_residual_save;
   f_t relative_dual_residual_save;
   f_t relative_complementarity_residual_save;
+  f_t relative_objective_gap_save;
   f_t primal_residual_norm_save;
   f_t dual_residual_norm_save;
   f_t complementarity_residual_norm_save;
@@ -4436,11 +4440,12 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
     dual_objective_save -= quad_objective;
   }
 
-  f_t objective_gap_save         = std::abs(primal_objective_save - dual_objective_save);
-  f_t user_primal_objective_save = compute_user_objective(lp, primal_objective_save);
-  f_t relative_objective_gap_save =
-    objective_gap_save /
-    (1.0 + std::min(std::abs(user_primal_objective_save), std::abs(primal_objective_save)));
+  f_t objective_gap_save, relative_objective_gap_save;
+  compute_objective_gap(lp,
+                        primal_objective_save,
+                        dual_objective_save,
+                        objective_gap_save,
+                        relative_objective_gap_save);
   bool small_gap_save =
     (!data.has_cones() && data.Q.n == 0) ||
     relative_objective_gap_save < settings.barrier_relaxed_relative_objective_gap_tol;
@@ -4485,7 +4490,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
       relative_complementarity_residual,
       relative_objective_gap);
   }
-  settings.log.printf("Search direction computation failed\n");
+  settings.log.printf("Current and saved solutions do not satisfy relaxed barrier tolerances\n");
   return lp_status_t::NUMERICAL_ISSUES;
 }
 
@@ -4667,6 +4672,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
       }
 
       if (status < 0) {
+        settings.log.printf("Search direction computation failed (affine step)\n");
         return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
@@ -4709,6 +4715,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
         return lp_status_t::CONCURRENT_LIMIT;
       }
       if (status < 0) {
+        settings.log.printf("Search direction computation failed (corrector step)\n");
         return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
@@ -4763,38 +4770,49 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
         data.use_high_accuracy_ir = true;
       }
 
-      if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
-          relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
-          relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol) {
-        if (relative_primal_residual < data.relative_primal_residual_save &&
-            relative_dual_residual < data.relative_dual_residual_save &&
-            relative_complementarity_residual < data.relative_complementarity_residual_save &&
-            primal_objective == primal_objective && dual_objective == dual_objective) {
-          settings.log.debug(
-            "Saving solution at iter %d: feasibility %.2e, optimality %.2e, complementarity "
-            "%.2e\n",
-            iter,
-            relative_primal_residual,
-            relative_dual_residual,
-            relative_complementarity_residual);
-          raft::copy(data.w.data(), data.d_w_.data(), data.d_w_.size(), stream_view_);
-          raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
-          raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
-          raft::copy(data.v.data(), data.d_v_.data(), data.d_v_.size(), stream_view_);
-          raft::copy(data.z.data(), data.d_z_.data(), data.d_z_.size(), stream_view_);
-          stream_view_.sync();
-          data.w_save                                 = data.w;
-          data.x_save                                 = data.x;
-          data.y_save                                 = data.y;
-          data.v_save                                 = data.v;
-          data.z_save                                 = data.z;
-          data.relative_primal_residual_save          = relative_primal_residual;
-          data.relative_dual_residual_save            = relative_dual_residual;
-          data.relative_complementarity_residual_save = relative_complementarity_residual;
-          data.primal_residual_norm_save              = primal_residual_norm;
-          data.dual_residual_norm_save                = dual_residual_norm;
-          data.complementarity_residual_norm_save     = complementarity_residual_norm;
-        }
+      const iterate_residuals_t<f_t> current_residuals{relative_primal_residual,
+                                                       relative_dual_residual,
+                                                       relative_complementarity_residual,
+                                                       relative_objective_gap};
+      const iterate_residuals_t<f_t> saved_residuals{data.relative_primal_residual_save,
+                                                     data.relative_dual_residual_save,
+                                                     data.relative_complementarity_residual_save,
+                                                     data.relative_objective_gap_save};
+      const iterate_residuals_t<f_t> relaxed_tolerances{
+        settings.barrier_relaxed_feasibility_tol,
+        settings.barrier_relaxed_optimality_tol,
+        settings.barrier_relaxed_complementarity_tol,
+        settings.barrier_relaxed_relative_objective_gap_tol};
+      if (should_save_iterate(current_residuals,
+                              saved_residuals,
+                              relaxed_tolerances,
+                              data.has_cones() || data.Q.n > 0) &&
+          std::isfinite(primal_objective) && std::isfinite(dual_objective)) {
+        settings.log.debug(
+          "Saving solution at iter %d: feasibility %.2e, optimality %.2e, complementarity "
+          "%.2e\n",
+          iter + 1,
+          relative_primal_residual,
+          relative_dual_residual,
+          relative_complementarity_residual);
+        raft::copy(data.w.data(), data.d_w_.data(), data.d_w_.size(), stream_view_);
+        raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
+        raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
+        raft::copy(data.v.data(), data.d_v_.data(), data.d_v_.size(), stream_view_);
+        raft::copy(data.z.data(), data.d_z_.data(), data.d_z_.size(), stream_view_);
+        stream_view_.sync();
+        data.w_save                                 = data.w;
+        data.x_save                                 = data.x;
+        data.y_save                                 = data.y;
+        data.v_save                                 = data.v;
+        data.z_save                                 = data.z;
+        data.relative_primal_residual_save          = relative_primal_residual;
+        data.relative_dual_residual_save            = relative_dual_residual;
+        data.relative_complementarity_residual_save = relative_complementarity_residual;
+        data.relative_objective_gap_save            = relative_objective_gap;
+        data.primal_residual_norm_save              = primal_residual_norm;
+        data.dual_residual_norm_save                = dual_residual_norm;
+        data.complementarity_residual_norm_save     = complementarity_residual_norm;
       }
 
       iter++;

@@ -275,7 +275,7 @@ Logging Callback in the Service
 
 In the cuOpt service API, the ``log_file`` value in ``solver_configs`` is ignored.
 
-If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Examples <generic-example-with-normal-and-batch-mode>` on the self-hosted page.
+If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Examples <generic-lp-example>` on the self-hosted page.
 
 
 Infeasibility Detection
@@ -301,17 +301,13 @@ The user may specify a time limit to the solver. By default the solver runs unti
 Batch Mode
 ----------
 
-Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout :ref:`self-hosted client <generic-example-with-normal-and-batch-mode>` example in thin client.
+Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU.
 
 .. warning:: Deprecated
 
-   LP batch mode (Python ``cuopt.linear_programming.BatchSolve``, server requests
-   with a list of LP problems, and multi-file ``cuopt_sh`` LP submissions) is
-   deprecated and will be removed in a future release. Prefer sequential
-   ``cuopt.linear_programming.Solve`` calls, or implement your own parallelism
-   (for example with ``concurrent.futures``). Existing batch APIs still run in
-   parallel today; callers may see a ``DeprecationWarning`` or a deprecation
-   message in server ``warnings``.
+   ``BatchSolve`` is deprecated and will be removed in a future release. Prefer sequential ``cuopt.linear_programming.Solve`` calls, or your own parallelism (for example with ``concurrent.futures``). While it remains, a local batch still runs in parallel and may raise ``DeprecationWarning``.
+
+The HTTP proxy does not support batch LP. A JSON list of LP problems on ``POST /cuopt/request`` returns 501, as does a multi-file ``cuopt_sh`` LP submission. Only the :doc:`legacy HTTP server <cuopt-server/legacy-http-server>` accepts those requests. The legacy server will be removed in 26.12.
 
 PDLP Precision Modes
 --------------------
