@@ -8,7 +8,7 @@
 - New Curtis-Reid scaling for PDLP
 - Support for reusing the barrier ordering and symbolic factorization when solving a sequence of problems with different linear objectives and right-hand sides
 - Add RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics to MIP
-- MIP solver now runs diving and recursive RINS heuristics during the cut passes 
+- MIP solver now runs diving and recursive RINS heuristics during the cut passes
 - New primal heuristic for MIPs with arc-flow formulations
 - New techniques for exploiting degeneracy in MIP
 - New primal simplex method for LPs
@@ -55,15 +55,15 @@
 - Barrier termination check now has reduced GPU/host synchronization overhead
 - Barrier now has parameters to control adaptive regularization
 - Barrier now has parameters for tuning primal and dual regularization
-- Barrier now has a parameter to control bounding free variables 
+- Barrier now has a parameter to control bounding free variables
 - Barrier now has improved performance when computing the initial point
 - QCQP to SOCP conversion performance is improved and memory required is reduced
-- QCQP/SOCP presolve now eliminates free variables with zero cost 
+- QCQP/SOCP presolve now eliminates free variables with zero cost
 - MIP root relaxation now honors the LP method selected
 - MIP performance improvement in duplicate cut detection
 - MIP reduced cost strengthening now stores bound implications based on incumbent objective value
 - MIP now includes a new Mod-2 cut separator for zero-half cuts
-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explanations 
+- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explanations
 - Block Bounded Value Elimination presolving pass for binary problems (#1683)
 - Add a binary 2opt move fed from the probing cache into CPUFJ (#1738)
 - Add a dual aggregation presolver for binary variables with a single lock (#901)
@@ -90,7 +90,7 @@
 - Fix nondeterminism in barrier when `--cudss-deterministic=1`
 - Fix an issue with QPs where duality gap was not included in the termination criteria
 - Fix QCQP dual solution overrun and constraint count reporting
-- Fix an issue in QCQP/SOCP where the dual residual of the final solution was incorrect 
+- Fix an issue in QCQP/SOCP where the dual residual of the final solution was incorrect
 - Fix an issue in dual simplex logs where bound flips were not accounted for in objective
 - Fix an issue in MIP where flow cover cut generation was accidentally O(n^2)
 - Fix issue in dual simplex inside MIP where cut off incorrectly used the perturbed objective
