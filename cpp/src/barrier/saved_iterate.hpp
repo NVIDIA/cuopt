@@ -25,28 +25,26 @@ bool should_save_iterate(const iterate_residuals_t<f_t>& current,
                          const iterate_residuals_t<f_t>& tolerance,
                          bool check_objective_gap)
 {
-  const f_t current_residuals[]{
-    current.primal, current.dual, current.complementarity, current.objective_gap};
-  const f_t saved_residuals[]{saved.primal, saved.dual, saved.complementarity, saved.objective_gap};
-  const f_t tolerances[]{
-    tolerance.primal, tolerance.dual, tolerance.complementarity, tolerance.objective_gap};
-
-  const int num_metrics = check_objective_gap ? 4 : 3;
+  const auto satisfies_tolerance = [](f_t residual, f_t tolerance) {
+    return std::isfinite(residual) && std::isfinite(tolerance) && tolerance > 0 &&
+           residual < tolerance;
+  };
 
   // Only consider candidates that satisfy every enabled relaxed tolerance.
-  for (int i = 0; i < num_metrics; ++i) {
-    if (!std::isfinite(current_residuals[i]) || !std::isfinite(tolerances[i]) ||
-        !(tolerances[i] > 0) || !(current_residuals[i] < tolerances[i])) {
-      return false;
-    }
+  if (!satisfies_tolerance(current.primal, tolerance.primal) ||
+      !satisfies_tolerance(current.dual, tolerance.dual) ||
+      !satisfies_tolerance(current.complementarity, tolerance.complementarity) ||
+      (check_objective_gap &&
+       !satisfies_tolerance(current.objective_gap, tolerance.objective_gap))) {
+    return false;
   }
 
-  // Rank eligible candidates by their worst tolerance-normalized residual.
-  f_t current_merit = 0;
-  f_t saved_merit   = 0;
-  for (int i = 0; i < num_metrics; ++i) {
-    current_merit = std::max(current_merit, current_residuals[i] / tolerances[i]);
-    saved_merit   = std::max(saved_merit, saved_residuals[i] / tolerances[i]);
+  // Rank eligible candidates by their worst residual.
+  f_t current_merit = std::max({current.primal, current.dual, current.complementarity});
+  f_t saved_merit   = std::max({saved.primal, saved.dual, saved.complementarity});
+  if (check_objective_gap) {
+    current_merit = std::max(current_merit, current.objective_gap);
+    saved_merit   = std::max(saved_merit, saved.objective_gap);
   }
 
   return current_merit < saved_merit;
