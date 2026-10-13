@@ -466,6 +466,12 @@ if buildAll || hasArg cuopt; then
         CUOPT_PYTHON_ARGS_FOR_INSTALL+=(--config-settings "skbuild.wheel.py-api=cp${RAPIDS_PY_VERSION//./}")
     fi
 
+    # Without --install, libcuopt's config only exists in its build tree.
+    if [ -z "${INSTALL_TARGET}" ] && [ -f "${LIBCUOPT_BUILD_DIR}/cuopt-config.cmake" ] \
+        && ! contains_string "Dcuopt_DIR" "${EXTRA_CMAKE_ARGS[@]}"; then
+        EXTRA_CMAKE_ARGS+=("-Dcuopt_DIR=${LIBCUOPT_BUILD_DIR}")
+    fi
+
     SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};$(IFS=';'; echo "${EXTRA_CMAKE_ARGS[*]}")" \
         python "${CUOPT_PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
