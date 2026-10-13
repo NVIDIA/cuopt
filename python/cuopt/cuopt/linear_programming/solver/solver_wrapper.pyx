@@ -93,7 +93,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp":
     {
       void *p = PyCapsule_GetPointer(cap, "cuopt.barrier_cache");
       if (p != nullptr) {
-        delete reinterpret_cast<cuopt::mathematical_optimization::barrier_cache_t *>(p);
+        delete reinterpret_cast<cuopt::mathematical_optimization::barrier_cache_t<int, double> *>(p);
       }
     }
     """
@@ -158,19 +158,21 @@ cdef object _vector_to_numpy(const vector[double]& vec):
 
 
 def _vars_dict(variable_names, primal_solution):
+    # Returns a function that builds the dict: Solution.vars builds it on
+    # first access.
     if len(primal_solution) == 0:
         # No primal vector (infeasible/unbounded/etc.): match prior
         # behavior (implemented as dict(zip(names, primal)) before
         # refactor for gRPC, which yielded {}).
         return {}
     if variable_names is None or len(variable_names) == 0:
-        return {f"x{i}": v for i, v in enumerate(primal_solution)}
+        return lambda: {f"x{i}": v for i, v in enumerate(primal_solution)}
     if len(variable_names) != len(primal_solution):
         raise ValueError(
             f"variable_names length ({len(variable_names)}) does not match "
             f"solution size ({len(primal_solution)})"
         )
-    return dict(zip(variable_names, primal_solution))
+    return lambda: dict(zip(variable_names, primal_solution))
 
 
 def type_cast(cudf_obj, np_type, name):
@@ -551,8 +553,8 @@ def prepare_solver_settings(SolverSettings settings, data_model=None, mip=False)
 def Solve(py_data_model_obj, SolverSettings settings, mip=False):
 
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
-    cdef barrier_cache_t* cache_in = NULL
-    cdef barrier_cache_t* cache_out = NULL
+    cdef barrier_cache_t[int, double]* cache_in = NULL
+    cdef barrier_cache_t[int, double]* cache_out = NULL
     cdef solver_ret_t* sol_ret
 
     if (
@@ -564,7 +566,7 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
             b"cuopt.barrier_cache",
         ):
             raise ValueError("Invalid barrier cache stored on DataModel.")
-        cache_in = <barrier_cache_t*>PyCapsule_GetPointer(
+        cache_in = <barrier_cache_t[int, double]*>PyCapsule_GetPointer(
             data_model_obj.barrier_cache_capsule,
             b"cuopt.barrier_cache",
         )

@@ -14,6 +14,7 @@
 #include <mip_heuristics/solver.cuh>
 #include <utilities/timer.hpp>
 
+#include <functional>
 #include <mutex>
 #include <random>
 #include <string>
@@ -74,6 +75,13 @@ class population_t {
   bool is_better_than_best_feasible(solution_t<i_t, f_t>& sol);
   void run_all_recombiners(solution_t<i_t, f_t>& sol);
 
+  using feasible_solution_callback_t = std::function<void(const std::vector<f_t>&, f_t, f_t)>;
+  // One consumer receives the current best feasible solution, then every best-slot update.
+  // Arguments are assignment, solver objective, and user objective.
+  // Called under population locks: keep it short and do not call back into the population.
+  void set_feasible_solution_callback(feasible_solution_callback_t callback);
+  // Waits for any in-flight callback before releasing its captured state.
+  void clear_feasible_solution_callback();
   void allocate_solutions();
 
   void clear()
@@ -105,7 +113,8 @@ class population_t {
   std::pair<i_t, bool> add_solution(solution_t<i_t, f_t>&& sol);
   void add_external_solution(const std::vector<f_t>& solution,
                              f_t objective,
-                             solution_origin_t origin);
+                             solution_origin_t origin,
+                             bool from_lns = false);
   static constexpr size_t max_external_solutions = 50;
   std::vector<solution_t<i_t, f_t>> get_external_solutions();
   void add_external_solutions_to_population();
@@ -211,6 +220,10 @@ class population_t {
   f_t best_feasible_objective = std::numeric_limits<f_t>::max();
   assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
+
+  void notify_feasible_solution(solution_t<i_t, f_t>& sol);
+  std::mutex feasible_solution_callback_mutex;
+  feasible_solution_callback_t feasible_solution_callback;
 };
 
 }  // namespace cuopt::mathematical_optimization::mip

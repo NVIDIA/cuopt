@@ -52,14 +52,15 @@ class third_party_presolve_t;
 
 constexpr double OBJECTIVE_EPSILON = 1e-7;
 constexpr double MACHINE_EPSILON   = 1e-7;
-constexpr bool USE_REL_TOLERANCE   = true;
 
 template <typename i_t, typename f_t>
 class problem_t {
  public:
+  // LP relaxations can disable MIP workspace without changing integer-variable metadata.
   problem_t(const optimization_problem_t<i_t, f_t>& problem,
             const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_ = {},
-            bool deterministic                                                       = false);
+            bool deterministic                                                       = false,
+            bool allocate_mip_workspace                                              = true);
   problem_t() = delete;
   // copy constructor
   problem_t(const problem_t<i_t, f_t>& problem);

@@ -71,20 +71,34 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
     dual_ray_linear_objective_{climber_strategies.size(), stream_view_},
     reduced_cost_dual_objective_{zero_v<f_t>, stream_view_},
     reduced_cost_inf_norm_{zero_v<f_t>, stream_view_},
-    // If infeasibility_detection is off, no need to allocate all those
-    homogenous_primal_residual_{(!infeasibility_detection) ? 0 : static_cast<size_t>(dual_size_h_),
-                                stream_view_},
-    homogenous_dual_residual_{(!infeasibility_detection) ? 0 : static_cast<size_t>(primal_size_h_),
-                              stream_view_},
-    reduced_cost_{(!infeasibility_detection) ? 0 : static_cast<size_t>(primal_size_h_),
-                  stream_view_},
-    bound_value_{
-      (!infeasibility_detection) ? 0 : static_cast<size_t>(std::max(primal_size_h_, dual_size_h_)),
+    // cuPDLPx uses the slack-based path below, not the legacy homogeneous-residual workspace.
+    homogenous_primal_residual_{
+      infeasibility_detection && !is_cupdlpx_restart<i_t, f_t>(hyper_params)
+        ? static_cast<size_t>(dual_size_h_)
+        : 0,
       stream_view_},
+    homogenous_dual_residual_{infeasibility_detection && !is_cupdlpx_restart<i_t, f_t>(hyper_params)
+                                ? static_cast<size_t>(primal_size_h_)
+                                : 0,
+                              stream_view_},
+    reduced_cost_{infeasibility_detection && !is_cupdlpx_restart<i_t, f_t>(hyper_params)
+                    ? static_cast<size_t>(primal_size_h_)
+                    : 0,
+                  stream_view_},
+    bound_value_{infeasibility_detection && !is_cupdlpx_restart<i_t, f_t>(hyper_params)
+                   ? static_cast<size_t>(std::max(primal_size_h_, dual_size_h_))
+                   : 0,
+                 stream_view_},
     homogenous_dual_lower_bounds_{
-      (!infeasibility_detection) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
+      infeasibility_detection && !is_cupdlpx_restart<i_t, f_t>(hyper_params)
+        ? static_cast<size_t>(dual_size_h_)
+        : 0,
+      stream_view_},
     homogenous_dual_upper_bounds_{
-      (!infeasibility_detection) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
+      infeasibility_detection && !is_cupdlpx_restart<i_t, f_t>(hyper_params)
+        ? static_cast<size_t>(dual_size_h_)
+        : 0,
+      stream_view_},
     primal_slack_{(is_cupdlpx_restart<i_t, f_t>(hyper_params) && infeasibility_detection)
                     ? static_cast<size_t>(dual_size_h_ * climber_strategies.size())
                     : 0,
@@ -103,7 +117,7 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
     climber_strategies_(climber_strategies),
     hyper_params_(hyper_params)
 {
-  if (infeasibility_detection) {
+  if (infeasibility_detection && !is_cupdlpx_restart<i_t, f_t>(hyper_params)) {
     RAFT_CUDA_TRY(cudaMemsetAsync(homogenous_primal_residual_.data(),
                                   0.0,
                                   sizeof(f_t) * homogenous_primal_residual_.size(),
@@ -115,16 +129,19 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
 
     // variable bounds in the homogenous primal are 0.0 if the original bound was finite, and
     // otherwise it is -inf for lower bounds and inf for upper bounds
-    raft::linalg::unaryOp(homogenous_dual_lower_bounds_.data(),
-                          problem_ptr->constraint_lower_bounds.data(),
-                          dual_size_h_,
-                          zero_if_is_finite<f_t>(),
-                          stream_view_.get());
-    raft::linalg::unaryOp(homogenous_dual_upper_bounds_.data(),
-                          problem_ptr->constraint_upper_bounds.data(),
-                          dual_size_h_,
-                          zero_if_is_finite<f_t>(),
-                          stream_view_.get());
+    // The unused average termination strategy can have a zero-sized workspace.
+    if (dual_size_h_ > 0) {
+      raft::linalg::unaryOp(homogenous_dual_lower_bounds_.data(),
+                            problem_ptr->constraint_lower_bounds.data(),
+                            dual_size_h_,
+                            zero_if_is_finite<f_t>(),
+                            stream_view_.get());
+      raft::linalg::unaryOp(homogenous_dual_upper_bounds_.data(),
+                            problem_ptr->constraint_upper_bounds.data(),
+                            dual_size_h_,
+                            zero_if_is_finite<f_t>(),
+                            stream_view_.get());
+    }
 
     void* d_temp_storage        = NULL;
     size_t temp_storage_bytes_1 = 0;
@@ -145,7 +162,9 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
 
     size_of_buffer_       = std::max({temp_storage_bytes_1, temp_storage_bytes_2});
     this->rmm_tmp_buffer_ = rmm::device_buffer{size_of_buffer_, stream_view_};
+  }
 
+  if (infeasibility_detection) {
     RAFT_CUDA_TRY(cudaMemsetAsync(dual_ray_linear_objective_.data(),
                                   0,
                                   sizeof(f_t) * dual_ray_linear_objective_.size(),

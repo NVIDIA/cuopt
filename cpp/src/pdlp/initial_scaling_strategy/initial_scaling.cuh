@@ -48,7 +48,7 @@ class pdlp_initial_scaling_strategy_t {
 
   // skip_ruiz_pock_compute: when true, the ctor performs identity-initialization
   // of the scaling vectors but does NOT run local Ruiz / Pock-Chambolle at construction time. Used
-  // by distributed PDLP shards, where cross-shard-coherent scaling is applied
+  // by multi-GPU PDLP shards, where cross-shard-coherent scaling is applied
   // later by multi_gpu_engine_t::distributed_scaling.
   // bound objective rescaling happens only when scale_problem() is called so
   // skip_ruiz_pock_compute, a ctor parameter, has no impact on this part of the scaling. bound
@@ -83,10 +83,10 @@ class pdlp_initial_scaling_strategy_t {
                          rmm::device_uvector<f_t>& dual_slack) const;
   void unscale_solutions(mip::solution_t<i_t, f_t>& solution) const;
   const rmm::device_uvector<f_t>& get_constraint_matrix_scaling_vector() const;
-  // Mutable access needed by distributed PDLP to broadcast owned constraint
+  // Mutable access needed by multi-GPU PDLP to broadcast owned constraint
   // (row) scaling into the halo copies between scaling iterations.
   rmm::device_uvector<f_t>& get_cummulative_constraint_matrix_scaling();
-  // Mutable access needed by distributed PDLP to broadcast owned variable
+  // Mutable access needed by multi-GPU PDLP to broadcast owned variable
   // (column) scaling into the halo copies between scaling iterations.
   rmm::device_uvector<f_t>& get_cummulative_variable_scaling();
   const rmm::device_uvector<f_t>& get_variable_scaling_vector() const;
@@ -107,14 +107,17 @@ class pdlp_initial_scaling_strategy_t {
   // Apply the already-populated bound_rescaling_ / objective_rescaling_
   // device vectors to op_problem_scaled_ (constraint bounds, variable bounds,
   // objective). Extracted from scale_problem() into a shared helper so
-  // distributed PDLP can apply its globally-reduced scalars via the same
+  // multi-GPU PDLP can apply its globally-reduced scalars via the same
   // three multiplies.
   void apply_bound_objective_rescaling_to_problem();
 
-  // Public for distributed PDLP
+  // Public for multi-GPU PDLP
   void compute_scaling_vectors(i_t number_of_ruiz_iterations, f_t alpha);
 
-  // ----- Distributed-PDLP hooks -----
+  // Release capacity, not just logical size, after the last scaling pass.
+  void release_iteration_scratch();
+
+  // ----- Multi-GPU PDLP hooks -----
 
   // Apply the cumulative row/column scalings that Ruiz/Pock-Chambolle
   // accumulated to A, A_T, c, variable bounds and constraint bounds, mark
@@ -124,14 +127,14 @@ class pdlp_initial_scaling_strategy_t {
   void apply_cummulative_scaling_to_problem();
 
   // One Ruiz iteration (compute iteration vectors + fold into
-  // cumulative). Exposed for distributed PDLP so the outer loop with halo
-  // broadcasts lives at the distributed level
+  // cumulative). Exposed for multi-GPU PDLP so the outer loop with halo
+  // broadcasts lives at the multi-GPU level
   void ruiz_iter_local();
-  // Shard-local end-to-end Pock-Chambolle pass. Exposed for distributed PDLP:
+  // Shard-local end-to-end Pock-Chambolle pass. Exposed for multi-GPU PDLP:
   void pock_chambolle_scaling(f_t alpha);
   // Curtis-Reid prescaling. Single-GPU orchestrator: curtis_reid_init, then alternate
   // curtis_reid_row_iteration / curtis_reid_col_iteration, then curtis_reid_folding.
-  // Distributed PDLP calls the pieces itself so a halo exchange can sit between
+  // Multi-GPU PDLP calls the pieces itself so a halo exchange can sit between
   // the row and column passes. See initial_scaling.cu for the algorithm and references.
   void curtis_reid_scaling(i_t number_of_curtis_reid_iterations);
   // Zero both log-scale vectors, halo included. The first row pass reads column log-scales.
@@ -146,8 +149,8 @@ class pdlp_initial_scaling_strategy_t {
   // cumulative *= exp(clamp(log_scale)).
   void curtis_reid_folding();
   // Iteration_* scratch buffers used by ruiz_iter_local /
-  // pock_chambolle_scaling. Exposed mutably so distributed PDLP can grow
-  // them back to full size after the ctor's release (see distributed_scaling).
+  // pock_chambolle_scaling. Exposed mutably so multi-GPU PDLP can grow
+  // them while the distributed scaling passes are in progress.
   rmm::device_uvector<f_t>& get_iteration_variable_scaling();
   rmm::device_uvector<f_t>& get_iteration_constraint_matrix_scaling();
 

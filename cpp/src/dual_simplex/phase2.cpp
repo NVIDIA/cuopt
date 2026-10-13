@@ -1875,7 +1875,21 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
       work_estimate += 2 * scaled_delta_xB_sparse.i.size() + scaled_delta_xB.size();
       scale = -scaled_delta_xB[basic_leaving_index];
     } else if (delta_z[entering_index] != 0.0) {
-      scale = -delta_z[entering_index];
+      // Let p be the leaving variable's position in the basis and q the entering variable.
+      // We have that
+      // B*w = -A(:, q)
+      // B'*delta_y = -direction * e_p
+      // delta z_N = -N^T delta_y
+      //
+      // Therefore, delta_z[q] = -A(:, q)' * delta_y
+      // and delta_y = -direction * B^{-T} * e_p
+      // so delta_z[q] = -delta_y'*A(:,q) = direction * e_p'*B^{-1} * A(:, q)
+      // Using w = -B^{-1} A(:, q)  we have
+      // delta_z[q] = -direction * e_p ' * w = -direction * w[p]
+      // So scale = w[p] = - delta_z[q] / direction
+      // Since direction = {+1 , -1}, we have that 1/direction = {+1 , -1} = direction
+      // So scale = w[p] = -direction * delta_z[q]
+      scale = -direction * delta_z[entering_index];
       // The sparse solve did not produce a coefficient for basic_leaving_index.
       // Add it so update_primal_variables / update_primal_infeasibilities process
       // the leaving variable (they iterate over scaled_delta_xB_sparse.i).
@@ -2526,8 +2540,8 @@ f_t compute_lower_bound_on_primal_objective(const lp_problem_t<i_t, f_t>& lp,
   const i_t num_cols = lp.num_cols;
   if (amount_of_perturbation(lp, objective) != 0.0) {
     std::vector<f_t> original_basic_cost(num_rows);
-    for (i_t basic_index = 0; basic_index < num_rows; ++basic_index) {
-      original_basic_cost[basic_index] = lp.objective[basic_list[basic_index]];
+    for (i_t i = 0; i < num_rows; ++i) {
+      original_basic_cost[i] = lp.objective[basic_list[i]];
     }
     work_estimate += 5 * num_rows;
     ft.b_transpose_solve(original_basic_cost, trial_y);
@@ -2536,15 +2550,15 @@ f_t compute_lower_bound_on_primal_objective(const lp_problem_t<i_t, f_t>& lp,
   reduced_cost = lp.objective;
   matrix_transpose_vector_multiply(lp.A, -1.0, trial_y, 1.0, reduced_cost);
   f_t lower_bound = dot<i_t, f_t>(lp.rhs, trial_y);
-  for (i_t column = 0; column < num_cols; ++column) {
-    const bool missing_bound = (reduced_cost[column] > 0.0 && lp.lower[column] == -inf) ||
-                               (reduced_cost[column] < 0.0 && lp.upper[column] == inf);
+  for (i_t j = 0; j < num_cols; ++j) {
+    const bool missing_bound = (reduced_cost[j] > 0.0 && lp.lower[j] == -inf) ||
+                               (reduced_cost[j] < 0.0 && lp.upper[j] == inf);
     // Tolerate roundoff at infinite bounds only; this is an approximate certificate.
-    if (missing_bound && std::abs(reduced_cost[column]) <= settings.zero_tol) { continue; }
-    if (reduced_cost[column] > 0.0) {
-      lower_bound += reduced_cost[column] * lp.lower[column];
-    } else if (reduced_cost[column] < 0.0) {
-      lower_bound += reduced_cost[column] * lp.upper[column];
+    if (missing_bound && std::abs(reduced_cost[j]) <= settings.zero_tol) { continue; }
+    if (reduced_cost[j] > 0.0) {
+      lower_bound += reduced_cost[j] * lp.lower[j];
+    } else if (reduced_cost[j] < 0.0) {
+      lower_bound += reduced_cost[j] * lp.upper[j];
     }
   }
   work_estimate += 3 * lp.A.col_start[num_cols] + 12 * num_cols + 2 * num_rows;

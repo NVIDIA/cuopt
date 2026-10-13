@@ -897,7 +897,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
       should_restart.begin(), should_restart.end(), [](int restarted) { return restarted == 1; }),
     "If any, all should be true");
 
-  // Computing the distributed deltas
+  // Computing the multi-GPU deltas
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {
     engine->for_each_shard([&](auto& shard) {
       auto& sub = *shard.sub_pdlp;
@@ -980,7 +980,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
 
   // TODO later batch mode: remove if you have per climber restart
 
-  // Small copy helper to use in both single-GPU and distributed paths.
+  // Small copy helper to use in both single-GPU and multi-GPU paths.
   auto commit_potential_next_as_last_restart = [](pdlp_restart_strategy_t<i_t, f_t>& rest,
                                                   pdhg_solver_t<i_t, f_t>& solver,
                                                   cuda::stream_ref stream) {

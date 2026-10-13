@@ -7,6 +7,8 @@
 
 #include "early_cpufj.cuh"
 
+#include "cpu/search/api.hpp"
+
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/splitmix64.hpp>
 
@@ -37,7 +39,9 @@ early_cpufj_t<i_t, f_t>::~early_cpufj_t()
 }
 
 template <typename i_t, typename f_t>
-void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
+void early_cpufj_t<i_t, f_t>::start(int n_lanes,
+                                    bool low_latency,
+                                    const std::vector<f_t>& incumbent_assignment)
 {
   const bool threaded = !omp_in_parallel();
   // 1: presolve, 1: early GPU FJ, 1: early CPU FJ
@@ -51,7 +55,14 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
 
   // Tasks are not preempted, so a lane posted beyond the team size would sit in the queue for the
   // whole of presolve without running an iteration.
-  n_lanes = threaded ? 1 : std::clamp(n_lanes, 1, omp_get_num_threads());
+  n_lanes =
+    threaded
+      ? 1
+      : std::clamp(
+          n_lanes, 1, std::max(1, omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS));
+  cuopt_assert(incumbent_assignment.empty() ||
+                 incumbent_assignment.size() == (size_t)this->problem_ptr_->get_n_variables(),
+               "incumbent assignment size mismatch");
   cuopt::splitmix64_t seed_rng(seed_);
   const int64_t base_seed = seed_rng.next_i64();
   climbers_.resize(n_lanes);
@@ -73,8 +84,14 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
     } else {
       climbers_[k] = init_fj_cpu_clone(*climbers_[0], preemption_flag_, settings);
     }
-    climbers_[k]->low_latency = low_latency;
-    apply_lane_diversification<i_t, f_t>(*climbers_[k], k, base_seed);
+    climbers_[k]->low_latency   = low_latency;
+    const bool incumbent_seeded = !incumbent_assignment.empty() && (n_lanes == 1 || k % 2 == 1);
+    if (incumbent_seeded) {
+      climbers_[k]->h_assignment = incumbent_assignment;
+      recompute_lhs(*climbers_[k]);
+      climbers_[k]->h_best_assignment = climbers_[k]->h_assignment;
+    }
+    apply_lane_diversification<i_t, f_t>(*climbers_[k], k, base_seed, !incumbent_seeded);
     climbers_[k]->log_prefix           = "[Early CPUFJ " + std::to_string(k) + "] ";
     climbers_[k]->improvement_callback = report_incumbent;
   }
@@ -83,6 +100,10 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
   for (int k = 0; k < n_lanes; ++k)
     climbers_[k]->shared_incumbent = shared;
 
+  if (!threaded)
+    CUOPT_LOG_INFO("Early CPUFJ budget: %d feasibility workers within %d OpenMP threads",
+                   n_lanes,
+                   omp_get_num_threads());
   CUOPT_LOG_DEBUG("Launching %d early CPUFJ %s", n_lanes, threaded ? "thread" : "tasks");
   if (threaded) {
     auto* climber = climbers_[0].get();

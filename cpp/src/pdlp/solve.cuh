@@ -34,7 +34,7 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
   bool is_batch_mode = false);
 
 /**
- * @brief Distributed-PDLP entry point that consumes the host MPS data model
+ * @brief Multi-GPU PDLP entry point that consumes the host MPS data model
  *        directly, partitioning it across GPUs without ever materializing the
  *        full problem on a single (master) GPU.
  *
@@ -56,7 +56,7 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
  *                    any master-side aggregator allocations). Must be non-null.
  * @param mps_data_model  Host-resident MPS data (CPU vectors only).
  * @param settings    User-supplied PDLP solver settings; `num_gpus` is the
- *                    distributed shard count, -1 selects all visible GPUs.
+ *                    multi-GPU shard count, -1 selects all visible GPUs.
  * @param use_pdlp_solver_mode  When true, applies `set_pdlp_solver_mode()` to a
  *                    local copy of settings before solving and enforces
  *                    `settings.pdlp_solver_mode == Stable3`

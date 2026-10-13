@@ -533,6 +533,7 @@ incumbents_result_t grpc_client_t::get_incumbents(const std::string& job_id,
     incumbent_t entry;
     entry.index     = inc.index();
     entry.objective = inc.objective();
+    entry.bound     = inc.bound();
     entry.assignment.reserve(inc.assignment_size());
     for (int i = 0; i < inc.assignment_size(); ++i) {
       entry.assignment.push_back(inc.assignment(i));

@@ -337,6 +337,7 @@ struct fj_lane_policy_t {
   bool use_fundamental_cycle_pivot{false};
   f_t network_temperature{0};
   bool use_pmedian_start{false};
+  bool use_sat_search{false};
   bool use_bound_prop{false};
   bool low_latency{false};
   bool use_weight_donation{false};
@@ -404,8 +405,11 @@ struct fj_runtime_t {
   std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent;
   std::atomic<double> work_units_elapsed{0.0};
   double work_unit_bias{1.5};
+  double solve_started_at{0};
+  double search_started_at{0};
+  double solve_finished_at{0};
   producer_sync_t* producer_sync{nullptr};
-  std::atomic<bool> halted{false};
+  std::atomic<int> halted{0};
   instrumentation_aggregator_t memory_aggregator;
   std::atomic<bool>& preemption_flag;
 };
@@ -544,7 +548,10 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_clone(
 // Per-lane behaviour for a CPUFJ portfolio, shared by every caller that races several climbers so
 // the composition cannot drift between them.
 template <typename i_t, typename f_t>
-void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, int64_t base_seed);
+void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber,
+                                int lane,
+                                int64_t base_seed,
+                                bool enable_starts = true);
 
 // Completes a portfolio from a lane-zero climber whose GPU-backed problem has already been
 // adapted into host state by the CUDA bridge.

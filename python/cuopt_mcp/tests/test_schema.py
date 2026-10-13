@@ -78,6 +78,7 @@ def test_settings_schema_is_closed():
 def test_validate_accepts_known_settings():
     schema.validate_settings("pdlp_settings", {"time_limit": 5.0})
     schema.validate_settings("pdlp_settings", {"method": "Barrier"})
+    schema.validate_settings("pdlp_settings", {"method": "PrimalSimplex"})
 
 
 def test_validate_rejects_unknown_setting_with_suggestion():
@@ -111,6 +112,7 @@ def test_enum_parameters_carry_a_name_to_integer_mapping():
     assert mapping["PDLP"] == 1
     assert mapping["DualSimplex"] == 2
     assert mapping["Barrier"] == 3
+    assert mapping["PrimalSimplex"] == 4
 
 
 def test_non_enum_parameters_have_no_mapping():

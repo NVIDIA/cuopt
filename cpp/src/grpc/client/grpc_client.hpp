@@ -163,6 +163,7 @@ struct cancel_result_t {
 struct incumbent_t {
   int64_t index    = 0;
   double objective = 0.0;
+  double bound     = 0.0;
   std::vector<double> assignment;
 };
 

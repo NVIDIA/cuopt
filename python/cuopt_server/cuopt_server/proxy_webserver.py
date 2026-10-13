@@ -10,12 +10,12 @@ import os
 import threading
 import time
 import uuid
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from cuopt.utilities import (
@@ -40,6 +40,8 @@ from cuopt_server.utils.data_definition import (
     ManagedRequestResponse,
     RequestResponse,
     RequestStatusModel,
+    SolutionModelInFile,
+    SolutionModelWithId,
     SolutionResponse,
     ValidationErrorResponse,
     cuoptDataInternal,
@@ -50,6 +52,9 @@ from cuopt_server.utils.data_definition import (
     lpschema,
     managed_lp_example_data,
     managed_vrp_example_data,
+    vrp_example_data,
+    vrp_msgpack_example_data,
+    vrpschema,
 )
 from cuopt_server.utils.exceptions import (
     exception_handler,
@@ -109,11 +114,19 @@ from cuopt_server.utils.routing.initial_solution import add_initial_sol
 
 app = FastAPI(
     title="NVIDIA cuOpt HTTP proxy",
+    summary="OpenAPI Specification for cuOpt",
     version=__version__,
     docs_url="/cuopt/docs",
     redoc_url="/cuopt/redoc",
     openapi_url="/cuopt/openapi.json",
 )
+
+
+@app.get("/cuopt.yaml", include_in_schema=False)
+def openapi_legacy_path():
+    """Same JSON document as /cuopt/openapi.json, at the legacy spec path."""
+    return JSONResponse(app.openapi())
+
 
 _grpc_client = None
 _routing_client = None
@@ -719,10 +732,26 @@ def _convert_and_submit(
     return job_id
 
 
-@app.get("/", responses=HealthResponse)
-@app.get("/cuopt/health", responses=HealthResponse)
-@app.get("/v2/health/ready", responses=HealthResponse)
-@app.get("/v2/health/live", responses=HealthResponse)
+@app.get(
+    "/",
+    description="To ping if server is running",
+    responses=HealthResponse,
+)
+@app.get(
+    "/cuopt/health",
+    description="To ping if server is running",
+    responses=HealthResponse,
+)
+@app.get(
+    "/v2/health/ready",
+    description="To check readiness of the server",
+    responses=HealthResponse,
+)
+@app.get(
+    "/v2/health/live",
+    description="To check liveness of the server",
+    responses=HealthResponse,
+)
 def health():
     try:
         _require_grpc_healthy()
@@ -792,13 +821,24 @@ def _fetch_solver_logs(job_id, frombyte):
 
 @app.get(
     "/cuopt/log/{id}",
+    description="Note: This is for self-hosted. "
+    "Query solver log. The 'id' is the uuid returned when the request "
+    "was made. Requires solver_logs=true on that request.",
+    summary="Query solver logs by id self-hosted",
     response_model=LogResponseModel,
     responses=LogResponse,
 )
 def getsolverlogs(
     id: str,
-    accept: Optional[str] = Header(default=None),
-    frombyte: Optional[int] = Query(default=0),
+    accept: Optional[str] = Header(
+        default=None,
+        description="Supported result mime_types are 'application/json', "
+        "'application/vnd.msgpack', 'application/zlib', and "
+        "standard mime_type wildcards. ",
+    ),
+    frombyte: Optional[int] = Query(
+        default=0, description="Indicates the position to start log read"
+    ),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -832,10 +872,24 @@ def getsolverlogs(
         )
 
 
-@app.delete("/cuopt/log/{id}", responses=DeleteResponse)
+@app.delete(
+    "/cuopt/log/{id}",
+    description="Note: This is for self-hosted. "
+    "On the proxy server this is a no-op. The call returns 200 when "
+    "the log can be fetched and leaves the file in place. The gRPC "
+    "server removes that file when the job is deleted.",
+    summary="Delete solver logs by id (self-hosted)",
+    responses=DeleteResponse,
+)
 def deletesolverlogs(
     id: str,
-    accept: Optional[str] = Header(default=None),
+    accept: Optional[str] = Header(
+        default=None,
+        description="Supported result mime_types are 'application/json', "
+        "'application/vnd.msgpack', 'application/zlib', and "
+        "standard mime_type wildcards. "
+        "This applies to exception messages returned by this request.",
+    ),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -867,12 +921,29 @@ def deletesolverlogs(
 
 @app.get(
     "/cuopt/solution/{id}/incumbents",
+    description="Note: for use with self-hosted cuOpt instances. "
+    "Return incumbent solutions from the MIP solver produced for "
+    "this id since the last GET. Result will be a list of the form "
+    "[{'solution': [1.0, 1.0], 'cost': 2.0, 'bound': 1.5}] where each item "
+    "contains the fields 'solution' (a list of floats), "
+    "'cost' (a float), and 'bound' (a float or None when no finite bound is available yet). "  # noqa
+    "An empty list indicates that there are no current incumbent solutions "
+    "at this time. A sentinel value of [{'solution': [], 'cost': None, "
+    "'bound': None}] indicates that no future incumbent values will be produced. "  # noqa
+    "The 'id' is the reqId value returned from a POST to /cuopt/request",
+    summary="Get incumbent solutions for MIP (self-hosted)",
     response_model=List[IncumbentSolution],
     responses=IncumbentSolutionResponse,
 )
 def getincumbent(
     id: str,
-    accept: Optional[str] = Header(default=None),
+    accept: Optional[str] = Header(
+        default=None,
+        description="Supported result mime_types are 'application/json', "
+        "'application/vnd.msgpack', 'application/zlib', and "
+        "standard mime_type wildcards. "
+        "If a wildcard is used, or Accept is omitted, the result is JSON.",
+    ),
 ):
     try:
         # Legacy GET incumbents maps Accept */* to JSON.
@@ -898,7 +969,7 @@ def getincumbent(
                 {
                     "solution": e.get("assignment", []),
                     "cost": e.get("objective"),
-                    "bound": None,
+                    "bound": e.get("bound"),
                 }
                 for e in entries
             ]
@@ -919,15 +990,32 @@ def getincumbent(
     "/cuopt/solution",
     response_model=IdModel,
     responses=IdResponse,
+    include_in_schema=False,
 )
 async def postsolution():
     _not_implemented("POST /cuopt/solution (uploaded solutions)")
 
 
-@app.delete("/cuopt/solution/{id}", responses=DeleteResponse)
+@app.delete(
+    "/cuopt/solution/{id}",
+    description="Note: for use with self-hosted cuOpt instances.  "
+    "Delete a solution by id. The 'id' is the reqId value returned "
+    "from a POST to /cuopt/request.",
+    summary="Delete a solution by id (self-hosted)",
+    responses=DeleteResponse,
+)
 def deletesolution(
-    id: str = Path(...),
-    accept: Optional[str] = Header(default=None),
+    id: str = Path(
+        ...,
+        description="ID of the solution to delete. ",
+    ),
+    accept: Optional[str] = Header(
+        default=None,
+        description="Supported result mime_types are 'application/json', "
+        "'application/vnd.msgpack', 'application/zlib', and "
+        "standard mime_type wildcards. "
+        "This applies to exception messages returned by this request.",
+    ),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -954,15 +1042,37 @@ def deletesolution(
 
 @app.delete(
     "/cuopt/request/{id}",
+    description="Note: for use with self-hosted cuOpt instances. "
+    "Delete a request to be solved. "
+    "The 'id' is the reqId value returned from a POST to /cuopt/request.",
+    summary="Delete a request by id (self-hosted)",
     response_model=DeleteRequestModel,
     responses=ValidationErrorResponse,
 )
 def deleterequest(
-    id: str = Path(...),
-    accept: Optional[str] = Header(default=None),
-    running: Optional[bool] = Query(default=None),
-    queued: Optional[bool] = Query(default=None),
-    cached: Optional[bool] = Query(default=None),
+    id: str = Path(
+        ...,
+        description="ID of the request to delete. "
+        "The wildcard ID '*' is not supported and returns 501.",
+    ),
+    accept: Optional[str] = Header(
+        default=None,
+        description="Supported result mime_types are 'application/json', "
+        "'application/vnd.msgpack', 'application/zlib', and "
+        "standard mime_type wildcards. ",
+    ),
+    running: Optional[bool] = Query(
+        default=None,
+        description="Not supported. Returns 501.",
+    ),
+    queued: Optional[bool] = Query(
+        default=None,
+        description="Not supported. Returns 501.",
+    ),
+    cached: Optional[bool] = Query(
+        default=None,
+        description="Not supported. Returns 501.",
+    ),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -1019,6 +1129,13 @@ def _result_envelope(job_id, meta, kind, req_id="", cache_warmstart=False):
             notes.append(sol.get("status_message") or "")
         notes = [n for n in notes if n]
         solve_time = float(sol.get("solve_time") or 0)
+        # Legacy uses solver_response for status 0 and
+        # solver_infeasible_response otherwise.
+        response_key = (
+            "solver_response"
+            if inner.get("status") == 0
+            else "solver_infeasible_response"
+        )
     else:
         if cache_warmstart:
             _store_warmstart(job_id, _warmstart_dict_from_sol(sol))
@@ -1029,8 +1146,9 @@ def _result_envelope(job_id, meta, kind, req_id="", cache_warmstart=False):
             pass
         if inner.get("solution"):
             solve_time = inner["solution"].get("solver_time") or 0
+        response_key = "solver_response"
     envelope = make_response(
-        {"solver_response": inner},
+        {response_key: inner},
         warnings=warnings,
         notes=notes,
         reqId=req_id,
@@ -1061,13 +1179,42 @@ def getwarmstart(id: str):
         return encode(exception_handler(e), mime_msgpack)
 
 
+def _documented_solution(encoded):
+    # response_model is documentation. A dict return is validated against
+    # those strict models, and the proxy envelope has fields they reject.
+    # A Response is sent unchanged.
+    if isinstance(encoded, dict):
+        return JSONResponse(content=encoded)
+    return encoded
+
+
 @app.get(
     "/cuopt/solution/{id}",
+    description="Note: for use with cuOpt self-hosted instances. "
+    "Get a solution by id. The 'id' is the reqId value returned from "
+    "a POST to /cuopt/request. If the solution "
+    "is generated by a POST to /cuopt/request and the request has "
+    "not yet completed, the reqId value will be returned and "
+    "can be used to continue polling.",
+    summary="Get a solution by id (self-hosted)",
+    response_model=Union[
+        SolutionModelWithId,
+        SolutionModelInFile,
+        IdModel,
+    ],
     responses=SolutionResponse,
 )
 def getsolution(
     id: str,
-    accept: Optional[str] = Header(default=None),
+    accept: Optional[str] = Header(
+        default=None,
+        description="Supported result mime_types are 'application/json', "
+        "'application/vnd.msgpack', 'application/zlib', and "
+        "standard mime_type wildcards. "
+        "If a wildcard is used, the accept mime_type will be set "
+        "to the Accept value stored from the original request, or "
+        "application/vnd.msgpack when none was stored.",
+    ),
 ):
     try:
         fallback = mime_msgpack
@@ -1076,13 +1223,15 @@ def getsolution(
             fallback = meta.get("accept", mime_msgpack)
         accept = _resolve_accept(accept, fallback)
         if meta is not None and meta.get("validation_only"):
-            return encode(meta["validation_result"], accept, job_result=True)
+            return _documented_solution(
+                encode(meta["validation_result"], accept, job_result=True)
+            )
         status = get_grpc_client().status(id)
         kind = None if meta is None else meta.get("kind")
         if _is_status(status, "NOT_FOUND"):
             raise _job_not_found(id)
         if _is_status(status, "QUEUED", "PROCESSING"):
-            return encode({"reqId": id}, accept)
+            return _documented_solution(encode({"reqId": id}, accept))
         if _is_status(status, "FAILED", "CANCELLED"):
             raise HTTPException(
                 status_code=409,
@@ -1092,7 +1241,7 @@ def getsolution(
             id, meta, kind, req_id=id, cache_warmstart=True
         )
         if envelope is None:
-            return encode({"reqId": id}, accept)
+            return _documented_solution(encode({"reqId": id}, accept))
         resultdir, maxresult, mode = settings.get_result_dir()
         result_file = "" if meta is None else meta.get("result_file") or ""
         if result_file and resultdir:
@@ -1108,22 +1257,33 @@ def getsolution(
                 # SolutionModelInFile always serializes these lists.
                 file_msg.setdefault("warnings", list(warnings or []))
                 file_msg.setdefault("notes", list(notes or []))
-                return encode(file_msg, accept, job_result=True)
-        return encode(envelope, accept, job_result=True)
+                return _documented_solution(
+                    encode(file_msg, accept, job_result=True)
+                )
+        return _documented_solution(encode(envelope, accept, job_result=True))
     except HTTPException as e:
-        return encode(http_exception_handler(e), accept)
+        return _documented_solution(encode(http_exception_handler(e), accept))
     except Exception as e:
-        return encode(exception_handler(e), accept)
+        return _documented_solution(encode(exception_handler(e), accept))
 
 
 @app.get(
     "/cuopt/request/{id}",
+    description="Note: for use with self-hosted cuOpt instances. "
+    "Check the status of a request. ",
+    summary="Check the status of a request by id (self-hosted)",
     response_model=RequestStatusModel,
     responses=RequestResponse,
 )
 def getrequest(
     id: str,
-    accept: Optional[str] = Header(default=None),
+    accept: Optional[str] = Header(
+        default=None,
+        description="Supported result mime_types are 'application/json', "
+        "'application/vnd.msgpack', 'application/zlib', and "
+        "standard mime_type wildcards. "
+        "If a wildcard is used, the result is application/vnd.msgpack.",
+    ),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -1350,21 +1510,29 @@ async def cuopt(
 
 @app.post(
     "/cuopt/request",
+    description=(
+        "Note: This endpoint is for use with self-hosted cuOpt instances. "
+        "Takes VRP/LP/MILP data and options at once, submits any type of cuOpt problem and returns the request id."  # noqa
+    ),
     response_model=IdModel,
     responses=IdResponse,
-    summary="Solve an LP/MILP/VRP problem via gRPC (self-hosted proxy)",
+    summary="Solve a cuOpt problem (self-hosted)",
     openapi_extra={
         "requestBody": {
             "content": {
                 "application/json": {
-                    "schema": lpschema,
+                    "schema": {"oneOf": [vrpschema, lpschema]},
                     "examples": {
+                        "VRP request": {"value": vrp_example_data},
                         "LP request": {"value": lp_example_data},
                     },
                 },
                 "application/vnd.msgpack": {
                     "schema": {"type": "string", "format": "byte"},
                     "examples": {
+                        "VRP request compressed with msgpack": {
+                            "value": vrp_msgpack_example_data
+                        },
                         "LP request compressed with msgpack": {
                             "value": lp_msgpack_example_data
                         },
@@ -1385,19 +1553,71 @@ async def cuopt(
 )
 async def postrequest(
     request: Request,
-    cache: Optional[bool] = Query(default=False),
-    reqId: Optional[str] = Query(default=None),
-    initialId: Optional[List[str]] = Query(default=None),
-    warmstartId: Optional[str] = Query(default=None),
-    validation_only: Optional[bool] = Query(default=False),
-    incumbent_solutions: Optional[bool] = Query(default=False),
-    incumbent_set_solutions: Optional[bool] = Query(default=False),
-    solver_logs: Optional[bool] = Query(default=False),
-    cuopt_data_file: str = Header(default=None),
-    cuopt_result_file: str = Header(default=None),
-    client_version: str = Header(default=None),
-    accept: Optional[str] = Header(default=None),
-    content_type: str = Header(default="application/json"),
+    cache: Optional[bool] = Query(
+        default=False,
+        description="Not supported. Returns 501.",
+    ),
+    reqId: Optional[str] = Query(
+        default=None,
+        description="Not supported. Returns 501.",
+    ),
+    initialId: Optional[List[str]] = Query(
+        default=None,
+        description="Note: Only applicable to routing. "
+        "If set, the completed routing solutions identified by id "
+        "will be used by the solver as initial solutions for this request. "
+        "Uploaded solutions are not supported.",
+    ),
+    warmstartId: Optional[str] = Query(
+        default=None,
+        description="If set, the warmstart data in solution identified by id "
+        "will be used by the solver as warmstart data for this request. "
+        "Enabled for single LP problem, not enabled for Batch LP",
+    ),
+    validation_only: Optional[bool] = Query(
+        default=False,
+        description="If set to True, input will be validated, if input is valid, returns a successful message, else returns an error.",  # noqa
+    ),
+    incumbent_solutions: Optional[bool] = Query(
+        default=False,
+        description="If set to True, MIP problems will produce incumbent solutions that can be retrieved from /cuopt/solution/{id}/incumbents",  # noqa
+    ),
+    incumbent_set_solutions: Optional[bool] = Query(
+        default=False,
+        description="If set to True, MIP problems will register a set-solution callback (this disables presolve).",  # noqa
+    ),
+    solver_logs: Optional[bool] = Query(
+        default=False,
+        description="If set to True, math optimization problems will produce detailed solver logs that can be retrieved from /cuopt/log/{id}. ",  # noqa
+    ),
+    cuopt_data_file: str = Header(
+        default=None,
+        description="Name of data file to process in the "
+        "server's CUOPT_DATA_DIR when using the local file feature",
+    ),
+    cuopt_result_file: str = Header(
+        default=None,
+        description="Result file name if output dir is enabled "
+        "and size >= maxresult",
+    ),
+    client_version: str = Header(
+        default=None,
+        description="cuOpt client version. "
+        "Set to 'custom' to skip version check",
+    ),
+    accept: Optional[str] = Header(
+        default=None,
+        description="Supported result mime_types are 'application/json', "
+        "'application/vnd.msgpack', 'application/zlib', and "
+        "standard mime_type wildcards. "
+        "If a wildcard is used, the accept mime_type will be set "
+        "to the content_type mime_type",
+    ),
+    content_type: str = Header(
+        default="application/json",
+        description="Supported content mime_types are 'application/json', "
+        "'application/vnd.msgpack', and 'application/zlib'",
+    ),
     content_length: int = Header(default=0),
 ):
     ctype = content_type

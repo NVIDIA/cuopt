@@ -889,6 +889,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
       auto* out       = response->add_incumbents();
       out->set_index(from_index + i);
       out->set_objective(inc.objective);
+      out->set_bound(inc.bound);
       for (double v : inc.assignment) {
         out->add_assignment(v);
       }

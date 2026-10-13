@@ -42,6 +42,7 @@ enum LPMethod {
   PDLP = 1;
   DualSimplex = 2;
   Barrier = 3;
+  PrimalSimplex = 4;
 }
 
 enum VariableType {

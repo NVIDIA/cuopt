@@ -176,6 +176,7 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
     cdef cppclass grpc_incumbent_entry_t:
         int64_t index
         double objective
+        double bound
         vector[double] assignment
 
     cdef cppclass grpc_incumbents_result_t:

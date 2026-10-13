@@ -9,6 +9,7 @@
 #include "internal.hpp"
 #include "problem.hpp"
 #include "setup/bounds.hpp"
+#include "setup/structure.hpp"
 #include "starts/starts.hpp"
 
 namespace cuopt::mathematical_optimization::mip {
@@ -34,7 +35,8 @@ void fj_cpu_worker_t<i_t, f_t>::create_worker(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   std::string log_prefix,
   int64_t seed,
-  int lane)
+  int lane,
+  bool enable_starts)
 {
   auto new_climber = init_fj_cpu_from_host_lp(
     problem, variable_types, n_structural, start_assignment, settings, preemption_flag, seed);
@@ -45,7 +47,9 @@ void fj_cpu_worker_t<i_t, f_t>::create_worker(
   fj_cpu->halted               = false;
   preemption_flag              = false;
   is_initialized               = true;
-  if (lane >= 0) { apply_lane_diversification<i_t, f_t>(*fj_cpu, lane, fj_cpu->settings.seed); }
+  if (lane >= 0) {
+    apply_lane_diversification<i_t, f_t>(*fj_cpu, lane, fj_cpu->settings.seed, enable_starts);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -90,7 +94,10 @@ void fj_cpu_worker_t<i_t, f_t>::send_stop_signal()
 }
 
 template <typename i_t, typename f_t>
-void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t base_seed)
+void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c,
+                                int lane,
+                                int64_t base_seed,
+                                bool enable_starts)
 {
   const bool extreme_hub =
     c.problem->max_var_degree > 512 && c.problem->max_var_degree > 64.0 * c.problem->avg_var_degree;
@@ -132,6 +139,7 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   c.use_bound_prop                 = lane % 2 == 0 && !c.low_latency;
   c.use_weight_donation            = lane % 8 == 5 || lane % 8 == 6;
   c.degree_balance_mtm             = lane == 5 || lane == 6 || (lane == 9 && extreme_hub);
+  c.use_sat_search                 = lane % 2 == 1;
 
   c.use_move_batching =
     c.n_colors > 0 && (lane % 8 == 0 || lane % 8 == 2 || lane % 8 == 6 || lane == 9 || lane == 12);
@@ -143,7 +151,7 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   }
 
   // apply initial starts
-  {
+  if (enable_starts) {
     phase_timer_t timer(c.stats.t_start);
     switch (lane % 8) {
       case 1: apply_structural_completion_start<i_t, f_t>(c); break;
@@ -275,6 +283,19 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
     c.use_lp_start = c.use_deep_lp_pump = true;
     c.lp_start_feasibility_objective    = false;
   }
+  if (!enable_starts) {
+    c.use_lp_start                   = false;
+    c.lp_start_feasibility_objective = false;
+    c.use_deep_lp_pump               = false;
+    c.use_precedence_start           = false;
+    c.use_affine_equality_start      = false;
+    c.use_unit_commitment_start      = false;
+    c.use_fixed_charge_network_start = false;
+    c.use_fundamental_cycle_pivot    = false;
+    c.network_temperature            = f_t{0};
+    c.use_pmedian_start              = false;
+    c.use_equality_substitution      = false;
+  }
 
   // Seek feasibility without objective interference; restore lane-specific pressure after crossing.
   // The floor only takes effect once a lane is already feasible (h_objective_weight starts at 0 and
@@ -310,61 +331,11 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   c.objective_directed_perturb  = false;
   if (cardinality_dominated && c.n_integer_vars == 0 && objective_var_count > 0 &&
       continuous_objective_vars == objective_var_count) {
-    const auto& p    = *c.problem;
-    const i_t groups = static_cast<i_t>(p.card_cardinalities.size());
-    bool valid       = true;
-    for (i_t cardinality : p.card_cardinalities)
-      valid &= cardinality == 1;
-    for (i_t variable : c.h_binary_indices)
-      valid &= p.card_group_of_variable[variable] >= 0;
-
-    std::vector<std::vector<i_t>> scopes(groups);
-    std::vector<i_t> row_gate(p.n_constraints, -2);
-    i_t gated      = 0;
-    i_t equalities = 0;
-    for (i_t row = 0; valid && row < p.n_constraints; ++row) {
-      if (p.cstr_lb[row] == p.cstr_ub[row]) {
-        ++equalities;
-        continue;
-      }
-      i_t binary           = -1;
-      f_t gate_coefficient = 0;
-      f_t continuous_max   = 0;
-      for (i_t q = p.offsets[row]; q < p.offsets[row + 1]; ++q) {
-        const i_t variable = p.variables[q];
-        if (c.h_is_binary_variable[variable]) {
-          if (binary >= 0) valid = false;
-          binary           = variable;
-          gate_coefficient = p.coefficients[q];
-        } else {
-          continuous_max = std::max(continuous_max, std::abs(p.coefficients[q]));
-        }
-      }
-      if (binary < 0) {
-        if (continuous_max > 0) row_gate[row] = -1;
-        continue;
-      }
-      const i_t group = p.card_group_of_variable[binary];
-      const bool activating =
-        (gate_coefficient < 0 && std::isfinite(p.cstr_lb[row]) && !std::isfinite(p.cstr_ub[row])) ||
-        (gate_coefficient > 0 && std::isfinite(p.cstr_ub[row]) && !std::isfinite(p.cstr_lb[row]));
-      valid &= group >= 0 && activating && continuous_max > 0 &&
-               std::abs(gate_coefficient) >= 1000 * continuous_max;
-      if (!valid) break;
-      row_gate[row] = binary;
-      ++gated;
-      auto& scope = scopes[group];
-      for (i_t q = p.offsets[row]; q < p.offsets[row + 1]; ++q) {
-        const i_t variable = p.variables[q];
-        if (variable != binary && std::find(scope.begin(), scope.end(), variable) == scope.end())
-          scope.push_back(variable);
-      }
-      valid &= scope.size() <= 4;
-    }
-    for (const auto& scope : scopes)
-      valid &= scope.size() == 4;
-
-    if (valid && equalities == groups && gated >= 0.8 * p.n_constraints) {
+    cpufj_geometry_requirements_t requirements;
+    requirements.required_scope_size             = 4;
+    requirements.min_gated_row_fraction          = 0.8;
+    requirements.require_matching_equality_count = true;
+    if (has_cpufj_disjunctive_geometry(c, requirements)) {
       const i_t slot                = lane % 8;
       c.continuous_perturb_fraction = f_t{0.1} * (1 << (slot % 4));
       c.objective_directed_perturb  = slot % 2 == 1;
@@ -420,7 +391,10 @@ void complete_climber_portfolio(std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> firs
 template struct fj_cpu_worker_t<int, float>;
 template std::shared_ptr<fj_cpu_shared_incumbent_t<int, float>>
 make_fj_cpu_shared_incumbent<int, float>();
-template void apply_lane_diversification<int, float>(fj_cpu_climber_t<int, float>&, int, int64_t);
+template void apply_lane_diversification<int, float>(fj_cpu_climber_t<int, float>&,
+                                                     int,
+                                                     int64_t,
+                                                     bool);
 template void complete_climber_portfolio<int, float>(
   std::unique_ptr<fj_cpu_climber_t<int, float>>,
   const std::vector<int64_t>&,
@@ -434,7 +408,10 @@ template void complete_climber_portfolio<int, float>(
 template struct fj_cpu_worker_t<int, double>;
 template std::shared_ptr<fj_cpu_shared_incumbent_t<int, double>>
 make_fj_cpu_shared_incumbent<int, double>();
-template void apply_lane_diversification<int, double>(fj_cpu_climber_t<int, double>&, int, int64_t);
+template void apply_lane_diversification<int, double>(fj_cpu_climber_t<int, double>&,
+                                                      int,
+                                                      int64_t,
+                                                      bool);
 template void complete_climber_portfolio<int, double>(
   std::unique_ptr<fj_cpu_climber_t<int, double>>,
   const std::vector<int64_t>&,

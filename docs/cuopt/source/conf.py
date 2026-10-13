@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from cuopt_server.webserver import app as cuoptapp
+from cuopt_server.proxy_webserver import app as cuoptapp
 from fastapi.openapi.utils import get_openapi
 import datetime
 import cuopt

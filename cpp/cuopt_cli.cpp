@@ -150,7 +150,7 @@ int run_single_file(const std::string& file_path,
       std::make_unique<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>>();
   }
 
-  // Distributed PDLP is used for large problems that don't fit on a single GPU.
+  // Multi-GPU PDLP is used for large problems that don't fit on a single GPU.
   // We need to debranch before the problem_interface is created and tries to materialize the
   // problem in device memory.
   const auto& pdlp_settings_ref = settings.get_pdlp_settings();
@@ -158,12 +158,12 @@ int run_single_file(const std::string& file_path,
       (pdlp_settings_ref.num_gpus == -1 || pdlp_settings_ref.num_gpus > 1)) {
     if (handle_ptr == nullptr) {
       CUOPT_LOG_ERROR(
-        "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
+        "Multi-GPU PDLP requires the GPU memory backend; no GPU handle is available for the "
         "selected memory backend.");
       return -1;
     }
     if (!initial_solution_file.empty()) {
-      CUOPT_LOG_ERROR("Initial solution file is not supported for distributed PDLP.");
+      CUOPT_LOG_ERROR("Initial solution file is not supported for multi-GPU PDLP.");
       return -1;
     }
     auto solution = cuopt::mathematical_optimization::solve_lp(
@@ -232,7 +232,7 @@ int run_single_file(const std::string& file_path,
       auto solution =
         cuopt::mathematical_optimization::solve_mip(problem_interface.get(), settings);
     } else {
-      // Distributed PDLP was handled by the early-exit branch above; this
+      // Multi-GPU PDLP was handled by the early-exit branch above; this
       // path is always single-GPU LP going through problem_interface.
       auto solution = cuopt::mathematical_optimization::solve_lp(problem_interface.get(), settings);
     }
@@ -489,7 +489,7 @@ int main(int argc, char* argv[])
     return -1;
   }
 
-  // --method 1 --num-gpus N (N>1 or -1 for all visible GPUs) selects distributed PDLP.
+  // --method 1 --num-gpus N (N>1 or -1 for all visible GPUs) selects multi-GPU PDLP.
   // Default / concurrent requires 1–2 GPUs.
   {
     auto& pdlp_settings = settings.get_pdlp_settings();
@@ -500,7 +500,7 @@ int main(int argc, char* argv[])
     if (!is_mpdlp && (num_gpus < 1 || num_gpus > 2)) {
       auto log = dummy_logger(settings);
       CUOPT_LOG_ERROR(
-        "num_gpus=%d is only supported with --method 1 (distributed PDLP, where -1 selects "
+        "num_gpus=%d is only supported with --method 1 (multi-GPU PDLP, where -1 selects "
         "all visible GPUs). Concurrent / default mode requires 1 or 2 GPUs.",
         num_gpus);
       return -1;

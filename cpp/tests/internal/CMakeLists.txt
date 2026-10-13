@@ -15,10 +15,12 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/right_looking_ldlt.cpp
     # linear_programming
     ${CUOPT_TEST_DIR}/linear_programming/pdlp_test.cu
+    ${CUOPT_TEST_DIR}/linear_programming/unit_tests/pdlp_memory_test.cu
     ${CUOPT_TEST_DIR}/linear_programming/unit_tests/optimization_problem_test.cu
     ${CUOPT_TEST_DIR}/linear_programming/unit_tests/presolve_test.cu
     ${CUOPT_TEST_DIR}/linear_programming/parser_test.cpp
     # mip
+    ${CUOPT_TEST_DIR}/mip/lns_test.cu
     ${CUOPT_TEST_DIR}/mip/miplib_test.cu
     ${CUOPT_TEST_DIR}/mip/mip_node_test.cpp
     ${CUOPT_TEST_DIR}/mip/problem_test.cu
@@ -42,6 +44,7 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     # qp
     ${CUOPT_TEST_DIR}/qp/unit_tests/mps_ranged_rows_test.cu
     # socp
+    ${CUOPT_TEST_DIR}/socp/barrier_kernels_test.cu
     ${CUOPT_TEST_DIR}/socp/second_order_cone_kernels.cu
     ${CUOPT_TEST_DIR}/socp/sparse_augmented_kkt_test.cu
     ${CUOPT_TEST_DIR}/socp/solve_barrier_socp.cu

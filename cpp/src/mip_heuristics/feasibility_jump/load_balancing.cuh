@@ -12,6 +12,9 @@
 #include <cub/block/block_merge_sort.cuh>
 #include <utilities/cuda_helpers.cuh>
 
+static_assert(alignof(fj_staged_score_t) >=
+              cuda::atomic_ref<fj_staged_score_t, cuda::thread_scope_device>::required_alignment);
+
 DI uint32_t get_unique_warp_id()
 {
   uint32_t block_warp_id   = threadIdx.x / raft::WarpSize;

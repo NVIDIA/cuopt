@@ -887,7 +887,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
   i_t solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) override
   {
-    handle_ptr_->get_stream().sync();
+    // The green-context solver uses a separate stream; otherwise stream ordering suffices.
+    const bool separate_stream = stream != handle_ptr_->get_stream().get();
+    if (separate_stream) { handle_ptr_->get_stream().sync(); }
     if (static_cast<i_t>(b.size()) != n) {
       settings_.log.printf("Error: b.size() %d != n %d\n", b.size(), n);
       return -1;
@@ -916,8 +918,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       return -1;
     }
 
-    CUDA_CALL_AND_CHECK(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
-    handle_ptr_->get_stream().sync();
+    if (separate_stream) {
+      CUDA_CALL_AND_CHECK(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
+    }
 
 #ifdef PRINT_RHS_AND_SOLUTION_HASH
     dense_vector_t<i_t, f_t> b_host(n);

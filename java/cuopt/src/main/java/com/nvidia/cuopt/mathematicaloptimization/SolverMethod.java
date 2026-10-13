@@ -10,6 +10,7 @@ public enum SolverMethod {
   PDLP(CuOptConstants.CUOPT_METHOD_PDLP),
   DUAL_SIMPLEX(CuOptConstants.CUOPT_METHOD_DUAL_SIMPLEX),
   BARRIER(CuOptConstants.CUOPT_METHOD_BARRIER),
+  PRIMAL_SIMPLEX(CuOptConstants.CUOPT_METHOD_PRIMAL_SIMPLEX),
   UNSET(CuOptConstants.CUOPT_METHOD_UNSET);
 
   private final int nativeValue;

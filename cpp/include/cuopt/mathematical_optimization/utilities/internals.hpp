@@ -55,6 +55,42 @@ class get_solution_callback_t : public base_solution_callback_t {
   }
 };
 
+struct solution_callback_data_t {
+  bool from_lns{false};
+};
+
+// Optional extension: keep the existing callback interface and its user data unchanged.
+class get_solution_callback_with_data_t : public get_solution_callback_t {
+ public:
+  void get_solution(void* data,
+                    void* objective_value,
+                    void* solution_bound,
+                    void* user_data) override
+  {
+    get_solution_with_data(data, objective_value, solution_bound, user_data, {});
+  }
+
+  virtual void get_solution_with_data(void* data,
+                                      void* objective_value,
+                                      void* solution_bound,
+                                      void* user_data,
+                                      const solution_callback_data_t& callback_data) = 0;
+};
+
+inline void invoke_get_solution_callback(get_solution_callback_t* callback,
+                                         void* data,
+                                         void* objective_value,
+                                         void* solution_bound,
+                                         const solution_callback_data_t& callback_data = {})
+{
+  if (auto* extended = dynamic_cast<get_solution_callback_with_data_t*>(callback)) {
+    extended->get_solution_with_data(
+      data, objective_value, solution_bound, callback->get_user_data(), callback_data);
+  } else {
+    callback->get_solution(data, objective_value, solution_bound, callback->get_user_data());
+  }
+}
+
 class set_solution_callback_t : public base_solution_callback_t {
  public:
   virtual void set_solution(void* data,

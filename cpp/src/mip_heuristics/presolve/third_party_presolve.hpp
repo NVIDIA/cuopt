@@ -116,6 +116,7 @@ class third_party_presolve_t {
   }
 
   void set_indicator_strengthening(bool enabled) { indicator_strengthening_ = enabled; }
+  void set_dual_reductions(bool enabled) { dual_reductions_ = enabled; }
 
   // Apply the presolve on an simplex::user_problem in-place. Used in sub MIP and (in the future)
   // restarts.
@@ -147,6 +148,11 @@ class third_party_presolve_t {
                                std::vector<f_t>& full_primal,
                                bool check_postsolve = true) const;
 
+  bool is_original_primal_solution_feasible(const std::vector<f_t>& original_primal,
+                                            f_t absolute_tolerance,
+                                            f_t relative_tolerance,
+                                            f_t integrality_tolerance) const;
+
   void crush_primal_solution(const optimization_problem_t<i_t, f_t>& reduced_problem,
                              const std::vector<f_t>& original_primal,
                              std::vector<f_t>& reduced_primal) const;
@@ -164,6 +170,17 @@ class third_party_presolve_t {
                                   const std::vector<f_t>& A_values,
                                   const std::vector<i_t>& A_indices,
                                   const std::vector<i_t>& A_offsets) const;
+
+  // PSLP only: map a primal and dual solution in the original space (e.g. a user-provided LP
+  // initial solution) into the presolved space. Both x_original and y_original are required and
+  // must match the original problem's dimensions. x_presolved is clipped to presolved_problem's
+  // variable bounds, which PSLP may have tightened.
+  void crush_primal_dual_solution_pslp(const optimization_problem_t<i_t, f_t>& presolved_problem,
+                                       const std::vector<f_t>& x_original,
+                                       const std::vector<f_t>& y_original,
+                                       std::vector<f_t>& x_presolved,
+                                       std::vector<f_t>& y_presolved) const;
+
   const std::vector<i_t>& get_reduced_to_original_map() const { return reduced_to_original_map_; }
   const std::vector<i_t>& get_original_to_reduced_map() const { return original_to_reduced_map_; }
 
@@ -228,6 +245,7 @@ class third_party_presolve_t {
 
   std::optional<std::unordered_set<std::string>> reduction_allowlist_{};
   bool indicator_strengthening_{true};
+  bool dual_reductions_{true};
 };
 
 // Just for testing the conversion: user_problem -> Papilo problem -> user_problem.

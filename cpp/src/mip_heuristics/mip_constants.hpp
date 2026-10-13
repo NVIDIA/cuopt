@@ -29,9 +29,12 @@
 #define CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT       3
 #define CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT      3
 
-/* @brief Threads the early CPUFJ portfolio leaves to the rest of the team. Every lane holds its
- * own host copy of the problem and occupies an OMP task for the whole of presolve. */
+/* @brief Minimum capacity the early CPUFJ portfolio leaves to the rest of the team. Callers may
+ * reserve more. Every lane holds its own host copy and an OMP task for the whole of presolve. */
 #define CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS 4
+
+/* @brief Maximum Papilo arena concurrency, including the calling solver thread. */
+#define CUOPT_MIP_PAPILO_THREAD_LIMIT 4
 
 /* @brief Upper bound on the persistent root CPUFJ lane set. Every lane holds its own host copy of
  * the root LP and occupies an OMP task for the whole of the cut loop. */

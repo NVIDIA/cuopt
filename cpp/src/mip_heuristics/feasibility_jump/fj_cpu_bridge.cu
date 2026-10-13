@@ -16,10 +16,43 @@
 #include <utilities/pcgenerator.hpp>
 #include <utilities/splitmix64.hpp>
 
+#include <thrust/find.h>
+
 #include <algorithm>
 #include <cmath>
 
 namespace cuopt::mathematical_optimization::mip {
+
+template <typename i_t, typename f_t>
+static i_t compact_zero_coefficients(std::vector<f_t>& coefficients,
+                                     std::vector<i_t>& variables,
+                                     std::vector<i_t>& offsets)
+{
+  cuopt_assert(coefficients.size() == variables.size(), "matrix array size mismatch");
+  cuopt_assert(!offsets.empty() && offsets.front() == 0, "invalid CSR offsets");
+  cuopt_assert(offsets.back() >= 0 && (size_t)offsets.back() == coefficients.size(),
+               "invalid final CSR offset");
+  cuopt_assert(std::is_sorted(offsets.begin(), offsets.end()), "unsorted CSR offsets");
+
+  i_t write      = 0;
+  i_t read_begin = 0;
+  for (size_t row = 0; row + 1 < offsets.size(); ++row) {
+    const i_t read_end = offsets[row + 1];
+    offsets[row]       = write;
+    for (i_t read = read_begin; read < read_end; ++read) {
+      if (coefficients[read] == f_t{0}) continue;
+      coefficients[write] = coefficients[read];
+      variables[write]    = variables[read];
+      ++write;
+    }
+    read_begin = read_end;
+  }
+
+  offsets.back() = write;
+  coefficients.resize(write);
+  variables.resize(write);
+  return write;
+}
 
 template <typename i_t, typename f_t>
 void init_fj_cpu_from_problem(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
@@ -29,7 +62,8 @@ void init_fj_cpu_from_problem(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                               const std::vector<f_t>& left_weights,
                               const std::vector<f_t>& right_weights,
                               f_t objective_weight,
-                              const probing_cache_t<i_t, f_t>* probing_cache)
+                              const probing_cache_t<i_t, f_t>* probing_cache,
+                              bool copy_related_variables = true)
 {
   auto problem_data                      = std::make_shared<fj_cpu_problem_t<i_t, f_t>>();
   fj_cpu.problem                         = problem_data;
@@ -57,9 +91,11 @@ void init_fj_cpu_from_problem(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   problem_data->h_var_types   = cuopt::host_copy_async(problem.variable_types, stream);
   fj_cpu.h_is_binary_variable = cuopt::host_copy_async(problem.is_binary_variable, stream);
   fj_cpu.h_binary_indices     = cuopt::host_copy_async(problem.binary_indices, stream);
-  problem_data->h_related_variables = cuopt::host_copy_async(problem.related_variables, stream);
-  problem_data->h_related_variables_offsets =
-    cuopt::host_copy_async(problem.related_variables_offsets, stream);
+  if (copy_related_variables) {
+    problem_data->h_related_variables = cuopt::host_copy_async(problem.related_variables, stream);
+    problem_data->h_related_variables_offsets =
+      cuopt::host_copy_async(problem.related_variables_offsets, stream);
+  }
   handle_ptr->sync_stream();
   CUOPT_LOG_DEBUG(
     "CPUFJ model download from device: %.4fs for %d nnz", toc(download_start), problem.nnz);
@@ -75,17 +111,23 @@ void init_fj_cpu_from_problem(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.h_initial_right_weights = right_weights;
   fj_cpu.max_weight              = f_t{1};
   fj_cpu.h_objective_weight      = objective_weight;
-  if (start_assignment.empty()) {
-    start_assignment.resize(problem.n_variables);
-    for (i_t variable = 0; variable < problem.n_variables; ++variable) {
-      const auto bounds = fj_cpu.h_var_bounds[variable].get();
-      f_t value         = std::clamp(f_t{0}, get_lower(bounds), get_upper(bounds));
-      if (fj_cpu.problem->h_var_types[variable] == var_t::INTEGER) { value = std::round(value); }
-      start_assignment[variable] = value;
-    }
-  }
+  if (start_assignment.empty()) { start_assignment.resize(problem.n_variables, f_t{0}); }
   cuopt_assert(start_assignment.size() == static_cast<size_t>(problem.n_variables),
                "start assignment must cover every variable");
+  for (i_t variable = 0; variable < problem.n_variables; ++variable) {
+    const auto bounds = fj_cpu.h_var_bounds[variable].get();
+    f_t lower         = get_lower(bounds);
+    f_t upper         = get_upper(bounds);
+    f_t value         = start_assignment[variable];
+    if (fj_cpu.problem->h_var_types[variable] == var_t::INTEGER) {
+      lower = std::ceil(lower);
+      upper = std::floor(upper);
+      cuopt_assert(lower <= upper, "integer variable has an empty domain");
+      fj_cpu.h_var_bounds[variable] = typename type_2<f_t>::type{lower, upper};
+      value                         = std::round(value);
+    }
+    start_assignment[variable] = std::clamp(value, lower, upper);
+  }
   fj_cpu.h_assignment      = start_assignment;
   fj_cpu.h_best_assignment = std::move(start_assignment);
   fj_cpu.h_lhs.resize(problem.n_constraints);
@@ -115,10 +157,11 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_optimization_proble
   raft::common::nvtx::range scope("init_fj_cpu_from_optimization_problem");
   auto stream = problem.get_handle_ptr()->get_stream();
 
-  const double download_start = tic();
-  auto coefficients = cuopt::host_copy_async(problem.get_constraint_matrix_values(), stream);
-  auto variables    = cuopt::host_copy_async(problem.get_constraint_matrix_indices(), stream);
-  auto offsets      = cuopt::host_copy_async(problem.get_constraint_matrix_offsets(), stream);
+  const double download_start     = tic();
+  const auto& device_coefficients = problem.get_constraint_matrix_values();
+  auto coefficients               = cuopt::host_copy_async(device_coefficients, stream);
+  auto variables = cuopt::host_copy_async(problem.get_constraint_matrix_indices(), stream);
+  auto offsets   = cuopt::host_copy_async(problem.get_constraint_matrix_offsets(), stream);
   auto objective_coefficients =
     cuopt::host_copy_async(problem.get_objective_coefficients(), stream);
   auto variable_lower_bounds = cuopt::host_copy_async(problem.get_variable_lower_bounds(), stream);
@@ -130,13 +173,22 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_optimization_proble
   auto constraint_bounds = cuopt::host_copy_async(problem.get_constraint_bounds(), stream);
   auto row_types         = cuopt::host_copy_async(problem.get_row_types(), stream);
   auto variable_types    = cuopt::host_copy_async(problem.get_variable_types(), stream);
+  const bool has_zero_coefficients = thrust::find(problem.get_handle_ptr()->get_thrust_policy(),
+                                                  device_coefficients.begin(),
+                                                  device_coefficients.end(),
+                                                  f_t{0}) != device_coefficients.end();
   problem.get_handle_ptr()->sync_stream();
   CUOPT_LOG_DEBUG(
     "CPUFJ model download from device: %.4fs for %d nnz", toc(download_start), problem.get_nnz());
 
+  i_t nnz = problem.get_nnz();
+  if (has_zero_coefficients) {
+    nnz = compact_zero_coefficients<i_t, f_t>(coefficients, variables, offsets);
+  }
+
   return init_fj_cpu_from_host_model<i_t, f_t>(problem.get_n_variables(),
                                                problem.get_n_constraints(),
-                                               problem.get_nnz(),
+                                               nnz,
                                                problem.get_sense(),
                                                problem.get_objective_scaling_factor(),
                                                problem.get_objective_offset(),
@@ -213,7 +265,9 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   std::atomic<bool>& preemption_flag,
   const probing_cache_t<i_t, f_t>* probing_cache,
   fj_settings_t settings,
-  bool randomize_params)
+  bool randomize_params,
+  bool preserve_rng,
+  bool copy_related_variables)
 {
   raft::common::nvtx::range scope("fj_cpu_init");
 
@@ -228,16 +282,22 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
                            left_weights,
                            right_weights,
                            objective_weight,
-                           probing_cache);
+                           probing_cache,
+                           copy_related_variables);
   fj_cpu->settings = settings;
+  // LNS initialization consumes draws for both parameter randomization and the seed.
+  // Use a copy so adding that worker does not shift later feasibility-search draws,
+  // including in opportunistic solves.
+  auto private_rng  = rng;
+  auto& climber_rng = preserve_rng ? private_rng : rng;
   if (randomize_params) {
-    cuopt::pcgenerator_t host_rng(rng.next_i64());
+    cuopt::pcgenerator_t host_rng(climber_rng.next_i64());
     fj_cpu->mtm_viol_samples = host_rng.uniform<i_t>(15, 51);
     fj_cpu->mtm_sat_samples  = host_rng.uniform<i_t>(10, 31);
     fj_cpu->nnz_samples      = host_rng.uniform<i_t>(2000, 15001);
     fj_cpu->perturb_interval = host_rng.uniform<i_t>(50, 501);
   }
-  fj_cpu->settings.seed = rng.next_i64();
+  fj_cpu->settings.seed = climber_rng.next_i64();
   return fj_cpu;
 }
 
@@ -263,6 +323,8 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> fj_t<int, float>::create_
   std::atomic<bool>&,
   const probing_cache_t<int, float>*,
   fj_settings_t,
+  bool,
+  bool,
   bool);
 #endif
 
@@ -288,6 +350,8 @@ template std::unique_ptr<fj_cpu_climber_t<int, double>> fj_t<int, double>::creat
   std::atomic<bool>&,
   const probing_cache_t<int, double>*,
   fj_settings_t,
+  bool,
+  bool,
   bool);
 #endif
 

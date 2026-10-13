@@ -20,6 +20,8 @@ class problem_t;
 template <typename i_t, typename f_t>
 class lp_state_t {
  public:
+  explicit lp_state_t(cuda::stream_ref stream) : prev_primal(0, stream), prev_dual(0, stream) {}
+
   lp_state_t(problem_t<i_t, f_t>& problem, cuda::stream_ref stream)
     : prev_primal(problem.n_variables, stream), prev_dual(problem.n_constraints, stream)
   {

@@ -14,6 +14,7 @@
 #include <pdlp/distributed_pdlp/distributed_utils.hpp>
 #include <pdlp/distributed_pdlp/partitioner.hpp>
 #include <pdlp/pdlp.cuh>
+#include <pdlp/problem_memory.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utils.cuh>
 
@@ -361,7 +362,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
   best_primal_quality_so_far_.primal_objective = (op_problem_scaled_.maximize)
                                                    ? -std::numeric_limits<f_t>::infinity()
                                                    : std::numeric_limits<f_t>::infinity();
-  // On a distributed sub-solver, op_problem.coefficients (owned rows) and
+  // On a multi-GPU sub-solver, op_problem.coefficients (owned rows) and
   // op_problem.reverse_coefficients (owned cols) are two independent slices
   // of the global matrix, not transposes of each other; skip that check.
   op_problem.check_problem_representation(/*check_transposed=*/!is_distributed_sub_pdlp,
@@ -388,7 +389,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
 }
 
 // ============================================================================
-// Distributed multi-GPU ctor.
+// Multi-GPU ctor.
 // needs placeholder_problem to be a shape-0 problem
 // reads the problem from mps_data_model directly
 // builds internal attributes from the placeholder_problem
@@ -404,17 +405,17 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   cuopt_expects(placeholder_problem.n_variables == 0 && placeholder_problem.n_constraints == 0 &&
                   placeholder_problem.nnz == 0,
                 error_type_t::ValidationError,
-                "Distributed mGPU pdlp_solver_t ctor requires a shape-0 "
+                "Multi-GPU pdlp_solver_t ctor requires a shape-0 "
                 "placeholder problem (n_variables == n_constraints == nnz == 0)");
   cuopt_expects(settings.hyper_params.never_restart_to_average,
                 error_type_t::ValidationError,
-                "Distributed PDLP requires never_restart_to_average = true");
+                "Multi-GPU PDLP requires never_restart_to_average = true");
   const int distributed_pdlp_num_gpus = settings.num_gpus;
-  CUOPT_LOG_INFO("Solving with distributed PDLP on %d GPUs.", distributed_pdlp_num_gpus);
+  CUOPT_LOG_INFO("Solving with multi-GPU PDLP on %d GPUs.", distributed_pdlp_num_gpus);
 
   if constexpr (!std::is_same_v<f_t, double>) {
     cuopt_expects(
-      false, error_type_t::ValidationError, "Distributed PDLP currently requires double precision");
+      false, error_type_t::ValidationError, "Multi-GPU PDLP currently requires double precision");
     return;
   }
   // ----- 1. Read problem shape and bulk data directly from mps (host) -----
@@ -423,10 +424,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   const i_t nnz    = static_cast<i_t>(mps.get_constraint_matrix_values().size());
   cuopt_expects(n_vars > 0,
                 error_type_t::ValidationError,
-                "Distributed PDLP from mps requires a non-empty objective");
+                "Multi-GPU PDLP from mps requires a non-empty objective");
   cuopt_expects(n_cstr > 0,
                 error_type_t::ValidationError,
-                "Distributed PDLP from mps requires at least one constraint");
+                "Multi-GPU PDLP from mps requires at least one constraint");
   cuopt_expects(static_cast<i_t>(mps.get_constraint_matrix_offsets().size()) == n_cstr + 1,
                 error_type_t::ValidationError,
                 "mps constraint_matrix_offsets size must equal n_constraints + 1");
@@ -531,7 +532,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
   sub_pdlp_settings.num_gpus                         = 1;
   // Disable automatic matrix scaling in the initial_scaling ctor: the
-  // distributed pipeline computes Curtis-Reid, Ruiz, and Pock-Chambolle via
+  // multi-GPU pipeline computes Curtis-Reid, Ruiz, and Pock-Chambolle via
   // distributed_scaling using the global problem.
   sub_pdlp_settings.hyper_params.do_curtis_reid_scaling    = false;
   sub_pdlp_settings.hyper_params.do_ruiz_scaling           = false;
@@ -555,7 +556,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   primal_size_h_ = n_vars;
   dual_size_h_   = n_cstr;
 
-  // Distributed counterpart of convergence_information::init_l2_norms:
+  // Multi-GPU counterpart of convergence_information::init_l2_norms:
   // per-shard partial (owned prefix) sum-of-squares -> allreduce + mirror to
   // master (*this) -> sqrt on shards + master. Encapsulated inside
   // convergence_information_t to keep the orchestration next to the primitives
@@ -2187,7 +2188,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
 
 // delta = reflected - next, for both primal and dual, written into the
 // saddle-point delta buffers. Shared by the single-GPU and per-shard
-// (distributed) paths so the two only differ by which pdhg/stream they pass.
+// (multi-GPU) paths so the two only differ by which pdhg/stream they pass.
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, cuda::stream_ref stream)
 {
@@ -2262,7 +2263,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 
   auto& cusparse_view = pdhg_solver_.get_cusparse_view();
 
-  // Distributed compute_fixed_error second part
+  // Multi-GPU compute_fixed_error second part
   if (is_distributed_master()) {
     // SpMV is the first operation in compute_interaction_and_movement so we can do halo before and
     // call it naturally we then reduce the local dot products
@@ -2576,6 +2577,27 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
 }
 
 template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
+{
+  cuopt_expects(!batch_mode_,
+                cuopt::error_type_t::ValidationError,
+                "project_initial_primal_transform() is a dispatch helper for single/multi-GPU "
+                "PDLP. It is not supported in batch mode");
+  using f_t2 = typename type_2<f_t>::type;
+  if (is_distributed_master()) {
+    multi_gpu_engine->for_each_shard(
+      [](auto& shard) { shard.sub_pdlp->project_initial_primal_transform(); });
+  } else {
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
+                            problem_wrap_container(op_problem_scaled_.variable_bounds)),
+      pdhg_solver_.get_primal_solution().data(),
+      pdhg_solver_.get_primal_solution().size(),
+      clamp<f_t, f_t2>(),
+      stream_view_.get());
+  }
+}
+template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(const timer_t& timer)
 {
   bool verbose;
@@ -2589,6 +2611,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   std::cout << "Starting PDLP loop:" << std::endl;
 #endif
 
+  using f_t2 = typename type_2<f_t>::type;
+
   // The four setup calls (compute_initial_step_size, compute_initial_primal_weight,
   // scale_problem, create_spmv_op_plans) run unconditionally here.  Each of them
   // branches on is_distributed_master() at entry.
@@ -2600,10 +2624,9 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     compute_initial_primal_weight();
 
   scale_problem();
-  create_spmv_op_plans();
 
-  // mixed precision and cusparse structure redirection are not supported in distributed
-  // as memory footprint is not currently a bottleneck in distributed
+  // mixed precision and cusparse structure redirection are not supported in multi-GPU
+  // as memory footprint is not currently a bottleneck in multi-GPU
   if (!is_distributed_master()) {
     // Update FP32 matrix copies for mixed precision SpMV after scaling
     pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
@@ -2612,11 +2635,13 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     // indices), then free the duplicated structural vectors from the scaled copy to save device
     // memory.
     pdhg_solver_.get_cusparse_view().redirect_cusparse_csr_structure_pointers(*problem_ptr);
-    op_problem_scaled_.variables.resize(0, stream_view_);
-    op_problem_scaled_.offsets.resize(0, stream_view_);
-    op_problem_scaled_.reverse_constraints.resize(0, stream_view_);
-    op_problem_scaled_.reverse_offsets.resize(0, stream_view_);
+    release_workspace(op_problem_scaled_.variables);
+    release_workspace(op_problem_scaled_.offsets);
+    release_workspace(op_problem_scaled_.reverse_constraints);
+    release_workspace(op_problem_scaled_.reverse_offsets);
   }
+  // Plans must capture the final, shared CSR structure, not the released copies.
+  create_spmv_op_plans();
 
   if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
       !settings_.get_initial_step_size().has_value())
@@ -2625,7 +2650,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
       !settings_.get_initial_primal_weight().has_value())
     compute_initial_primal_weight();
 
-  // Distributed counterpart of the single-GPU, happens later in the single-GPU path.
+  // Multi-GPU counterpart of the single-GPU, happens later in the single-GPU path.
   if (is_distributed_master()) {
     step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
     multi_gpu_engine->for_each_shard([&](auto& shard) {
@@ -2639,7 +2664,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   // Everything below (seed-from-settings, initial_k, get_primal_and_dual_stepsizes,
   // initial primal/dual, projection, transpose, verbose prints)
-  // still runs single-GPU only.  Distributed rejects
+  // still runs single-GPU only.  Multi-GPU rejects
   // has_initial_{primal,dual}_solution() and warm-start data up front, and
   // its per-shard primal/dual step sizes were derived above
   if (!is_distributed_master()) {
@@ -2745,52 +2770,44 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           restart_strategy_.last_restart_duality_gap_.dual_solution_);
 #endif
 
-    // Project initial primal solution
-    if (settings_.hyper_params.project_initial_primal) {
-      using f_t2 = typename type_2<f_t>::type;
-      if (batch_mode_) {
-        // In batch mode variable_bounds are shared and only the bound rescaling is per climber.
-        // Apply it here too so the initial point is projected into the correct scaled space.
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(
-            pdhg_solver_.get_primal_solution().data(),
-            thrust::make_transform_iterator(
-              thrust::make_zip_iterator(
-                problem_wrap_container(op_problem_scaled_.variable_bounds),
-                batch_wrapped_container(initial_scaling_strategy_.get_bound_rescaling_vector(),
-                                        primal_size_h_)),
-              scale_bounds_by_scalar_op<f_t>{})),
-          pdhg_solver_.get_primal_solution().data(),
-          pdhg_solver_.get_primal_solution().size(),
-          clamp<f_t, f_t2>(),
-          stream_view_.get());
-      } else {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
-                                problem_wrap_container(op_problem_scaled_.variable_bounds)),
-          pdhg_solver_.get_primal_solution().data(),
-          pdhg_solver_.get_primal_solution().size(),
-          clamp<f_t, f_t2>(),
-          stream_view_.get());
-      }
+    if (!settings_.hyper_params.never_restart_to_average) {
+      cuopt_expects(!batch_mode_,
+                    cuopt::error_type_t::ValidationError,
+                    "Restart to average not supported in batch mode");
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(unscaled_primal_avg_solution_.data(),
+                              op_problem_scaled_.variable_bounds.data()),
+        unscaled_primal_avg_solution_.data(),
+        primal_size_h_,
+        clamp<f_t, f_t2>(),
+        stream_view_.get());
+    }
+  }
 
-      pdhg_solver_.refine_initial_primal_projection(
-        initial_scaling_strategy_.get_bound_rescaling_vector());
-
-      if (!settings_.hyper_params.never_restart_to_average) {
-        cuopt_expects(!batch_mode_,
-                      cuopt::error_type_t::ValidationError,
-                      "Restart to average not supported in batch mode");
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(unscaled_primal_avg_solution_.data(),
-                                op_problem_scaled_.variable_bounds.data()),
-          unscaled_primal_avg_solution_.data(),
-          primal_size_h_,
-          clamp<f_t, f_t2>(),
-          stream_view_.get());
-      }
+  // Project initial primal solution
+  if (settings_.hyper_params.project_initial_primal) {
+    if (batch_mode_) {
+      // In batch mode variable_bounds are shared and only the bound rescaling is per climber.
+      // Apply it here too so the initial point is projected into the correct scaled space.
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(
+          pdhg_solver_.get_primal_solution().data(),
+          thrust::make_transform_iterator(
+            thrust::make_zip_iterator(
+              problem_wrap_container(op_problem_scaled_.variable_bounds),
+              batch_wrapped_container(initial_scaling_strategy_.get_bound_rescaling_vector(),
+                                      primal_size_h_)),
+            scale_bounds_by_scalar_op<f_t>{})),
+        pdhg_solver_.get_primal_solution().data(),
+        pdhg_solver_.get_primal_solution().size(),
+        clamp<f_t, f_t2>(),
+        stream_view_.get());
+    } else {
+      project_initial_primal_transform();
     }
 
+    pdhg_solver_.refine_initial_primal_projection(
+      initial_scaling_strategy_.get_bound_rescaling_vector());
 #ifdef CUPDLP_DEBUG_MODE
     std::cout << "Solution after projection" << std::endl;
     print("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
@@ -3216,16 +3233,13 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
 
     // Free per-shard scratch: no further scaling passes happen after this point.
     multi_gpu_engine->for_each_shard([](auto& shard) {
-      auto& scaling = shard.sub_pdlp->get_initial_scaling_strategy();
-      scaling.get_iteration_variable_scaling().resize(0, shard.stream.view());
-      scaling.get_iteration_constraint_matrix_scaling().resize(0, shard.stream.view());
+      shard.sub_pdlp->get_initial_scaling_strategy().release_iteration_scratch();
     });
   } else {
     initial_scaling_strategy_.scale_problem();
 
     // Free scratch: no further scaling passes happen after this point.
-    initial_scaling_strategy_.get_iteration_variable_scaling().resize(0, stream_view_);
-    initial_scaling_strategy_.get_iteration_constraint_matrix_scaling().resize(0, stream_view_);
+    initial_scaling_strategy_.release_iteration_scratch();
   }
 }
 
@@ -3234,7 +3248,7 @@ void pdlp_solver_t<i_t, f_t>::create_spmv_op_plans()
 {
   raft::common::nvtx::range fun_scope("pdlp_solver_t::create_spmv_op_plans");
   if (is_distributed_master()) {
-    // Distributed path: fan out the same per-shard cusparse_view call the
+    // Multi-GPU path: fan out the same per-shard cusparse_view call the
     // single-GPU path would make.
     multi_gpu_engine->for_each_shard([&](auto& shard) {
       shard.sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
@@ -3258,13 +3272,13 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
   raft::common::nvtx::range fun_scope("compute_initial_step_size");
 
   // Shared knobs for the power-iteration path (both single-GPU and
-  // distributed)
+  // multi-GPU)
   constexpr f_t scaling_factor = f_t{0.998};
   constexpr int max_iterations = 5000;
   constexpr f_t tolerance      = f_t{1e-4};
 
   if (is_distributed_master()) {
-    // Distributed dispatch: everything (sigma_max, deriving primal/dual
+    // Multi-GPU dispatch: everything (sigma_max, deriving primal/dual
     // step sizes from master's current primal_weight_, seeding master +
     // all shards, syncs) lives inside distributed_compute_initial_step_size.
     multi_gpu_engine->distributed_compute_initial_step_size(
@@ -3310,7 +3324,11 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     std::vector<f_t> z = make_singular_value_probe<f_t>(static_cast<std::size_t>(m));
     rmm::device_uvector<f_t> d_z(m, stream_view_);
     rmm::device_uvector<f_t> d_q(m, stream_view_);
-    rmm::device_uvector<f_t> d_atq(n, stream_view_);
+    // PDHG owns at least n scratch entries, with no live iteration data during setup.
+    // SpMV with beta = 0 overwrites the first n entries before they are read, and setup
+    // finishes on the same stream before PDHG reuses the scratch. This avoids another
+    // n * sizeof(f_t) device allocation without changing the power iteration.
+    auto& d_atq = pdhg_solver_.get_primal_tmp_resource();
 
     device_copy(d_z, z, stream_view_);
 
@@ -3448,7 +3466,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
   raft::common::nvtx::range fun_scope("compute_initial_primal_weight");
 
   if (is_distributed_master()) {
-    // Distributed dispatch:
+    // Multi-GPU dispatch:
     // - short-circuit -> 1
     // - primal/dual step sizes from master's current step_size_, seeding
     // master + all shards, syncs)

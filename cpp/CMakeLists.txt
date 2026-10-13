@@ -85,9 +85,9 @@ message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 # CUDA runtime
 rapids_cuda_init_runtime(USE_STATIC ON)
 
+# CUDAToolkit, CCCL, rmm and raft are not exported to the install tree; see FINAL_CODE_BLOCK.
 rapids_find_package(CUDAToolkit REQUIRED
         BUILD_EXPORT_SET cuopt-exports
-        INSTALL_EXPORT_SET cuopt-exports
 )
 
 set(CUOPT_CXX_FLAGS "")
@@ -299,6 +299,8 @@ FetchContent_Declare(
         GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
         GIT_TAG "3a0d1d30a0a580530b37495b0ebb5926cf6e8a2c"
         GIT_PROGRESS TRUE
+        PATCH_COMMAND git -C <SOURCE_DIR> apply
+                      "${CMAKE_CURRENT_SOURCE_DIR}/patches/papilo_parallel_integrality_guard.patch"
         EXCLUDE_FROM_ALL
         SYSTEM
 )
@@ -315,7 +317,7 @@ FetchContent_MakeAvailable(papilo)
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "v0.0.12"
+        GIT_TAG "v0.1.1"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -369,7 +371,7 @@ create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 find_package(CUDSS REQUIRED)
 
 # ##################################################################################################
-# - NCCL (multi-GPU distributed PDLP) -------------------------------------------------------------
+# - NCCL (multi-GPU PDLP) -------------------------------------------------------------------------
 # NCCL is shipped via the conda env; no canonical CMake config target, so look it
 # up by name in the standard lib paths (plus CONDA_PREFIX as a hint).
 set(NCCL_HINT_PREFIXES "")
@@ -397,14 +399,14 @@ set_target_properties(nccl_external PROPERTIES
 message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
 
 # ##################################################################################################
-# - KaMinPar (multi-threaded partitioning for distributed PDLP) ------------------------------------
+# - KaMinPar (multi-threaded partitioning for multi-GPU PDLP) --------------------------------------
 # Brought in the RAPIDS way (rapids_cpm_find): uses an installed KaMinPar (deb/rpm/conda,
 # discovered via its CMake config) if present, otherwise builds the pinned source via CPM.
 include(cmake/thirdparty/get_kaminpar.cmake)
 if (NOT TARGET KaMinPar::KaMinPar)
     message(FATAL_ERROR "KaMinPar::KaMinPar was not made available by get_kaminpar.cmake")
 endif ()
-message(STATUS "Using KaMinPar (distributed PDLP graph partitioner)")
+message(STATUS "Using KaMinPar (multi-GPU PDLP graph partitioner)")
 
 # ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------
@@ -880,9 +882,10 @@ target_link_libraries(cuopt_client_objs
 target_link_libraries(cuopt_client
         PUBLIC
         rapids_logger::rapids_logger
-        CCCL::CCCL
-        $<COMPILE_ONLY:rmm::rmm>
-        $<COMPILE_ONLY:raft::raft>
+        # Build tree only: a client-only install needs none of these (error.hpp needs raft).
+        $<BUILD_INTERFACE:CCCL::CCCL>
+        $<BUILD_INTERFACE:$<COMPILE_ONLY:rmm::rmm>>
+        $<BUILD_INTERFACE:$<COMPILE_ONLY:raft::raft>>
         # dl is PUBLIC because the public headers pull in nvtx, whose inline init calls
         # dlopen/dlsym, so a consumer compiling them needs -ldl on its own link line.
         # rmm::rmm used to supply that transitively; dropping it broke the arm64 link of
@@ -1093,7 +1096,8 @@ target_link_libraries(cuopt_mathopt
         raft::raft
         CUDA::cublas
         CUDA::cusparse
-        ${CUDSS_LIB_FILE}
+        # Build tree only: the installed target must not carry this build-machine path.
+        $<BUILD_INTERFACE:${CUDSS_LIB_FILE}>
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         OpenMP::OpenMP_CUDA
@@ -1455,6 +1459,8 @@ endif()
 # wheel install resolve them from sibling package directories (#1635).
 string(APPEND cuopt_code_string [=[
 
+include(CMakeFindDependencyMacro)
+
 foreach(_cuopt_component cuopt_client cuopt_mathopt cuopt_routing)
   set(_cuopt_targets "${CMAKE_CURRENT_LIST_DIR}/${_cuopt_component}-targets.cmake")
   if(NOT EXISTS "${_cuopt_targets}")
@@ -1464,6 +1470,19 @@ foreach(_cuopt_component cuopt_client cuopt_mathopt cuopt_routing)
     set(_cuopt_targets "${_cuopt_found_targets}")
   endif()
   if(_cuopt_targets AND EXISTS "${_cuopt_targets}")
+    # GPU components only; each is found unless the consumer already has it.
+    if(NOT _cuopt_component STREQUAL "cuopt_client")
+      if(NOT TARGET CUDA::cudart)
+        find_dependency(CUDAToolkit)
+      endif()
+      # CCCL comes in through rmm, which ships its own copy.
+      if(NOT TARGET rmm::rmm)
+        find_dependency(rmm)
+      endif()
+      if(NOT TARGET raft::raft)
+        find_dependency(raft)
+      endif()
+    endif()
     include("${_cuopt_targets}")
   endif()
 endforeach()
