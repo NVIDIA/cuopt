@@ -204,7 +204,6 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_TIME_LIMIT
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE
 .. doxygendefine:: CUOPT_METHOD
-.. doxygendefine:: CUOPT_CONCURRENT_NNZ_CUTOFF
 .. doxygendefine:: CUOPT_PRIMAL_SIMPLEX_PRICING
 .. doxygendefine:: CUOPT_DUAL_SIMPLEX_INITIAL_PERTURBATION
 .. doxygendefine:: CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION
