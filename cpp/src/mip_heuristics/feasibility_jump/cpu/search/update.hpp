@@ -130,8 +130,26 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
     f_t new_value       = t + new_sumcomp;
     if (fj_cpu.h_row_is_integral[cstr_idx]) {
       cuopt_assert(old_value == std::round(old_value), "integral row state is fractional");
-      cuopt_assert(fj_cpu.problem->is_integer(new_value),
-                   "integral row received a fractional move");
+      if (!fj_cpu.problem->is_integer(new_value)) {
+        const f_t integrality_gap = std::fabs(new_value - std::round(new_value));
+        CUOPT_LOG_DEBUG(
+          "%sCPUFJ integral row %d received a fractional move: value %.17g, gap %.17g, tolerance "
+          "%.17g, var %d, old row value %.17g, coefficient %.17g, delta %.17g, delta_lo %.17g, "
+          "slack %.17g, sumcomp %.17g",
+          fj_cpu.log_prefix.c_str(),
+          (int)cstr_idx,
+          new_value,
+          integrality_gap,
+          fj_cpu.problem->tolerances.integrality_tolerance,
+          (int)var_idx,
+          old_value,
+          cstr_coeff,
+          delta,
+          delta_lo,
+          t,
+          new_sumcomp);
+        cuopt_assert(false, "integral row received a fractional move");
+      }
       new_value   = std::round(new_value);
       t           = new_value;
       new_sumcomp = 0;

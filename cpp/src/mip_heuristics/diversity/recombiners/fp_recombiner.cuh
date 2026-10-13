@@ -103,7 +103,30 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
       fp.resize_vectors(*offspring.problem_ptr, offspring.handle_ptr);
       fp.config.alpha                 = fp_recombiner_config_t::alpha;
       fp.config.alpha_decrease_factor = fp_recombiner_config_t::alpha_decrease_factor;
-      bool is_feasible                = fp.run_single_fp_descent(offspring);
+      bool is_feasible;
+      fp.improvement_callback = {};
+      if (this->context.solution_publication.enabled()) {
+        solution_t<i_t, f_t> publication_solution(*orig_problem_ptr);
+        publication_solution.copy_new_assignment(old_assignment);
+        rmm::device_uvector<f_t> reduced_assignment(fixed_problem.n_variables,
+                                                    offspring.handle_ptr->get_stream());
+        fp.improvement_callback = [this, &publication_solution, &reduced_assignment, &variable_map](
+                                    f_t, const std::vector<f_t>& h_reduced_assignment) {
+          cuopt_assert(h_reduced_assignment.size() == reduced_assignment.size(),
+                       "Fixed-problem assignment size mismatch");
+          cuopt::device_copy(reduced_assignment,
+                             h_reduced_assignment,
+                             publication_solution.handle_ptr->get_stream());
+          publication_solution.unfix_variables(reduced_assignment, variable_map);
+          auto assignment = publication_solution.get_host_assignment();
+          this->context.solution_publication.publish_if_better(
+            publication_solution.problem_ptr, assignment, publication_solution.get_objective());
+        };
+        is_feasible             = fp.run_single_fp_descent(offspring);
+        fp.improvement_callback = {};
+      } else {
+        is_feasible = fp.run_single_fp_descent(offspring);
+      }
       if (is_feasible) { CUOPT_LOG_DEBUG("FP recombiner found feasible!"); }
       CUOPT_LOG_DEBUG("FP completed after recombiner!");
       offspring.handle_ptr->sync_stream();

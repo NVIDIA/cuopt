@@ -158,8 +158,13 @@ bool apply_lp_polish(fj_cpu_climber_t<i_t, f_t>& fj_cpu, double budget_s)
   if ((i_t)relaxation.lower.size() < n || (i_t)relaxation.upper.size() < n) return false;
 
   std::vector<f_t> x;
-  if (!solve_lp_with_fixed_variables(
-        relaxation, fixed_variables, fixed_values, budget_s, x, fj_cpu.stats.t_lp_relaxation) ||
+  if (!solve_lp_with_fixed_variables(relaxation,
+                                     fixed_variables,
+                                     fixed_values,
+                                     budget_s,
+                                     x,
+                                     fj_cpu.stats.t_lp_relaxation,
+                                     &fj_cpu.halted) ||
       (i_t)x.size() < n)
     return false;
 

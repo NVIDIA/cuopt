@@ -78,8 +78,17 @@ static void audit_binary_incumbent(const fj_cpu_climber_t<i_t, f_t>& climber,
   const f_t objective_tolerance =
     std::max(problem.tolerances.absolute_tolerance,
              f_t{64} * std::numeric_limits<f_t>::epsilon() * objective_scale);
-  cuopt_assert(std::fabs(objective - reported_objective) <= objective_tolerance,
-               "binary incumbent objective disagrees with the original assignment");
+  const f_t objective_gap = std::fabs(objective - reported_objective);
+  if (!(objective_gap <= objective_tolerance)) {
+    CUOPT_LOG_DEBUG(
+      "%sCPUFJ binary incumbent objective: c'x %.17g, reported %.17g, gap %.17g, tolerance %.17g",
+      climber.log_prefix.c_str(),
+      objective,
+      reported_objective,
+      objective_gap,
+      objective_tolerance);
+    cuopt_assert(false, "binary incumbent objective disagrees with the original assignment");
+  }
   if (!climber.bin_singletons.empty()) {
     cuopt_assert(std::fabs(objective - engine_objective) <= objective_tolerance,
                  "binary singleton substitution changed the objective");
@@ -208,6 +217,7 @@ struct fj_bin_engine_t {
   int32_t iterations_at_same_objective{0};
   double last_best_objective{std::numeric_limits<double>::infinity()};
   double incumbent_objective{0};
+  double objective_sumcomp{0};
   double best_objective{std::numeric_limits<double>::infinity()};
   double obj_magnitude{1.0};
   double objective_offset{0};
@@ -315,8 +325,10 @@ struct fj_bin_engine_t {
       row_slack[r]        = slack;
       if (slack < 0) set_violated(r);
     }
-    incumbent_objective =
-      objective_offset + compensated_dot2(pb.objective.data(), assign.data(), pb.n_variables);
+    double objective_correction;
+    incumbent_objective = compensated_dot2_with_correction(
+      pb.objective.data(), assign.data(), pb.n_variables, objective_correction, objective_offset);
+    objective_sumcomp = -objective_correction;
     nnz_touched += pb.nnz;
     rebuild_scores();
   }
@@ -469,10 +481,13 @@ struct fj_bin_engine_t {
     nnz_touched += oe - ob;
     rows_walked += oe - ob;
 
-    assign[var]       = new_val;
-    assign_i32_p[var] = new_val;
-    var_score_p[var]  = own_score;
-    incumbent_objective += pb.objective[var] * delta;
+    assign[var]                = new_val;
+    assign_i32_p[var]          = new_val;
+    var_score_p[var]           = own_score;
+    const double objective_old = incumbent_objective;
+    const double objective_y   = pb.objective[var] * delta - objective_sumcomp;
+    incumbent_objective        = objective_old + objective_y;
+    objective_sumcomp          = (incumbent_objective - objective_old) - objective_y;
     if (pb.objective[var] != 0) obj_base_score[var] = flip_objective_base(var);
 
     // a new best incumbent!
@@ -1417,6 +1432,7 @@ struct fj_bin_engine_t {
   void solve(fj_cpu_climber_t<i_t, f_t>& climber, f_t time_limit, double work_unit_limit)
   {
     init(climber);
+    if (climber.search_started_at == 0) climber.search_started_at = tic();
 
     // CDCL search?
     if (climber.use_sat_search && !violated_list.empty() && pb.objective_vars.empty()) {

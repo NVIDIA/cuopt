@@ -326,6 +326,12 @@ mip_solution_t<i_t, f_t> run_mip_solver(
         settings.get_tolerances(),
         incumbent_callback,
         mip::derive_seed(solver.context.base_seed, mip::rng_id_t::early_cpufj));
+      std::vector<f_t> papilo_incumbent;
+      if (!solver.context.initial_incumbent_assignment.empty()) {
+        presolver_ptr->crush_primal_solution(*problem.original_problem_ptr,
+                                             solver.context.initial_incumbent_assignment,
+                                             papilo_incumbent);
+      }
       // Convert initial_upper_bound from user-space to the CPUFJ's solver-space (papilo-presolved).
       // problem.get_solver_obj_from_user_obj uses the papilo offset/scale (matching the CPUFJ).
       if (std::isfinite(initial_upper_bound)) {
@@ -334,7 +340,9 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       early_cpufj->start(mip::presolve_early_worker_budget(omp_get_num_threads(),
                                                            CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS,
                                                            0,
-                                                           early_structural ? 1 : 0));
+                                                           early_structural ? 1 : 0),
+                         false,
+                         papilo_incumbent);
       solver.context.early_cpufj_ptr = early_cpufj.get();
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
 

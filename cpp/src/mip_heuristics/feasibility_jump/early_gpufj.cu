@@ -74,18 +74,17 @@ void early_gpufj_t<i_t, f_t>::start()
 
   fj_ptr_ = std::make_unique<fj_t<i_t, f_t>>(*context_ptr_, fj_settings, rng_id_t::early_gpufj);
 
-  fj_ptr_->improvement_callback = [this](f_t user_obj, const std::vector<f_t>& h_assignment) {
-    f_t solver_obj = this->problem_ptr_->get_solver_obj_from_user_obj(user_obj);
-    this->try_update_best(solver_obj, h_assignment);
-  };
-
   CUOPT_LOG_DEBUG("Launching early GPUFJ task");
 
 #pragma omp task default(none) shared(fj_ptr_) priority(CUOPT_DEFAULT_TASK_PRIORITY) \
   depend(out : *fj_ptr_)
   {
     raft::device_setter guard(this->device_id_);
-    fj_ptr_->solve(*this->solution_ptr_);
+    fj_ptr_->solve(*this->solution_ptr_,
+                   [this](f_t user_obj, const std::vector<f_t>& h_assignment) {
+                     f_t solver_obj = this->problem_ptr_->get_solver_obj_from_user_obj(user_obj);
+                     this->try_update_best(solver_obj, h_assignment);
+                   });
   }
 }
 

@@ -35,7 +35,8 @@ void fj_cpu_worker_t<i_t, f_t>::create_worker(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   std::string log_prefix,
   int64_t seed,
-  int lane)
+  int lane,
+  bool enable_starts)
 {
   auto new_climber = init_fj_cpu_from_host_lp(
     problem, variable_types, n_structural, start_assignment, settings, preemption_flag, seed);
@@ -46,7 +47,9 @@ void fj_cpu_worker_t<i_t, f_t>::create_worker(
   fj_cpu->halted               = false;
   preemption_flag              = false;
   is_initialized               = true;
-  if (lane >= 0) { apply_lane_diversification<i_t, f_t>(*fj_cpu, lane, fj_cpu->settings.seed); }
+  if (lane >= 0) {
+    apply_lane_diversification<i_t, f_t>(*fj_cpu, lane, fj_cpu->settings.seed, enable_starts);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -91,7 +94,10 @@ void fj_cpu_worker_t<i_t, f_t>::send_stop_signal()
 }
 
 template <typename i_t, typename f_t>
-void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t base_seed)
+void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c,
+                                int lane,
+                                int64_t base_seed,
+                                bool enable_starts)
 {
   const bool extreme_hub =
     c.problem->max_var_degree > 512 && c.problem->max_var_degree > 64.0 * c.problem->avg_var_degree;
@@ -145,7 +151,7 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   }
 
   // apply initial starts
-  {
+  if (enable_starts) {
     phase_timer_t timer(c.stats.t_start);
     switch (lane % 8) {
       case 1: apply_structural_completion_start<i_t, f_t>(c); break;
@@ -277,6 +283,19 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
     c.use_lp_start = c.use_deep_lp_pump = true;
     c.lp_start_feasibility_objective    = false;
   }
+  if (!enable_starts) {
+    c.use_lp_start                   = false;
+    c.lp_start_feasibility_objective = false;
+    c.use_deep_lp_pump               = false;
+    c.use_precedence_start           = false;
+    c.use_affine_equality_start      = false;
+    c.use_unit_commitment_start      = false;
+    c.use_fixed_charge_network_start = false;
+    c.use_fundamental_cycle_pivot    = false;
+    c.network_temperature            = f_t{0};
+    c.use_pmedian_start              = false;
+    c.use_equality_substitution      = false;
+  }
 
   // Seek feasibility without objective interference; restore lane-specific pressure after crossing.
   // The floor only takes effect once a lane is already feasible (h_objective_weight starts at 0 and
@@ -372,7 +391,10 @@ void complete_climber_portfolio(std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> firs
 template struct fj_cpu_worker_t<int, float>;
 template std::shared_ptr<fj_cpu_shared_incumbent_t<int, float>>
 make_fj_cpu_shared_incumbent<int, float>();
-template void apply_lane_diversification<int, float>(fj_cpu_climber_t<int, float>&, int, int64_t);
+template void apply_lane_diversification<int, float>(fj_cpu_climber_t<int, float>&,
+                                                     int,
+                                                     int64_t,
+                                                     bool);
 template void complete_climber_portfolio<int, float>(
   std::unique_ptr<fj_cpu_climber_t<int, float>>,
   const std::vector<int64_t>&,
@@ -386,7 +408,10 @@ template void complete_climber_portfolio<int, float>(
 template struct fj_cpu_worker_t<int, double>;
 template std::shared_ptr<fj_cpu_shared_incumbent_t<int, double>>
 make_fj_cpu_shared_incumbent<int, double>();
-template void apply_lane_diversification<int, double>(fj_cpu_climber_t<int, double>&, int, int64_t);
+template void apply_lane_diversification<int, double>(fj_cpu_climber_t<int, double>&,
+                                                      int,
+                                                      int64_t,
+                                                      bool);
 template void complete_climber_portfolio<int, double>(
   std::unique_ptr<fj_cpu_climber_t<int, double>>,
   const std::vector<int64_t>&,
