@@ -45,7 +45,7 @@
 - Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
 - Free memory after LP presolve: the transpose matrix and PSLP reduced problem are now freed
 - LPs with poor scaling are now attempted without presolve, even if PSLP declares infeasibility
-- LP presolve now uses PSLP version 0.1.1
+- LP presolve now uses PSLP version 0.1.0
 - Barrier now preforms Ruiz scaling and builds the augmented system on the GPU
 - Barrier now scales QCQP/SOCP constraint by variable bounds before Ruiz equilibriation
 - Barrier now performs iterative refinement on GPU when using the normal equations
@@ -108,7 +108,6 @@
 - Disable clique table generation in MIP when running in determinism mode.
 - XXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explaination
 - Upgrade CMake to include the PSLP objective offset fix (#1695)
-- Fix vendored PSLP writing a stray infeasible-message printf to native stdout (#1836)
 - Multi-GPU PDLP: add the missing header to the solve log (#2017)
 - Fix asynchronous clique table handoff (#1834)
 - Fix concurrent clique table publication (#1775)
