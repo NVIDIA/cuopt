@@ -177,8 +177,9 @@ mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env
   installing them into the conda environment. Pass `--install` to also install `libcuopt` into the
   active conda environment (`$CONDA_PREFIX`, or a custom location via `$PREFIX`). Note that
   the script depends on the `nvcc` executable being on your path, or defined in `$CUDACXX`.
-  To import or test the built Python packages, pass `--install`, or add `$CUOPT_HOME/cpp/build` to
-  `LD_LIBRARY_PATH`.
+  The Python packages need `libcuopt` at import time, so `--install` is the recommended way to build
+  them. Without it, the libraries stay in `$CUOPT_HOME/cpp/build` and you must run Python with
+  `LD_LIBRARY_PATH=$CUOPT_HOME/cpp/build` (or `$LIBCUOPT_BUILD_DIR` if you set it).
 
 ```bash
 cd $CUOPT_HOME
@@ -187,7 +188,7 @@ cd $CUOPT_HOME
 # you want to build and install the libcuopt C++ library only,
 # or include the cuopt Python libraries:
 
-./build.sh           # All the libraries
+./build.sh --install # All the libraries (recommended)
 ./build.sh libcuopt  # libcuopt C++ only
 ```
 
@@ -213,7 +214,7 @@ This is only available to be built through source code and libcuopt is not being
 To build all libraries and tests, simply run
 
 ```bash
-./build.sh
+./build.sh --install
 ```
 
 - **Note**: if Cython files (`*.pyx` or `*.pxd`) have changed, the Python build must be rerun.
