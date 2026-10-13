@@ -294,6 +294,7 @@ bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
   } else {
     CUOPT_LOG_INFO("Column reduction enabled (%s): PDLP matrix nnz=%" PRId64, mode_name, nnz);
   }
+  CUOPT_LOG_INFO("To disable column reduction, set CUOPT_PDLP_HYPER_REDUCED_MATRIX to 0.");
   return true;
 }
 
