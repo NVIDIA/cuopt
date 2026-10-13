@@ -285,7 +285,8 @@ bool feasibility_pump_t<i_t, f_t>::run_fj_cycle_escape(solution_t<i_t, f_t>& sol
   fj.settings.feasibility_run        = false;
   fj.settings.n_of_minimums_for_exit = 5000;
   fj.settings.time_limit             = std::min(3., timer.remaining_time());
-  is_feasible                        = fj.solve(solution);
+  is_feasible =
+    general_integers_relaxed ? fj.solve(solution) : fj.solve(solution, improvement_callback);
   // if FJ didn't change the solution, take last incumbent solution
   if (!is_feasible && cycle_queue.check_cycle(solution)) {
     CUOPT_LOG_DEBUG("cycle detected after FJ, taking last incumbent of fj");
@@ -308,7 +309,8 @@ bool feasibility_pump_t<i_t, f_t>::test_fj_feasible(solution_t<i_t, f_t>& soluti
   fj.settings.n_of_minimums_for_exit = 5000;
   fj.settings.time_limit             = std::min(time_limit, timer.remaining_time());
   cuopt_func_call(solution.test_variable_bounds(true));
-  is_feasible = fj.solve(solution);
+  is_feasible =
+    general_integers_relaxed ? fj.solve(solution) : fj.solve(solution, improvement_callback);
   cuopt_func_call(solution.test_variable_bounds(true));
   // if FJ didn't change the solution, take last incumbent solution
   if (!is_feasible) {
@@ -422,6 +424,7 @@ template <typename i_t, typename f_t>
 void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& solution)
 {
   raft::common::nvtx::range fun_scope("relax_general_integers");
+  cuopt_assert(!general_integers_relaxed, "General integers are already relaxed");
   orig_variable_types.resize(solution.problem_ptr->n_variables, solution.handle_ptr->get_stream());
 
   auto var_types  = make_span(solution.problem_ptr->variable_types);
@@ -450,6 +453,7 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
   RAFT_CHECK_CUDA(solution.handle_ptr->get_stream().get());
   solution.problem_ptr->compute_n_integer_vars();
   solution.problem_ptr->compute_binary_var_table();
+  general_integers_relaxed = true;
   CUOPT_LOG_DEBUG("Integers are relaxed n_int vars %d n_binary vars %d n_vars %d",
                   solution.problem_ptr->n_integer_vars,
                   solution.problem_ptr->n_binary_vars,
@@ -459,11 +463,13 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
 template <typename i_t, typename f_t>
 void feasibility_pump_t<i_t, f_t>::revert_relaxation(solution_t<i_t, f_t>& solution)
 {
+  cuopt_assert(general_integers_relaxed, "General integers are not relaxed");
   cuopt_assert(orig_variable_types.size() == solution.problem_ptr->variable_types.size(),
                "variable size mismatch");
   std::swap(orig_variable_types, solution.problem_ptr->variable_types);
   solution.problem_ptr->compute_n_integer_vars();
   solution.problem_ptr->compute_binary_var_table();
+  general_integers_relaxed = false;
   solution.compute_feasibility();
 }
 

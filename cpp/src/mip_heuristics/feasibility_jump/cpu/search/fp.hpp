@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::simplex {
@@ -23,7 +24,8 @@ template <typename i_t, typename f_t>
 bool solve_lp_relaxation(const simplex::user_problem_t<i_t, f_t>& relaxation,
                          double time_limit,
                          std::vector<f_t>& assignment,
-                         double& solve_seconds);
+                         double& solve_seconds,
+                         std::atomic<int>* concurrent_halt);
 
 template <typename i_t, typename f_t>
 bool solve_lp_with_fixed_variables(const simplex::user_problem_t<i_t, f_t>& problem,
@@ -31,7 +33,8 @@ bool solve_lp_with_fixed_variables(const simplex::user_problem_t<i_t, f_t>& prob
                                    const std::vector<f_t>& fixed_values,
                                    double time_limit,
                                    std::vector<f_t>& assignment,
-                                   double& solve_seconds);
+                                   double& solve_seconds,
+                                   std::atomic<int>* concurrent_halt);
 
 template <typename i_t, typename f_t>
 void run_cpu_feasibility_pump(fj_cpu_climber_t<i_t, f_t>& fj_cpu,

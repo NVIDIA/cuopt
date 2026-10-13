@@ -17,15 +17,19 @@ template <typename i_t, typename f_t>
 bool solve_lp_relaxation(const simplex::user_problem_t<i_t, f_t>& relaxation,
                          double time_limit,
                          std::vector<f_t>& x,
-                         double& lp_seconds)
+                         double& lp_seconds,
+                         std::atomic<int>* concurrent_halt)
 {
+  if (concurrent_halt != nullptr && concurrent_halt->load()) return false;
+
   simplex::lp_status_t status = simplex::lp_status_t::UNSET;
   double seconds              = 0;
 
   simplex_solver_settings_t<i_t, f_t> lp_settings;
-  lp_settings.relaxation = true;
-  lp_settings.time_limit = time_limit;
-  lp_settings.log.log    = false;
+  lp_settings.relaxation      = true;
+  lp_settings.time_limit      = time_limit;
+  lp_settings.log.log         = false;
+  lp_settings.concurrent_halt = concurrent_halt;
 
   const f_t lp_start = tic();
   simplex::lp_solution_t<i_t, f_t> lp_solution(relaxation.num_rows, relaxation.num_cols);
@@ -34,10 +38,12 @@ bool solve_lp_relaxation(const simplex::user_problem_t<i_t, f_t>& relaxation,
   seconds = toc(lp_start);
   lp_seconds += seconds;
 
-  const bool usable =
-    status == simplex::lp_status_t::OPTIMAL || status == simplex::lp_status_t::TIME_LIMIT ||
-    status == simplex::lp_status_t::ITERATION_LIMIT ||
-    status == simplex::lp_status_t::CONCURRENT_LIMIT || status == simplex::lp_status_t::WORK_LIMIT;
+  const bool halt_requested = concurrent_halt != nullptr && concurrent_halt->load();
+  const bool usable         = !halt_requested && (status == simplex::lp_status_t::OPTIMAL ||
+                                          status == simplex::lp_status_t::TIME_LIMIT ||
+                                          status == simplex::lp_status_t::ITERATION_LIMIT ||
+                                          status == simplex::lp_status_t::CONCURRENT_LIMIT ||
+                                          status == simplex::lp_status_t::WORK_LIMIT);
   CUOPT_LOG_DEBUG("CPUFJ LP relaxation: %s after %.3fs of %.3fs%s",
                   simplex::lp_status_to_string(status).c_str(),
                   seconds,
@@ -52,7 +58,8 @@ bool solve_lp_with_fixed_variables(const simplex::user_problem_t<i_t, f_t>& prob
                                    const std::vector<f_t>& fixed_values,
                                    double time_limit,
                                    std::vector<f_t>& assignment,
-                                   double& solve_seconds)
+                                   double& solve_seconds,
+                                   std::atomic<int>* concurrent_halt)
 {
   cuopt_assert(fixed_variables.size() == fixed_values.size(),
                "fixed variable and value counts differ");
@@ -63,7 +70,7 @@ bool solve_lp_with_fixed_variables(const simplex::user_problem_t<i_t, f_t>& prob
                  "var out of bounds");
     fixed.lower[var] = fixed.upper[var] = fixed_values[k];
   }
-  return solve_lp_relaxation(fixed, time_limit, assignment, solve_seconds);
+  return solve_lp_relaxation(fixed, time_limit, assignment, solve_seconds, concurrent_halt);
 }
 
 template <typename i_t, typename f_t>
@@ -172,7 +179,9 @@ void run_cpu_feasibility_pump(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     const auto& relaxation = projection == 0 ? base : distance;
 
     std::vector<f_t> x;
-    if (!solve_lp_relaxation(relaxation, remaining, x, fj_cpu.stats.t_lp_relaxation)) break;
+    if (!solve_lp_relaxation(
+          relaxation, remaining, x, fj_cpu.stats.t_lp_relaxation, &fj_cpu.halted))
+      break;
     // convert_user_problem appends slacks, so the model's own variables are the leading columns.
     if ((i_t)x.size() < n_variables) break;
 
@@ -218,7 +227,8 @@ void run_cpu_feasibility_pump(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                                           fixed_values,
                                           repair_budget,
                                           repaired,
-                                          fj_cpu.stats.t_lp_relaxation) &&
+                                          fj_cpu.stats.t_lp_relaxation,
+                                          &fj_cpu.halted) &&
             (i_t)repaired.size() >= n_variables) {
           for (i_t var = 0; var < n_variables; ++var)
             if (!is_integer_var<i_t, f_t>(fj_cpu, var)) candidate[var] = repaired[var];
@@ -257,13 +267,15 @@ void run_cpu_feasibility_pump(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 template bool solve_lp_relaxation<int, float>(const simplex::user_problem_t<int, float>&,
                                               double,
                                               std::vector<float>&,
-                                              double&);
+                                              double&,
+                                              std::atomic<int>*);
 template bool solve_lp_with_fixed_variables<int, float>(const simplex::user_problem_t<int, float>&,
                                                         const std::vector<int>&,
                                                         const std::vector<float>&,
                                                         double,
                                                         std::vector<float>&,
-                                                        double&);
+                                                        double&,
+                                                        std::atomic<int>*);
 template void run_cpu_feasibility_pump<int, float>(fj_cpu_climber_t<int, float>&,
                                                    const simplex::user_problem_t<int, float>&,
                                                    double,
@@ -274,14 +286,16 @@ template void run_cpu_feasibility_pump<int, float>(fj_cpu_climber_t<int, float>&
 template bool solve_lp_relaxation<int, double>(const simplex::user_problem_t<int, double>&,
                                                double,
                                                std::vector<double>&,
-                                               double&);
+                                               double&,
+                                               std::atomic<int>*);
 template bool solve_lp_with_fixed_variables<int, double>(
   const simplex::user_problem_t<int, double>&,
   const std::vector<int>&,
   const std::vector<double>&,
   double,
   std::vector<double>&,
-  double&);
+  double&,
+  std::atomic<int>*);
 template void run_cpu_feasibility_pump<int, double>(fj_cpu_climber_t<int, double>&,
                                                     const simplex::user_problem_t<int, double>&,
                                                     double,

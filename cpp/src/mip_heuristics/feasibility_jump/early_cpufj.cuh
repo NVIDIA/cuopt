@@ -31,7 +31,9 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
   static constexpr const char* name() { return "CPUFJ"; }
 
   // Callers sharing the team with other work reserve its capacity before sizing this portfolio.
-  void start(int n_lanes, bool low_latency = false);
+  void start(int n_lanes,
+             bool low_latency                             = false,
+             const std::vector<f_t>& incumbent_assignment = {});
   void stop();
 
   int lane_count() const { return (int)climbers_.size(); }

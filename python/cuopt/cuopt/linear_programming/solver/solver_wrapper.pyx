@@ -158,19 +158,21 @@ cdef object _vector_to_numpy(const vector[double]& vec):
 
 
 def _vars_dict(variable_names, primal_solution):
+    # Returns a function that builds the dict: Solution.vars builds it on
+    # first access.
     if len(primal_solution) == 0:
         # No primal vector (infeasible/unbounded/etc.): match prior
         # behavior (implemented as dict(zip(names, primal)) before
         # refactor for gRPC, which yielded {}).
         return {}
     if variable_names is None or len(variable_names) == 0:
-        return {f"x{i}": v for i, v in enumerate(primal_solution)}
+        return lambda: {f"x{i}": v for i, v in enumerate(primal_solution)}
     if len(variable_names) != len(primal_solution):
         raise ValueError(
             f"variable_names length ({len(variable_names)}) does not match "
             f"solution size ({len(primal_solution)})"
         )
-    return dict(zip(variable_names, primal_solution))
+    return lambda: dict(zip(variable_names, primal_solution))
 
 
 def type_cast(cudf_obj, np_type, name):
