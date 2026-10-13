@@ -61,15 +61,12 @@
 - QCQP/SOCP presolve now eliminates free variables with zero cost 
 - MIP root relaxation now honors the LP method selected
 - MIP performance improvement in duplicate cut detection
-- MIP diving is now performed on separate threads during root cut passes
-- MIP root heuristics now use more threads, recursive RINS is now run at the root node
 - MIP reduced cost strengthening now stores bound implications based on incumbent objective value
 - MIP now includes a new Mod-2 cut separator for zero-half cuts
 - XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explanations 
 - Block Bounded Value Elimination presolving pass for binary problems (#1683)
 - Add a binary 2opt move fed from the probing cache into CPUFJ (#1738)
 - Add a dual aggregation presolver for binary variables with a single lock (#901)
-- Allow stopping B&B through `concurrent_halt` in the simplex solver settings, including during cut passes (#1760)
 - Exhaustive coefficient reduction for binary rows (#1686)
 - Improve time-to-first-incumbent, unify solution callback publication, scaffolding changes (#1880)
 - Add a fast-path to the CPUFJ engine for binary problems with integer activities (#1881)
@@ -105,15 +102,16 @@
 - Fix issue in MIP when converting knapsack constraints to rational coefficients could remove integer solutions
 - Fix issue in MIP where termination was delayed during root cut passes
 - Fix an issue in MIP where the sub-MIP was not correctly stopped when the main solve finished
+- B&B now properly stops after `concurrent_halt` is set to true.
+- Fix incorrect global dual bounds during the cut passes
+- Guard against nullptr dereference when checking concurrent solver status
+- Escape parser error messages
+- Disable clique table generation in MIP when running in determinism mode.
 - XXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explaination
-- Fix early termination caused by an uninitialized dual bound before B&B starts (#2037)
 - Upgrade CMake to include the PSLP objective offset fix (#1695)
 - Fix vendored PSLP writing a stray infeasible-message printf to native stdout (#1836)
 - Multi-GPU PDLP: add the missing header to the solve log (#2017)
 - Fix asynchronous clique table handoff (#1834)
-- Disable clique/zero-half cuts in determinism mode (#1841)
-- Guard against nullptr dereference when checking concurrent solver status (#1845)
-- Restore logging of `cuopt_cli` arguments (#1996)
 - Fix concurrent clique table publication (#1775)
 - Limit the population solution queue to 50 solutions to prevent memory overflow (#2002)
 - Add extra termination checks in LP, and bound sub-MIP time by the global time limit (#2054)
@@ -130,7 +128,6 @@
 - Routing: avoid division by zero when vehicle capacity is zero (#1853)
 - Routing: Guard diagonal element lookup against negative offsets in top_k (#1855)
 - Refresh the cached linear column count after removing empty… (#1923)
-- Escape parser error messages (#1947)
 - Handle cuda graph errors (#1945)
 - gRPC: transmit PDLP warmstart data and apply it on the server (#2041)
 - grpc server align ping handling with client behavior (#1937)
