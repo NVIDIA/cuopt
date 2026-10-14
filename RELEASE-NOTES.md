@@ -41,9 +41,13 @@
 - SOCP now use a tighter default tolerance on the duality gap without a performance regression
 - PDLP now fuses the Halpern update into the projection kernels to improve performance
 - Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
-- Free memory after LP presolve: the transpose matrix and PSLP reduced problem are now freed
+- LP presolve now uses less memory by freeing the transpose matrix and PSLP reduced problem
 - LPs with poor scaling are now attempted without presolve, even if PSLP declares infeasibility
 - LP presolve now uses PSLP version 0.1.0; this version includes many improvements and bug fixes
+- Dual simplex now perturbs the cost more aggressively and uses primal simplex to remove perturbations
+- Dual simplex now attempts to remove perturbations when variables leave the basis
+- Dual simplex now tries several initial points on problems with dual degenerate bounded variables
+- Dual simplex's bound flipping ratio test is now approximately O(n) and combines Harris ratio test with bound flips 
 - Barrier now preforms Ruiz scaling and builds the augmented system on the GPU
 - Barrier now scales QCQP/SOCP constraint by variable bounds before Ruiz equilibriation
 - Barrier now performs iterative refinement on GPU when using the normal equations
@@ -60,6 +64,7 @@
 - MIP performance improvement in duplicate cut detection
 - MIP reduced cost strengthening now stores bound implications based on incumbent objective value
 - MIP now includes a new Mod-2 cut separator for zero-half cuts
+- Routing now uses use cost instead of distance terminology when the objective does not represent a physical distance 
 - XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explanations
 - Block Bounded Value Elimination presolving pass for binary problems (#1683)
 - Add a binary 2opt move fed from the probing cache into CPUFJ (#1738)
@@ -67,9 +72,7 @@
 - Exhaustive coefficient reduction for binary rows (#1686)
 - Improve time-to-first-incumbent, unify solution callback publication, scaffolding changes (#1880)
 - Add a fast-path to the CPUFJ engine for binary problems with integer activities (#1881)
-- Standardize cost terminology (#1299)
 - Modular CPUFJ engine, simple portfolio (#1950)
-- Improve primal and dual simplex performance, and make primal simplex a first-class method for LPs (#1889)
 - Structure-aware starts and repairs for CPUFJ (#1951)
 - Portfolio diversification, more starts, move batching (#1953)
 - RoutingClient: match Client's (host, port, tls=...) signature (#1840)
@@ -126,7 +129,7 @@
 - Fix an issue in gRPC: add a check for successful cuda init in worker
 - Fix an issue in gRPC: forward routing settings and map node name strings to ints
 - Fix an issue in gRPC: exec the binary from the `cuopt_cli` and `cuopt_grpc_server` console-script wrappers so signals reach it 
-- Fix an issue in the Python gRPC client: run the wait loop in Python so other threads are not blocked by the GIL (#1857)
+- Fix an issue in the Python gRPC client: run the wait loop in Python so other threads are not blocked by the GIL
 
 ### Deprecations (26.10)
 
