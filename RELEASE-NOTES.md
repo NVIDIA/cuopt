@@ -45,7 +45,7 @@
 - Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
 - Free memory after LP presolve: the transpose matrix and PSLP reduced problem are now freed
 - LPs with poor scaling are now attempted without presolve, even if PSLP declares infeasibility
-- LP presolve now uses PSLP version 0.1.0
+- LP presolve now uses PSLP version 0.1.0; this version includes many improvements and bug fixes
 - Barrier now preforms Ruiz scaling and builds the augmented system on the GPU
 - Barrier now scales QCQP/SOCP constraint by variable bounds before Ruiz equilibriation
 - Barrier now performs iterative refinement on GPU when using the normal equations
@@ -80,10 +80,14 @@
 
 ### Bug Fixes (26.10)
 
+- Fix a issue in the C API when accessing solutions on infeasible problems
 - Fix issue in MPS writer on problems with no linear constraints
 - Fix ranged constraint conversion and MPS writing/reading round trips
 - Fix an issue in PDLP where reduced costs where not returned for the default PDLP preset (Stable3)
+- Fix a missing header in log in Multi-GPU PDLP
+- Fix a issue in Multi-GPU where the solver stopped silently when asking for more GPUs than available 
 - Fix a barrier crash when concurrent LP solving returned from cuDSS before its asynchronous work finished
+- Fix a segfault in concurrent LP if dual simplex or barrier finished without setting a solution
 - Fix several issues in barrier related to the cuDSS threading layer
 - Fix a bug on QCQP/SOCP problems with ranged rows
 - Fix nondeterminism in barrier when `--cudss-deterministic=1`
@@ -92,33 +96,27 @@
 - Fix an issue in QCQP/SOCP where the dual residual of the final solution was incorrect
 - Fix an issue in dual simplex logs where bound flips were not accounted for in objective
 - Fix an issue in MIP where flow cover cut generation was accidentally O(n^2)
-- Fix issue in dual simplex inside MIP where cut off incorrectly used the perturbed objective
+- Fix an issue in dual simplex inside MIP where cut off incorrectly used the perturbed objective
 - Fix an issue in dual simplex where dual variables and dual feasibility was not recomputed after basis repair
 - Fix several issues in MIP where the time limit was not respected
 - Fix MIP presolve incorrectly fixing continuous variables using integer-variable tolerance
-- Fix false optimality declaration in MIP determinsitic mode
-- Fix issue in MIP where a large amount of time could elapse between logs
-- Fix issue in MIP when converting knapsack constraints to rational coefficients could remove integer solutions
-- Fix issue in MIP where termination was delayed during root cut passes
+- Fix false optimality declaration in MIP deterministic mode
+- Fix an issue in MIP where a large amount of time could elapse between logs
+- Fix an issue in MIP when converting knapsack constraints to rational coefficients could remove integer solutions
+- Fix an issue in MIP where termination was delayed during root cut passes
 - Fix an issue in MIP where the sub-MIP was not correctly stopped when the main solve finished
-- B&B now properly stops after `concurrent_halt` is set to true.
-- Fix incorrect global dual bounds during the cut passes
-- Guard against nullptr dereference when checking concurrent solver status
-- Escape parser error messages
-- Disable clique table generation in MIP when running in determinism mode.
+- Fix an issue in MIP feasibility jump where weights were uninitialized when adding an objective cut
+- Fix an issue in MIP GF2 presolve where rank-deficient problems were incorrectly classified as infeasible
+- Fix an issue in MIP GF2 presolve where some one-sided rows were treated as equalities
+- Fix a memory overflow in MIP when there were many feasible solutions
+- Disable clique table generation in MIP when running in determinism mode
 - XXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explaination
-- Upgrade CMake to include the PSLP objective offset fix (#1695)
-- Multi-GPU PDLP: add the missing header to the solve log (#2017)
+- B&B now properly stops after `concurrent_halt` is set to true (#1760)
+- Escape parser error messages
 - Fix asynchronous clique table handoff (#1834)
 - Fix concurrent clique table publication (#1775)
-- Limit the population solution queue to 50 solutions to prevent memory overflow (#2002)
 - Add extra termination checks in LP, and bound sub-MIP time by the global time limit (#2054)
-- Fix `cuopt_cli` printing no log when `--num-gpu` exceeds the available GPUs (#1935)
-- GF2 presolve rank-deficiency fix (#1660)
-- Fix uninitialized FJ constraint weights when the problem grows (#1698)
 - Use configured feasibility tolerance in Papilo (#1688)
-- Fix GF2 incorrectly treating some one-sided rows as equality (#1707)
-- Report absent solution values instead of returning success (#1734)
 - Avoid uncapturable RMM copies inside routing CUDA graph captures (#1753)
 - Keep host sources alive for async route-view copies (#1759)
 - Use an absolute instead of relative tolerance for mod-2 row integrality (#1770)
