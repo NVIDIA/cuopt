@@ -143,6 +143,7 @@ outputs:
         - libabseil
         - re2
       run:
+        - libgomp >=9
         # Every library libcuopt_client.so links. rmm and the CUDA runtime are host-only:
         # the client includes their headers but links neither.
         - rapids-logger =0.3
