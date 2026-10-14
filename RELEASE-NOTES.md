@@ -83,7 +83,7 @@
 - Fix a issue in the C API when accessing solutions on infeasible problems
 - Fix issue in MPS writer on problems with no linear constraints
 - Fix ranged constraint conversion and MPS writing/reading round trips
-- Fix an issue in LP/MIP presolve where the user specified feasibility tolerance was not propagate to Papilo
+- Fix an issue in LP/MIP presolve where the user specified feasibility tolerance was not propagated to Papilo
 - Fix an issue in PDLP where reduced costs where not returned for the default PDLP preset (Stable3)
 - Fix a missing header in log in multi-GPU PDLP
 - Fix an issue in multi-GPU PDLP where the solver stopped silently when asking for more GPUs than available
