@@ -5,8 +5,6 @@
 ### New Features (26.10)
 
 - New Java interface for LP, QP, QCQP, SOCP and MIP
-- New Curtis-Reid scaling for PDLP
-- Support for reusing the barrier ordering and symbolic factorization when solving a sequence of problems with different linear objectives and right-hand sides
 - New RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics for MIP
 - MIP solver now runs diving and recursive sub-MIP heuristics during the cut passes
 - New primal heuristic for MIPs with arc-flow formulations
@@ -14,11 +12,13 @@
 - New compound move types in CPUFJ: 2-opt, probing implication chain, clique exchange, set-partitioning row exchange and compound repair
 - New LNS heuristic for MIP that uses ruin-and-repair logic
 - New techniques for exploiting degeneracy in MIP
-- New primal simplex method for LPs
 - New implied indicator and capacity lifting presolve strengthening for fixed-charge MIP models
 - New MIP presolve: Block Bounded Value Elimination for binary problems
 - New MIP presolve: dual aggregation for binary variables with a single lock
 - New MIP presolve: exhaustive coefficient reduction for binary rows
+- New Curtis-Reid scaling for PDLP
+- New primal simplex method for LPs
+- Support for reusing the barrier ordering and symbolic factorization when solving a sequence of problems with different linear objectives and right-hand sides
 - The C API now exposes solver statistics as scalar solution attributes
 - New `cuOptSetLogCallback` for capturing solver logs in C API
 - Routing now supports per-vehicle distance-based breaks, so charging, refueling, or rest stops can be constrained by cumulative travel distance rather than time
