@@ -563,9 +563,6 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - wheel-publish-libcuopt
-      - wheel-publish-libcuopt-client
-      - wheel-publish-libcuopt-mathopt
-      - wheel-publish-libcuopt-routing
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
@@ -592,19 +589,11 @@ jobs:
             echo "::error::No wheel files found in dist/ -- refusing to create an asset-free release"
             exit 1
           fi
-          # release_cuopt.sh may have created the release already; attach to it if so
-          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$tag" \
-              --repo "${{ github.repository }}" \
-              --clobber \
-              "${wheels[@]}"
-          else
-            gh release create "$tag" \
-              --repo "${{ github.repository }}" \
-              --title "$tag" \
-              --generate-notes \
-              "${wheels[@]}"
-          fi
+          gh release create "$tag" \
+            --repo "${{ github.repository }}" \
+            --title "$tag" \
+            --generate-notes \
+            "${wheels[@]}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   # Each job below calls the Kitmaker Portal release API (via Charon Ferry) to publish
