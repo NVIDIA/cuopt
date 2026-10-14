@@ -26,14 +26,11 @@
 
 ### Breaking Changes (26.10)
 
-- Don't install libcuopt into conda env by default (#1650)
-- Presolve work and iteration limits (#1656)
-- Migrate stream APIs from rmm::cuda_stream_view to cuda::stream_ref (#1828)
-- `libcuopt` is split into client, mathopt and routing components, with separate wheels and conda packages (beta); `libcuopt` is now a thin metapackage (#1622, #1926, #1928, #1929, #1967, #2013)
-- Rename CUOPT_DISTRIBUTED_PDLP_PARTITIONER to CUOPT_MULTIGPU_PDLP_PARTITIONER; remove CUOPT_USE_DISTRIBUTED_PDLP (#1984)
-- standardize interface and remote solves on solver_settings_t (#2034)
-- Reject unsupported mixed-integer quadratic problems before solving (#2032)
-- The container image now runs the proxy and gRPC servers by default; the legacy HTTP server is an optional start command (#2007)
+- The container image now runs the proxy and gRPC servers by default; the legacy HTTP server is an optional start command
+- `libcuopt` is split into client, mathopt and routing components, with separate wheels and conda packages; `libcuopt` is now a thin metapackage 
+- The CUOPT_DISTRIBUTED_PDLP_PARTITIONER setting introduced in 26.08 is now CUOPT_MULTIGPU_PDLP_PARTITIONER
+- The CUOPT_USE_DISTRIBUTED_PDLP setting introduced in 26.08 has been removed; use method and num_gpus instead
+- When building from source the build.sh script no longer installs libcuopt into conda env by default
 
 ### Improvements (26.10)
 
@@ -136,9 +133,9 @@
 
 ### Documentation (26.10)
 
-- Show mamba commands directly instead of a conda-then-swap note (#1827)
-- Document the VRP gRPC client (RoutingClient) (#1838)
-- Update NVIDIA Brev documentation links (#1925)
+- Show mamba commands directly instead of a conda-then-swap note
+- Document the VRP gRPC client (RoutingClient) 
+- Update NVIDIA Brev documentation links 
 
 ### New Contributors (26.10)
 
