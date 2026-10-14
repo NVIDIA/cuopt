@@ -36,8 +36,8 @@
 ### Improvements (26.10)
 
 - Significant performance improvements in MIP heuristics
-- QP/QCQP problems solve 1.33X faster (geomean over QPLIB and Hans Mittelmann test set)
-- SOCP problems now solve to a tighter default tolerance of 1e-6 (previously 1e-4) without a performance regression
+- QP/QCQP solve 1.33X faster (geomean over QPLIB and Hans Mittelmann test set)
+- SOCP now use a tighter default tolerance of 1e-6 on the duality gap without a performance regression
 - Dual simplex is 1.4X faster (geomean over MIPLIB root relaxations)
 - PDLP now fuses the Halpern update into the projection kernels to improve performance
 - Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
@@ -84,7 +84,7 @@
 - Fix an issue in LP/MIP presolve where the user specified feasibility tolerance was not propagate to Papilo
 - Fix an issue in PDLP where reduced costs where not returned for the default PDLP preset (Stable3)
 - Fix a missing header in log in Multi-GPU PDLP
-- Fix a issue in Multi-GPU where the solver stopped silently when asking for more GPUs than available 
+- Fix an issue in Multi-GPU where the solver stopped silently when asking for more GPUs than available 
 - Fix a barrier crash when concurrent LP solving returned from cuDSS before its asynchronous work finished
 - Fix a segfault in concurrent LP if dual simplex or barrier finished without setting a solution
 - Fix several issues in barrier related to the cuDSS threading layer
