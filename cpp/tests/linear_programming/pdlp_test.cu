@@ -293,6 +293,10 @@ TEST(pdlp_class, run_double_very_low_accuracy)
   settings.tolerances.absolute_gap_tolerance    = settings.minimal_absolute_tolerance;
   settings.tolerances.relative_gap_tolerance    = 0.0;
   settings.method                               = cuopt::mathematical_optimization::method_t::PDLP;
+  // This solve normally ends in well under a second. The limit is only there so that a platform
+  // where PDLP does not reach these tolerances fails here instead of running until the CI step
+  // is killed, which also hides every test that comes after it.
+  settings.time_limit = 60;
 
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
