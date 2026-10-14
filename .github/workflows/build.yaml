@@ -593,7 +593,6 @@ jobs:
           if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release upload "$tag" \
               --repo "${{ github.repository }}" \
-              --clobber \
               "${wheels[@]}"
           else
             gh release create "$tag" \
