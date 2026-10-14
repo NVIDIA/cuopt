@@ -10,9 +10,15 @@
 - Add RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics to MIP
 - MIP solver now runs diving and recursive RINS heuristics during the cut passes
 - New primal heuristic for MIPs with arc-flow formulations
+- Support for portfolio of CPUFJ heuristics with diversification
+- New compound move types in CPUFJ: 2-opt, probing implication chain, clique exchange, set-partitioning row exchange and compound repair
+- New LNS heuristic for MIP that uses ruin-and-repair logic
 - New techniques for exploiting degeneracy in MIP
 - New primal simplex method for LPs
 - New implied indicator and capacity lifting presolve strengthening for fixed-charge MIP models
+- New MIP presolve: Block Bounded Value Elimination for binary problems
+- New MIP presolve: dual aggregation for binary variables with a single lock
+- New MIP presolve: exhaustive coefficient reduction for binary rows
 - The C API now exposes solver statistics as scalar solution attributes
 - New `cuOptSetLogCallback` for capturing solver logs in C API
 - New HTTP proxy server on top of gRPC, replacing the deprecated legacy HTTP server
@@ -42,6 +48,8 @@
 - LP presolve now uses less memory by freeing the transpose matrix and PSLP reduced problem
 - LPs with poor scaling are now attempted without presolve, even if PSLP declares infeasibility
 - LP presolve now uses PSLP version 0.1.0; this version includes many improvements and bug fixes
+- MIP presolve now uses iteration and work limits rather than time limits
+- Set solution callbacks now use presolve and postsolve
 - Dual simplex now perturbs the cost more aggressively and uses primal simplex to remove perturbations
 - Dual simplex now attempts to remove perturbations when variables leave the basis
 - Dual simplex now tries several initial points on problems with dual degenerate bounded variables
@@ -65,18 +73,11 @@
 - MIP reduced cost strengthening now stores bound implications based on incumbent objective value
 - MIP now includes a new Mod-2 cut separator for zero-half cuts
 - MIP random number generators are now per-worker instead of process wide; eliminating a source of nondeterminism
-- Routing now uses use cost instead of distance terminology when the objective does not represent a physical distance 
-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explanations
-- Block Bounded Value Elimination presolving pass for binary problems (#1683)
-- Add a binary 2opt move fed from the probing cache into CPUFJ (#1738)
-- Add a dual aggregation presolver for binary variables with a single lock (#901)
-- Exhaustive coefficient reduction for binary rows (#1686)
-- Improve time-to-first-incumbent, unify solution callback publication, scaffolding changes (#1880)
-- Add a fast-path to the CPUFJ engine for binary problems with integer activities (#1881)
-- Modular CPUFJ engine, simple portfolio (#1950)
-- Structure-aware starts and repairs for CPUFJ (#1951)
-- Portfolio diversification, more starts, move batching (#1953)
-
+- Routing now uses cost instead of distance terminology when the objective does not represent a physical distance 
+- Solution callback publication is now unified across solver components
+- Time to first solution is improved by reducing overheads
+- CPUFJ now has a fast-path heuristic for binary problems with integer activities
+- CPUFJ now has structure-aware starts and repairs
 
 ### Bug Fixes (26.10)
 
