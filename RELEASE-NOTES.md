@@ -64,6 +64,7 @@
 - MIP performance improvement in duplicate cut detection
 - MIP reduced cost strengthening now stores bound implications based on incumbent objective value
 - MIP now includes a new Mod-2 cut separator for zero-half cuts
+- MIP random number generators are now per-worker instead of process wide; eliminating a source of nondeterminism
 - Routing now uses use cost instead of distance terminology when the objective does not represent a physical distance 
 - XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explanations
 - Block Bounded Value Elimination presolving pass for binary problems (#1683)
@@ -75,8 +76,7 @@
 - Modular CPUFJ engine, simple portfolio (#1950)
 - Structure-aware starts and repairs for CPUFJ (#1951)
 - Portfolio diversification, more starts, move batching (#1953)
-- Replace process-wide seed_generator with per-worker RNGs in MIP heuristics (#1809)
-- Give each solver its own seed instead of a process-wide counter (#1717)
+
 
 ### Bug Fixes (26.10)
 
@@ -117,6 +117,7 @@
 - Fix an unsynchronized read/write of the MIP clique table
 - Fix a memory overflow in MIP when there were many feasible solutions
 - Disable clique table generation in MIP when running in deterministic mode
+- Fix an issue where the random number seed could change if multiple solves were performed within the same process
 - Fix an issue in routing: keep host sources alive for async route-view copies 
 - Fix an issue in routing: avoid division by zero when vehicle capacity is zero 
 - Fix an issue in routing: guard diagonal element lookup against negative offsets in top_k 
