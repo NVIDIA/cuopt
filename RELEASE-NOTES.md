@@ -8,7 +8,7 @@
 - New Curtis-Reid scaling for PDLP
 - Support for reusing the barrier ordering and symbolic factorization when solving a sequence of problems with different linear objectives and right-hand sides
 - Add RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics to MIP
-- MIP solver now runs diving and recursive RINS heuristics during the cut passes
+- MIP solver now runs diving and recursive sub-MIP heuristics during the cut passes
 - New primal heuristic for MIPs with arc-flow formulations
 - Support for portfolio of CPUFJ heuristics with diversification
 - New compound move types in CPUFJ: 2-opt, probing implication chain, clique exchange, set-partitioning row exchange and compound repair
