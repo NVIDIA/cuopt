@@ -26,8 +26,6 @@ for filename in glob.iglob("**/*.ipynb", recursive=True):
     if "/build/" in filename:
         skip = True
 
-    # A notebook that asks the solver for more GPUs than are visible (num_gpus=4) is aborted by
-    # cuopt_cli, so it can only run on a node that has them.
     required_gpus = 1
     for line in open(filename, "r"):
         if re.search("# Skip notebook test", line):
