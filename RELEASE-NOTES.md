@@ -53,7 +53,6 @@
 - Dual simplex now attempts to remove perturbations when variables leave the basis
 - Dual simplex now tries several initial points on problems with dual degenerate bounded variables
 - Dual simplex's bound flipping ratio test is now approximately O(n) and combines Harris ratio test with bound flips
-
 - SOCP now use a tighter default tolerance on the duality gap without a performance regression
 - Barrier now performs Ruiz scaling and builds the augmented system on the GPU
 - Barrier now scales QCQP/SOCP constraints by variable bounds before Ruiz equilibration
