@@ -83,6 +83,7 @@
 - Fix a issue in the C API when accessing solutions on infeasible problems
 - Fix issue in MPS writer on problems with no linear constraints
 - Fix ranged constraint conversion and MPS writing/reading round trips
+- Fix an issue in LP/MIP presolve where the user specified feasibility tolerance was not propagate to Papilo
 - Fix an issue in PDLP where reduced costs where not returned for the default PDLP preset (Stable3)
 - Fix a missing header in log in Multi-GPU PDLP
 - Fix a issue in Multi-GPU where the solver stopped silently when asking for more GPUs than available 
@@ -90,6 +91,7 @@
 - Fix a segfault in concurrent LP if dual simplex or barrier finished without setting a solution
 - Fix several issues in barrier related to the cuDSS threading layer
 - Fix a bug on QCQP/SOCP problems with ranged rows
+- Fix corrupted memory in QCQP/SOCP presolve when removing empty columns 
 - Fix nondeterminism in barrier when `--cudss-deterministic=1`
 - Fix an issue with QPs where duality gap was not included in the termination criteria
 - Fix QCQP dual solution overrun and constraint count reporting
@@ -105,33 +107,28 @@
 - Fix an issue in MIP when converting knapsack constraints to rational coefficients could remove integer solutions
 - Fix an issue in MIP where termination was delayed during root cut passes
 - Fix an issue in MIP where the sub-MIP was not correctly stopped when the main solve finished
+- Fix an issue in MIP with halting cut passes
 - Fix an issue in MIP feasibility jump where weights were uninitialized when adding an objective cut
 - Fix an issue in MIP GF2 presolve where rank-deficient problems were incorrectly classified as infeasible
 - Fix an issue in MIP GF2 presolve where some one-sided rows were treated as equalities
+- Fix an issue in MIP presolve when performing single-lock-dual-aggregation
+- Fix an issue with tolerances in MIP mod-2 cuts
+- Fix a race condition in the asynchronous clique table generator and clique cuts
+- Fix an unsynchronized read/write of the MIP clique table
 - Fix a memory overflow in MIP when there were many feasible solutions
-- Disable clique table generation in MIP when running in determinism mode
-- XXXXXXXXXXXXXXXXXXXXXXXXXX PR titles below this line still need to be converted to human readable explaination
-- B&B now properly stops after `concurrent_halt` is set to true (#1760)
-- Escape parser error messages
-- Fix asynchronous clique table handoff (#1834)
-- Fix concurrent clique table publication (#1775)
-- Add extra termination checks in LP, and bound sub-MIP time by the global time limit (#2054)
-- Use configured feasibility tolerance in Papilo (#1688)
-- Avoid uncapturable RMM copies inside routing CUDA graph captures (#1753)
-- Keep host sources alive for async route-view copies (#1759)
-- Use an absolute instead of relative tolerance for mod-2 row integrality (#1770)
-- Add missing TransactionGuard in the SLDA presolver (#1815)
-- Routing: avoid division by zero when vehicle capacity is zero (#1853)
-- Routing: Guard diagonal element lookup against negative offsets in top_k (#1855)
-- Refresh the cached linear column count after removing empty… (#1923)
-- Handle cuda graph errors (#1945)
-- gRPC: transmit PDLP warmstart data and apply it on the server (#2041)
-- grpc server align ping handling with client behavior (#1937)
-- gRPC: transfer MIP initial solutions to the server (#1868)
-- grpc server add a check for successful cuda init in worker (#2063)
-- Forward routing gRPC settings and map node name strings to ints (#1837)
-- Python gRPC client: run the wait loop in Python so other threads are not blocked by the GIL (#1857)
-- Exec the binary from the `cuopt_cli` and `cuopt_grpc_server` console-script wrappers so signals reach it (#1723)
+- Disable clique table generation in MIP when running in deterministic mode
+- Fix an issue in routing: keep host sources alive for async route-view copies 
+- Fix an issue in routing: avoid division by zero when vehicle capacity is zero 
+- Fix an issue in routing: guard diagonal element lookup against negative offsets in top_k 
+- Fix an issue in routing: uncapturable RMM copies inside CUDA graph captures
+- Fix an issue in routing: handle CUDA graph errors
+- Fix an issue in gRPC: transmit PDLP warmstart data and apply it on the server
+- Fix an issue in gRPC: server align ping handling with client behavior
+- Fix an issue in gRPC: transfer MIP initial solutions to the server
+- Fix an issue in gRPC: add a check for successful cuda init in worker
+- Fix an issue in gRPC: forward routing settings and map node name strings to ints
+- Fix an issue in gRPC: exec the binary from the `cuopt_cli` and `cuopt_grpc_server` console-script wrappers so signals reach it 
+- Fix an issue in the Python gRPC client: run the wait loop in Python so other threads are not blocked by the GIL (#1857)
 
 ### Deprecations (26.10)
 
