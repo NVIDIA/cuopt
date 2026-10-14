@@ -61,6 +61,13 @@ inline bool is_exactly_representable(f_t value)
   }
 }
 
+template <typename T>
+inline bool has_unique_entries(std::vector<T> values)
+{
+  std::sort(values.begin(), values.end());
+  return std::adjacent_find(values.begin(), values.end()) == values.end();
+}
+
 // Ogita-Rump-Oishi Dot2. TwoProduct recovers the rounding of each coefficient-value product, which
 // a compensated summation over already-multiplied terms cannot see.
 // https://epubs.siam.org/doi/abs/10.1137/030601818

@@ -2,9 +2,9 @@
    SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    SPDX-License-Identifier: Apache-2.0
 
-==========================================
-Python Async gRPC Client API Reference
-==========================================
+=============================================
+gRPC Linear Programming Client API Reference
+=============================================
 
 Import path: ``cuopt.grpc.linear_programming``.
 

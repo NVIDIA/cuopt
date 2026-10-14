@@ -18,6 +18,11 @@ Parameter/option statuses are listed below, they express how each of these optio
 
 For all solver_configs fields, see the :doc:`convex-settings` and :doc:`mip-settings` guides or the service openapi spec :doc:`open-api`.
 
+Legacy HTTP Server
+------------------
+
+The legacy HTTP server is **Deprecated**. See :doc:`cuopt-server/legacy-http-server`. HTTP behavior the HTTP proxy does not carry forward is listed in :ref:`legacy-http-differences`.
+
 Changes to solver_configs.tolerances
 ------------------------------------
 

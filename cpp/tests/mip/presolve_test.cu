@@ -11,17 +11,22 @@
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
+#include <mip_heuristics/solver.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
+#include <utilities/timer.hpp>
 
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
 
 #include <gtest/gtest.h>
 
+#include <omp.h>
 #include <algorithm>
 #include <cstdint>
 #include <sstream>
@@ -63,6 +68,55 @@ TEST(problem, find_implied_integers)
   // Ensure it is an implied integer
   EXPECT_EQ(problem.presolve_data.var_flags.element(it - var_types.begin(), handle_.get_stream()),
             ((int)mip::problem_t<int, double>::var_flags_t::VAR_IMPLIED_INTEGER));
+}
+
+TEST(presolve, duplicate_substitution)
+{
+  const raft::handle_t handle{};
+  auto problem = cuopt::test::parse_inline_lp(R"LP(
+Minimize
+ obj: -11 x0 + x1 + 7 x2 + y
+Subject To
+ c1: x0 - x1 = 0
+ c2: x0 - x2 = 0
+ c3: y - x0 >= 0
+Bounds
+ 0 <= y <= 1
+Binaries
+ x0 x1 x2
+End
+)LP");
+
+  auto op_problem = mps_data_model_to_optimization_problem(&handle, problem);
+  mip::problem_t<int, double> original_problem(op_problem);
+  mip::problem_t<int, double> presolved_problem(original_problem);
+  presolved_problem.preprocess_problem();
+  mip::trivial_presolve(presolved_problem, true);
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit      = 10;
+  settings.presolver       = presolver_t::Papilo;
+  settings.num_cpu_threads = 2;
+
+  timer_t timer(settings.time_limit);
+  mip::mip_solver_t<int, double> solver(presolved_problem, settings, timer);
+  mip::solution_t<int, double> solver_solution(presolved_problem);
+
+#pragma omp parallel num_threads(2)
+  {
+#pragma omp masked
+    {
+      solver_solution = solver.run_solver();
+    }
+  }
+  const bool feasible_on_presolved = solver_solution.get_feasible();
+  solver_solution.problem_ptr      = &original_problem;
+  const bool feasible_on_original  = solver_solution.compute_feasibility();
+  auto solution                    = solver_solution.get_solution(
+    feasible_on_presolved || feasible_on_original, solver.get_solver_stats(), false);
+
+  ASSERT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(solution.get_objective_value(), -2.0, 1e-6);
 }
 
 }  // namespace cuopt::mathematical_optimization::test

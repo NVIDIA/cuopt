@@ -19,11 +19,6 @@ from pathlib import Path
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
 
-# Run cuopt server help command and save output
-subprocess.run(
-    ["python", "-m", "cuopt_server.cuopt_service", "--help"],
-    stdout=open("cuopt-server/server-api/server-cli-help.txt", "w"),
-)
 # Run cuopt_sh help command and save output
 subprocess.run(
     ["cuopt_sh", "--help"],
