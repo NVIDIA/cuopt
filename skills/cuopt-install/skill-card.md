@@ -9,14 +9,14 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers installing NVIDIA cuOpt (GPU-accelerated optimization engine) for Python, C, or REST server deployment and verifying the installation. <br>
+Developers and engineers use this skill to install NVIDIA cuOpt for use from Python, C, or as a REST server (via pip, conda, or Docker), choose the package matching their CUDA version, and verify the installation. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
-**Requires API Key or External Credential:** [No] <br>
-**Credential Type(s):** [None] <br>
+**Requires API Key or External Credential:** [Not Specified] <br>
+**Credential Type(s):** [None identified] <br>
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -25,14 +25,14 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [Verification Examples](references/verification_examples.md) <br>
+- [Installation: Verification Examples](references/verification_examples.md) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt GitHub](https://github.com/NVIDIA/cuopt) <br>
+- [cuOpt Docker Hub image](https://hub.docker.com/r/nvidia/cuopt) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Shell commands, Configuration instructions] <br>
-**Output Format:** [Markdown with inline bash code blocks] <br>
+**Output Type(s):** [Shell commands, Code, Configuration instructions] <br>
+**Output Format:** [Markdown with inline bash and Python code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
@@ -43,35 +43,36 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-7 evaluation tasks (7 positive) in isolated k8s-sandbox pods, evaluated 2026-08-12. <br>
+7 evaluation tasks (7 positive), 1 attempt per task, each run in an isolated sandbox pod; each task was also attempted without the skill as a baseline. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
-- Security: Checks for unsafe operations, secret leakage, and unauthorized access. <br>
-- Correctness: Verifies final-answer correctness against a reference answer. <br>
-- Discoverability: Checks whether the expected skill was found and executed when needed. <br>
-- Effectiveness: Measures goal completion and expected workflow adherence. <br>
-- Efficiency: Evaluates routing quality, workspace-aware skill reads, and productive tool use. <br>
+- Security: Is it safe to use? Scored from the `security` signal. <br>
+- Correctness: Is the answer correct? Scored from the `accuracy` signal. <br>
+- Discoverability: Was the right skill loaded when needed? Scored from the `skill_execution` signal. <br>
+- Effectiveness: Did the skill help complete the task? Equal-weight mean of `goal_accuracy` and `behavior_check`. <br>
+- Efficiency: Did it avoid wasted tool calls and token usage? 50% `skill_efficiency` plus 50% `token_efficiency`. <br>
 
 Underlying evaluation signals used in this run: <br>
-- `security`: Detects unsafe operations, secret leakage, and unauthorized access. <br>
-- `skill_execution`: Verifies whether the expected skill was found and executed. <br>
-- `skill_efficiency`: Measures routing quality, workspace-aware skill reads, and productive tool use. <br>
-- `accuracy`: Checks final-answer correctness against the reference answer. <br>
-- `goal_accuracy`: Determines whether the user's goal was achieved. <br>
-- `behavior_check`: Verifies whether the expected workflow behavior was followed. <br>
+- `security`: Unsafe operations, secret leakage, and unauthorized access. <br>
+- `skill_execution`: Whether the expected skill was selected, decoys were avoided, and the workflow executed. <br>
+- `skill_efficiency`: Tool-call productivity. <br>
+- `accuracy`: Final-answer correctness against the reference answer. <br>
+- `goal_accuracy`: Whether the user's goal was achieved. <br>
+- `behavior_check`: Whether the expected workflow behavior was followed. <br>
+- `token_efficiency`: Actual uncached prompt plus completion usage. <br>
 
 
 
 ## Evaluation Results: <br>
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 56% → 90% (+34 points) | 63% → 91% (+28 points) |
-| Security | 93% → 86% (-7 points) | 100% → 100% (±0 points) |
-| Correctness | 86% → 94% (+9 points) | 89% → 100% (+11 points) |
-| Discoverability | 27% → 96% (+69 points) | 47% → 94% (+46 points) |
-| Effectiveness | 64% → 81% (+18 points) | 76% → 93% (+17 points) |
-| Efficiency | 12% → 93% (+81 points) | 3% → 67% (+63 points) |
+| Overall | 92.4% — baseline ran, but no comparable score was available; uplift unavailable | 87.0% — baseline ran, but no comparable score was available; uplift unavailable |
+| Security | 92.9% → 100.0% (+7.1 points) | 100.0% → 100.0% (±0.0 points) |
+| Correctness | 97.1% → 91.4% (-5.7 points) | 91.4% → 88.6% (-2.8 points) |
+| Discoverability | 97.9% — baseline ran, but no comparable score was available; uplift unavailable | 93.6% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 77.6% → 83.2% (+5.6 points) | 78.6% → 80.5% (+1.9 points) |
+| Efficiency | 89.7% — baseline ran, but no comparable score was available; uplift unavailable | 72.2% — baseline ran, but no comparable score was available; uplift unavailable |
 
 ## Skill Version(s): <br>
 26.10.00 (source: frontmatter) <br>
