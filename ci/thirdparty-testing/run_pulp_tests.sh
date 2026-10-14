@@ -14,7 +14,6 @@ if [ -z "${PIP_CONSTRAINT:-}" ]; then
     exit 1
 fi
 
-# PuLP 4.x requires Python >= 3.12, so it cannot be installed on older interpreters (#2134).
 if ! python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'; then
     rapids-logger "SKIPPING pulp tests: current PuLP requires Python >= 3.12, found $(python --version 2>&1)"
     exit 0
