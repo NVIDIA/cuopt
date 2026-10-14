@@ -85,7 +85,7 @@
 - Fix ranged constraint conversion and MPS writing/reading round trips
 - Fix an issue in LP/MIP presolve where the user specified feasibility tolerance was not propagated to Papilo
 - Fix an issue in PDLP where reduced costs where not returned for the default PDLP preset (Stable3)
-- Fix a missing header in log in multi-GPU PDLP
+- Fix a missing header in log for multi-GPU PDLP
 - Fix an issue in multi-GPU PDLP where the solver stopped silently when asking for more GPUs than available
 - Fix an issue on the C API where performing a multi-GPU PDLP solve on a problem built from row types and RHS was not supported
 - Fix an issue on multi-GPU PDLP where project_initial_primal was ignored
