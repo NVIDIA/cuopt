@@ -99,10 +99,10 @@
 - Fix a buffer overflow when getting the dual solution or reduced costs of a QCQP; these requests now return an error
 - Fix an issue in QP and SOCP where a large dual residual was reported for the final solution, even at an optimal solution
 - Fix an issue in dual simplex logs where bound flips were not accounted for in objective
-- Fix an issue in MIP where flow cover cut generation was accidentally O(n^2)
 - Fix an issue in dual simplex inside MIP where cut off incorrectly used the perturbed objective
 - Fix an issue in dual simplex where dual variables and dual feasibility was not recomputed after basis repair
 - Fix several issues in MIP where the time limit was not respected
+- Fix an issue in MIP where flow cover cut generation was accidentally O(n^2)
 - Fix MIP presolve incorrectly fixing continuous variables using integer-variable tolerance
 - Fix false optimality declaration in MIP deterministic mode
 - Fix an issue in MIP where a large amount of time could elapse between logs
