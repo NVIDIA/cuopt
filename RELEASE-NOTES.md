@@ -7,7 +7,7 @@
 - New Java interface for LP, QP, QCQP, SOCP and MIP
 - New Curtis-Reid scaling for PDLP
 - Support for reusing the barrier ordering and symbolic factorization when solving a sequence of problems with different linear objectives and right-hand sides
-- Add RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics to MIP
+- New RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics for MIP
 - MIP solver now runs diving and recursive sub-MIP heuristics during the cut passes
 - New primal heuristic for MIPs with arc-flow formulations
 - Support for portfolio of CPUFJ heuristics with diversification
