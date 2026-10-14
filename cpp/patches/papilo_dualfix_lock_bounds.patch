@@ -1,0 +1,27 @@
+DualFix: lock the column bounds (and the rows) when fixing a column to a bound, so the fix is
+rejected when another presolver changed the bounds in the same round. Without it a stale fix can
+land below a raised lower bound and presolve reports a feasible problem as infeasible.
+Upstream: https://github.com/scipopt/papilo/issues/99 (drop this patch once fixed upstream).
+
+diff --git a/src/papilo/presolvers/DualFix.hpp b/src/papilo/presolvers/DualFix.hpp
+index e1571310..8a2db824 100644
+--- a/src/papilo/presolvers/DualFix.hpp
++++ b/src/papilo/presolvers/DualFix.hpp
+@@ -262,6 +262,9 @@ DualFix<REAL>::perform_dual_fix_step(
+          TransactionGuard<REAL> guard{ reductions };
+ 
+          reductions.lockCol( i );
++         reductions.lockColBounds( i );
++         for( int row = 0; row < collen; ++row )
++            reductions.lockRow( rowinds[row] );
+          reductions.fixCol( i, lbs[i] );
+ 
+          return PresolveStatus::kReduced;
+@@ -288,6 +291,7 @@ DualFix<REAL>::perform_dual_fix_step(
+       {
+          TransactionGuard<REAL> guard{ reductions };
+          reductions.lockCol( i );
++         reductions.lockColBounds( i );
+          for( int row = 0; row < collen; ++row )
+             reductions.lockRow( rowinds[row] );
+          reductions.fixCol( i, ubs[i] );

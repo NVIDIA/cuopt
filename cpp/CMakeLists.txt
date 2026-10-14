@@ -301,6 +301,8 @@ FetchContent_Declare(
         GIT_PROGRESS TRUE
         PATCH_COMMAND git -C <SOURCE_DIR> apply
                       "${CMAKE_CURRENT_SOURCE_DIR}/patches/papilo_parallel_integrality_guard.patch"
+                      "${CMAKE_CURRENT_SOURCE_DIR}/patches/papilo_dualfix_lock_bounds.patch"
+                      "${CMAKE_CURRENT_SOURCE_DIR}/patches/papilo_simplesubst_bound_index.patch"
         EXCLUDE_FROM_ALL
         SYSTEM
 )
