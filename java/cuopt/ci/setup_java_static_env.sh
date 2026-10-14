@@ -91,13 +91,10 @@ rapids-logger "Installing rmm and rapids_logger from prebuilt RAPIDS wheels"
 # requirements file with only rmm/rapids_logger in it, and CMake's usual CPM source-fetch fallback
 # (see cpp/CMakeLists.txt) picks up raft from GitHub instead, same as it would with no conda
 # environment providing a prebuilt raft package.
-# The libcuopt-* wheels are dropped (grep): the static build compiles those components itself.
 rapids-dependency-file-generator \
   --output requirements \
-  --file-key py_build_libcuopt \
-  --file-key py_rapids_build_libcuopt \
+  --file-key java_static \
   --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION};cuda_suffixed=true" \
-| grep -vE '^libcuopt' \
 | tee /tmp/requirements-java-static.txt
 rapids-pip-retry install -v --prefer-binary -r /tmp/requirements-java-static.txt
 

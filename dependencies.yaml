@@ -69,6 +69,14 @@ files:
       - test_cpp
       - test_cpp_cuopt
       - depends_on_libcuopt
+  # The static Java build compiles libcuopt from source, so it only needs the prebuilt rmm and
+  # rapids_logger wheels (and the build tools), not the libcuopt-* wheels.
+  java_static:
+    output: none
+    includes:
+      - build_common
+      - depends_on_librmm
+      - depends_on_rapids_logger
   java:
     output: none
     includes:
