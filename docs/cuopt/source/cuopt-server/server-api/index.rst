@@ -2,7 +2,7 @@
 Server API
 ========================================
 
-This section contains details on Server options supported and open-api specification for the server.
+This section contains the OpenAPI specification for the HTTP proxy, plus convex and MIP solver settings. How to start the proxy is in :doc:`../quick-start`.
 
 .. toctree::
    :maxdepth: 3
@@ -10,7 +10,6 @@ This section contains details on Server options supported and open-api specifica
    :name: Server API Overview
    :titlesonly:
 
-   server-cli.rst
    ../../open-api.rst
    ../../convex-settings.rst
    ../../mip-settings.rst

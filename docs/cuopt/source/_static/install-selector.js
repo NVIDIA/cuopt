@@ -514,7 +514,7 @@
       '<tr><td class="cuopt-opt-label">Interface</td><td class="cuopt-opt-group" role="group" aria-label="Interface">' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="python" checked> Python (cuopt)</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="c"> C (libcuopt)</label>' +
-      '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="server"> Server</label>' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="server"> HTTP Server</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="cli"> CLI (cuopt_cli)</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="java"> Java (experimental)</label>' +
       '</td></tr>' +

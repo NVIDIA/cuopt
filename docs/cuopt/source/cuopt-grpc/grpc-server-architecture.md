@@ -1,6 +1,6 @@
 # gRPC Server Behavior
 
-NVIDIA cuOpt's **`cuopt_grpc_server`** uses one **main process** (gRPC front end, job tracking, background threads) and **worker processes** that run GPU solves. That layout gives isolation between jobs, optional parallelism when you set multiple workers, and streaming for large problems and logs.
+NVIDIA cuOpt's **`cuopt_grpc_server`** uses one **main process** (gRPC front end, job tracking, background threads) and **worker processes** that run GPU solves. That layout gives isolation between jobs and optional parallelism when you set multiple workers. LP/MIP jobs can use chunked transfer for a problem or result larger than one gRPC message, and they can stream solver logs. A routing job is sent and returned as a single message, and the routing client does not stream logs.
 
 Implementation details (IPC layout, C++ source map, chunked transfer internals) live in the contributor reference: **`cpp/docs/grpc-server-architecture.md`** in the NVIDIA cuOpt repository.
 
@@ -10,7 +10,7 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 
 ## Job Lifecycle (Summary)
 
-**Submit** → the server assigns a job id and queues work. **Process** → a worker pulls the problem, solves on the GPU, and streams the result back. **Retrieve** → the client uses status and result RPCs (including chunked download when needed). See [gRPC API (reference)](api.rst) for RPC names.
+**Submit** → the server assigns a job id and queues work. **Process** → a worker pulls the problem, solves on the GPU, and streams the result back. **Retrieve** → the client uses status and result RPCs. An LP/MIP result larger than the gRPC message limit uses chunked download. A routing result is one message. See [gRPC API (reference)](api.rst) for RPC names.
 
 ## Job States
 
@@ -20,7 +20,7 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 
 | Topic | Detail |
 |-------|--------|
-| Log files | Per-job solver logs under `/tmp/cuopt_logs/job_<job_id>.log` (used by log streaming). |
+| Log files | Per-job files under `/tmp/cuopt_logs/job_<job_id>.log`. LP/MIP solver logs are written there and tailed by log streaming. Routing does not write solver logs or stream them. |
 | Capacity | Up to **100** in-flight jobs (queued + processing). Completed results stay until `DeleteResult` (no fixed result cap). |
 | Workers | Recommended: **1 worker process per GPU**. Higher values are possible depending on the problems being solved but there is no specific guidance at this time. |
 
@@ -33,6 +33,6 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 
 ## Further Reading
 
-- [Advanced configuration](advanced.rst) — `cuopt_grpc_server` **command-line flags**, TLS, Docker (`CUOPT_SERVER_TYPE`, `CUOPT_GRPC_ARGS`), and **client** environment variables (authoritative for operators).
+- [Advanced configuration](advanced.rst) — `cuopt_grpc_server` **command-line flags**, TLS, Docker (`CUOPT_SERVER_TYPE`, `CUOPT_GRPC_ARGS`), and **client** environment variables.
 - [gRPC API (reference)](api.rst) — `CuOptRemoteService` RPC overview.
 - **Contributor reference** — `cpp/docs/grpc-server-architecture.md` in the repository (IPC, source files, streaming, threading).

@@ -244,7 +244,14 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
 
   // Whatever the start left behind, these rows are satisfiable on their own, so the walk should not
   // start with them in the violated set competing for the sampler's attention.
+  // Large models can have millions of epigraph variables: stay responsive to stop() and preemption.
+  constexpr size_t epigraph_halt_check_period = 1024;
+  size_t n_epigraph_visited                   = 0;
   for (i_t var : fj_cpu->epigraph_vars) {
+    if (++n_epigraph_visited % epigraph_halt_check_period == 0 &&
+        (fj_cpu->halted || fj_cpu->preemption_flag.load())) {
+      break;
+    }
     const f_t current = fj_cpu->h_assignment[var];
     const f_t delta   = project_epigraph_variable(*fj_cpu, var) - current;
     if (delta == f_t{0}) continue;

@@ -12,7 +12,7 @@ ARGS=$*
 # NOTE: ensure all dir changes are relative to the location of this
 # script, and that this script resides in the repo dir!
 REPODIR=$(cd "$(dirname "$0")"; pwd)
-LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
+LIBCUOPT_BUILD_DIR=$(realpath -m "${LIBCUOPT_BUILD_DIR:-${REPODIR}/cpp/build}")
 
 VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client java docs deb --run-java-tests -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo --export-debug-symbols --split-compile [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
@@ -466,6 +466,15 @@ if buildAll || hasArg cuopt; then
         CUOPT_PYTHON_ARGS_FOR_INSTALL+=(--config-settings "skbuild.wheel.py-api=cp${RAPIDS_PY_VERSION//./}")
     fi
 
+    # Without --install, libcuopt's config and shared libraries only exist in its build tree.
+    CUOPT_LDFLAGS="${LDFLAGS:-}"
+    if [ -z "${INSTALL_TARGET}" ] && [ -f "${LIBCUOPT_BUILD_DIR}/cuopt-config.cmake" ] \
+        && ! contains_string "Dcuopt_DIR" "${EXTRA_CMAKE_ARGS[@]}"; then
+        EXTRA_CMAKE_ARGS+=("-Dcuopt_DIR=${LIBCUOPT_BUILD_DIR}")
+        CUOPT_LDFLAGS+=" -Wl,-rpath,${LIBCUOPT_BUILD_DIR}"
+    fi
+
+    LDFLAGS="${CUOPT_LDFLAGS}" \
     SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};$(IFS=';'; echo "${EXTRA_CMAKE_ARGS[*]}")" \
         python "${CUOPT_PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi

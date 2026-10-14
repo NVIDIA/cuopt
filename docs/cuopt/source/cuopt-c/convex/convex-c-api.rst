@@ -217,6 +217,7 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE
 .. doxygendefine:: CUOPT_PDLP_PRECISION
+.. doxygendefine:: CUOPT_LARGE_NNZ_THRESHOLD
 
 .. _pdlp-solver-mode-constants:
 

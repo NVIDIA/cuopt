@@ -362,9 +362,11 @@ class pdlp_solver_settings_t {
   // multigpu_pdlp_partitioner_t for the meaning of each value.
   multigpu_pdlp_partitioner_t multigpu_pdlp_partitioner{multigpu_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
-  // TODO: Remove this cutoff once concurrent CPU solver memory usage and cuDSS long running kernels
-  // are resolved. -1 disables the cutoff regardless of the reduced problem's NNZ.
-  i_t concurrent_nnz_cutoff{50'000'000};
+  // At or above this reduced NNZ, skip concurrent CPU solvers and enable DEFAULT column reduction
+  // on compatible PDLP paths. -1 disables both automatic decisions.
+  // TODO: Remove the concurrent CPU solver bypass once their memory usage and cuDSS long running
+  // kernels are resolved; retain the size threshold for automatic column reduction.
+  i_t large_nnz_threshold{50'000'000};
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
