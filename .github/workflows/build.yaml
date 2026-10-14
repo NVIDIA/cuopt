@@ -563,6 +563,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - wheel-publish-libcuopt
+      - wheel-publish-libcuopt-client
+      - wheel-publish-libcuopt-mathopt
+      - wheel-publish-libcuopt-routing
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
@@ -589,11 +592,19 @@ jobs:
             echo "::error::No wheel files found in dist/ -- refusing to create an asset-free release"
             exit 1
           fi
-          gh release create "$tag" \
-            --repo "${{ github.repository }}" \
-            --title "$tag" \
-            --generate-notes \
-            "${wheels[@]}"
+          # release_cuopt.sh may have created the release already; attach to it if so
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$tag" \
+              --repo "${{ github.repository }}" \
+              --clobber \
+              "${wheels[@]}"
+          else
+            gh release create "$tag" \
+              --repo "${{ github.repository }}" \
+              --title "$tag" \
+              --generate-notes \
+              "${wheels[@]}"
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   # Each job below calls the Kitmaker Portal release API (via Charon Ferry) to publish
@@ -618,7 +629,7 @@ jobs:
       project_name: libcuopt-cu12
       project_id: ${{ vars.KITMAKER_PROJECT_ID_LIBCUOPT_CU12 }}
       wheel_asset_pattern: "^libcuopt_cu12-"
-      upload: false  # Staged rollout: flip to true once the team signs off on going live
+      upload: true
   kitmaker-portal-release-libcuopt-cu13:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -637,7 +648,7 @@ jobs:
       project_name: libcuopt-cu13
       project_id: ${{ vars.KITMAKER_PROJECT_ID_LIBCUOPT_CU13 }}
       wheel_asset_pattern: "^libcuopt_cu13-"
-      upload: false  # Staged rollout: flip to true once the team signs off on going live
+      upload: true
   kitmaker-portal-release-cuopt-cu12:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -656,7 +667,7 @@ jobs:
       project_name: cuopt-cu12
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_CU12 }}
       wheel_asset_pattern: "^cuopt_cu12-"
-      upload: false  # Staged rollout: flip to true once the team signs off on going live
+      upload: true
   kitmaker-portal-release-cuopt-cu13:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -675,7 +686,7 @@ jobs:
       project_name: cuopt-cu13
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_CU13 }}
       wheel_asset_pattern: "^cuopt_cu13-"
-      upload: false  # Staged rollout: flip to true once the team signs off on going live
+      upload: true
   kitmaker-portal-release-cuopt-server-cu12:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -694,7 +705,7 @@ jobs:
       project_name: cuopt-server-cu12
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SERVER_CU12 }}
       wheel_asset_pattern: "^cuopt_server_cu12-"
-      upload: false  # Staged rollout: flip to true once the team signs off on going live
+      upload: true
   kitmaker-portal-release-cuopt-server-cu13:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -713,7 +724,7 @@ jobs:
       project_name: cuopt-server-cu13
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SERVER_CU13 }}
       wheel_asset_pattern: "^cuopt_server_cu13-"
-      upload: false  # Staged rollout: flip to true once the team signs off on going live
+      upload: true
   kitmaker-portal-release-cuopt-sh-client:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -732,7 +743,7 @@ jobs:
       project_name: cuopt-sh-client
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SH_CLIENT }}
       wheel_asset_pattern: "^cuopt_sh_client-"
-      upload: false  # Staged rollout: flip to true once the team signs off on going live
+      upload: true
 
   tests:
     # Docker image build / tests aren't necessary for the 'test.yaml' workflow,
