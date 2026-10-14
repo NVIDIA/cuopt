@@ -10,7 +10,7 @@
 - New RENS (Relaxation Enforced Neighboorhood Search) and mutation heuristics for MIP
 - MIP solver now runs diving and recursive sub-MIP heuristics during the cut passes
 - New primal heuristic for MIPs with arc-flow formulations
-- Support for portfolio of CPUFJ heuristics with diversification
+- MIP heuristics include new portfolio of CPUFJ heuristics with diversification
 - New compound move types in CPUFJ: 2-opt, probing implication chain, clique exchange, set-partitioning row exchange and compound repair
 - New LNS heuristic for MIP that uses ruin-and-repair logic
 - New techniques for exploiting degeneracy in MIP
@@ -23,16 +23,14 @@
 - New `cuOptSetLogCallback` for capturing solver logs in C API
 - Routing now supports per-vehicle distance-based breaks, so charging, refueling, or rest stops can be constrained by cumulative travel distance rather than time
 - The gRPC server now solves routing problems (VRP, TSP, and PDP). A Python gRPC routing client is included with cuOpt
-- The gRPC server now accepts a MIP starting solution and uses it to begin the search
-- Custom gRPC clients should now send solver settings through the `parameters` string map; individual setting fields are deprecated
-- The gRPC server checks GPU health and shuts down if the GPU is unusable. It also provides the standard gRPC readiness and liveness probes
-- A new HTTP proxy forwards requests to the gRPC server. The 26.10 container starts the proxy and gRPC server by default (legacy HTTP server is deprecated)
+- A new HTTP proxy forwards requests to the gRPC server. The 26.10 container starts the proxy and gRPC server by default
 
 
 ### Breaking Changes (26.10)
 
 - The container image now runs the proxy and gRPC servers by default; the legacy HTTP server is an optional start command
 - The proxy and gRPC servers (container defaults) support routing problems of up to 5500 locations with a travel time matrix, or 8000 without one. For larger problems use the legacy HTTP server.
+- Custom gRPC clients should now send solver settings through the `parameters` string map; individual setting fields are deprecated
 - `libcuopt` is split into client, mathopt and routing components, with separate wheels and conda packages; `libcuopt` is now a thin metapackage
 - The CUOPT_DISTRIBUTED_PDLP_PARTITIONER setting introduced in 26.08 is now CUOPT_MULTIGPU_PDLP_PARTITIONER
 - The CUOPT_USE_DISTRIBUTED_PDLP setting introduced in 26.08 has been removed; use method and num_gpus instead
@@ -72,11 +70,13 @@
 - MIP reduced cost strengthening now stores bound implications based on incumbent objective value
 - MIP now includes a new Mod-2 cut separator for zero-half cuts
 - MIP random number generators are now per-worker instead of process wide; eliminating a source of nondeterminism
-- Routing now uses cost instead of distance terminology when the objective does not represent a physical distance
+- MIP time to first solution is improved by reducing overheads
+- MIP CPUFJ now has a fast-path heuristic for binary problems with integer activities
+- MIP CPUFJ now has structure-aware starts and repairs
 - Solution callback publication is now unified across solver components
-- Time to first solution is improved by reducing overheads
-- CPUFJ now has a fast-path heuristic for binary problems with integer activities
-- CPUFJ now has structure-aware starts and repairs
+- Routing now uses cost instead of distance terminology when the objective does not represent a physical distance
+- The gRPC server now accepts a MIP starting solution
+- The gRPC server now checks GPU health and shuts down if the GPU is unusable. It also provides the standard gRPC readiness and liveness probes
 
 ### Bug Fixes (26.10)
 
