@@ -14,98 +14,102 @@ context:
 recipe:
   name: libcuopt-split
 
-cache:
-  source:
-    path: ../../..
-
-  build:
-    script:
-      content: |
-        # Remove `-fdebug-prefix-map` line from CFLAGS and CXXFLAGS so the
-        # incrementing version number in the compile line doesn't break the
-        # cache
-        set -x
-        export CFLAGS=$(echo $CFLAGS | sed -E 's@\-fdebug\-prefix\-map[^ ]*@@g')
-        export CXXFLAGS=$(echo $CXXFLAGS | sed -E 's@\-fdebug\-prefix\-map[^ ]*@@g')
-        set +x
-
-        ./build.sh -v ${BUILD_EXTRA_FLAGS} libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib -DBUILD_LP_BENCHMARKS=ON -DBUILD_MIP_BENCHMARKS=ON\"
-      secrets:
-        - AWS_ACCESS_KEY_ID
-        - AWS_SECRET_ACCESS_KEY
-        - AWS_SESSION_TOKEN
-        - SCCACHE_DIST_AUTH_TOKEN
-      env:
-        # Enable assertions (-a flag) for PR builds, but not for nightly or release builds
-        BUILD_EXTRA_FLAGS: '${{ "-a --host-lineinfo" if build_type == "pull-request" else "" }}'
-        CMAKE_C_COMPILER_LAUNCHER: ${{ env.get("CMAKE_C_COMPILER_LAUNCHER") }}
-        CMAKE_CUDA_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CUDA_COMPILER_LAUNCHER") }}
-        CMAKE_CXX_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CXX_COMPILER_LAUNCHER") }}
-        CMAKE_GENERATOR: ${{ env.get("CMAKE_GENERATOR") }}
-        NVCC_APPEND_FLAGS: ${{ env.get("NVCC_APPEND_FLAGS", default="") }}
-        PARALLEL_LEVEL: ${{ env.get("PARALLEL_LEVEL", default="8") }}
-        SCCACHE_BUCKET: ${{ env.get("SCCACHE_BUCKET", default="") }}
-        SCCACHE_DIST_AUTH_TYPE: ${{ env.get("SCCACHE_DIST_AUTH_TYPE", default="token") }}
-        SCCACHE_DIST_FALLBACK_TO_LOCAL_COMPILE: ${{ env.get("SCCACHE_DIST_FALLBACK_TO_LOCAL_COMPILE", default="false") }}
-        SCCACHE_DIST_MAX_RETRIES: ${{ env.get("SCCACHE_DIST_MAX_RETRIES", default="inf") }}
-        SCCACHE_DIST_REQUEST_TIMEOUT: ${{ env.get("SCCACHE_DIST_REQUEST_TIMEOUT", default="7140") }}
-        SCCACHE_DIST_SCHEDULER_URL: ${{ env.get("SCCACHE_DIST_SCHEDULER_URL", default="") }}
-        SCCACHE_ERROR_LOG: ${{ env.get("SCCACHE_ERROR_LOG", default="/tmp/sccache.log") }}
-        SCCACHE_IDLE_TIMEOUT: ${{ env.get("SCCACHE_IDLE_TIMEOUT", default="0") }}
-        SCCACHE_NO_CACHE: ${{ env.get("SCCACHE_NO_CACHE", default="") }}
-        SCCACHE_RECACHE: ${{ env.get("SCCACHE_RECACHE", default="") }}
-        SCCACHE_REGION: ${{ env.get("SCCACHE_REGION", default="") }}
-        SCCACHE_S3_KEY_PREFIX: libcuopt/${{ env.get("RAPIDS_CONDA_ARCH") }}/cuda${{ cuda_major }}
-        SCCACHE_S3_NO_CREDENTIALS: ${{ env.get("SCCACHE_S3_NO_CREDENTIALS", default="false") }}
-        SCCACHE_S3_PREPROCESSOR_CACHE_KEY_PREFIX: libcuopt/${{ env.get("RAPIDS_CONDA_ARCH") }}/cuda${{ cuda_major }}/conda/preprocessor-cache
-        SCCACHE_S3_USE_PREPROCESSOR_CACHE_MODE: ${{ env.get("SCCACHE_S3_USE_PREPROCESSOR_CACHE_MODE", default="true") }}
-        SCCACHE_S3_USE_SSL: ${{ env.get("SCCACHE_S3_USE_SSL", default="true") }}
-        SCCACHE_SERVER_LOG: ${{ env.get("SCCACHE_SERVER_LOG", default="sccache=debug") }}
-
-  requirements:
-    build:
-      - libboost-devel
-      - ${{ compiler("c") }}
-      - ${{ compiler("cxx") }}
-      - ${{ compiler("cuda") }} =${{ cuda_version }}
-      - ${{ stdlib("c") }}
-      - cuda-version =${{ cuda_version }}
-      - cmake ${{ cmake_version }}
-      - make
-      - ninja
-      - git
-      - tbb-devel
-      - zlib
-      - bzip2
-    host:
-      - cpp-argparse
-      - cuda-version =${{ cuda_version }}
-      - libraft-headers =${{ minor_version }}
-      - librmm =${{ minor_version }}
-      - rapids-logger =0.3
-      - cuda-nvtx-dev
-      - libcudss-dev >=0.7,<0.8
-      - libcusparse-dev
-      - libnvjitlink-dev
-      - libboost-devel
-      - nccl >=2.19
-      - tbb-devel
-      - zlib
-      - bzip2
-      - openssl
-      - c-ares
-      - libgrpc >=1.78.0,<1.80.0a0
-      - libprotobuf
-      - libabseil
-      - re2
+source:
+  path: ../../..
 
 outputs:
+  - staging:
+      name: libcuopt-build
+    build:
+      script:
+        content: |
+          # Remove `-fdebug-prefix-map` line from CFLAGS and CXXFLAGS so the
+          # incrementing version number in the compile line doesn't break the
+          # cache
+          set -x
+          export CFLAGS=$(echo $CFLAGS | sed -E 's@\-fdebug\-prefix\-map[^ ]*@@g')
+          export CXXFLAGS=$(echo $CXXFLAGS | sed -E 's@\-fdebug\-prefix\-map[^ ]*@@g')
+          set +x
+
+          ./build.sh -v ${BUILD_EXTRA_FLAGS} libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib -DBUILD_LP_BENCHMARKS=ON -DBUILD_MIP_BENCHMARKS=ON\"
+        secrets:
+          - AWS_ACCESS_KEY_ID
+          - AWS_SECRET_ACCESS_KEY
+          - AWS_SESSION_TOKEN
+          - SCCACHE_DIST_AUTH_TOKEN
+        env:
+          # Enable assertions (-a flag) for PR builds, but not for nightly or release builds
+          BUILD_EXTRA_FLAGS: '${{ "-a --host-lineinfo" if build_type == "pull-request" else "" }}'
+          CMAKE_C_COMPILER_LAUNCHER: ${{ env.get("CMAKE_C_COMPILER_LAUNCHER") }}
+          CMAKE_CUDA_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CUDA_COMPILER_LAUNCHER") }}
+          CMAKE_CXX_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CXX_COMPILER_LAUNCHER") }}
+          CMAKE_GENERATOR: ${{ env.get("CMAKE_GENERATOR") }}
+          NVCC_APPEND_FLAGS: ${{ env.get("NVCC_APPEND_FLAGS", default="") }}
+          PARALLEL_LEVEL: ${{ env.get("PARALLEL_LEVEL", default="8") }}
+          RAPIDS_CUDA_VERSION: ${{ env.get("RAPIDS_CUDA_VERSION") }}
+          SCCACHE_BUCKET: ${{ env.get("SCCACHE_BUCKET", default="") }}
+          SCCACHE_CONF: ${{ env.get("SCCACHE_CONF", default="") }}
+          SCCACHE_DIST_AUTH_TYPE: ${{ env.get("SCCACHE_DIST_AUTH_TYPE", default="token") }}
+          SCCACHE_DIST_FALLBACK_TO_LOCAL_COMPILE: ${{ env.get("SCCACHE_DIST_FALLBACK_TO_LOCAL_COMPILE", default="false") }}
+          SCCACHE_DIST_MAX_RETRIES: ${{ env.get("SCCACHE_DIST_MAX_RETRIES", default="inf") }}
+          SCCACHE_DIST_REQUEST_TIMEOUT: ${{ env.get("SCCACHE_DIST_REQUEST_TIMEOUT", default="7140") }}
+          SCCACHE_DIST_SCHEDULER_URL: ${{ env.get("SCCACHE_DIST_SCHEDULER_URL", default="") }}
+          SCCACHE_ERROR_LOG: ${{ env.get("SCCACHE_ERROR_LOG", default="/tmp/sccache.log") }}
+          SCCACHE_IDLE_TIMEOUT: ${{ env.get("SCCACHE_IDLE_TIMEOUT", default="0") }}
+          SCCACHE_NO_CACHE: ${{ env.get("SCCACHE_NO_CACHE", default="") }}
+          SCCACHE_RECACHE: ${{ env.get("SCCACHE_RECACHE", default="") }}
+          SCCACHE_REGION: ${{ env.get("SCCACHE_REGION", default="") }}
+          SCCACHE_S3_KEY_PREFIX: libcuopt/${{ env.get("RAPIDS_CONDA_ARCH") }}/cuda${{ cuda_major }}
+          SCCACHE_S3_NO_CREDENTIALS: ${{ env.get("SCCACHE_S3_NO_CREDENTIALS", default="false") }}
+          SCCACHE_S3_PREPROCESSOR_CACHE_KEY_PREFIX: libcuopt/${{ env.get("RAPIDS_CONDA_ARCH") }}/cuda${{ cuda_major }}/conda/preprocessor-cache
+          SCCACHE_S3_USE_PREPROCESSOR_CACHE_MODE: ${{ env.get("SCCACHE_S3_USE_PREPROCESSOR_CACHE_MODE", default="true") }}
+          SCCACHE_S3_USE_SSL: ${{ env.get("SCCACHE_S3_USE_SSL", default="true") }}
+          SCCACHE_SERVER_LOG: ${{ env.get("SCCACHE_SERVER_LOG", default="sccache=debug") }}
+
+    requirements:
+      build:
+        - libboost-devel
+        - ${{ compiler("c") }}
+        - ${{ compiler("cxx") }}
+        - ${{ compiler("cuda") }} =${{ cuda_version }}
+        - ${{ stdlib("c") }}
+        - cuda-version =${{ cuda_version }}
+        - cmake ${{ cmake_version }}
+        - make
+        - ninja
+        - git
+        - tbb-devel
+        - zlib
+        - bzip2
+      host:
+        - cpp-argparse
+        - cuda-version =${{ cuda_version }}
+        - libraft-headers =${{ minor_version }}
+        - librmm =${{ minor_version }}
+        - rapids-logger =0.3
+        - cuda-nvtx-dev
+        - libcudss-dev >=0.7,<0.8
+        - libcusparse-dev
+        - libnvjitlink-dev
+        - libboost-devel
+        - nccl >=2.19
+        - tbb-devel
+        - zlib
+        - bzip2
+        - openssl
+        - c-ares
+        - libgrpc >=1.78.0,<1.80.0a0
+        - libprotobuf
+        - libabseil
+        - re2
+
   # One output per component library. Each installs only its own install component,
   # so a routing-only install no longer pulls the LP solver or its cusparse / cudss /
   # nccl dependencies. See #1635.
   - package:
       name: libcuopt-client
       version: ${{ version }}
+    inherit: libcuopt-build
     build:
       script:
         content: |
@@ -188,6 +192,7 @@ outputs:
   - package:
       name: libcuopt-mathopt
       version: ${{ version }}
+    inherit: libcuopt-build
     build:
       script:
         content: |
@@ -218,6 +223,7 @@ outputs:
         - nccl >=2.19
         - tbb-devel
       run:
+        - rapids-logger =0.3
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - libboost-devel
@@ -261,6 +267,7 @@ outputs:
   - package:
       name: libcuopt-routing
       version: ${{ version }}
+    inherit: libcuopt-build
     build:
       script:
         content: |
@@ -286,6 +293,7 @@ outputs:
         - librmm =${{ minor_version }}
         - libcublas
       run:
+        - rapids-logger =0.3
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - libboost-devel
@@ -328,6 +336,7 @@ outputs:
   - package:
       name: cuopt-grpc-server
       version: ${{ version }}
+    inherit: libcuopt-build
     build:
       script:
         content: |
@@ -377,6 +386,7 @@ outputs:
   - package:
       name: libcuopt
       version: ${{ version }}
+    inherit: libcuopt-build
     build:
       script:
         content: |
@@ -433,6 +443,7 @@ outputs:
   - package:
       name: libcuopt-tests
       version: ${{ version }}
+    inherit: libcuopt-build
     build:
       script:
         content: |
@@ -463,6 +474,9 @@ outputs:
         - libprotobuf
         - libabseil
       run:
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
         - ${{ pin_subpackage("libcuopt", exact=True) }}
       ignore_run_exports:
         by_name:
