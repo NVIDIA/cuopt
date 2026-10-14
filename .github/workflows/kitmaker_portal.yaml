@@ -126,12 +126,12 @@ jobs:
         uses: teleport-actions/setup@b638ff596557cc3959eb6b5287d5e58e0c8ac6a6 # v1.1.1
         with:
           version: auto
-          proxy: nv-stg-ps.teleport.sh:443
+          proxy: ext-nv-stg-apps.teleport.sh:443
 
       - name: Start staging Ferry tunnel
         uses: teleport-actions/application-tunnel@bb7a8fbfb67b85d26013554f10d71dd032c1c764 # v1.0.1
         with:
-          proxy: nv-stg-ps.teleport.sh:443
+          proxy: ext-nv-stg-apps.teleport.sh:443
           token: charon-gha-runners
           app: charon
           listen: tcp://127.0.0.1:8888
