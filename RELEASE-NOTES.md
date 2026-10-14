@@ -9,7 +9,7 @@
 - MIP solver now runs diving and recursive sub-MIP heuristics during the cut passes
 - New primal heuristic for MIPs with arc-flow formulations
 - MIP solver includes new portfolio of CPUFJ heuristics with diversification
-- New compound move types in CPUFJ: 2-opt, probing implication chain, clique exchange, set-partitioning row exchange and compound repair
+- New compound move types in MIP CPUFJ: 2-opt, probing implication chain, clique exchange, set-partitioning row exchange and compound repair
 - New LNS heuristic for MIP that uses ruin-and-repair logic
 - New techniques for exploiting degeneracy in MIP
 - New implied indicator and capacity lifting presolve strengthening for fixed-charge MIP models
