@@ -101,10 +101,10 @@
 - Fix an issue in dual simplex logs where bound flips were not accounted for in objective
 - Fix an issue in dual simplex inside MIP where cut off incorrectly used the perturbed objective
 - Fix an issue in dual simplex where dual variables and dual feasibility was not recomputed after basis repair
-- Fix several issues in MIP where the time limit was not respected
-- Fix an issue in MIP where flow cover cut generation was accidentally O(n^2)
 - Fix MIP presolve incorrectly fixing continuous variables using integer-variable tolerance
 - Fix false optimality declaration in MIP deterministic mode
+- Fix several issues in MIP where the time limit was not respected
+- Fix an issue in MIP where flow cover cut generation was accidentally O(n^2)
 - Fix an issue in MIP where a large amount of time could elapse between logs
 - Fix an issue in MIP when converting knapsack constraints to rational coefficients could remove integer solutions
 - Fix an issue in MIP where termination was delayed during root cut passes
