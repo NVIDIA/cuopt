@@ -30,7 +30,6 @@
 
 - The container image now runs the proxy and gRPC servers by default; the legacy HTTP server is an optional start command
 - The proxy and gRPC servers (container defaults) support routing problems of up to 5500 locations with a travel time matrix, or 8000 without one. For larger problems use the legacy HTTP server.
-- Custom gRPC clients should now send solver settings through the `parameters` string map; individual setting fields are deprecated
 - `libcuopt` is split into client, mathopt and routing components, with separate wheels and conda packages; `libcuopt` is now a thin metapackage
 - The CUOPT_DISTRIBUTED_PDLP_PARTITIONER setting introduced in 26.08 is now CUOPT_MULTIGPU_PDLP_PARTITIONER
 - The CUOPT_USE_DISTRIBUTED_PDLP setting introduced in 26.08 has been removed; use method and num_gpus instead
@@ -134,6 +133,7 @@
 ### Deprecations (26.10)
 
 - The container's default server is now the HTTP proxy plus `cuopt_grpc_server`, in place of the legacy HTTP server. The legacy HTTP server is still shipped in 26.10 and will be removed in 26.12. See "Starting the Container" on the Legacy HTTP Server page in the 26.10 user guide for the legacy container command and for `CUOPT_SERVER_TYPE=legacy` in Kubernetes. That page links to the 26.08 guide. Differences are in "Deprecated Interfaces Not Provided by the Proxy Server" in the 26.10 user guide.
+- Custom gRPC clients should now send solver settings through the `parameters` string map; individual setting fields are deprecated
 
 ### Documentation (26.10)
 
