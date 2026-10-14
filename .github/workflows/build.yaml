@@ -906,6 +906,10 @@ jobs:
   build-images:
     needs:
       - build-details
+      - wheel-publish-libcuopt
+      - wheel-publish-libcuopt-client
+      - wheel-publish-libcuopt-mathopt
+      - wheel-publish-libcuopt-routing
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
