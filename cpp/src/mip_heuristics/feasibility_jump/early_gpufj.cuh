@@ -34,7 +34,6 @@ class early_gpufj_t : public early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>
   static constexpr const char* name() { return "GPUFJ"; }
 
   void start();
-  // See early_cpufj_t::request_stop().
   void request_stop();
   void stop();
 

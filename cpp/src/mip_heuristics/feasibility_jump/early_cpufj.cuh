@@ -34,9 +34,7 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
   void start(int n_lanes,
              bool low_latency                             = false,
              const std::vector<f_t>& incumbent_assignment = {});
-  // Asks every lane to exit without waiting for it. Call it on all running early heuristics
-  // before the first stop(): a taskwait runs any queued task of the team inline, so a lane that
-  // has not been asked to exit can keep the waiting thread busy forever.
+  // Raises the stop flag without waiting. Call on every running early heuristic before any stop().
   void request_stop();
   void stop();
 

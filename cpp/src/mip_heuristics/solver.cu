@@ -215,8 +215,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     CUOPT_LOG_DEBUG("Presolve time limit: %g", presolve_time_limit);
   bool presolve_success = run_presolve ? dm.run_presolve(presolve_time_limit, timer_) : true;
 
-  // Stop early CPUFJ after cuopt presolve (probing cache) but before main solve. Both heuristics
-  // are asked to exit before either wait: a taskwait runs any queued task inline.
+  // Stop early CPUFJ after cuopt presolve (probing cache) but before main solve
   if (context.early_cpufj_ptr) { context.early_cpufj_ptr->request_stop(); }
   if (context.early_structural_ptr) { context.early_structural_ptr->request_stop(); }
   if (context.early_cpufj_ptr) {
