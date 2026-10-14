@@ -21,20 +21,18 @@
 - New MIP presolve: exhaustive coefficient reduction for binary rows
 - The C API now exposes solver statistics as scalar solution attributes
 - New `cuOptSetLogCallback` for capturing solver logs in C API
-- New HTTP proxy server on top of gRPC, replacing the deprecated legacy HTTP server
-- VRP is now supported over gRPC with a compiled C++/Cython client
-- New per-vehicle distance-based breaks in routing: enabling charging, refueling, or rest stops to be constrained by cumulative travel distance rather than time
-- XXXXXXXXXXXXX items below this line needed to be edited 
-- gRPC: add cancel and status APIs to the routing client (#1886)
-- Solver parameters are now sent over gRPC as a string map. A new client requires a new server. An older client still works with a new server. (#2010, #2022, #2057)
-- gRPC: add a GPU health check before each job and after idle (#2031)
-- gRPC: add the standard gRPC health-probe endpoints (#2047)
+- Routing now supports per-vehicle distance-based breaks, so charging, refueling, or rest stops can be constrained by cumulative travel distance rather than time
+- The gRPC server now solves routing problems (VRP, TSP, and PDP). The Python client can submit a routing job, check its status, cancel it, and retrieve the solution
+- The gRPC server now accepts a MIP starting solution and uses it to begin the search
+- Remote gRPC solves now send solver settings as named parameters, so newly added settings are included automatically. A 26.10 client requires a 26.10 server. A client from an earlier release still works with a 26.10 server
+- The gRPC server now checks GPU health before each job and while idle. If the GPU is unusable, or CUDA does not initialize, the server shuts down so Kubernetes or another orchestrator can restart it. The server also provides the standard gRPC health check used for readiness and liveness probes
+- A new HTTP proxy server provides the cuOpt HTTP interface and forwards LP, MILP, QP, and routing requests to the gRPC server. The 26.10 container starts this proxy together with the gRPC server by default
 
 
 ### Breaking Changes (26.10)
 
 - The container image now runs the proxy and gRPC servers by default; the legacy HTTP server is an optional start command
-- `libcuopt` is split into client, mathopt and routing components, with separate wheels and conda packages; `libcuopt` is now a thin metapackage 
+- `libcuopt` is split into client, mathopt and routing components, with separate wheels and conda packages; `libcuopt` is now a thin metapackage
 - The CUOPT_DISTRIBUTED_PDLP_PARTITIONER setting introduced in 26.08 is now CUOPT_MULTIGPU_PDLP_PARTITIONER
 - The CUOPT_USE_DISTRIBUTED_PDLP setting introduced in 26.08 has been removed; use method and num_gpus instead
 - When building from source the build.sh script no longer installs libcuopt into conda env by default
@@ -53,7 +51,7 @@
 - Dual simplex now perturbs the cost more aggressively and uses primal simplex to remove perturbations
 - Dual simplex now attempts to remove perturbations when variables leave the basis
 - Dual simplex now tries several initial points on problems with dual degenerate bounded variables
-- Dual simplex's bound flipping ratio test is now approximately O(n) and combines Harris ratio test with bound flips 
+- Dual simplex's bound flipping ratio test is now approximately O(n) and combines Harris ratio test with bound flips
 - QP/QCQP solve 1.3X faster (geomean over QPLIB and Hans Mittelmann test set)
 - SOCP now use a tighter default tolerance on the duality gap without a performance regression
 - Barrier now performs Ruiz scaling and builds the augmented system on the GPU
@@ -73,7 +71,7 @@
 - MIP reduced cost strengthening now stores bound implications based on incumbent objective value
 - MIP now includes a new Mod-2 cut separator for zero-half cuts
 - MIP random number generators are now per-worker instead of process wide; eliminating a source of nondeterminism
-- Routing now uses cost instead of distance terminology when the objective does not represent a physical distance 
+- Routing now uses cost instead of distance terminology when the objective does not represent a physical distance
 - Solution callback publication is now unified across solver components
 - Time to first solution is improved by reducing overheads
 - CPUFJ now has a fast-path heuristic for binary problems with integer activities
@@ -87,7 +85,7 @@
 - Fix an issue in LP/MIP presolve where the user specified feasibility tolerance was not propagate to Papilo
 - Fix an issue in PDLP where reduced costs where not returned for the default PDLP preset (Stable3)
 - Fix a missing header in log in mPDLP
-- Fix an issue in mPDLP where the solver stopped silently when asking for more GPUs than available 
+- Fix an issue in mPDLP where the solver stopped silently when asking for more GPUs than available
 - Fix an issue on the C API where performing a mPDLP solve on a problem built from row types and RHS was not supported
 - Fix an issue on mPDLP where project_initial_primal was ignored
 - Fix a barrier crash when concurrent LP solving returned from cuDSS before its asynchronous work finished
@@ -121,18 +119,15 @@
 - Fix a memory overflow in MIP when there were many feasible solutions
 - Disable clique table generation in MIP when running in deterministic mode
 - Fix an issue where the random number seed could change if multiple solves were performed within the same process
-- Fix an issue in routing: keep host sources alive for async route-view copies 
-- Fix an issue in routing: avoid division by zero when vehicle capacity is zero 
-- Fix an issue in routing: guard diagonal element lookup against negative offsets in top_k 
+- Fix an issue in routing: keep host sources alive for async route-view copies
+- Fix an issue in routing: avoid division by zero when vehicle capacity is zero
+- Fix an issue in routing: guard diagonal element lookup against negative offsets in top_k
 - Fix an issue in routing: uncapturable RMM copies inside CUDA graph captures
 - Fix an issue in routing: handle CUDA graph errors
-- Fix an issue in gRPC: transmit PDLP warmstart data and apply it on the server
-- Fix an issue in gRPC: server align ping handling with client behavior
-- Fix an issue in gRPC: transfer MIP initial solutions to the server
-- Fix an issue in gRPC: add a check for successful cuda init in worker
-- Fix an issue in gRPC: forward routing settings and map node name strings to ints
-- Fix an issue in gRPC: exec the binary from the `cuopt_cli` and `cuopt_grpc_server` console-script wrappers so signals reach it 
-- Fix an issue in the Python gRPC client: run the wait loop in Python so other threads are not blocked by the GIL
+- Fix an issue where a PDLP warm start was ignored on a remote gRPC solve
+- Fix an issue where a gRPC connection could be closed during a long or idle solve because the server did not accept the client's keepalive pings
+- Fix an issue where stopping `cuopt_cli` or `cuopt_grpc_server` did not stop the solver process
+- Fix an issue in the Python gRPC client where waiting for a remote solve blocked other Python threads
 
 ### Deprecations (26.10)
 
@@ -141,8 +136,8 @@
 ### Documentation (26.10)
 
 - Show mamba commands directly instead of a conda-then-swap note
-- Document the VRP gRPC client (RoutingClient) 
-- Update NVIDIA Brev documentation links 
+- Document the VRP gRPC client (RoutingClient)
+- Update NVIDIA Brev documentation links
 
 ### New Contributors (26.10)
 
