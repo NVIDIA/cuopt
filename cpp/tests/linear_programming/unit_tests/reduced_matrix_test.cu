@@ -203,8 +203,9 @@ TEST_P(ReducedMatrixSolve, SingleClimberBoundOverrideChangesOptimum)
 TEST_P(ReducedMatrixSolve, DisableHintOncePerSolveAtActivation)
 {
   raft::handle_t handle;
-  const std::string activated = "Reduced matrix activated";
-  const std::string hint = "To disable column reduction, set CUOPT_PDLP_HYPER_REDUCED_MATRIX to 0.";
+  const std::string hint =
+    "Applying column reduction. To disable column reduction, set "
+    "CUOPT_PDLP_HYPER_REDUCED_MATRIX to 0.";
   for (int solve = 0; solve < 2; ++solve) {
     SCOPED_TRACE(solve);
     auto model    = make_bound_dominated_model();
@@ -222,11 +223,9 @@ TEST_P(ReducedMatrixSolve, DisableHintOncePerSolveAtActivation)
     EXPECT_EQ(log.find("Column reduction enabled"), std::string::npos);
     const auto first_hint = log.find(hint);
     if (GetParam() == 0) {
-      EXPECT_EQ(log.find(activated), std::string::npos);
       EXPECT_EQ(first_hint, std::string::npos);
     } else {
       ASSERT_NE(first_hint, std::string::npos) << log;
-      EXPECT_LT(log.find(activated), first_hint);
       EXPECT_EQ(log.find(hint, first_hint + hint.size()), std::string::npos);
     }
   }
@@ -247,7 +246,7 @@ TEST(ReducedMatrixSolve, NoDisableHintBeforeActivation)
     &log);
   auto result = solve_lp(&handle, model, settings);
   EXPECT_EQ(result.get_termination_status(), pdlp_termination_status_t::IterationLimit);
-  EXPECT_EQ(log.find("Reduced matrix activated"), std::string::npos);
+  EXPECT_EQ(log.find("Applying column reduction"), std::string::npos);
   EXPECT_EQ(log.find("To disable column reduction"), std::string::npos);
 }
 

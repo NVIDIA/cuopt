@@ -454,14 +454,16 @@ bool reduced_matrix_t<i_t, f_t>::rebuild(const rmm::device_uvector<f_t>& project
   build_fixed_activities(current_primal, restart_primal);
   initialize_spmv();
   active_ = true;
-  CUOPT_LOG_INFO("Reduced matrix activated: columns=%lld/%lld nnz=%lld/%lld iteration=%lld",
-                 static_cast<long long>(free_count_),
-                 static_cast<long long>(problem_ptr_->n_variables),
-                 static_cast<long long>(reduced_At_values_.size()),
-                 static_cast<long long>(problem_ptr_->nnz),
-                 static_cast<long long>(iteration));
+  CUOPT_LOG_DEBUG("Reduced matrix activated: columns=%lld/%lld nnz=%lld/%lld iteration=%lld",
+                  static_cast<long long>(free_count_),
+                  static_cast<long long>(problem_ptr_->n_variables),
+                  static_cast<long long>(reduced_At_values_.size()),
+                  static_cast<long long>(problem_ptr_->nnz),
+                  static_cast<long long>(iteration));
   if (!disable_hint_logged_) {
-    CUOPT_LOG_INFO("To disable column reduction, set CUOPT_PDLP_HYPER_REDUCED_MATRIX to 0.");
+    CUOPT_LOG_INFO(
+      "Applying column reduction. To disable column reduction, set "
+      "CUOPT_PDLP_HYPER_REDUCED_MATRIX to 0.");
     disable_hint_logged_ = true;
   }
   return true;
