@@ -87,15 +87,18 @@ CUDA_VERSION="${CUDA_VERSION:-${RAPIDS_CUDA_VERSION}}" bash ci/utils/install_cud
 # CUDA-devel image via NVIDIA's own cuda dnf repo.
 
 rapids-logger "Installing rmm and rapids_logger from prebuilt RAPIDS wheels"
-# libraft-headers has no wheel; depends_on_libraft_headers is conda-only, so this generates a
-# requirements file with only rmm/rapids_logger in it, and CMake's usual CPM source-fetch fallback
-# (see cpp/CMakeLists.txt) picks up raft from GitHub instead, same as it would with no conda
-# environment providing a prebuilt raft package.
+# libraft-headers has no wheel; depends_on_libraft_headers is conda-only, so CMake's usual CPM
+# source-fetch fallback (see cpp/CMakeLists.txt) picks up raft from GitHub instead, same as it
+# would with no conda environment providing a prebuilt raft package.
+# The libcuopt-* pins are dropped: the static build compiles every cuOpt component from source,
+# and only the rmm/rapids_logger directories are put on CMAKE_PREFIX_PATH below. Installing them
+# fails whenever the current version has no wheel on the index yet (e.g. a version bump).
 rapids-dependency-file-generator \
   --output requirements \
   --file-key py_build_libcuopt \
   --file-key py_rapids_build_libcuopt \
   --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION};cuda_suffixed=true" \
+| grep -vE '^libcuopt' \
 | tee /tmp/requirements-java-static.txt
 rapids-pip-retry install -v --prefer-binary -r /tmp/requirements-java-static.txt
 
