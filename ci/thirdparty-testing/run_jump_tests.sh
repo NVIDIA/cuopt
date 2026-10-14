@@ -42,18 +42,24 @@ if [ -f test/MOI_wrapper.jl ]; then
     sed -i '/^function test_air05()/,/^end$/s/^/# /' test/MOI_wrapper.jl
 fi
 
-# Find libcuopt.so and add its directory to LD_LIBRARY_PATH
-LIBCUOPT_PATH=$(find /pyenv/ -name "libcuopt.so" -type f 2>/dev/null | head -1)
+# libcuopt.so is a linker script, not a shared object, so Julia cannot dlopen it (#2133). The C API
+# that cuOpt.jl calls is exported by libcuopt_mathopt.so; point the package at that instead.
+rapids-logger "Patching cuOpt.jl to load libcuopt_mathopt"
+sed -i 's/Libdl.find_library("libcuopt")/Libdl.find_library("libcuopt_mathopt")/' src/cuOpt.jl
+grep -q 'find_library("libcuopt_mathopt")' src/cuOpt.jl || { rapids-logger "ERROR: could not patch cuOpt.jl"; exit 1; }
 
-if [ -n "$LIBCUOPT_PATH" ]; then
-    rapids-logger "LIBCUOPT_PATH: $LIBCUOPT_PATH"
-    LIBCUOPT_DIR=$(dirname "$LIBCUOPT_PATH")
-    rapids-logger "LIBCUOPT_DIR: $LIBCUOPT_DIR"
-    export LD_LIBRARY_PATH="${LIBCUOPT_DIR}:${LD_LIBRARY_PATH}"
-    rapids-logger "Found libcuopt.so at $LIBCUOPT_PATH, added directory to LD_LIBRARY_PATH: $LIBCUOPT_DIR"
-else
-    rapids-logger "Warning: libcuopt.so not found in root filesystem"
+# Find the component libraries and add their directories to LD_LIBRARY_PATH
+LIBMATHOPT_PATH=$(find /pyenv/ -name "libcuopt_mathopt.so" -type f 2>/dev/null | head -1)
+LIBCLIENT_PATH=$(find /pyenv/ -name "libcuopt_client.so" -type f 2>/dev/null | head -1)
+
+if [ -z "$LIBMATHOPT_PATH" ] || [ -z "$LIBCLIENT_PATH" ]; then
+    rapids-logger "ERROR: libcuopt_mathopt.so or libcuopt_client.so not found under /pyenv"
+    exit 1
 fi
+
+rapids-logger "LIBMATHOPT_PATH: $LIBMATHOPT_PATH"
+rapids-logger "LIBCLIENT_PATH: $LIBCLIENT_PATH"
+export LD_LIBRARY_PATH="$(dirname "$LIBMATHOPT_PATH"):$(dirname "$LIBCLIENT_PATH"):${LD_LIBRARY_PATH:-}"
 
 rapids-logger "Running Julia tests for cuOpt.jl"
 
