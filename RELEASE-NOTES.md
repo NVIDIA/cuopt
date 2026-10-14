@@ -80,8 +80,8 @@
 
 ### Bug Fixes (26.10)
 
-- Fix a issue in the C API when accessing solutions on infeasible problems
-- Fix issue in MPS writer on problems with no linear constraints
+- Fix an issue in the C API when accessing solutions on infeasible problems
+- Fix an issue in MPS writer on problems with no linear constraints
 - Fix ranged constraint conversion and MPS writing/reading round trips
 - Fix an issue in LP/MIP presolve where the user specified feasibility tolerance was not propagated to Papilo
 - Fix an issue in PDLP where reduced costs where not returned for the default PDLP preset (Stable3)
