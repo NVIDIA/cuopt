@@ -32,6 +32,7 @@
 ### Breaking Changes (26.10)
 
 - The container image now runs the proxy and gRPC servers by default; the legacy HTTP server is an optional start command
+- The proxy and gRPC servers (container defaults) support routing problems of up to 5500 locations with a travel time matrix, or 8000 without one. For larger problems use the legacy HTTP server.
 - `libcuopt` is split into client, mathopt and routing components, with separate wheels and conda packages; `libcuopt` is now a thin metapackage
 - The CUOPT_DISTRIBUTED_PDLP_PARTITIONER setting introduced in 26.08 is now CUOPT_MULTIGPU_PDLP_PARTITIONER
 - The CUOPT_USE_DISTRIBUTED_PDLP setting introduced in 26.08 has been removed; use method and num_gpus instead
