@@ -12,12 +12,13 @@
 - New primal heuristic for MIPs with arc-flow formulations
 - New techniques for exploiting degeneracy in MIP
 - New primal simplex method for LPs
-- Add Implied Indicator and Capacity Lifting presolve reductions for fixed-charge MIP models (#1983)
+- New implied indicator and capacity lifting presolve strengthening for fixed-charge MIP models
 - The C API now exposes solver statistics as scalar solution attributes
 - New `cuOptSetLogCallback` for capturing solver logs in C API
 - New HTTP proxy server on top of gRPC, replacing the deprecated legacy HTTP server
-- VRP is now supported over gRPC, with a compiled C++/Cython client
-- Routing: add distance breaks (#1196)
+- VRP is now supported over gRPC with a compiled C++/Cython client
+- New per-vehicle distance-based breaks in routing: enabling charging, refueling, or rest stops to be constrained by cumulative travel distance rather than time
+- XXXXXXXXXXXXX items below this line needed to be edited 
 - gRPC: add cancel and status APIs to the routing client (#1886)
 - Solver parameters are now sent over gRPC as a string map. A new client requires a new server. An older client still works with a new server. (#2010, #2022, #2057)
 - gRPC: add a GPU health check before each job and after idle (#2031)
