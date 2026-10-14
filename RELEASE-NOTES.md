@@ -22,11 +22,11 @@
 - The C API now exposes solver statistics as scalar solution attributes
 - New `cuOptSetLogCallback` for capturing solver logs in C API
 - Routing now supports per-vehicle distance-based breaks, so charging, refueling, or rest stops can be constrained by cumulative travel distance rather than time
-- The gRPC server now solves routing problems (VRP, TSP, and PDP). The Python client can submit a routing job, check its status, cancel it, and retrieve the solution
+- The gRPC server now solves routing problems (VRP, TSP, and PDP). A Python gRPC routing client is included with cuOpt
 - The gRPC server now accepts a MIP starting solution and uses it to begin the search
-- The gRPC protocol now carries solver settings as named parameters, and the 26.10 client sends them that way. New solver settings are included without adding a separate field for each one. A 26.10 client requires a 26.10 server. A client from an earlier release still works with a 26.10 server
-- The gRPC server now checks GPU health before each job and while idle. If the GPU is unusable, or CUDA does not initialize, the server shuts down so Kubernetes or another orchestrator can restart it. The server also provides the standard gRPC health check used for readiness and liveness probes
-- A new HTTP proxy server provides the cuOpt HTTP interface and forwards LP, MILP, QP, and routing requests to the gRPC server. The 26.10 container starts this proxy together with the gRPC server by default
+- The gRPC client now sends solver settings as a map of named parameters. A 26.10 client requires a 26.10 server
+- The gRPC server checks GPU health and shuts down if the GPU is unusable. It also provides the standard gRPC readiness and liveness probes
+- A new HTTP proxy forwards requests to the gRPC server. The 26.10 container starts the proxy and gRPC server by default (legacy HTTP server is deprecated)
 
 
 ### Breaking Changes (26.10)
