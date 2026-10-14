@@ -39,8 +39,9 @@
 ### Improvements (26.10)
 
 - MIP heuristics improved by 3.2x on primal integral metric (geomean over the feasible MIPLIB2017 instances)
+- QP/QCQP solve 1.3X faster (geomean over QPLIB and Hans Mittelmann test set)
+- PDLP now uses column reduction on large problems (~2x faster in geomean over LPFeas addendum instances)
 - Dual simplex is 1.4X faster (geomean over MIPLIB root relaxations)
-- PDLP now use column reduction on large problems (~2x faster in geomean over LPFeas addendum instances)
 - PDLP now fuses the Halpern update into the projection kernels to improve performance
 - Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
 - LP presolve now uses less memory by freeing the transpose matrix and PSLP reduced problem
@@ -52,7 +53,7 @@
 - Dual simplex now attempts to remove perturbations when variables leave the basis
 - Dual simplex now tries several initial points on problems with dual degenerate bounded variables
 - Dual simplex's bound flipping ratio test is now approximately O(n) and combines Harris ratio test with bound flips
-- QP/QCQP solve 1.3X faster (geomean over QPLIB and Hans Mittelmann test set)
+
 - SOCP now use a tighter default tolerance on the duality gap without a performance regression
 - Barrier now performs Ruiz scaling and builds the augmented system on the GPU
 - Barrier now scales QCQP/SOCP constraints by variable bounds before Ruiz equilibration
