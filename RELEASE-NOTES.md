@@ -54,21 +54,21 @@
 - Dual simplex now tries several initial points on problems with dual degenerate bounded variables
 - Dual simplex's bound flipping ratio test is now approximately O(n) and combines Harris ratio test with bound flips
 - SOCP now use a tighter default tolerance on the duality gap without a performance regression
+- QCQP to SOCP conversion performance is improved and memory required is reduced
+- QP/SOCP presolve now eliminates free variables with zero cost
+- QP presolve now removes empty columns
 - Barrier now performs Ruiz scaling and builds the augmented system on the GPU
 - Barrier now scales QCQP/SOCP constraints by variable bounds before Ruiz equilibration
 - Barrier now performs iterative refinement on GPU when using the normal equations
 - Barrier now prints the cumulative setup time before the solve
-- QP presolve now removes empty columns
 - Barrier termination check now has reduced GPU/host synchronization overhead
 - Barrier now has parameters to control adaptive regularization
 - Barrier now has parameters for tuning primal and dual regularization
 - Barrier now has a parameter to control bounding free variables
 - Barrier now has more initial point options
-- QCQP to SOCP conversion performance is improved and memory required is reduced
-- QP/SOCP presolve now eliminates free variables with zero cost
 - MIP root relaxation now honors the LP method selected
 - MIP performance improvement in duplicate cut detection
-- MIP reduced cost strengthening now stores bound implications based on incumbent objective value
+- MIP reduced cost strengthening now stores lurking bounds based on incumbent objective value
 - MIP now includes a new Mod-2 cut separator for zero-half cuts
 - MIP random number generators are now per-worker instead of process wide; eliminating a source of nondeterminism
 - MIP time to first solution is improved by reducing overheads
@@ -86,10 +86,10 @@
 - Fix ranged constraint conversion and MPS writing/reading round trips
 - Fix an issue in LP/MIP presolve where the user specified feasibility tolerance was not propagate to Papilo
 - Fix an issue in PDLP where reduced costs where not returned for the default PDLP preset (Stable3)
-- Fix a missing header in log in mPDLP
-- Fix an issue in mPDLP where the solver stopped silently when asking for more GPUs than available
-- Fix an issue on the C API where performing a mPDLP solve on a problem built from row types and RHS was not supported
-- Fix an issue on mPDLP where project_initial_primal was ignored
+- Fix a missing header in log in multi-GPU PDLP
+- Fix an issue in multi-GPU PDLP where the solver stopped silently when asking for more GPUs than available
+- Fix an issue on the C API where performing a multi-GPU PDLP solve on a problem built from row types and RHS was not supported
+- Fix an issue on multi-GPU PDLP where project_initial_primal was ignored
 - Fix a barrier crash when concurrent LP solving returned from cuDSS before its asynchronous work finished
 - Fix a segfault in concurrent LP if dual simplex or barrier finished without setting a solution
 - Fix several issues in barrier related to the cuDSS threading layer
@@ -97,7 +97,7 @@
 - Fix an issue in QP/SOCP presolve where removing empty columns could corrupt memory, causing heap corruption errors or `cudaErrorLaunchFailure`
 - Fix nondeterminism in barrier when `--cudss-deterministic=1`
 - Fix an issue with QPs where duality gap was not included in the termination criteria
-- Fix a buffer overflow when getting the dual solution or reduced costs of a QCQP; dual solutions are not yet available for QCQP, so these requests now return an error
+- Fix a buffer overflow when getting the dual solution or reduced costs of a QCQP; these requests now return an error
 - Fix an issue in QP and SOCP where a large dual residual was reported for the final solution, even at an optimal solution
 - Fix an issue in dual simplex logs where bound flips were not accounted for in objective
 - Fix an issue in MIP where flow cover cut generation was accidentally O(n^2)
