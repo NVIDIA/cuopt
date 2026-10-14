@@ -40,6 +40,7 @@
 
 - MIP heuristics improved by 3.2x on primal integral metric (geomean over the feasible MIPLIB2017 instances)
 - Dual simplex is 1.4X faster (geomean over MIPLIB root relaxations)
+- PDLP now use column reduction on large problems (~2x faster in geomean over LPFeas addendum instances)
 - PDLP now fuses the Halpern update into the projection kernels to improve performance
 - Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
 - LP presolve now uses less memory by freeing the transpose matrix and PSLP reduced problem
