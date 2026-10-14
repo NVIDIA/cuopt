@@ -24,7 +24,7 @@
 - Routing now supports per-vehicle distance-based breaks, so charging, refueling, or rest stops can be constrained by cumulative travel distance rather than time
 - The gRPC server now solves routing problems (VRP, TSP, and PDP). A Python gRPC routing client is included with cuOpt
 - The gRPC server now accepts a MIP starting solution and uses it to begin the search
-- The gRPC client now sends solver settings as a map of named parameters. A 26.10 client requires a 26.10 server
+- Custom gRPC clients should now send solver settings through the `parameters` string map; individual setting fields are deprecated
 - The gRPC server checks GPU health and shuts down if the GPU is unusable. It also provides the standard gRPC readiness and liveness probes
 - A new HTTP proxy forwards requests to the gRPC server. The 26.10 container starts the proxy and gRPC server by default (legacy HTTP server is deprecated)
 
