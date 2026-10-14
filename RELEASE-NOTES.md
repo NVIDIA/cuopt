@@ -36,9 +36,7 @@
 ### Improvements (26.10)
 
 - MIP heuristics improved by 3.2x on primal integral metric (geomean over the feasible MIPLIB2017 instances)
-- QP/QCQP solve 1.3X faster (geomean over QPLIB and Hans Mittelmann test set)
 - Dual simplex is 1.4X faster (geomean over MIPLIB root relaxations)
-- SOCP now use a tighter default tolerance on the duality gap without a performance regression
 - PDLP now fuses the Halpern update into the projection kernels to improve performance
 - Concurrent LP now uses a threshold on the number of nonzeros to decide whether to launch barrier and dual simplex
 - LP presolve now uses less memory by freeing the transpose matrix and PSLP reduced problem
@@ -48,18 +46,20 @@
 - Dual simplex now attempts to remove perturbations when variables leave the basis
 - Dual simplex now tries several initial points on problems with dual degenerate bounded variables
 - Dual simplex's bound flipping ratio test is now approximately O(n) and combines Harris ratio test with bound flips 
-- Barrier now preforms Ruiz scaling and builds the augmented system on the GPU
-- Barrier now scales QCQP/SOCP constraint by variable bounds before Ruiz equilibriation
+- QP/QCQP solve 1.3X faster (geomean over QPLIB and Hans Mittelmann test set)
+- SOCP now use a tighter default tolerance on the duality gap without a performance regression
+- Barrier now performs Ruiz scaling and builds the augmented system on the GPU
+- Barrier now scales QCQP/SOCP constraints by variable bounds before Ruiz equilibration
 - Barrier now performs iterative refinement on GPU when using the normal equations
 - Barrier now prints the cumulative setup time before the solve
-- Barrier now removes empty columns from separable QPs
+- QP presolve now removes empty columns
 - Barrier termination check now has reduced GPU/host synchronization overhead
 - Barrier now has parameters to control adaptive regularization
 - Barrier now has parameters for tuning primal and dual regularization
 - Barrier now has a parameter to control bounding free variables
-- Barrier now has improved performance when computing the initial point
+- Barrier now has more initial point options
 - QCQP to SOCP conversion performance is improved and memory required is reduced
-- QCQP/SOCP presolve now eliminates free variables with zero cost
+- QP/SOCP presolve now eliminates free variables with zero cost
 - MIP root relaxation now honors the LP method selected
 - MIP performance improvement in duplicate cut detection
 - MIP reduced cost strengthening now stores bound implications based on incumbent objective value
@@ -91,11 +91,11 @@
 - Fix a segfault in concurrent LP if dual simplex or barrier finished without setting a solution
 - Fix several issues in barrier related to the cuDSS threading layer
 - Fix a bug on QCQP/SOCP problems with ranged rows
-- Fix corrupted memory in QCQP/SOCP presolve when removing empty columns 
+- Fix an issue in QP/SOCP presolve where removing empty columns could corrupt memory, causing heap corruption errors or `cudaErrorLaunchFailure`
 - Fix nondeterminism in barrier when `--cudss-deterministic=1`
 - Fix an issue with QPs where duality gap was not included in the termination criteria
-- Fix QCQP dual solution overrun and constraint count reporting
-- Fix an issue in QCQP/SOCP where the dual residual of the final solution was incorrect
+- Fix a buffer overflow when getting the dual solution or reduced costs of a QCQP; dual solutions are not yet available for QCQP, so these requests now return an error
+- Fix an issue in QP and SOCP where a large dual residual was reported for the final solution, even at an optimal solution
 - Fix an issue in dual simplex logs where bound flips were not accounted for in objective
 - Fix an issue in MIP where flow cover cut generation was accidentally O(n^2)
 - Fix an issue in dual simplex inside MIP where cut off incorrectly used the perturbed objective
