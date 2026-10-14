@@ -75,7 +75,6 @@
 - Modular CPUFJ engine, simple portfolio (#1950)
 - Structure-aware starts and repairs for CPUFJ (#1951)
 - Portfolio diversification, more starts, move batching (#1953)
-- RoutingClient: match Client's (host, port, tls=...) signature (#1840)
 - Replace process-wide seed_generator with per-worker RNGs in MIP heuristics (#1809)
 - Give each solver its own seed instead of a process-wide counter (#1717)
 
