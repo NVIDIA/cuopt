@@ -115,7 +115,7 @@ C API users should use the constants defined in :ref:`pdlp-solver-mode-constants
 Server Thin client users should use the :class:`cuopt_sh_client.PDLPSolverMode` for this parameter.
 
 Large Number of Nonzeros Threshold
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_LARGE_NNZ_THRESHOLD`` sets a threshold for what cuOpt considers to be a
 large linear program. When the number of nonzeros in the constraint matrix exceeds
