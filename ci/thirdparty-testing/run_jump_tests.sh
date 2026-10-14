@@ -59,7 +59,9 @@ fi
 
 rapids-logger "LIBMATHOPT_PATH: $LIBMATHOPT_PATH"
 rapids-logger "LIBCLIENT_PATH: $LIBCLIENT_PATH"
-export LD_LIBRARY_PATH="$(dirname "$LIBMATHOPT_PATH"):$(dirname "$LIBCLIENT_PATH"):${LD_LIBRARY_PATH:-}"
+LIBMATHOPT_DIR=$(dirname "$LIBMATHOPT_PATH")
+LIBCLIENT_DIR=$(dirname "$LIBCLIENT_PATH")
+export LD_LIBRARY_PATH="${LIBMATHOPT_DIR}:${LIBCLIENT_DIR}:${LD_LIBRARY_PATH:-}"
 
 rapids-logger "Running Julia tests for cuOpt.jl"
 
