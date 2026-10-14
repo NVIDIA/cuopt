@@ -119,17 +119,22 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes,
 }
 
 template <typename i_t, typename f_t>
+void early_cpufj_t<i_t, f_t>::request_stop()
+{
+  preemption_flag_.store(true);
+  for (auto& climber : climbers_) {
+    climber->halted = true;
+  }
+}
+
+template <typename i_t, typename f_t>
 void early_cpufj_t<i_t, f_t>::stop()
 {
   if (climbers_.empty()) { return; }
 
-  preemption_flag_.store(true);
-
   // Every lane is told to stop before any wait, otherwise the first wait blocks on a lane that has
   // not been asked to exit yet.
-  for (auto& climber : climbers_) {
-    climber->halted = true;
-  }
+  request_stop();
   if (worker_.joinable()) {
     worker_.join();
   } else {

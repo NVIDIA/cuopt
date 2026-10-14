@@ -54,6 +54,8 @@ class early_structural_t : public early_heuristic_t<i_t, f_t, early_structural_t
   static constexpr const char* name() { return "Structural"; }
 
   void start();
+  // See early_cpufj_t::request_stop().
+  void request_stop();
   void stop();
 
  private:

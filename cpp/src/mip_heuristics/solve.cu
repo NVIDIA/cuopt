@@ -602,7 +602,12 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
                       early_cpufj->lane_count());
     }
 
+    // Runs on every return below. Every early heuristic is asked to stop before the first wait:
+    // a taskwait runs any queued task of the team inline, so a heuristic that has not been
+    // asked to exit (the GPU FJ stops with no time limit) would otherwise never return.
     auto early_cpufj_guard = cuopt::scope_guard([&]() {
+      if (early_gpufj) { early_gpufj->request_stop(); }
+      if (early_structural) { early_structural->request_stop(); }
       if (early_cpufj) {
         early_cpufj->stop();
         early_cpufj.reset();
@@ -742,7 +747,13 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       }
     }
 
-    // Stop early GPU FJ now that Papilo presolve is complete
+    // Stop the early heuristics now that Papilo presolve is complete. All of them are asked to exit
+    // before any wait; see the guard above.
+    if (early_gpufj) { early_gpufj->request_stop(); }
+    if (early_cpufj && run_presolve && presolve_result_opt.has_value()) {
+      early_cpufj->request_stop();
+    }
+    if (early_structural) { early_structural->request_stop(); }
     if (early_gpufj) {
       early_gpufj->stop();
       if (early_gpufj->solution_found()) {

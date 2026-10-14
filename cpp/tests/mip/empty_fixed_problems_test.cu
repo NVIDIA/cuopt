@@ -46,6 +46,19 @@ TEST(mip_solve, fixed_problem_infeasible_test)
   auto [termination_status, obj_val, lb] = test_mps_file("mip/fixed-problem-infeas.mps");
   EXPECT_EQ(termination_status, mip_termination_status_t::Infeasible);
 }
+// Papilo proves this problem infeasible almost immediately, while the early heuristics started
+// before presolve may still be queued. Each of them has to be asked to exit before any of them is
+// waited for; otherwise the wait can run another heuristic's queued task to completion on the
+// calling thread and the solve never returns. The hang is a race, so the problem is solved
+// repeatedly.
+TEST(mip_solve, presolve_infeasible_repeated_solves)
+{
+  for (int i = 0; i < 100; ++i) {
+    auto [termination_status, obj_val, lb] = test_mps_file("mip/presolve-infeasible-small.mps");
+    ASSERT_EQ(termination_status, mip_termination_status_t::Infeasible) << "solve " << i;
+  }
+}
+
 TEST(mip_solve, empty_problem_test)
 {
   auto [termination_status, obj_val, lb] = test_mps_file("mip/empty-problem-obj.mps");
