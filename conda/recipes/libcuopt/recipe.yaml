@@ -356,6 +356,8 @@ outputs:
         - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
         - cuda-version =${{ cuda_version }}
       run:
+        - librmm =${{ minor_version }}
+        - libuuid
         - rapids-logger =0.3
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
@@ -477,6 +479,8 @@ outputs:
         - libprotobuf
         - libabseil
       run:
+        - libcublas
+        - libcudss >=0.7,<0.8
         - libgomp >=9
         - librmm =${{ minor_version }}
         - rapids-logger =0.3
