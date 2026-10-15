@@ -59,13 +59,10 @@ create_manifest() {
 
 CUDA_MAJOR="${CUDA_SHORT%%.*}"
 
-# Only release versions (X.Y.Z, no 'a' suffix) also get latest-* manifests
 IS_RELEASE=false
 if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then IS_RELEASE=true; fi
 
-# Publish only the short cu<major> tags (<version>-cu13, latest-cu13, ...), built from the
-# per-arch cuda<X.Y>-... images that build_images.yaml pushes.
-# $1: short tag suffix (e.g. cu13, cu13-ubi10)  $2: per-arch image tag suffix (e.g. cuda13.3-py3.14)
+# Short cu<major> manifests, built from the per-arch cuda<X.Y>-... images.
 create_short_manifests() {
     local short=$1 source=$2 repo
     for repo in nvidia/cuopt nvcr.io/nvstaging/nvaie/cuopt; do
