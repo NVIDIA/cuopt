@@ -6,12 +6,6 @@
 gRPC
 ====
 
-.. note::
-
-   A routing problem larger than one gRPC message uploads its cost and
-   travel-time matrices with the chunked upload RPCs. The routing solution
-   is still one message. See :doc:`api`.
-
 NVIDIA cuOpt can run LP, MIP, QP, and routing (VRP, TSP, PDP) solves on a
 remote GPU host through ``cuopt_grpc_server``. There are two ways to reach
 that server:
