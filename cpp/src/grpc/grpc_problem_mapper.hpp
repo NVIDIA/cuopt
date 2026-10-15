@@ -43,14 +43,27 @@ void map_problem_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_proble
                           cuopt::remote::OptimizationProblem* pb_problem);
 
 /**
- * @brief Map protobuf OptimizationProblem message to cpu_optimization_problem_t.
+ * @brief Map a complete protobuf OptimizationProblem to cpu_optimization_problem_t.
  *
- * Reads from a protobuf message using the generated protobuf C++ API.
- * Does not perform deserialization — that is handled by the protobuf library.
+ * Reads scalars and inline arrays from the message. Required arrays are applied
+ * even when empty, so this is only for a unary problem whose arrays are present.
  */
 template <typename i_t, typename f_t>
 void map_proto_to_problem(const cuopt::remote::OptimizationProblem& pb_problem,
                           cpu_optimization_problem_t<i_t, f_t>& cpu_problem);
+
+/**
+ * @brief Map an OptimizationProblem whose array payloads arrived as ArrayChunks.
+ *
+ * Scalars and quadratic-constraint row data come from `problem`. Numeric arrays
+ * and variable/row names come from `arrays` / `container_arrays`.
+ */
+template <typename i_t, typename f_t>
+void map_proto_to_problem(
+  const cuopt::remote::OptimizationProblem& problem,
+  const std::map<int32_t, std::vector<uint8_t>>& arrays,
+  const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
+  cpu_optimization_problem_t<i_t, f_t>& cpu_problem);
 
 /**
  * @brief Estimate the serialized protobuf size of a SolveLPRequest/SolveMIPRequest.
@@ -88,10 +101,10 @@ void populate_chunked_header_mip(const cpu_optimization_problem_t<i_t, f_t>& cpu
                                  cuopt::remote::ChunkedProblemHeader* header);
 
 /**
- * @brief Reconstruct a cpu_optimization_problem_t from a ChunkedProblemHeader.
+ * @brief Reconstruct scalars and legacy string arrays from a ChunkedProblemHeader.
  *
- * Populates problem scalars and string arrays from the header. Numeric arrays
- * must be populated separately from ArrayChunk data.
+ * Scalars use the same generated mapping as OptimizationProblem. Variable and
+ * row names still live in this header. Numeric arrays come from ArrayChunks.
  */
 template <typename i_t, typename f_t>
 void map_chunked_header_to_problem(const cuopt::remote::ChunkedProblemHeader& header,
@@ -118,6 +131,12 @@ void map_chunked_arrays_to_problem(
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
   const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
   cpu_optimization_problem_t<i_t, f_t>& cpu_problem);
+
+// Drop array payloads from an OptimizationProblem so it can be the unified
+// chunked-upload header. Repeated strings (variable and row names) are
+// included: they travel as ArrayChunks. Singular strings and per-entry
+// quadratic-constraint scalars stay.
+void strip_chunked_numeric_arrays(cuopt::remote::OptimizationProblem* problem);
 
 /**
  * @brief Build SendArrayChunkRequest messages for chunked upload of problem arrays.

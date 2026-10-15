@@ -94,8 +94,9 @@ std::pair<bool, std::string> submit_job_async(std::vector<uint8_t>&& request_dat
   job_queue[slot].cancelled.store(false);
   job_queue[slot].worker_index.store(-1);
   job_queue[slot].data_sent.store(false);
-  job_queue[slot].is_chunked = false;
-  job_queue[slot].worker_pid = 0;
+  job_queue[slot].is_chunked     = false;
+  job_queue[slot].unified_header = false;
+  job_queue[slot].worker_pid     = 0;
 
   {
     std::lock_guard<std::mutex> lock(pending_data_mutex);
@@ -149,8 +150,9 @@ std::pair<bool, std::string> submit_chunked_job_async(PendingChunkedUpload&& chu
   job_queue[slot].cancelled.store(false);
   job_queue[slot].worker_index.store(-1);
   job_queue[slot].data_sent.store(false);
-  job_queue[slot].is_chunked = true;
-  job_queue[slot].worker_pid = 0;
+  job_queue[slot].is_chunked     = true;
+  job_queue[slot].unified_header = chunked_data.unified;
+  job_queue[slot].worker_pid     = 0;
 
   {
     std::lock_guard<std::mutex> lock(pending_data_mutex);

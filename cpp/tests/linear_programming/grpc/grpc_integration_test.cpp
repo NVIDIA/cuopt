@@ -2220,7 +2220,7 @@ TEST_F(PathSelectionTests, ChunkedUploadAndChunkedDownloadMIP)
     << log_capture.get_client_logs();
 
   // Server should log CHUNKED response
-  EXPECT_TRUE(log_capture.wait_for_server_log("StartChunkedDownload: CHUNKED response", 5000))
+  EXPECT_TRUE(log_capture.wait_for_server_log("StartChunkedDownloadV2: CHUNKED response", 5000))
     << "Expected chunked download path in server log.\nServer log:\n"
     << log_capture.get_server_logs();
 }

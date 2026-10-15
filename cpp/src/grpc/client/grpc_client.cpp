@@ -666,10 +666,14 @@ submit_result_t grpc_client_t::submit_lp(const cpu_optimization_problem_t<i_t, f
 
   try {
     if (use_chunked) {
-      cuopt::remote::ChunkedProblemHeader header;
-      populate_chunked_header_lp(problem, settings.get_pdlp_settings(), &header);
-      append_solver_parameters(settings, header.mutable_lp_settings()->mutable_parameters());
-      if (!upload_chunked_arrays(problem, header, result.job_id)) {
+      auto request = build_lp_submit_request(problem, settings);
+      strip_chunked_numeric_arrays(request.mutable_lp_request()->mutable_problem());
+      if (!upload_chunked(
+            request,
+            [&](const std::string& upload_id, int64_t chunk_data_budget) {
+              return build_array_chunk_requests(problem, upload_id, chunk_data_budget);
+            },
+            result.job_id)) {
         result.error_message = last_error_;
         return result;
       }
@@ -709,11 +713,15 @@ submit_result_t grpc_client_t::submit_mip(const cpu_optimization_problem_t<i_t, 
 
   try {
     if (use_chunked) {
-      cuopt::remote::ChunkedProblemHeader header;
-      populate_chunked_header_mip(
-        problem, settings.get_mip_settings(), enable_incumbents, enable_set_incumbent, &header);
-      append_solver_parameters(settings, header.mutable_mip_settings()->mutable_parameters());
-      if (!upload_chunked_arrays(problem, header, result.job_id)) {
+      auto request =
+        build_mip_submit_request(problem, settings, enable_incumbents, enable_set_incumbent);
+      strip_chunked_numeric_arrays(request.mutable_mip_request()->mutable_problem());
+      if (!upload_chunked(
+            request,
+            [&](const std::string& upload_id, int64_t chunk_data_budget) {
+              return build_array_chunk_requests(problem, upload_id, chunk_data_budget);
+            },
+            result.job_id)) {
         result.error_message = last_error_;
         return result;
       }
@@ -1001,39 +1009,26 @@ remote_mip_result_t<i_t, f_t> grpc_client_t::solve_mip(
 // Chunked Transfer utils (upload and download)
 // =============================================================================
 
-template <typename i_t, typename f_t>
-bool grpc_client_t::upload_chunked_arrays(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                                          const cuopt::remote::ChunkedProblemHeader& header,
-                                          std::string& job_id_out)
-{
-  return upload_chunked(
-    header,
-    [&](const std::string& upload_id, int64_t chunk_data_budget) {
-      return build_array_chunk_requests(problem, upload_id, chunk_data_budget);
-    },
-    job_id_out);
-}
-
-bool grpc_client_t::upload_chunked(const cuopt::remote::ChunkedProblemHeader& header,
+bool grpc_client_t::upload_chunked(const cuopt::remote::SubmitJobRequest& job,
                                    const chunk_builder_t& build_chunks,
                                    std::string& job_id_out)
 {
   job_id_out.clear();
   auto upload_t0 = std::chrono::steady_clock::now();
 
-  // --- 1. StartChunkedUpload ---
+  // --- 1. StartChunkedUploadV2 ---
   std::string upload_id;
   {
     grpc::ClientContext context;
     set_rpc_deadline(context, kDefaultRpcTimeoutSeconds);
-    cuopt::remote::StartChunkedUploadRequest request;
-    *request.mutable_problem_header() = header;
+    cuopt::remote::StartChunkedUploadV2Request request;
+    *request.mutable_job() = job;
 
     cuopt::remote::StartChunkedUploadResponse response;
-    auto status = impl_->stub->StartChunkedUpload(&context, request, &response);
+    auto status = impl_->stub->StartChunkedUploadV2(&context, request, &response);
 
     if (!status.ok()) {
-      last_error_ = "StartChunkedUpload failed: " + status.error_message();
+      last_error_ = "StartChunkedUploadV2 failed: " + status.error_message();
       return false;
     }
 
@@ -1193,31 +1188,34 @@ bool grpc_client_t::get_result_or_download(const std::string& job_id,
 bool grpc_client_t::download_chunked_result(const std::string& job_id,
                                             downloaded_result_t& result_out)
 {
-  result_out.was_chunked = true;
+  result_out.was_chunked = false;
   result_out.chunked_arrays.clear();
+  result_out.chunked_header.reset();
   auto download_t0 = std::chrono::steady_clock::now();
 
   GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] Starting chunked download for job " << job_id);
 
-  // --- 1. StartChunkedDownload ---
+  // --- 1. StartChunkedDownloadV2: unary result shape, arrays empty ---
   std::string download_id;
-  auto header = std::make_unique<cuopt::remote::ChunkedResultHeader>();
+  auto result = std::make_unique<cuopt::remote::ResultResponse>();
+  google::protobuf::RepeatedPtrField<cuopt::remote::ResultArrayDescriptor> descriptors;
   {
     grpc::ClientContext context;
     set_rpc_deadline(context, kDefaultRpcTimeoutSeconds);
     cuopt::remote::StartChunkedDownloadRequest request;
     request.set_job_id(job_id);
 
-    cuopt::remote::StartChunkedDownloadResponse response;
-    auto status = impl_->stub->StartChunkedDownload(&context, request, &response);
+    cuopt::remote::StartChunkedDownloadV2Response response;
+    auto status = impl_->stub->StartChunkedDownloadV2(&context, request, &response);
 
     if (!status.ok()) {
-      last_error_ = "StartChunkedDownload failed: " + status.error_message();
+      last_error_ = "StartChunkedDownloadV2 failed: " + status.error_message();
       return false;
     }
 
     download_id = response.download_id();
-    *header     = response.header();
+    *result     = response.result();
+    descriptors.Swap(response.mutable_arrays());
     if (response.max_message_bytes() > 0) {
       server_max_message_bytes_.store(response.max_message_bytes(), std::memory_order_relaxed);
     }
@@ -1225,8 +1223,7 @@ bool grpc_client_t::download_chunked_result(const std::string& job_id,
 
   GRPC_CLIENT_DEBUG_LOG(config_,
                         "[grpc_client] ChunkedDownload started, download_id="
-                          << download_id << " arrays=" << header->arrays_size()
-                          << " problem_category=" << header->problem_category());
+                          << download_id << " arrays=" << descriptors.size());
 
   // --- 2. Fetch each array via GetResultChunk RPCs ---
   int64_t chunk_data_budget = config_.chunk_size_bytes;
@@ -1239,7 +1236,7 @@ bool grpc_client_t::download_chunked_result(const std::string& job_id,
   int total_chunks             = 0;
   int64_t total_bytes_received = 0;
 
-  for (const auto& arr_desc : header->arrays()) {
+  for (const auto& arr_desc : descriptors) {
     auto field_id       = arr_desc.field_id();
     int64_t total_elems = arr_desc.total_elements();
     int64_t elem_size   = arr_desc.element_size_bytes();
@@ -1306,7 +1303,7 @@ bool grpc_client_t::download_chunked_result(const std::string& job_id,
 
   GRPC_CLIENT_DEBUG_LOG(config_,
                         "[grpc_client] ChunkedDownload fetched "
-                          << total_chunks << " chunks for " << header->arrays_size() << " arrays");
+                          << total_chunks << " chunks for " << descriptors.size() << " arrays");
 
   // --- 3. FinishChunkedDownload ---
   {
@@ -1324,7 +1321,14 @@ bool grpc_client_t::download_chunked_result(const std::string& job_id,
     }
   }
 
-  result_out.chunked_header = std::move(header);
+  try {
+    apply_result_chunk_arrays(result.get(), result_out.chunked_arrays);
+  } catch (const std::exception& e) {
+    last_error_ = e.what();
+    return false;
+  }
+  result_out.chunked_arrays.clear();
+  result_out.response = std::move(result);
 
   GRPC_CLIENT_THROUGHPUT_LOG(config_, "download_chunked", total_bytes_received, download_t0);
   GRPC_CLIENT_DEBUG_LOG(config_,
@@ -1355,10 +1359,6 @@ template remote_lp_result_t<int32_t, float> grpc_client_t::get_lp_result(const s
 template remote_mip_result_t<int32_t, float> grpc_client_t::get_mip_result(
   const std::string& job_id);
 template remote_result_t<int32_t, float> grpc_client_t::get_result(const std::string& job_id);
-template bool grpc_client_t::upload_chunked_arrays(
-  const cpu_optimization_problem_t<int32_t, float>& problem,
-  const cuopt::remote::ChunkedProblemHeader& header,
-  std::string& job_id_out);
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
@@ -1382,10 +1382,6 @@ template remote_lp_result_t<int32_t, double> grpc_client_t::get_lp_result(
 template remote_mip_result_t<int32_t, double> grpc_client_t::get_mip_result(
   const std::string& job_id);
 template remote_result_t<int32_t, double> grpc_client_t::get_result(const std::string& job_id);
-template bool grpc_client_t::upload_chunked_arrays(
-  const cpu_optimization_problem_t<int32_t, double>& problem,
-  const cuopt::remote::ChunkedProblemHeader& header,
-  std::string& job_id_out);
 #endif
 
 }  // namespace cuopt::mathematical_optimization

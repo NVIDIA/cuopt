@@ -222,10 +222,11 @@ inline bool assemble_and_write_field_payload(int fd, const FieldChunks& fi)
 // caller flooded with malformed requests can safely fail-fast without
 // disturbing the (otherwise healthy) worker process — only PipeFailed should
 // trigger worker teardown.
+// `Header` is ChunkedProblemHeader (legacy) or SubmitJobRequest (unified).
+// The array framing after the protobuf is the same for both.
+template <typename Header>
 inline PipeWriteStatus write_chunked_request_to_pipe(
-  int fd,
-  const cuopt::remote::ChunkedProblemHeader& header,
-  const std::vector<cuopt::remote::ArrayChunk>& chunks)
+  int fd, const Header& header, const std::vector<cuopt::remote::ArrayChunk>& chunks)
 {
   // -------- Phase 1: bin chunks per field and validate (no pipe I/O) --------
   std::map<int32_t, detail::FieldChunks> top_fields;
@@ -337,9 +338,10 @@ inline PipeWriteStatus write_chunked_request_to_pipe(
   return PipeWriteStatus::Success;
 }
 
+template <typename Header>
 inline bool read_chunked_request_from_pipe(
   int fd,
-  cuopt::remote::ChunkedProblemHeader& header_out,
+  Header& header_out,
   std::map<int32_t, std::vector<uint8_t>>& arrays_out,
   std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>&
     container_arrays_out)

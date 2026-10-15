@@ -81,7 +81,9 @@ Chunked Upload (Large Problems)
    * - RPC
      - Purpose
    * - ``StartChunkedUpload``
-     - Begin a session; send problem metadata and settings (arrays follow as chunks).
+     - Legacy session header (``ChunkedProblemHeader``). New clients use ``StartChunkedUploadV2``.
+   * - ``StartChunkedUploadV2``
+     - Begin a session whose header is a ``SubmitJobRequest`` with numeric arrays empty. Array chunks use the same ``ArrayFieldId`` and container ids as the legacy upload. ``SendArrayChunk`` and ``FinishChunkedUpload`` are shared.
    * - ``SendArrayChunk``
      - Upload one slice of a numeric array field.
    * - ``FinishChunkedUpload``
@@ -106,7 +108,9 @@ Chunked Download (Large Results)
    * - RPC
      - Purpose
    * - ``StartChunkedDownload``
-     - Begin a download session; returns scalar result fields and array descriptors.
+     - Legacy download header (``ChunkedResultHeader``). New clients use ``StartChunkedDownloadV2``.
+   * - ``StartChunkedDownloadV2``
+     - Begin a download whose header is the unary ``ResultResponse`` with numeric solution arrays empty, plus the array descriptors. A routing solution has no result chunks.
    * - ``GetResultChunk``
      - Fetch one chunk of a result array.
    * - ``FinishChunkedDownload``
