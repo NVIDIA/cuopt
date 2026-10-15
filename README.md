@@ -146,7 +146,7 @@ docker pull nvidia/cuopt:latest-cu13-ubi10
 
 ### Nightly
 
-Nightly packages are built from the HEAD of the development branch (26.12) and are not recommended for production use.
+Nightly packages are built from the HEAD of the development branch (26.12) and are not as stable as the latest release.
 
 #### Pip
 
