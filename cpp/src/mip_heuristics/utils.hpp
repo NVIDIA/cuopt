@@ -10,6 +10,7 @@
 #include <thrust/iterator/permutation_iterator.h>
 #include <utilities/macros.cuh>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +26,25 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
+constexpr bool USE_REL_TOLERANCE = true;
+
+template <typename i_t, typename f_t>
+CUOPT_MIP_HOST_DEVICE f_t get_cstr_tolerance(f_t combined_bound, f_t abs_tol, f_t rel_tol)
+{
+  f_t tolerance = abs_tol;
+  if (USE_REL_TOLERANCE) { tolerance += combined_bound * rel_tol; }
+  return tolerance;
+}
+
+template <typename i_t, typename f_t>
+CUOPT_MIP_HOST_DEVICE f_t get_cstr_tolerance(f_t lb, f_t ub, f_t abs_tol, f_t rel_tol)
+{
+  f_t max_bound = f_t{0};
+  if (std::isfinite(ub)) { max_bound = std::max(max_bound, std::abs(ub)); }
+  if (std::isfinite(lb)) { max_bound = std::max(max_bound, std::abs(lb)); }
+  return get_cstr_tolerance<i_t, f_t>(max_bound, abs_tol, rel_tol);
+}
+
 // checks if a given float value can be exactly represented as an integer of type int_t.
 template <typename int_t, typename f_t>
 inline bool is_exactly_representable(f_t value)
@@ -39,6 +59,13 @@ inline bool is_exactly_representable(f_t value)
            value >= (f_t)std::numeric_limits<int_t>::lowest() &&
            value <= (f_t)std::numeric_limits<int_t>::max();
   }
+}
+
+template <typename T>
+inline bool has_unique_entries(std::vector<T> values)
+{
+  std::sort(values.begin(), values.end());
+  return std::adjacent_find(values.begin(), values.end()) == values.end();
 }
 
 // Ogita-Rump-Oishi Dot2. TwoProduct recovers the rounding of each coefficient-value product, which

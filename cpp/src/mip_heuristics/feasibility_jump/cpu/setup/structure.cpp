@@ -725,7 +725,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> make_equality_reduced_climber(
   static_cast<fj_lane_policy_t<i_t, f_t>&>(*child) = static_cast<fj_lane_policy_t<i_t, f_t>&>(c);
   child->use_equality_substitution                 = false;
   child->use_lp_start = child->use_lp_polish = false;
-  child->use_bound_prop                      = true;
+  child->use_bound_prop                      = c.use_bound_prop;
   child->use_move_batching &= child->n_colors > 0;
   child->log_prefix             = c.log_prefix;
   child->suppress_incumbent_log = true;

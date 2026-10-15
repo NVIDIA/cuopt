@@ -74,19 +74,25 @@ void early_gpufj_t<i_t, f_t>::start()
 
   fj_ptr_ = std::make_unique<fj_t<i_t, f_t>>(*context_ptr_, fj_settings, rng_id_t::early_gpufj);
 
-  fj_ptr_->improvement_callback = [this](f_t user_obj, const std::vector<f_t>& h_assignment) {
-    f_t solver_obj = this->problem_ptr_->get_solver_obj_from_user_obj(user_obj);
-    this->try_update_best(solver_obj, h_assignment);
-  };
-
   CUOPT_LOG_DEBUG("Launching early GPUFJ task");
 
 #pragma omp task default(none) shared(fj_ptr_) priority(CUOPT_DEFAULT_TASK_PRIORITY) \
   depend(out : *fj_ptr_)
   {
     raft::device_setter guard(this->device_id_);
-    fj_ptr_->solve(*this->solution_ptr_);
+    fj_ptr_->solve(*this->solution_ptr_,
+                   [this](f_t user_obj, const std::vector<f_t>& h_assignment) {
+                     f_t solver_obj = this->problem_ptr_->get_solver_obj_from_user_obj(user_obj);
+                     this->try_update_best(solver_obj, h_assignment);
+                   });
   }
+}
+
+template <typename i_t, typename f_t>
+void early_gpufj_t<i_t, f_t>::request_stop()
+{
+  if (!fj_ptr_) { return; }
+  context_ptr_->preempt_heuristic_solver_.store(true);
 }
 
 template <typename i_t, typename f_t>
@@ -94,7 +100,7 @@ void early_gpufj_t<i_t, f_t>::stop()
 {
   if (!fj_ptr_) { return; }
 
-  context_ptr_->preempt_heuristic_solver_.store(true);
+  request_stop();
 #pragma omp taskwait depend(in : *fj_ptr_)  // Wait for the early GPU FJ task to finish
 
   CUOPT_LOG_DEBUG("[Early GPU FJ] Stopped, solution_found=%d", this->solution_found_);

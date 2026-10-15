@@ -135,11 +135,14 @@ class mip_solver_settings_t {
   i_t clique_cuts               = -1;
   i_t zero_half_cuts            = -1;
   i_t implied_bound_cuts        = -1;
-  i_t strong_chvatal_gomory_cuts = -1;
-  i_t reduced_cost_strengthening = -1;
-  i_t objective_step             = 1;  // 0 = disable objective step tightening, 1 = enable
-  f_t cut_change_threshold       = -1.0;
-  f_t cut_min_orthogonality      = 0.5;
+  i_t strong_chvatal_gomory_cuts       = -1;
+  i_t reduced_cost_strengthening       = -1;
+  i_t dual_degenerate_feasibility_pump = -1;  // -1 = automatic (off), 0 = off, 1 = on
+  i_t primal_degenerate_pivots         = -1;  // -1 = automatic (on), 0 = off, 1 = on
+  i_t dual_degenerate_pivots = -1;  // -1 = automatic (off), 0 = off, 1 = root/dives, 2 = everywhere
+  i_t objective_step         = 1;   // 0 = disable objective step tightening, 1 = enable
+  f_t cut_change_threshold   = -1.0;
+  f_t cut_min_orthogonality  = 0.5;
   i_t mip_batch_pdlp_strong_branching{
     0};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
   i_t mip_batch_pdlp_reliability_branching{
@@ -147,7 +150,7 @@ class mip_solver_settings_t {
   i_t strong_branching_simplex_iteration_limit = -1;
   i_t num_gpus                                 = 1;
   method_t method{method_t::Concurrent};
-  i_t concurrent_nnz_cutoff{50'000'000};
+  i_t large_nnz_threshold{50'000'000};
   bool log_to_console = true;
 
   std::string log_file;

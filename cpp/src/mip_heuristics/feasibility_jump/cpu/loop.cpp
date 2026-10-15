@@ -20,6 +20,7 @@
 #include "starts/starts.hpp"
 
 #include <mip_heuristics/feasibility_jump/fj_cpu_binary.cuh>
+#include <utilities/scope_guard.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -115,7 +116,8 @@ bool try_equality_substituted_solve(fj_cpu_climber_t<i_t, f_t>& c,
 
   const auto setup_stats = c.stats;
   cpufj_solve(child.get(), remaining, work_unit_limit);
-  c.stats = child->stats;
+  c.search_started_at = child->search_started_at;
+  c.stats             = child->stats;
   c.stats.t_start += setup_stats.t_start;
   c.stats.t_bound_prop += setup_stats.t_bound_prop;
   c.stats.t_lp_start += setup_stats.t_lp_start;
@@ -146,7 +148,11 @@ bool try_equality_substituted_solve(fj_cpu_climber_t<i_t, f_t>& c,
 template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double work_unit_limit)
 {
-  const double solve_start = tic();
+  fj_cpu->solve_started_at  = tic();
+  fj_cpu->search_started_at = 0;
+  fj_cpu->solve_finished_at = 0;
+  cuopt::scope_guard solve_exit([fj_cpu] { fj_cpu->solve_finished_at = tic(); });
+  const double solve_start = fj_cpu->solve_started_at;
   fj_cpu->rng.set_seed(fj_cpu->settings.seed);
   // On this lane's own worker rather than during portfolio construction, where it would delay the
   // launch of every other lane.
@@ -238,7 +244,14 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
 
   // Whatever the start left behind, these rows are satisfiable on their own, so the walk should not
   // start with them in the violated set competing for the sampler's attention.
+  // Large models can have millions of epigraph variables: stay responsive to stop() and preemption.
+  constexpr size_t epigraph_halt_check_period = 1024;
+  size_t n_epigraph_visited                   = 0;
   for (i_t var : fj_cpu->epigraph_vars) {
+    if (++n_epigraph_visited % epigraph_halt_check_period == 0 &&
+        (fj_cpu->halted || fj_cpu->preemption_flag.load())) {
+      break;
+    }
     const f_t current = fj_cpu->h_assignment[var];
     const f_t delta   = project_epigraph_variable(*fj_cpu, var) - current;
     if (delta == f_t{0}) continue;
@@ -249,6 +262,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
     ++fj_cpu->stats.n_epigraph_projections;
   }
 
+  if (fj_cpu->search_started_at == 0) fj_cpu->search_started_at = tic();
   while (!fj_cpu->halted && !fj_cpu->preemption_flag.load()) {
     const double elapsed = toc(loop_start);
     if (elapsed > time_limit) {

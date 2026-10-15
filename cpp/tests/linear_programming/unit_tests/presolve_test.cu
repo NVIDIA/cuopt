@@ -1040,6 +1040,265 @@ INSTANTIATE_TEST_SUITE_P(
 );
 // clang-format on
 
+// PSLP counterpart of crush_warmstart: presolve -> cold PDLP solve -> postsolve -> crush via
+// map_original_sol_to_reduced -> warmstarted PDLP solve of the reduced problem.
+class pslp_crush_warmstart : public ::testing::TestWithParam<std::string> {};
+
+TEST_P(pslp_crush_warmstart, round_trip)
+{
+  const raft::handle_t handle_{};
+  auto stream = handle_.get_stream();
+
+  auto path       = make_path_absolute(GetParam());
+  auto mps        = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps);
+
+  sort_csr(op_problem);
+  mip::third_party_presolve_t<int, double> presolver;
+  auto result = presolver.apply_presolve_from_op_problem(op_problem,
+                                                         problem_category_t::LP,
+                                                         presolver_t::PSLP,
+                                                         /*dual_postsolve=*/true,
+                                                         /*abs_tol=*/1e-6,
+                                                         /*rel_tol=*/1e-9,
+                                                         /*time_limit=*/60.0);
+  ASSERT_TRUE(result.status == mip::third_party_presolve_status_t::REDUCED ||
+              result.status == mip::third_party_presolve_status_t::UNCHANGED);
+
+  const int n_red_vars = result.reduced_problem.get_n_variables();
+  const int n_red_cons = result.reduced_problem.get_n_constraints();
+
+  auto settings                                = pdlp_solver_settings_t<int, double>{};
+  settings.presolver                           = presolver_t::None;
+  settings.method                              = cuopt::mathematical_optimization::method_t::PDLP;
+  settings.time_limit                          = 60.0;
+  settings.hyper_params.do_curtis_reid_scaling = false;
+
+  auto cold_solution = solve_lp(result.reduced_problem, settings);
+  ASSERT_EQ(cold_solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  auto cold_iters = cold_solution.get_additional_termination_information().number_of_steps_taken;
+  double cold_obj = cold_solution.get_additional_termination_information().primal_objective;
+
+  auto primal_sol = cuopt::device_copy(cold_solution.get_primal_solution(), stream);
+  auto dual_sol   = cuopt::device_copy(cold_solution.get_dual_solution(), stream);
+  auto rc_sol     = cuopt::device_copy(cold_solution.get_reduced_cost(), stream);
+  presolver.undo_from_device(
+    primal_sol, dual_sol, rc_sol, problem_category_t::LP, false, true, stream);
+  auto x_orig = host_copy(primal_sol, stream);
+  auto y_orig = host_copy(dual_sol, stream);
+  ASSERT_EQ((int)x_orig.size(), op_problem.get_n_variables());
+  ASSERT_EQ((int)y_orig.size(), op_problem.get_n_constraints());
+
+  std::vector<double> x_crushed, y_crushed;
+  presolver.crush_primal_dual_solution_pslp(
+    result.reduced_problem, x_orig, y_orig, x_crushed, y_crushed);
+  ASSERT_EQ((int)x_crushed.size(), n_red_vars);
+  ASSERT_EQ((int)y_crushed.size(), n_red_cons);
+
+  // The crushed primal lies within the reduced bounds and reproduces the cold objective.
+  auto var_lb = result.reduced_problem.get_variable_lower_bounds_host();
+  auto var_ub = result.reduced_problem.get_variable_upper_bounds_host();
+  check_variable_bounds(x_crushed, var_lb, var_ub, 1e-9);
+  auto c_red         = result.reduced_problem.get_objective_coefficients_host();
+  double obj_crushed = result.reduced_problem.get_objective_offset();
+  for (int j = 0; j < n_red_vars; ++j) {
+    obj_crushed += c_red[j] * x_crushed[j];
+  }
+  EXPECT_NEAR(obj_crushed, cold_obj, 1e-3 * (1.0 + std::abs(cold_obj)));
+
+  // Both the primal and the dual are required.
+  std::vector<double> x_unused, y_unused;
+  EXPECT_THROW(presolver.crush_primal_dual_solution_pslp(
+                 result.reduced_problem, x_orig, {}, x_unused, y_unused),
+               cuopt::logic_error);
+  EXPECT_THROW(presolver.crush_primal_dual_solution_pslp(
+                 result.reduced_problem, {}, y_orig, x_unused, y_unused),
+               cuopt::logic_error);
+
+  auto warm_settings = settings;
+  warm_settings.set_initial_primal_solution(x_crushed.data(), n_red_vars, stream);
+  warm_settings.set_initial_dual_solution(y_crushed.data(), n_red_cons, stream);
+  auto warm_solution = solve_lp(result.reduced_problem, warm_settings);
+  ASSERT_EQ(warm_solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+
+  double warm_obj = warm_solution.get_additional_termination_information().primal_objective;
+  auto warm_iters = warm_solution.get_additional_termination_information().number_of_steps_taken;
+  EXPECT_NEAR(warm_obj, cold_obj, 1e-3 * (1.0 + std::abs(cold_obj)));
+  EXPECT_LT(warm_iters, cold_iters) << " (cold=" << cold_iters << ", warm=" << warm_iters << ")";
+}
+
+// End-to-end through solve_lp: an initial solution in the original space is mapped into the
+// presolved space with PSLP (instead of being handed to PDLP with the wrong dimensions), and with
+// Papilo -- which cannot map it for LP -- presolve is skipped. Either way a warm start from the
+// optimum converges faster.
+struct presolve_initial_solution_param {
+  std::string mps_path;
+  presolver_t presolver;
+};
+class presolve_initial_solution : public ::testing::TestWithParam<presolve_initial_solution_param> {
+};
+
+TEST_P(presolve_initial_solution, warm_start_from_optimum)
+{
+  const raft::handle_t handle_{};
+  auto stream = handle_.get_stream();
+
+  const auto& param = GetParam();
+  auto path         = make_path_absolute(param.mps_path);
+  auto mps          = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
+
+  auto settings                                = pdlp_solver_settings_t<int, double>{};
+  settings.presolver                           = param.presolver;
+  settings.method                              = cuopt::mathematical_optimization::method_t::PDLP;
+  settings.hyper_params.do_curtis_reid_scaling = false;
+
+  auto cold_solution = solve_lp(&handle_, mps, settings);
+  ASSERT_EQ(cold_solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  auto cold_iters = cold_solution.get_additional_termination_information().number_of_steps_taken;
+  double cold_obj = cold_solution.get_additional_termination_information().primal_objective;
+
+  auto x_orig = host_copy(cold_solution.get_primal_solution(), stream);
+  auto y_orig = host_copy(cold_solution.get_dual_solution(), stream);
+  ASSERT_EQ((int)x_orig.size(), mps.get_n_variables());
+  ASSERT_EQ((int)y_orig.size(), mps.get_n_constraints());
+
+  // The solution is fed back as is. A postsolved PDLP solution can sit slightly outside the
+  // variable bounds (on graph40-40, by up to ~1e-2 at default tolerances); solve_lp clips it to
+  // the bounds instead of rejecting it.
+  auto warm_settings = settings;
+  warm_settings.set_initial_primal_solution(x_orig.data(), x_orig.size(), stream);
+  warm_settings.set_initial_dual_solution(y_orig.data(), y_orig.size(), stream);
+  auto warm_solution = solve_lp(&handle_, mps, warm_settings);
+  ASSERT_EQ(warm_solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+
+  double warm_obj = warm_solution.get_additional_termination_information().primal_objective;
+  auto warm_iters = warm_solution.get_additional_termination_information().number_of_steps_taken;
+  EXPECT_NEAR(warm_obj, cold_obj, 1e-3 * (1.0 + std::abs(cold_obj)));
+  EXPECT_EQ(host_copy(warm_solution.get_primal_solution(), stream).size(), x_orig.size());
+  EXPECT_EQ(host_copy(warm_solution.get_dual_solution(), stream).size(), y_orig.size());
+  EXPECT_LT(warm_iters, cold_iters) << " (cold=" << cold_iters << ", warm=" << warm_iters << ")";
+}
+
+// An LP initial primal outside the variable bounds is clipped to them instead of being rejected,
+// and the solve still reaches afiro's optimum.
+TEST(presolve_initial_solution, out_of_bounds_primal_is_clipped)
+{
+  const raft::handle_t handle_{};
+  auto stream                   = handle_.get_stream();
+  constexpr double tolerance    = 1e-4;
+  constexpr double expected_obj = -464.75314;  // Known optimal objective for afiro
+
+  auto path          = make_path_absolute("linear_programming/afiro_original.mps");
+  auto mps           = cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
+  const auto& var_lb = mps.get_variable_lower_bounds();
+  const auto& var_ub = mps.get_variable_upper_bounds();
+  for (double lb : var_lb) {
+    ASSERT_EQ(lb, 0.0);
+  }
+
+  // (presolver, with initial dual): PSLP maps the initial solution only when both the primal and
+  // the dual are given; with only a primal it skips presolve.
+  for (auto [presolver, with_dual] : {std::pair{presolver_t::None, false},
+                                      std::pair{presolver_t::PSLP, true},
+                                      std::pair{presolver_t::PSLP, false}}) {
+    auto settings      = pdlp_solver_settings_t<int, double>{};
+    settings.presolver = presolver;
+    settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
+    settings.tolerances.relative_primal_tolerance = 1e-8;
+    settings.tolerances.relative_dual_tolerance   = 1e-8;
+    settings.tolerances.absolute_primal_tolerance = 1e-8;
+    settings.tolerances.absolute_dual_tolerance   = 1e-8;
+    settings.tolerances.absolute_gap_tolerance    = 1e-8;
+    settings.tolerances.relative_gap_tolerance    = 1e-8;
+    std::vector<double> x0(mps.get_n_variables(), -1.0);
+    settings.set_initial_primal_solution(x0.data(), x0.size(), stream);
+    std::vector<double> y0(mps.get_n_constraints(), 0.0);
+    if (with_dual) { settings.set_initial_dual_solution(y0.data(), y0.size(), stream); }
+
+    auto solution = solve_lp(&handle_, mps, settings);
+    ASSERT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::Success);
+    ASSERT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+
+    auto x = host_copy(solution.get_primal_solution(), stream);
+    ASSERT_EQ((int)x.size(), mps.get_n_variables());
+    check_variable_bounds(x, var_lb, var_ub, tolerance);
+    std::vector<double> residuals;
+    compute_constraint_residuals(mps.get_constraint_matrix_values(),
+                                 mps.get_constraint_matrix_indices(),
+                                 mps.get_constraint_matrix_offsets(),
+                                 x,
+                                 residuals);
+    ASSERT_EQ((int)residuals.size(), mps.get_n_constraints());
+    check_constraint_satisfaction(
+      residuals, mps.get_constraint_lower_bounds(), mps.get_constraint_upper_bounds(), tolerance);
+    double obj = compute_objective(mps.get_objective_coefficients(), x, mps.get_objective_offset());
+    EXPECT_NEAR(obj, expected_obj, 1e-3 * std::abs(expected_obj));
+  }
+}
+
+// Clipping runs after the problem is validated: variable bounds of the wrong size are reported
+// as a validation error instead of being read out of range while clipping the initial primal.
+TEST(presolve_initial_solution, mismatched_bounds_with_initial_primal_is_rejected)
+{
+  const raft::handle_t handle_{};
+  auto stream = handle_.get_stream();
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  auto mps  = cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
+  std::vector<double> short_lb(mps.get_n_variables() - 1, 0.0);
+  mps.set_variable_lower_bounds(short_lb);
+
+  auto settings      = pdlp_solver_settings_t<int, double>{};
+  settings.presolver = presolver_t::None;
+  settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
+  std::vector<double> x0(mps.get_n_variables(), -1.0);
+  settings.set_initial_primal_solution(x0.data(), x0.size(), stream);
+
+  auto solution = solve_lp(&handle_, mps, settings);
+  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+}
+
+// clang-format off
+INSTANTIATE_TEST_SUITE_P(
+  pslp_presolve,
+  pslp_crush_warmstart,
+  ::testing::Values(
+    "linear_programming/afiro_original.mps",
+    "linear_programming/nug08-3rd/nug08-3rd.mps",
+    "mip/fiball.mps",
+    "mip/50v-10.mps",
+    "mip/neos-3004026-krka.mps",
+    "mip/swath3.mps",
+    "mip/air05.mps"
+  ),
+  [](const ::testing::TestParamInfo<std::string>& info) {
+    std::string name = info.param;
+    std::replace(name.begin(), name.end(), '/', '_');
+    std::replace(name.begin(), name.end(), '.', '_');
+    std::replace(name.begin(), name.end(), '-', '_');
+    return name;
+  }
+);
+
+INSTANTIATE_TEST_SUITE_P(
+  presolve,
+  presolve_initial_solution,
+  ::testing::Values(
+    presolve_initial_solution_param{"linear_programming/afiro_original.mps", presolver_t::PSLP},
+    presolve_initial_solution_param{"linear_programming/graph40-40/graph40-40.mps", presolver_t::PSLP},
+    presolve_initial_solution_param{"linear_programming/afiro_original.mps", presolver_t::Papilo}
+  ),
+  [](const ::testing::TestParamInfo<presolve_initial_solution_param>& info) {
+    std::string name = info.param.mps_path;
+    std::replace(name.begin(), name.end(), '/', '_');
+    std::replace(name.begin(), name.end(), '.', '_');
+    std::replace(name.begin(), name.end(), '-', '_');
+    name += info.param.presolver == presolver_t::PSLP ? "_pslp" : "_papilo";
+    return name;
+  }
+);
+// clang-format on
+
 class papilo_problem : public ::testing::TestWithParam<std::string> {};
 
 // clang-format off

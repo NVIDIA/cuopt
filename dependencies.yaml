@@ -69,6 +69,14 @@ files:
       - test_cpp
       - test_cpp_cuopt
       - depends_on_libcuopt
+  # The static Java build compiles libcuopt from source, so it only needs the prebuilt rmm and
+  # rapids_logger wheels (and the build tools), not the libcuopt-* wheels.
+  java_static:
+    output: none
+    includes:
+      - build_common
+      - depends_on_librmm
+      - depends_on_rapids_logger
   java:
     output: none
     includes:
@@ -749,16 +757,16 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - libraft-cu12==26.10.*,>=0.0.0a0
+              - libraft-cu12==26.12.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - libraft-cu13==26.10.*,>=0.0.0a0
+              - libraft-cu13==26.12.*,>=0.0.0a0
           - matrix:
               cuda_suffixed: "false"
             packages:
-              - libraft==26.10.*,>=0.0.0a0
+              - libraft==26.12.*,>=0.0.0a0
   depends_on_librmm:
     common:
       - output_types: conda

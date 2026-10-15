@@ -683,13 +683,15 @@ void merge_substitutions(
 
   // Run DFS from every Root
 
+  // Shared across roots: dfs rewrites out-edges in place, so a node reachable from several roots
+  // must be composed only once.
+  std::unordered_set<i_t> visited;
   for (i_t root : roots) {
     // For the root, there is no "parent substitution".
-    std::unordered_set<i_t> visited_in_this_path;
-    visited_in_this_path.insert(root);
+    visited.insert(root);
     for (auto& [substituted_var, substitution] : all_substitutions[root]) {
       // Pass the substitution connecting Root->Child as the "parent" for the next level
-      dfs(all_substitutions, visited_in_this_path, substitution, substituted_var);
+      dfs(all_substitutions, visited, substitution, substituted_var);
     }
   }
 }
@@ -727,8 +729,11 @@ void apply_substitution_queue_to_problem(
   // substituted_var only has to be a fixed order, not a particular one.
   std::vector<postsolve_reconstruction_t<i_t, f_t>> staged_reconstructions;
   staged_reconstructions.reserve(all_substitutions.size());
+  // A variable with several parents yields one valid record per path; keep only the first.
+  std::unordered_set<i_t> emitted_vars;
   for (const auto& [substituting_var, substitutions] : all_substitutions) {
     for (const auto& [substituted_var, substitution] : substitutions) {
+      if (!emitted_vars.insert(substituted_var).second) { continue; }
       CUOPT_LOG_TRACE("Applying substitution: %d -> %d",
                       substitution.substituting_var,
                       substitution.substituted_var);

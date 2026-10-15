@@ -62,7 +62,7 @@ class SolverMethod(IntEnum):
     PDLP = auto()
     DualSimplex = auto()
     Barrier = auto()
-    Primal = auto()
+    PrimalSimplex = auto()
     Unset = auto()
 
     def __str__(self):
@@ -270,7 +270,12 @@ cdef class SolverSettings:
 
         Notes
         -----
-        Registering a SetSolutionCallback disables presolve.
+        Registering a SetSolutionCallback preserves the configured presolve
+        setting. Dual presolve reductions are disabled so injected feasible
+        solutions remain representable.
+        Supply solution values in the original variable order and the objective
+        value in the original model's units. The solver transforms injected
+        solutions into its presolved representation.
 
         Examples
         --------

@@ -109,12 +109,19 @@ void early_structural_t<i_t, f_t>::start()
 }
 
 template <typename i_t, typename f_t>
+void early_structural_t<i_t, f_t>::request_stop()
+{
+  if (!task_launched_) { return; }
+  preemption_flag_.store(true);
+}
+
+template <typename i_t, typename f_t>
 void early_structural_t<i_t, f_t>::stop()
 {
   if (!task_launched_) { return; }
 
   auto* task_token = &preemption_flag_;
-  preemption_flag_.store(true);
+  request_stop();
 #pragma omp taskwait depend(in : *task_token)
   task_launched_ = false;
 

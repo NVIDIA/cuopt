@@ -95,9 +95,7 @@ bool probe_worker_gpu_liveness(int worker_id, GpuProbeReason reason)
     // Allocate through the worker's current RMM resource, then submit and
     // synchronize a real CUDA operation. This checks both the allocator path
     // and asynchronous device execution without retaining meaningful memory.
-    // rmm::cuda_stream_default is a cuda::stream_ref. The raw stream is get(),
-    // not the old cuda_stream_view::value().
-    const auto stream = rmm::cuda_stream_default;
+    const cuda::stream_ref stream{cudaStream_t{nullptr}};
     rmm::device_buffer probe(1, stream);
     cudaError_t err = cudaMemsetAsync(probe.data(), 0, probe.size(), stream.get());
     if (err == cudaSuccess) { err = cudaStreamSynchronize(stream.get()); }
@@ -367,7 +365,7 @@ static std::vector<T> device_to_host(const auto& device_vec)
 // Write a result entry with no payload (error, cancellation, etc.) into the
 // first free slot in the shared-memory result_queue.
 //
-// Lock-free protocol for cross-process writes (workers are forked):
+// Lock-free protocol for cross-process writes (one process per worker):
 //   1. Skip slots where ready==true (still being consumed by the reader).
 //   2. CAS claimed false→true to get exclusive write access.  Another
 //      writer (different worker process) that races on the same slot will
@@ -643,8 +641,15 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     auto gpu_problem = to_optimization_problem(dj.problem, &handle);
 
     SERVER_LOG_INFO("[Worker] Calling solve_lp...");
+    // Multi-GPU PDLP needs the host-resident mps_data_model_t overload, not the GPU problem.
+    auto& pdlp_settings = dj.settings.get_pdlp_settings();
     auto gpu_solution =
-      cuopt::mathematical_optimization::solve_lp(*gpu_problem, dj.settings.get_pdlp_settings());
+      cuopt::mathematical_optimization::is_multigpu_pdlp_requested(pdlp_settings)
+        ? cuopt::mathematical_optimization::solve_lp(
+            &handle,
+            cuopt::mathematical_optimization::op_problem_to_mps_data_model(*gpu_problem),
+            pdlp_settings)
+        : cuopt::mathematical_optimization::solve_lp(*gpu_problem, pdlp_settings);
     SERVER_LOG_INFO("[Worker] solve_lp done");
 
     // solve_lp / solve_qcqp catch cuopt::logic_error internally and stash it
@@ -838,9 +843,9 @@ void worker_process(int worker_id, bool is_replacement)
 {
   SERVER_LOG_INFO("[Worker %d] Started (PID: %d)", worker_id, getpid());
 
-  // Parent owns SIGINT/SIGTERM shutdown. Ignoring here prevents the inherited
-  // soft handler from leaving mid-solve workers alive after Ctrl-C while the
-  // parent waits on them.
+  // The parent blocks SIGINT/SIGTERM before posix_spawn, and that mask survives
+  // exec. Ignore them here too so a process-group Ctrl-C does not kill a
+  // mid-solve worker while the parent is still shutting workers down.
   signal(SIGINT, SIG_IGN);
   signal(SIGTERM, SIG_IGN);
 
@@ -971,8 +976,7 @@ void worker_process(int worker_id, bool is_replacement)
 
   shm_ctrl->active_workers--;
   SERVER_LOG_INFO("[Worker %d] Stopped", worker_id);
-  // _exit() instead of exit() to avoid running atexit handlers or flushing
-  // parent-inherited stdio buffers a second time in the forked child.
+  // _exit() skips atexit handlers registered by CUDA, RMM, and the logger.
   _exit(0);
 }
 

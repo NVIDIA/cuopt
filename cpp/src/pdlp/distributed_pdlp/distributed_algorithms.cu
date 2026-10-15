@@ -47,7 +47,7 @@ void multi_gpu_engine_t<i_t, f_t>::gather_potential_next_solutions_to_master()
   });
 }
 
-// -------- Distributed bound / objective rescaling -------------------------
+// -------- Multi-GPU bound / objective rescaling ---------------------------
 // compute and apply_bound_objective_rescaling_to_problem, unfused because we need a
 // raw squared-sum on device to reduce and the base version comptues
 // tranform->reduce->transform in one cub call for efficiency
@@ -64,7 +64,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
   f_t global_obj_sq   = f_t(0);
   for_each_shard([&](auto& s) {
     const auto& scaled = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
-    const auto stream  = s.stream.view();
+    const cuda::stream_ref stream = s.stream;
     rmm::device_scalar<f_t> d_bound_sq(zero_v<f_t>, stream);
     rmm::device_scalar<f_t> d_obj_sq(zero_v<f_t>, stream);
 
@@ -112,7 +112,7 @@ void multi_gpu_engine_t<i_t, f_t>::refresh_halo_cummulative_scalings()
   });
 }
 
-// -------- Distributed Curtis-Reid scaling ---------------------------------
+// -------- Multi-GPU Curtis-Reid scaling -----------------------------------
 // Owned rows of A and owned columns of A_T are complete, so each log-mean is
 // local. The other axis's log-scale is read at halo indices, so it is exchanged
 // between the row pass and the column pass.
@@ -149,7 +149,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_curtis_reid_scaling(int num_iter,
   synchronize_shards();
 }
 
-// -------- Distributed Ruiz inf-scaling ------------------------------------
+// -------- Multi-GPU Ruiz inf-scaling --------------------------------------
 // Each shard owns its rows AND its columns and stores both complete (h_A =
 // owned rows, h_A_t = owned columns)
 template <typename i_t, typename f_t>
@@ -176,8 +176,8 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_ruiz_inf_scaling(int num_iter, i_
   synchronize_shards();
 }
 
-// -------- Distributed Pock-Chambolle scaling ------------------------------
-// Distributed Pock-Chambolle: one pass, mirroring single-GPU
+// -------- Multi-GPU Pock-Chambolle scaling --------------------------------
+// Multi-GPU Pock-Chambolle: one pass, mirroring single-GPU
 // pock_chambolle_scaling. Row sum-of-powers come from the row-major matrix
 // (owned rows) and column sum-of-powers from A_T (owned columns).
 template <typename i_t, typename f_t>
@@ -198,7 +198,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha,
   synchronize_shards();
 }
 
-// -------- Distributed scaling orchestration ------------------------------
+// -------- Multi-GPU scaling orchestration --------------------------------
 // Mirrors single GPU scaling
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const& hyper_params,
@@ -236,7 +236,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const
   }
 }
 
-// -------- Distributed sigma_max(A)^2 via power iteration ------------------
+// -------- Multi-GPU sigma_max(A)^2 via power iteration --------------------
 // Owns per-shard scratch (q / z / atq / scalar reductions) and drives the
 // iteration; every cross-shard operation goes through multi_gpu_engine_t's
 // *_bufs helpers (halo_exchange_{cstr,var}_bufs, distributed_l2_norm_bufs,
@@ -286,12 +286,12 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
     const i_t var_total  = s.rank_data.total_var_size;
     const i_t n_owned    = s.rank_data.owned_cstr_size;
 
-    q.emplace_back(static_cast<std::size_t>(cstr_total), s.stream.view());
-    z.emplace_back(static_cast<std::size_t>(cstr_total), s.stream.view());
-    atq.emplace_back(static_cast<std::size_t>(var_total), s.stream.view());
-    sigma_sq.emplace_back(s.stream.view());
-    norm_q.emplace_back(s.stream.view());
-    residual_norm.emplace_back(s.stream.view());
+    q.emplace_back(static_cast<std::size_t>(cstr_total), s.stream);
+    z.emplace_back(static_cast<std::size_t>(cstr_total), s.stream);
+    atq.emplace_back(static_cast<std::size_t>(var_total), s.stream);
+    sigma_sq.emplace_back(s.stream);
+    norm_q.emplace_back(s.stream);
+    residual_norm.emplace_back(s.stream);
     q_dn[r]   = make_dnvec<f_t>(static_cast<int64_t>(cstr_total), q.back().data());
     z_dn[r]   = make_dnvec<f_t>(static_cast<int64_t>(cstr_total), z.back().data());
     atq_dn[r] = make_dnvec<f_t>(static_cast<int64_t>(var_total), atq.back().data());
@@ -306,9 +306,8 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
                    s.rank_data.local_to_global_cstr.begin() + n_owned,
                    h_global_z.begin(),
                    h_owned_z.begin());
-    raft::copy(
-      z.back().data(), h_owned_z.data(), static_cast<std::size_t>(n_owned), s.stream.view());
-    thrust::fill(rmm::exec_policy_nosync(s.stream.view()),
+    raft::copy(z.back().data(), h_owned_z.data(), static_cast<std::size_t>(n_owned), s.stream);
+    thrust::fill(rmm::exec_policy_nosync(s.stream),
                  z.back().data() + n_owned,
                  z.back().data() + cstr_total,
                  f_t(0));
@@ -328,7 +327,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
     // q := z on the owned slice (the carried iterate).
     for_each_shard([&](auto& s, int r) {
       const i_t n_owned = s.rank_data.owned_cstr_size;
-      raft::copy(q[r].data(), z[r].data(), n_owned, s.stream.view());
+      raft::copy(q[r].data(), z[r].data(), n_owned, s.stream);
     });
 
     // ||q||₂ over the global OWNED cstr slice (one allreduce-sum + sqrt).
@@ -342,7 +341,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
                                       q[r].data(),
                                       n_owned,
                                       divide_by_device_scalar_t<f_t>{norm_q[r].data()},
-                                      s.stream.view().get());
+                                      s.stream.value());
     });
 
     // atq = A^T q  (fused halo-refresh of q + per-shard local SpMV).
@@ -362,7 +361,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
                                       q[r].data(),
                                       n_owned,
                                       residual_fma_neg_scalar_t<f_t>{sigma_sq[r].data()},
-                                      s.stream.view().get());
+                                      s.stream.value());
     });
 
     // Convergence check via global residual norm.
@@ -370,7 +369,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
     auto& s0 = *shards[0];
     raft::device_setter guard0(s0.device_id);
     f_t h_res{};
-    raft::copy(&h_res, residual_norm[0].data(), 1, s0.stream.view());
+    raft::copy(&h_res, residual_norm[0].data(), 1, s0.stream);
     s0.stream.synchronize();
     if (h_res < tolerance) break;
   }
@@ -379,13 +378,13 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
   auto& s0 = *shards[0];
   raft::device_setter guard0(s0.device_id);
   f_t sigma_sq_h{};
-  raft::copy(&sigma_sq_h, sigma_sq[0].data(), 1, s0.stream.view());
+  raft::copy(&sigma_sq_h, sigma_sq[0].data(), 1, s0.stream);
   s0.stream.synchronize();
 
   return sigma_sq_h;
 }
 
-// -------- Distributed initial step size ---------------------------------
+// -------- Multi-GPU initial step size -----------------------------------
 // Sigma_max(A) via the shared power-iteration primitive.
 //
 // This function mirrors single-GPU's compute_initial_step_size exactly
@@ -416,8 +415,8 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
   set_scalar_on_master_and_shards(h_step_size, [](auto& sp) { return sp.get_step_size().data(); });
 }
 
-// -------- Distributed initial primal weight ------------------------------
-// Distributed PDLP is currently restricted to the Stable3-shaped hyper-param
+// -------- Multi-GPU initial primal weight --------------------------------
+// Multi-GPU PDLP is currently restricted to the Stable3-shaped hyper-param
 // profile. Single-GPU compute_initial_primal_weight
 // short-circuits to primal_weight = 1 without touching the norms (see
 // pdlp.cu:

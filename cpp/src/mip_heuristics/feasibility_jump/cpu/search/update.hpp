@@ -130,8 +130,26 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
     f_t new_value       = t + new_sumcomp;
     if (fj_cpu.h_row_is_integral[cstr_idx]) {
       cuopt_assert(old_value == std::round(old_value), "integral row state is fractional");
-      cuopt_assert(fj_cpu.problem->is_integer(new_value),
-                   "integral row received a fractional move");
+      if (!fj_cpu.problem->is_integer(new_value)) {
+        const f_t integrality_gap = std::fabs(new_value - std::round(new_value));
+        CUOPT_LOG_DEBUG(
+          "%sCPUFJ integral row %d received a fractional move: value %.17g, gap %.17g, tolerance "
+          "%.17g, var %d, old row value %.17g, coefficient %.17g, delta %.17g, delta_lo %.17g, "
+          "slack %.17g, sumcomp %.17g",
+          fj_cpu.log_prefix.c_str(),
+          (int)cstr_idx,
+          new_value,
+          integrality_gap,
+          fj_cpu.problem->tolerances.integrality_tolerance,
+          (int)var_idx,
+          old_value,
+          cstr_coeff,
+          delta,
+          delta_lo,
+          t,
+          new_sumcomp);
+        cuopt_assert(false, "integral row received a fractional move");
+      }
       new_value   = std::round(new_value);
       t           = new_value;
       new_sumcomp = 0;
@@ -201,9 +219,14 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
   // noise, so rebuild here rather than setting the deferred flag: the gate is in this same function
   // and would otherwise latch on the value this move just made unreliable. The row loop and the
   // assignment write are done, so the state a rebuild reads is consistent.
+  // The gate can only fire on a point with no violated rows, so the O(nnz) rebuild is only needed
+  // then. Rebuilding on every move made each move O(nnz) whenever |objective| exceeds
+  // breakthrough_move_epsilon / eps (~4.5e11), which stalled large models (e.g. millions of
+  // epigraph projections before the search loop, with no halt check in between).
   const f_t obj_resolution =
     std::numeric_limits<f_t>::epsilon() * std::max(std::fabs(obj_old), std::fabs(obj_y));
-  if (obj_resolution > (f_t)fj_cpu.settings.parameters.breakthrough_move_epsilon) {
+  if (obj_resolution > (f_t)fj_cpu.settings.parameters.breakthrough_move_epsilon &&
+      fj_cpu.violated_constraints.empty()) {
     recompute_slack(fj_cpu);
   }
   cuopt_func_call(audit_objective_update(fj_cpu, var_idx, old_val, delta, obj_old, obj_y));

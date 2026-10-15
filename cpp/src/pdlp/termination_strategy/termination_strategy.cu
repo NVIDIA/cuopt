@@ -555,7 +555,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
   std::vector<pdlp_termination_status_t>&& termination_status,
   bool deep_copy)
 {
-  // Skip the size checks on the distributed master: its pdhg_solver_ is built from a
+  // Skip the size checks on the multi-GPU master: its pdhg_solver_ is built from a
   // shape-0 placeholder while termination_strategy is built from the full problem size
   if (!current_pdhg_solver.is_distributed_master()) {
     cuopt_assert(
@@ -566,7 +566,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
       "Dual iterate size mismatch");
   }
 
-  // In distributed PDLP, gather solutions from the shards to the master.
+  // In multi-GPU PDLP, gather solutions from the shards to the master.
   if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
     const bool is_current_live_iterate =
       (&primal_iterate == &current_pdhg_solver.get_potential_next_primal_solution()) ||

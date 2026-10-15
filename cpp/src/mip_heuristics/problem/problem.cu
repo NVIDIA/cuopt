@@ -1439,6 +1439,7 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
   raft::common::nvtx::range fun_scope("substitute_variables");
   cuopt_assert((are_exclusive<i_t, f_t>(var_indices, var_to_substitute_indices)),
                "variables and var_to_substitute_indices are not exclusive");
+  cuopt_assert(has_unique_entries(var_indices), "variable substituted more than once");
   const i_t dummy_substituted_variable = var_indices[0];
   cuopt_assert(var_indices.size() == var_to_substitute_indices.size(), "size mismatch");
   cuopt_assert(var_indices.size() == offset_values.size(), "size mismatch");

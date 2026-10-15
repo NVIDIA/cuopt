@@ -313,8 +313,8 @@ void fj_t<i_t, f_t>::device_init(cuda::stream_ref stream)
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::climber_init(i_t climber_idx)
 {
-  auto& climber       = climbers[climber_idx];
-  auto climber_stream = climber->stream.view();
+  auto& climber                   = climbers[climber_idx];
+  cuda::stream_ref climber_stream = climber->stream;
   if (climber_idx == 0) climber_stream = handle_ptr->get_stream();
 
   return climber_init(climber_idx, climber_stream);
@@ -392,22 +392,23 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, cuda::stream_ref climber_stre
                0);
 
   // clamp the incumbent assignment to within the variable bounds and round if needed
-  thrust::for_each(
-    rmm::exec_policy(climber_stream),
-    thrust::counting_iterator<i_t>(0),
-    thrust::counting_iterator<i_t>(pb_ptr->n_variables),
-    [pb                   = pb_ptr->view(),
-     mode                 = settings.mode,
-     incumbent_assignment = climber->incumbent_assignment.data()] __device__(i_t var_idx) {
-      // round if integer
-      if (mode != fj_mode_t::ROUNDING && pb.is_integer_var(var_idx)) {
-        incumbent_assignment[var_idx] = round(incumbent_assignment[var_idx]);
-      }
-      // clamp to bounds
-      auto bounds = pb.variable_bounds[var_idx];
-      incumbent_assignment[var_idx] =
-        max(get_lower(bounds), min(get_upper(bounds), incumbent_assignment[var_idx]));
-    });
+  thrust::for_each(rmm::exec_policy(climber_stream),
+                   thrust::counting_iterator<i_t>(0),
+                   thrust::counting_iterator<i_t>(pb_ptr->n_variables),
+                   [pb                   = pb_ptr->view(),
+                    mode                 = settings.mode,
+                    incumbent_assignment = climber->incumbent_assignment.data(),
+                    best_assignment = climber->best_assignment.data()] __device__(i_t var_idx) {
+                     // round if integer
+                     if (mode != fj_mode_t::ROUNDING && pb.is_integer_var(var_idx)) {
+                       incumbent_assignment[var_idx] = round(incumbent_assignment[var_idx]);
+                     }
+                     // clamp to bounds
+                     auto bounds                   = pb.variable_bounds[var_idx];
+                     incumbent_assignment[var_idx] = std::clamp(
+                       incumbent_assignment[var_idx], get_lower(bounds), get_upper(bounds));
+                     best_assignment[var_idx] = incumbent_assignment[var_idx];
+                   });
 
   thrust::for_each(
     rmm::exec_policy(climber_stream),
@@ -599,8 +600,8 @@ void fj_t<i_t, f_t>::set_fj_settings(fj_settings_t settings_)
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::run_step_device(i_t climber_idx, bool use_graph)
 {
-  auto& data          = *climbers[climber_idx];
-  auto climber_stream = data.stream.view();
+  auto& data                      = *climbers[climber_idx];
+  cuda::stream_ref climber_stream = data.stream;
 
   return run_step_device(climber_stream, climber_idx, use_graph);
 }
@@ -630,26 +631,26 @@ void fj_t<i_t, f_t>::load_balancing_score_update(cuda::stream_ref stream, i_t cl
   data.load_balancing_start_event.record(stream);
 
   if (pb_ptr->binary_indices.size() > 0) {
-    data.load_balancing_start_event.stream_wait(data.load_balancing_bin_stream.view());
+    data.load_balancing_start_event.stream_wait(data.load_balancing_bin_stream);
     // compute the scores for binary variables (unique delta)
     launch_load_balancing_compute_scores_binary<i_t, f_t>(grid_load_balancing_binary,
                                                           blocks_load_balancing_binary,
                                                           kernel_args,
-                                                          data.load_balancing_bin_stream.view());
-    data.load_balancing_bin_finished_event.record(data.load_balancing_bin_stream.view());
+                                                          data.load_balancing_bin_stream);
+    data.load_balancing_bin_finished_event.record(data.load_balancing_bin_stream);
   }
   if (pb_ptr->nonbinary_indices.size() > 0) {
-    data.load_balancing_start_event.stream_wait(data.load_balancing_nonbin_stream.view());
+    data.load_balancing_start_event.stream_wait(data.load_balancing_nonbin_stream);
     launch_load_balancing_mtm_compute_candidates<i_t, f_t>(
       grid_load_balancing_mtm_compute_candidates,
       blocks_load_balancing_mtm_compute_candidates,
       kernel_args,
-      data.load_balancing_nonbin_stream.view());
+      data.load_balancing_nonbin_stream);
     launch_load_balancing_mtm_compute_scores<i_t, f_t>(grid_load_balancing_mtm_compute_scores,
                                                        blocks_load_balancing_mtm_compute_scores,
                                                        kernel_args,
-                                                       data.load_balancing_nonbin_stream.view());
-    data.load_balancing_nonbin_finished_event.record(data.load_balancing_nonbin_stream.view());
+                                                       data.load_balancing_nonbin_stream);
+    data.load_balancing_nonbin_finished_event.record(data.load_balancing_nonbin_stream);
   }
 
   if (pb_ptr->binary_indices.size() > 0) data.load_balancing_bin_finished_event.stream_wait(stream);
@@ -796,11 +797,14 @@ void fj_t<i_t, f_t>::run_step_device(cuda::stream_ref climber_stream,
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::round_remaining_fractionals(solution_t<i_t, f_t>& solution, i_t climber_idx)
+void fj_t<i_t, f_t>::round_remaining_fractionals(
+  solution_t<i_t, f_t>& solution,
+  const fj_improvement_callback_t<f_t>& improvement_callback,
+  i_t climber_idx)
 {
   auto& data = *climbers[climber_idx];
 
-  auto climber_stream = data.stream.view();
+  cuda::stream_ref climber_stream = data.stream;
   if (climber_idx == 0) climber_stream = handle_ptr->get_stream();
 
   bool handle_fractionals_only = true;
@@ -810,7 +814,7 @@ void fj_t<i_t, f_t>::round_remaining_fractionals(solution_t<i_t, f_t>& solution,
   climber_stream.sync();
 
   //  Run the fractional move selection and assignment update kernels until all have been rounded
-  host_loop(solution, climber_idx);
+  host_loop(solution, improvement_callback, climber_idx);
 }
 
 template <typename i_t, typename f_t>
@@ -829,12 +833,14 @@ void fj_t<i_t, f_t>::refresh_lhs_and_violation(cuda::stream_ref stream, i_t clim
 }
 
 template <typename i_t, typename f_t>
-i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
+i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution,
+                              const fj_improvement_callback_t<f_t>& improvement_callback,
+                              i_t climber_idx)
 {
   auto& data = *climbers[climber_idx];
   auto v     = data.view();  // == climber_views[climber_idx]
 
-  auto climber_stream = data.stream.view();
+  cuda::stream_ref climber_stream = data.stream;
   if (climber_idx == 0) climber_stream = handle_ptr->get_stream();
 
   auto [grid_resetmoves, blocks_resetmoves] = resetmoves_launch_dims;
@@ -1068,7 +1074,8 @@ void fj_t<i_t, f_t>::resize_vectors(const raft::handle_t* handle_ptr)
 }
 
 template <typename i_t, typename f_t>
-i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
+i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution,
+                          const fj_improvement_callback_t<f_t>& improvement_callback)
 {
   raft::common::nvtx::range scope("fj_solve");
   timer_t timer(settings.time_limit);
@@ -1116,7 +1123,7 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   handle_ptr->sync_stream();
 
-  i_t iterations = host_loop(solution);
+  i_t iterations = host_loop(solution, improvement_callback);
   RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   handle_ptr->sync_stream();
 
@@ -1130,7 +1137,7 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
     settings.iteration_limit =
       settings.iteration_limit * settings.parameters.rounding_second_stage_split;
 
-    round_remaining_fractionals(solution);
+    round_remaining_fractionals(solution, improvement_callback);
 
     // if time limit exceeded: round all remaining fractionals if any by nearest rounding.
     if (climbers[0]->fractional_variables.set_size.value(handle_ptr->get_stream()) > 0) {
