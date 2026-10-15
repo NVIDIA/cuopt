@@ -220,7 +220,6 @@ SPDX-License-Identifier: Apache-2.0
             <artifactId>maven-source-plugin</artifactId>
             <version>3.3.1</version>
             <configuration>
-              <!-- Keep the native resource directory out of the sources JAR. -->
               <excludeResources>true</excludeResources>
             </configuration>
             <executions>
