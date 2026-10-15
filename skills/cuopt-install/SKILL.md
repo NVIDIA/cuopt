@@ -40,7 +40,7 @@ Ask these if not already clear:
 
 Commands below install the **latest stable release**. For **nightly** builds (development branch HEAD, version `NEXT` = `VERSION` file on `main`, e.g. `26.12`), change:
 
-- **pip**: add `--pre --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` and pin the package `==NEXT.*`.
+- **pip**: add `--pre --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` and pin each listed cuOpt package (including `cuopt-sh-client`) to `==NEXT.*`.
 - **conda**: replace `-c rapidsai` with `-c rapidsai-nightly` and pin `=NEXT.*`.
 - **Docker**: use `nvidia/cuopt:NEXT.0a-cu12` / `-cu13` / `-cu13-ubi10` instead of `latest-*`.
 
