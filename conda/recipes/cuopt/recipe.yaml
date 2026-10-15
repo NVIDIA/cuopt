@@ -41,6 +41,7 @@ build:
           done
           export "${flags_name}=${flags_value}"
       done
+      printf 'CFLAGS=%s\nCXXFLAGS=%s\n' "${CFLAGS-}" "${CXXFLAGS-}"
       ./build.sh cuopt
     secrets:
       - AWS_ACCESS_KEY_ID
