@@ -38,27 +38,21 @@ jobs:
     name: test-images (prepare)
     runs-on: ubuntu-latest
     outputs:
-      CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
-      PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
+      CUDA_MAJOR: ${{ steps.trim.outputs.CUDA_MAJOR }}
     steps:
-      - name: Trim versions
+      - name: Get CUDA major version
         id: trim
         env:
           CUDA_VER: ${{ inputs.CUDA_VER }}
-          PYTHON_VER: ${{ inputs.PYTHON_VER }}
         run: |
-          CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
-          PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
-
-          echo "CUDA_SHORT=$CUDA_SHORT" >> $GITHUB_OUTPUT
-          echo "PYTHON_SHORT=$PYTHON_SHORT" >> $GITHUB_OUTPUT
+          echo "CUDA_MAJOR=${CUDA_VER%%.*}" >> $GITHUB_OUTPUT
 
   test:
-    name: test-images (${{ inputs.ARCH }}, ${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-py${{ needs.prepare.outputs.PYTHON_SHORT }})
+    name: test-images (${{ inputs.ARCH }}, ${{ inputs.IMAGE_TAG_PREFIX }}-cu${{ needs.prepare.outputs.CUDA_MAJOR }})
     runs-on: "linux-${{ inputs.ARCH }}-gpu-a100-latest-1"
     needs: prepare
     container:
-      image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-py${{ needs.prepare.outputs.PYTHON_SHORT }}"
+      image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cu${{ needs.prepare.outputs.CUDA_MAJOR }}"
     steps:
       - name: Checkout code repo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -71,12 +65,12 @@ jobs:
           bash ./ci/docker/test_image.sh
 
   test-ubi10:
-    name: test-images-ubi10 (${{ inputs.ARCH }}, ${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-ubi10)
+    name: test-images-ubi10 (${{ inputs.ARCH }}, ${{ inputs.IMAGE_TAG_PREFIX }}-cu${{ needs.prepare.outputs.CUDA_MAJOR }}-ubi10)
     if: ${{ startsWith(inputs.CUDA_VER, '13.') }}
     runs-on: "linux-${{ inputs.ARCH }}-gpu-a100-latest-1"
     needs: prepare
     container:
-      image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-ubi10"
+      image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cu${{ needs.prepare.outputs.CUDA_MAJOR }}-ubi10"
     steps:
       - name: Checkout code repo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -94,7 +88,7 @@ jobs:
   # container and never launch the servers, so they cannot catch packaging
   # gaps such as UBI10's RHEL lib/lib64 NCCL path miss.
   smoke:
-    name: smoke-images (${{ inputs.ARCH }}, cuda${{ needs.prepare.outputs.CUDA_SHORT }})
+    name: smoke-images (${{ inputs.ARCH }}, cu${{ needs.prepare.outputs.CUDA_MAJOR }})
     runs-on: "linux-${{ inputs.ARCH }}-gpu-a100-latest-1"
     needs: prepare
     steps:
@@ -107,16 +101,13 @@ jobs:
       - name: Smoke Ubuntu image (proxy + gRPC)
         env:
           IMAGE_TAG_PREFIX: ${{ inputs.IMAGE_TAG_PREFIX }}
-          CUDA_SHORT: ${{ needs.prepare.outputs.CUDA_SHORT }}
-          PYTHON_SHORT: ${{ needs.prepare.outputs.PYTHON_SHORT }}
+          CUDA_MAJOR: ${{ needs.prepare.outputs.CUDA_MAJOR }}
         run: |
-          bash ./ci/docker/smoke_image.sh \
-            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}"
+          bash ./ci/docker/smoke_image.sh "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}"
       - name: Smoke UBI10 image (proxy + gRPC)
         if: ${{ startsWith(inputs.CUDA_VER, '13.') }}
         env:
           IMAGE_TAG_PREFIX: ${{ inputs.IMAGE_TAG_PREFIX }}
-          CUDA_SHORT: ${{ needs.prepare.outputs.CUDA_SHORT }}
+          CUDA_MAJOR: ${{ needs.prepare.outputs.CUDA_MAJOR }}
         run: |
-          bash ./ci/docker/smoke_image.sh \
-            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10"
+          bash ./ci/docker/smoke_image.sh "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10"

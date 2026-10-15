@@ -118,6 +118,10 @@ for kind in sources javadoc; do
     echo "WARNING: no ${kind} JAR found; Maven Central requires one before release" >&2
     continue
   fi
+  if (($(stat -c %s "${extra}") > 50 * 1024 * 1024)); then
+    echo "ERROR: ${extra} is $(stat -c %s "${extra}") bytes; expected a small ${kind} JAR" >&2
+    exit 1
+  fi
   cp "${extra}" "${TARGET}/"
   echo "  ${ARTIFACT_ID}-${VERSION}-${kind}.jar"
 done

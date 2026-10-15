@@ -148,7 +148,7 @@ docker pull nvidia/cuopt:latest-cu12
 docker pull nvidia/cuopt:latest-cu13
 ```
 
-The `latest` tag is the latest stable release. To pin a specific version use `<version>-cu12` / `<version>-cu13` (e.g. `26.6.0-cu13`). Fully-qualified tags that also pin the CUDA minor and Python version (e.g. `26.6.0-cuda13.3-py3.14`) are published alongside the short tags. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+The `latest` tag is the latest stable release. To pin a specific version use `<version>-cu12` / `<version>-cu13` (e.g. `26.6.0-cu13`). See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
 
 #### UBI10 image (FIPS 140-3)
 
@@ -158,7 +158,7 @@ Based on Red Hat Universal Base Image 10 (RHEL 10), which ships OpenSSL 3.5 vali
 docker pull nvidia/cuopt:latest-cu13-ubi10
 ```
 
-Fully-qualified tags follow the pattern `<version>-cuda<X.Y>-ubi10` (e.g. `26.6.0-cuda13.3-ubi10`). Nightly builds use the `<version>a-cu13-ubi10` tag scheme. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+Nightly builds use the `<version>a-cu13-ubi10` tag scheme. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
 
 Both images include the same cuOpt packages (`libcuopt`, `cuopt`, `cuopt-server`, `cuopt-sh-client`) and expose the same server entrypoint. They are built and tested for x86-64 and ARM64.
 
