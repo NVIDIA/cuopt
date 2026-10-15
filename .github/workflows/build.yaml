@@ -249,7 +249,7 @@ jobs:
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt:
     # Gated on the whole libcuopt/cuopt family building.
-    needs: [wheel-build-libcuopt-suite]
+    needs: [wheel-build-cuopt]
     permissions:
       actions: read
       contents: read
@@ -293,7 +293,7 @@ jobs:
       matrix_filter: group_by(.ARCH) | map(max_by([(.CUDA_VER|split(".")|map(tonumber)), (.PY_VER|split(".")|map(tonumber))]))
   wheel-publish-libcuopt-client:
     # Gated on the whole libcuopt/cuopt family building.
-    needs: [wheel-build-libcuopt-suite]
+    needs: [wheel-build-cuopt]
     permissions:
       actions: read
       contents: read
@@ -335,7 +335,7 @@ jobs:
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt-mathopt:
     # Gated on the whole libcuopt/cuopt family building.
-    needs: [wheel-build-libcuopt-suite]
+    needs: [wheel-build-cuopt]
     permissions:
       actions: read
       contents: read
@@ -377,7 +377,7 @@ jobs:
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt-routing:
     # Gated on the whole libcuopt/cuopt family building.
-    needs: [wheel-build-libcuopt-suite]
+    needs: [wheel-build-cuopt]
     permissions:
       actions: read
       contents: read
@@ -422,17 +422,9 @@ jobs:
       package-type: python
       # Build a wheel for each CUDA x ARCH x minimum supported Python version
       matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
-  # Gate for every wheel-publish-* job below: blocks publishing unless the whole family built.
-  wheel-build-libcuopt-suite:
-    needs: wheel-build-cuopt
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "cuopt, libcuopt, libcuopt-client, libcuopt-mathopt and libcuopt-routing all built successfully"
   wheel-publish-cuopt:
     # Gated on the whole libcuopt/cuopt family building.
-    needs: [wheel-build-libcuopt-suite]
+    needs: [wheel-build-cuopt]
     permissions:
       actions: read
       contents: read
@@ -561,9 +553,12 @@ jobs:
     # Attaches the built wheels to a GitHub Release on the version tag, so Kitmaker
     # can pull them from a public Release URL (Kitmaker itself never reaches inside NVIDIA).
     if: startsWith(github.ref, 'refs/tags/v')
-    # Needs the wheel builds (the artifacts it uploads), not the wheel-publish-* nightly-index pushes.
     needs:
-      - wheel-build-libcuopt-suite
+      - wheel-build-libcuopt
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
+      - wheel-build-cuopt
       - wheel-build-cuopt-server
       - wheel-build-cuopt-sh-client
     permissions:
