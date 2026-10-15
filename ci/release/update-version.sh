@@ -124,7 +124,6 @@ for DEP in "${DEPENDENCIES[@]}"; do
   for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
     sed_runner "/${DEP}\(-cu[[:digit:]]\{2\}\)\{0,1\}==/ s/==[0-9]\+\.[0-9]\+\.\*/==${NEXT_SHORT_TAG_PEP440}.\*/g" "${FILE}"
     sed_runner "/${DEP}=/ s/=[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?[^ ]*/=${NEXT_SHORT_TAG}.*/g" "${FILE}"
-    sed_runner "/${DEP}:/ s/:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda[0-9]\+\.[0-9]\+-\)\(py[0-9]\+\)/:${DOCKER_TAG}\1\2/g" "${FILE}"
   done
 done
 
@@ -143,6 +142,8 @@ NEXT_FULL_JAVA_TAG="$(echo "$NEXT_FULL_TAG" | sed -E 's/^([0-9]+)\.([0-9]+)\.0*(
 for FILE in java/*/pom.xml; do
   sed_runner "/<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START-->.*<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->/s//<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START--><version>${NEXT_FULL_JAVA_TAG}<\/version><!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->/g" "${FILE}"
 done
+
+sed_runner 's|<version>[0-9.]*-SNAPSHOT</version>|<version>'${NEXT_FULL_JAVA_TAG}'</version>|' docs/cuopt/source/cuopt-java/quick-start.rst
 
 # Update README.md version badge
 sed_runner 's/badge\/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/badge\/version-'${NEXT_FULL_TAG}'-blue/g' README.md

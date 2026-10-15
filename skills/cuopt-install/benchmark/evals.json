@@ -101,7 +101,7 @@
     "question": "I want to run the cuOpt REST server in Docker. What do I do?",
     "expected_skill": "cuopt-install",
     "expected_script": null,
-    "ground_truth": "The agent gives the two-step Docker flow: 'docker pull nvidia/cuopt:latest-cuda12.9-py3.13' to pull the image, then 'docker run --gpus all -it --rm -p 8000:8000 nvidia/cuopt:latest-cuda12.9-py3.13' to run it. It explains --gpus all is required for GPU access and -p 8000:8000 exposes the REST endpoint on localhost. It mentions verifying with 'curl -s http://localhost:8000/cuopt/health' once the container is up. The agent provides the commands for the user to run.",
+    "ground_truth": "The agent gives the two-step Docker flow: 'docker pull nvidia/cuopt:latest-cu12' to pull the image, then 'docker run --gpus all -it --rm -p 8000:8000 nvidia/cuopt:latest-cu12' to run it. It explains --gpus all is required for GPU access and -p 8000:8000 exposes the REST endpoint on localhost. It mentions verifying with 'curl -s http://localhost:8000/cuopt/health' once the container is up. The agent provides the commands for the user to run.",
     "expected_behavior": [
       "Names the nvidia/cuopt Docker image",
       "Names 'docker pull' and 'docker run' as the steps",
