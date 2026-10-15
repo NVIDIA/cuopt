@@ -1894,6 +1894,67 @@ TEST_F(GrpcClientTest, SubmitLP_ChunkedUploadForLargePayload)
   EXPECT_GT(chunk_count, 0) << "Should have sent at least one array chunk";
 }
 
+TEST_F(GrpcClientTest, ChunkedUploadCapsDataBudgetToClientMessageLimit)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address                = "mock://test";
+  cfg.chunked_array_threshold_bytes = 0;
+  cfg.chunk_size_bytes              = 16LL * 1024 * 1024;
+  cfg.max_message_bytes             = 4LL * 1024 * 1024;
+
+  auto client = std::make_unique<grpc_client_t>(cfg);
+  auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedUploadRequest&,
+                 cuopt::remote::StartChunkedUploadResponse* resp) {
+      resp->set_upload_id("budget-cap-001");
+      // Larger than the client limit, so the cap must come from the client.
+      resp->set_max_message_bytes(256LL * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  const int64_t data_cap = cfg.max_message_bytes * 9 / 10;
+  int chunk_count        = 0;
+  EXPECT_CALL(*mock, SendArrayChunk(_, _, _))
+    .WillRepeatedly([&](grpc::ClientContext*,
+                        const cuopt::remote::SendArrayChunkRequest& req,
+                        cuopt::remote::SendArrayChunkResponse* resp) {
+      EXPECT_LE(static_cast<int64_t>(req.chunk().data().size()), data_cap);
+      ++chunk_count;
+      resp->set_upload_id("budget-cap-001");
+      resp->set_chunks_received(chunk_count);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock, FinishChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedUploadRequest&,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      resp->set_job_id("budget-cap-job");
+      return grpc::Status::OK;
+    });
+
+  // One array is larger than the client message limit and smaller than the
+  // requested 16 MiB chunk size, so an uncapped budget would send it whole.
+  constexpr int n = 800000;
+  std::vector<double> obj(n, 1.0);
+  std::vector<double> lb(n, 0.0);
+  std::vector<double> ub(n, 1.0);
+  cpu_optimization_problem_t<int32_t, double> problem;
+  problem.set_objective_coefficients(obj.data(), n);
+  problem.set_variable_lower_bounds(lb.data(), n);
+  problem.set_variable_upper_bounds(ub.data(), n);
+
+  solver_settings_t<int32_t, double> settings;
+  auto result = client->submit_lp(problem, settings);
+
+  EXPECT_TRUE(result.success) << "Error: " << result.error_message;
+  EXPECT_GT(chunk_count, 1);
+}
+
 TEST_F(GrpcClientTest, SubmitMIP_ChunkedPreservesIncumbentSetFlag)
 {
   grpc_client_config_t cfg;

@@ -70,6 +70,15 @@ Chunked Upload (Large Problems)
    * - ``FinishChunkedUpload``
      - Finalize the upload and return ``job_id`` (same as ``SubmitJob``).
 
+A chunked VRP upload puts ``RoutingSolverSettings`` in ``vrp_settings`` and the
+``RoutingProblem`` in ``routing_problem``, with each matrix ``values`` field
+left empty. Those values are container ``ArrayChunk`` messages:
+``container_field_num`` is 10 for ``cost_matrices`` and 11 for
+``transit_time_matrices``, ``container_index`` is the matrix index, and
+``field_id`` is ``CostMatrix.ArrayId.VALUES``. ``VALUES`` is the
+container-relative array id, not the protobuf tag of ``values``. The payload
+is raw little-endian float32, row-major, ``n_locations`` by ``n_locations``.
+
 Chunked Download (Large Results)
 --------------------------------
 
@@ -115,7 +124,7 @@ Messages and Constraints
   is no ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` remote-execution path for
   routing; use the gRPC routing client (:doc:`routing`) or REST for remote
   routing.
-* **Solver settings** — Carried as ``PDLPSolverSettings`` or ``MIPSolverSettings`` inside the request or chunked header, aligned with the NVIDIA cuOpt solver options documentation.
+* **Solver settings** — Carried as ``PDLPSolverSettings``, ``MIPSolverSettings``, or ``RoutingSolverSettings`` inside the request or chunked header, aligned with the NVIDIA cuOpt solver options documentation.
 * **Errors** — Transport failures use gRPC status codes. Some outcomes use
   ``Status::OK`` with response fields: ``CheckStatus`` reports unknown jobs as
   ``job_status=NOT_FOUND``; ``GetResult`` uses transport ``NOT_FOUND`` /

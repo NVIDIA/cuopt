@@ -150,8 +150,10 @@ message ChunkedProblemHeader {
   // field on OptimizationProblem so client/server share the same tag.
   repeated QuadraticConstraint quadratic_constraints = 25;
 
-  // VRP: matrix `values` are left empty here and sent as container ArrayChunks
-  // (container_field_num 10 = cost_matrices, 11 = transit_time_matrices).
+  // VRP: the RoutingProblem with matrix `values` left empty. Each matrix's
+  // values travel as container ArrayChunks (container_field_num 10 =
+  // cost_matrices, 11 = transit_time_matrices, container_index = matrix
+  // index, field_id = CostMatrix.ArrayId.VALUES).
   RoutingProblem routing_problem = 40;
 }
 
@@ -173,7 +175,8 @@ message ChunkedProblemHeader {
 //     container-relative ids are published as a nested `ArrayId` enum on
 //     each repeated message type — e.g. QuadraticConstraint.LINEAR_VALUES —
 //     so external clients should reference the named enum value rather than
-//     the bare integer.
+//     the bare integer.  VRP cost and transit-time matrices use
+//     CostMatrix.ArrayId.VALUES.
 //
 // `data` carries native-endian raw element bytes (memcpy'd directly from the
 // client's contiguous buffer), NOT a protobuf-encoded value.  total_elements

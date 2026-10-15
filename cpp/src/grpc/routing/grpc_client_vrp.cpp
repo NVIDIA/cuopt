@@ -22,6 +22,9 @@
 
 namespace cuopt::mathematical_optimization {
 
+static_assert(static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES) ==
+              cuopt::routing::kMatrixValuesFieldId);
+
 using cuopt::routing::map_proto_to_routing_solution;
 using cuopt::routing::map_routing_problem_to_proto;
 using cuopt::routing::map_routing_settings_to_proto;
@@ -63,7 +66,7 @@ submit_result_t grpc_client_t::submit_vrp(
         chunk_container_typed_array(chunks,
                                     cuopt::routing::kCostMatricesContainer,
                                     static_cast<int32_t>(i),
-                                    cuopt::routing::kMatrixValuesFieldId,
+                                    cuopt::remote::CostMatrix::VALUES,
                                     problem.cost_matrices[i].matrix,
                                     upload_id,
                                     chunk_data_budget);
@@ -72,7 +75,7 @@ submit_result_t grpc_client_t::submit_vrp(
         chunk_container_typed_array(chunks,
                                     cuopt::routing::kTransitMatricesContainer,
                                     static_cast<int32_t>(i),
-                                    cuopt::routing::kMatrixValuesFieldId,
+                                    cuopt::remote::CostMatrix::VALUES,
                                     problem.transit_time_matrices[i].matrix,
                                     upload_id,
                                     chunk_data_budget);

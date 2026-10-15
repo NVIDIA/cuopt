@@ -1044,8 +1044,14 @@ bool grpc_client_t::upload_chunked(const cuopt::remote::ChunkedProblemHeader& he
   // --- 2. Build chunk requests directly from the problem arrays ---
   int64_t chunk_data_budget = config_.chunk_size_bytes;
   if (chunk_data_budget <= 0) { chunk_data_budget = 1LL * 1024 * 1024; }
-  int64_t srv_max = server_max_message_bytes_.load(std::memory_order_relaxed);
-  if (srv_max > 0 && chunk_data_budget > srv_max * 9 / 10) { chunk_data_budget = srv_max * 9 / 10; }
+  int64_t message_limit = config_.max_message_bytes;
+  int64_t srv_max       = server_max_message_bytes_.load(std::memory_order_relaxed);
+  if (srv_max > 0 && srv_max < message_limit) { message_limit = srv_max; }
+  if (message_limit > 0) {
+    int64_t data_cap = message_limit * 9 / 10;
+    if (data_cap < 1) { data_cap = 1; }
+    if (chunk_data_budget > data_cap) { chunk_data_budget = data_cap; }
+  }
 
   auto chunk_requests = build_chunks(upload_id, chunk_data_budget);
 

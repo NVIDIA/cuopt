@@ -447,17 +447,30 @@ static bool read_chunked_vrp_from_pipe(int read_fd, DeserializedJob& dj)
   try {
     map_proto_to_routing_problem(header.routing_problem(), dj.routing_problem);
 
-    size_t consumed  = 0;
+    static_assert(cuopt::routing::kMatrixValuesFieldId ==
+                  static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES));
+    const int32_t n_locations = dj.routing_problem.num_locations;
+    size_t consumed           = 0;
     auto fill_values = [&](int32_t container, std::vector<cuopt::routing::cpu_cost_matrix_t>& ms) {
       for (size_t i = 0; i < ms.size(); ++i) {
         auto it = container_arrays.find(
           {container, static_cast<int32_t>(i), cuopt::routing::kMatrixValuesFieldId});
         if (it == container_arrays.end()) { continue; }
+        if (n_locations <= 0) {
+          throw std::invalid_argument("Chunked VRP matrix requires num_locations > 0");
+        }
         const auto& bytes = it->second;
         if (bytes.size() % sizeof(float) != 0) {
           throw std::invalid_argument("VRP matrix payload is not a multiple of sizeof(float)");
         }
-        ms[i].matrix.resize(bytes.size() / sizeof(float));
+        const int64_t expected =
+          static_cast<int64_t>(n_locations) * static_cast<int64_t>(n_locations);
+        const int64_t count = static_cast<int64_t>(bytes.size() / sizeof(float));
+        if (count != expected) {
+          throw std::invalid_argument(
+            "VRP matrix value count is not num_locations * num_locations");
+        }
+        ms[i].matrix.resize(static_cast<size_t>(expected));
         std::memcpy(ms[i].matrix.data(), bytes.data(), bytes.size());
         ++consumed;
       }
