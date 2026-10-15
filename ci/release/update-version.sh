@@ -107,6 +107,7 @@ DEPENDENCIES=(
   libcuopt-mathopt
   libcuopt-routing
   libcuopt-tests
+  libraft
   libraft-headers
   librmm
   pylibraft

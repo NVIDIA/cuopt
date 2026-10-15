@@ -603,6 +603,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     }
 
     auto early_cpufj_guard = cuopt::scope_guard([&]() {
+      if (early_gpufj) { early_gpufj->request_stop(); }
+      if (early_structural) { early_structural->request_stop(); }
       if (early_cpufj) {
         early_cpufj->stop();
         early_cpufj.reset();
@@ -742,7 +744,12 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       }
     }
 
-    // Stop early GPU FJ now that Papilo presolve is complete
+    // Stop the early heuristics now that Papilo presolve is complete
+    if (early_gpufj) { early_gpufj->request_stop(); }
+    if (early_cpufj && run_presolve && presolve_result_opt.has_value()) {
+      early_cpufj->request_stop();
+    }
+    if (early_structural) { early_structural->request_stop(); }
     if (early_gpufj) {
       early_gpufj->stop();
       if (early_gpufj->solution_found()) {

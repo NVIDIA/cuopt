@@ -78,24 +78,103 @@ We now describe the parameter settings used to control cuOpt's Linear Programmin
 Method
 ^^^^^^
 
-``CUOPT_METHOD`` controls the method to solve the linear programming problem. Four methods are available:
+``CUOPT_METHOD`` controls the method to solve the linear program. Five methods are available:
 
 * ``Concurrent``: Use PDLP, dual simplex, and barrier in parallel (default).
 * ``PDLP``: Use the PDLP method.
 * ``Dual Simplex``: Use the dual simplex method.
 * ``Barrier``: Use the barrier (interior-point) method.
+* ``Primal Simplex``: Use the primal simplex method.
 
 .. note:: The default method is ``Concurrent``.
 
-Default accuracy for each method:
+Default tolerances for each method:
 
-* PDLP solves to 1e-4 relative accuracy by default.
-* Barrier solves to 1e-8 relative accuracy by default.
-* Dual Simplex solves to 1e-6 *absolute* accuracy by default.
+* PDLP solves to 1e-4 relative tolerance by default.
+* Barrier solves to 1e-8 relative tolerance by default.
+* Simplex solves to 1e-6 *absolute* tolerance by default.
+
+See below for how to change the default tolerances.
 
 C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
 Server Thin client users should use the :class:`cuopt_sh_client.SolverMethod` for this parameter.
+
+Absolute Primal Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_ABSOLUTE_PRIMAL_TOLERANCE`` controls the absolute primal tolerance used in the primal feasibility check.
+Changing this value might have a significant impact on accuracy and runtime if the relative part
+(the right-hand side vector b L2 norm) is close to, or equal to, 0.
+
+
+The primal feasibility condition is computed as follows::
+
+   primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
+
+Default value is ``1e-4``.
+
+
+Relative Primal Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_RELATIVE_PRIMAL_TOLERANCE`` controls the relative primal tolerance used in the primal feasibility check.
+Changing this value has a significant impact on accuracy and runtime.
+The primal feasibility condition is computed as follows::
+
+   primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
+
+.. note:: The default value is ``1e-4``.
+
+Absolute Dual Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_ABSOLUTE_DUAL_TOLERANCE`` controls the absolute dual tolerance used in the dual feasibility check.
+Changing this value might have a significant impact on accuracy and runtime if the relative part
+(the objective vector L2 norm) is close to, or equal to, 0.
+
+The dual feasibility condition is computed as follows::
+
+   dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
+
+.. note:: The default value is ``1e-4``.
+
+Relative Dual Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_RELATIVE_DUAL_TOLERANCE`` controls the relative dual tolerance used in the dual feasibility check.
+Changing this value has a significant impact on accuracy and runtime.
+The dual feasibility condition is computed as follows::
+
+   dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
+
+.. note:: The default value is ``1e-4``.
+
+
+Absolute Gap Tolerance
+^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_ABSOLUTE_GAP_TOLERANCE`` controls the absolute gap tolerance used in the duality gap check.
+Changing this value might have a significant impact on accuracy and runtime if the relative part ``(|primal_objective| + |dual_objective|)`` is close to, or equal to, 0.
+
+The duality gap is computed as follows::
+
+   duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
+
+.. note:: The default value is ``1e-4``.
+
+
+Relative Gap Tolerance
+^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_RELATIVE_GAP_TOLERANCE`` controls the relative gap tolerance used in the duality gap check.
+Changing this value has a significant impact on accuracy and runtime.
+The duality gap is computed as follows::
+
+   duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
+
+.. note:: The default value is ``1e-4``.
+
 
 PDLP Solver Mode
 ^^^^^^^^^^^^^^^^
@@ -113,6 +192,29 @@ for a specific problem.
 C API users should use the constants defined in :ref:`pdlp-solver-mode-constants` for this parameter.
 
 Server Thin client users should use the :class:`cuopt_sh_client.PDLPSolverMode` for this parameter.
+
+Large Number of Nonzeros Threshold
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_LARGE_NNZ_THRESHOLD`` sets a threshold for what cuOpt considers to be a
+large linear program. When the number of nonzeros in the constraint matrix exceeds
+this threshold, cuOpt uses different algorithmic strategies.
+
+The default threshold is 50 million nonzeros. When presolve is enabled, the threshold
+applies to the matrix after presolve, not the original input matrix.
+
+At or above the threshold:
+
+* Concurrent solves run only PDLP, skipping barrier and dual simplex.
+* PDLP column reduction is enabled for certain PDLP modes.
+
+Below the threshold, concurrent solves use their normal solver selection,
+and PDLP column reduction is off unless explicitly enabled.
+
+A special value is available:
+
+* ``-1``: Concurrent solves use their normal solver selection regardless of
+  matrix nonzeros. PDLP column reduction is off unless explicitly enabled.
 
 Iteration Limit
 ^^^^^^^^^^^^^^^
@@ -144,11 +246,7 @@ Multi-GPU PDLP Partitioner
 ``CUOPT_MULTIGPU_PDLP_PARTITIONER`` selects how multi-GPU PDLP splits the problem across GPUs:
 ``0`` Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), ``1`` KaMinPar (multi-threaded
 graph partitioner, better balanced shards at the cost of extra partitioning time), or ``2``
-RoundRobin (no partitioning graph built). This constant was previously named
-``CUOPT_DISTRIBUTED_PDLP_PARTITIONER`` (``distributed_pdlp_partitioner`` as a Server Thin client
-key, now ``multigpu_pdlp_partitioner``); the separate ``CUOPT_USE_DISTRIBUTED_PDLP`` toggle has
-been removed.
-
+RoundRobin (no partitioning graph built).
 
 Infeasibility Detection
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -230,6 +328,44 @@ available:
 
 .. note:: The default value is 0 (default precision).
 
+Simplex Settings
+^^^^^^^^^^^^^^^^
+
+The following settings control the behavior of the simplex methods:
+
+Primal Simplex Pricing
+""""""""""""""""""""""
+
+``CUOPT_PRIMAL_SIMPLEX_PRICING`` controls the pricing rule used by the primal simplex algorithm.
+
+* ``0``: Dantzig pricing
+* ``1``: Devex pricing (default)
+
+.. note:: The default value is ``1`` (Devex).
+
+Dual Simplex Initial Perturbation
+"""""""""""""""""""""""""""""""""
+
+``CUOPT_DUAL_SIMPLEX_INITIAL_PERTURBATION`` controls whether the dual simplex method perturbs the objective at the start of solve.
+
+* ``-1``: Automatic (default) - cuOpt decides whether and how strongly to perturb
+* ``0``: Do not perturb
+* ``1``: Perturb
+
+.. note:: The default value is ``-1`` (automatic).
+
+Dual Simplex Remove Perturbation
+""""""""""""""""""""""""""""""""
+
+``CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION`` controls whether dual simplex removes the cost perturbation during the solve, when variables leave the basis,
+rather than only at the end. Removing perturbations earlier helps avoid clean up at the end of the solve.
+
+* ``-1``: Automatic (default)
+* ``0``: Disabled
+* ``1``: Enabled
+
+.. note:: The default value is ``-1`` (automatic).
+
 Barrier Solver Settings
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -310,85 +446,21 @@ Dual Initial Point
 ``CUOPT_BARRIER_DUAL_INITIAL_POINT`` controls the method used to compute the dual initial point for the barrier solver. The choice of initial point will affect the number of iterations performed by barrier.
 
 * ``-1``: Automatic (default) - cuOpt selects the best method
-* ``0``: Use an initial point from a heuristic approach based on the paper "On Implementing Mehrotra's Predictor–Corrector Interior-Point Method for Linear Programming" (SIAM J. Optimization, 1992) by Lustig, Martsten, Shanno.
-* ``1``: Use an initial point from solving a least squares problem that minimizes the norms of the dual variables and reduced costs while statisfying the dual equality constraints.
+* ``0``: Use an initial point from a heuristic approach based on the paper "On Implementing Mehrotra's Predictor–Corrector Interior-Point Method for Linear Programming" (SIAM J. Optimization, 1992) by Lustig, Martsten, Shanno
+* ``1``: Use an initial point from solving a least squares problem that minimizes the norms of the dual variables and reduced costs while statisfying the dual equality constraints
+* ``2``: Use an initial point from a heurisitic approach based on SeDuMi by Jos Sturm
 
 .. note:: The default value is ``-1`` (automatic).
 
-Absolute Primal Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^^^
+Barrier Initial Point Safeguard
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``CUOPT_ABSOLUTE_PRIMAL_TOLERANCE`` controls the absolute primal tolerance used in the primal feasibility check.
-Changing this value might have a significant impact on accuracy and runtime if the relative part
-(the right-hand side vector b L2 norm) is close to, or equal to, 0.
+``CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD`` sets the margin used to push the barrier method's initial point into the interior of the
+nonnegative orthant and, for second-order cone problems, into the interior of the cones. The initial point is shifted so that it is
+at least this far from the boundary. The value must be greater than or equal to ``0``. This setting only has an effect when ``CUOPT_BARRIER_DUAL_INITIAL_POINT`` is ``0`` or ``1``.
 
+.. note:: The default value is ``10.0``.
 
-The primal feasibility condition is computed as follows::
-
-   primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
-
-Default value is ``1e-4``.
-
-
-Relative Primal Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_RELATIVE_PRIMAL_TOLERANCE`` controls the relative primal tolerance used in PDLP's primal feasibility check.
-Changing this value has a significant impact on accuracy and runtime.
-The primal feasibility condition is computed as follows::
-
-   primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
-
-.. note:: The default value is ``1e-4``.
-
-Absolute Dual Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_ABSOLUTE_DUAL_TOLERANCE`` controls the absolute dual tolerance used in PDLP's dual feasibility check.
-Changing this value might have a significant impact on accuracy and runtime if the relative part
-(the objective vector L2 norm) is close to, or equal to, 0.
-
-The dual feasibility condition is computed as follows::
-
-   dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
-
-.. note:: The default value is ``1e-4``.
-
-Relative Dual Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_RELATIVE_DUAL_TOLERANCE`` controls the relative dual tolerance used in PDLP's dual feasibility check.
-Changing this value has a significant impact on accuracy and runtime.
-The dual feasibility condition is computed as follows::
-
-   dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
-
-.. note:: The default value is ``1e-4``.
-
-
-Absolute Gap Tolerance
-^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_ABSOLUTE_GAP_TOLERANCE`` controls the absolute gap tolerance used in PDLP's duality gap check.
-Changing this value might have a significant impact on accuracy and runtime if the relative part ``(|primal_objective| + |dual_objective|)`` is close to, or equal to, 0.
-
-The duality gap is computed as follows::
-
-   duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
-
-.. note:: The default value is ``1e-4``.
-
-
-Relative Gap Tolerance
-^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_RELATIVE_GAP_TOLERANCE`` controls the relative gap tolerance used in PDLP's duality gap check.
-Changing this value has a significant impact on accuracy and runtime.
-The duality gap is computed as follows::
-
-   duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
-
-.. note:: The default value is ``1e-4``.
 
 Barrier Iterative Refinement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -419,3 +491,42 @@ Barrier Adaptive Regularization
 * ``1``: Enable adaptive regularization
 
 .. note:: The default value is ``-1`` (automatic).
+
+Barrier Presolve Bound Free Variables
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES`` controls whether the barrier presolve attempts to put bounds on free variables using the linear constraints.
+
+* ``-1``: Automatic (default) - cuOpt decides based on the problem
+* ``0``: Disable bounding of free variables
+* ``1``: Enable bounding of free variables
+
+.. note:: The default value is ``-1`` (automatic).
+
+Barrier Primal and Dual Regularization
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_PRIMAL_REGULARIZATION`` and ``CUOPT_BARRIER_DUAL_REGULARIZATION`` set the initial primal and dual regularization
+applied to the augmented system. They apply to the first factorization only. If adaptive regularization is enabled
+(see ``CUOPT_BARRIER_ADAPTIVE_REGULARIZATION``), it can still scale the regularization up or down in later iterations.
+
+* ``-1``: Automatic (default) - cuOpt uses its built-in heuristic
+* A value greater than or equal to ``0``: Use this value as the starting regularization
+
+.. note:: The default value of both settings is ``-1`` (automatic).
+
+
+Sequence Solve
+^^^^^^^^^^^^^^
+
+``CUOPT_SEQUENCE_SOLVE`` controls whether cuOpt caches the ordering and symbolic factorization so that a sequence of related barrier solves can reuse it.
+When enabled, and the first solve with the barrier method finishes with an optimal solution, cuOpt stores information about the factorization. In subsequent solves,
+the linear objective and the right-hand side of the linear equality constraints may be changed with :meth:`~cuopt.linear_programming.data_model.DataModel.update_linear_objective` or
+:meth:`~cuopt.linear_programming.data_model.DataModel.update_rhs` without recomputing the ordering or the symbolic factorization.
+
+* ``true``: Cache the ordering and symbolic factorization for later solves
+* ``false``: Do not cache (default)
+
+.. note:: The default value is ``false``.
+
+.. note:: Reuse requires that the quadratic objective, the constraint matrix, the row senses, and the variable bounds stay unchanged between solves. Problems with range rows are not supported. When sequence solve is enabled, ``CUOPT_FOLDING`` and ``CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES`` are disabled.

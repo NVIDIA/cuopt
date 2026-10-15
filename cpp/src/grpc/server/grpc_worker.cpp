@@ -95,9 +95,7 @@ bool probe_worker_gpu_liveness(int worker_id, GpuProbeReason reason)
     // Allocate through the worker's current RMM resource, then submit and
     // synchronize a real CUDA operation. This checks both the allocator path
     // and asynchronous device execution without retaining meaningful memory.
-    // rmm::cuda_stream_default is a cuda::stream_ref. The raw stream is get(),
-    // not the old cuda_stream_view::value().
-    const auto stream = rmm::cuda_stream_default;
+    const cuda::stream_ref stream{cudaStream_t{nullptr}};
     rmm::device_buffer probe(1, stream);
     cudaError_t err = cudaMemsetAsync(probe.data(), 0, probe.size(), stream.get());
     if (err == cudaSuccess) { err = cudaStreamSynchronize(stream.get()); }

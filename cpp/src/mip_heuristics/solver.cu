@@ -216,6 +216,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   bool presolve_success = run_presolve ? dm.run_presolve(presolve_time_limit, timer_) : true;
 
   // Stop early CPUFJ after cuopt presolve (probing cache) but before main solve
+  if (context.early_cpufj_ptr) { context.early_cpufj_ptr->request_stop(); }
+  if (context.early_structural_ptr) { context.early_structural_ptr->request_stop(); }
   if (context.early_cpufj_ptr) {
     context.early_cpufj_ptr->stop();
     if (context.early_cpufj_ptr->solution_found()) {
@@ -261,11 +263,11 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (run_presolve && context.problem_ptr->n_integer_vars == 0) {
     CUOPT_LOG_INFO("Problem reduced to a LP, running concurrent LP");
     pdlp_solver_settings_t<i_t, f_t> settings{};
-    settings.time_limit            = timer_.remaining_time();
-    auto lp_timer                  = timer_t(settings.time_limit);
-    settings.method                = method_t::Concurrent;
-    settings.concurrent_nnz_cutoff = context.settings.concurrent_nnz_cutoff;
-    settings.presolver             = presolver_t::None;
+    settings.time_limit          = timer_.remaining_time();
+    auto lp_timer                = timer_t(settings.time_limit);
+    settings.method              = method_t::Concurrent;
+    settings.large_nnz_threshold = context.settings.large_nnz_threshold;
+    settings.presolver           = presolver_t::None;
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 

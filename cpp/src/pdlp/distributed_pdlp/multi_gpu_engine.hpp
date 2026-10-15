@@ -141,7 +141,7 @@ struct multi_gpu_engine_t {
                   "distributed_transform_bufs: in_tuples / outs / sizes must "
                   "all have size == shards.size()");
     for_each_shard([&](auto& s, int r) {
-      cub::DeviceTransform::Transform(in_tuples[r], outs[r], sizes[r], op, s.stream.view().get());
+      cub::DeviceTransform::Transform(in_tuples[r], outs[r], sizes[r], op, s.stream.value());
     });
   }
 
@@ -346,9 +346,8 @@ struct multi_gpu_engine_t {
                  "set_scalar_on_master_and_shards requires set_master(...) to have been called");
     auto master_stream = master_pdlp_->get_handle_ptr()->get_stream();
     raft::copy(ptr_access(*master_pdlp_), &value, 1, master_stream);
-    for_each_shard([&](auto& shard) {
-      raft::copy(ptr_access(*shard.sub_pdlp), &value, 1, shard.stream.view());
-    });
+    for_each_shard(
+      [&](auto& shard) { raft::copy(ptr_access(*shard.sub_pdlp), &value, 1, shard.stream); });
     master_pdlp_->get_handle_ptr()->sync_stream(master_stream);
     synchronize_shards();
   }

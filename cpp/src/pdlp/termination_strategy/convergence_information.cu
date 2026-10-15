@@ -244,7 +244,7 @@ void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
   engine.for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
     const auto& problem =
       *s.sub_pdlp->get_current_termination_strategy().get_convergence_information().problem_ptr;
-    const auto stream = s.stream.view();
+    const cuda::stream_ref stream = s.stream;
     rmm::device_scalar<f_t> d_rhs_sq(zero_v<f_t>, stream);
 
     compute_sum_bounds_squared(problem.constraint_lower_bounds,

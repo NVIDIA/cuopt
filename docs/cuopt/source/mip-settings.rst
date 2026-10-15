@@ -85,25 +85,6 @@ under active development.
 
 We now describe parameter settings for the MIP solver.
 
-
-Heuristics Only
-^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run for the MIP problem. When set to true, only the primal
-bound is improved via the GPU. When set to false, both the GPU and CPU are used and
-the dual bound is improved on the CPU.
-
-.. note:: The default value is false.
-
-Scaling
-^^^^^^^
-
-``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem.
-
-* ``0``: Scaling is off.
-* ``1``: Scaling is on.
-* ``2``: Scaling is not applied to the objective (default).
-
 Absolute Tolerance
 ^^^^^^^^^^^^^^^^^^
 
@@ -153,6 +134,23 @@ If the Best Objective and the Dual Bound are both zero the gap is zero. If the b
 gap is infinity.
 
 .. note:: The default value is ``1e-4``.
+
+Heuristics Only
+^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run for the MIP problem. When set to true, only the primal
+bound is improved via the GPU. When set to false, both the GPU and CPU are used and the dual bound is improved on the CPU.
+
+.. note:: The default value is false.
+
+Scaling
+^^^^^^^
+
+``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem.
+
+* ``0``: Scaling is off.
+* ``1``: Scaling is on.
+* ``2``: Scaling is not applied to the objective (default).
 
 
 Node Limit
@@ -206,6 +204,46 @@ Knapsack Cuts
 The default value of ``-1`` (automatic) means that the solver will decide whether to use knapsack cuts based on the problem characteristics.
 Set this value to 1 to enable knapsack cuts.
 Set this value to 0 to disable knapsack cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Flow Cover Cuts
+^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_FLOW_COVER_CUTS`` controls whether to use flow cover cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable flow cover cuts.
+Set this value to ``1`` to enable flow cover cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Implied Bound Cuts
+^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_IMPLIED_BOUND_CUTS`` controls whether to use implied bound cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable implied bound cuts.
+Set this value to ``1`` to enable implied bound cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Clique Cuts
+^^^^^^^^^^^^
+
+``CUOPT_MIP_CLIQUE_CUTS`` controls whether to use clique cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable clique cuts.
+Set this value to ``1`` to enable clique cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Zero-Half Cuts
+^^^^^^^^^^^^^^
+
+``CUOPT_MIP_ZERO_HALF_CUTS`` controls whether to use zero-half cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable zero-half cuts.
+Set this value to ``1`` to enable zero-half cuts.
 
 .. note:: The default value is ``-1`` (automatic).
 
@@ -302,45 +340,6 @@ MIP Symmetry
 
 .. note:: The default value is ``-1`` (automatic).
 
-Flow Cover Cuts
-^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_FLOW_COVER_CUTS`` controls whether to use flow cover cuts.
-Set this value to ``-1`` (automatic) to let the solver decide.
-Set this value to ``0`` to disable flow cover cuts.
-Set this value to ``1`` to enable flow cover cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Implied Bound Cuts
-^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_IMPLIED_BOUND_CUTS`` controls whether to use implied bound cuts.
-Set this value to ``-1`` (automatic) to let the solver decide.
-Set this value to ``0`` to disable implied bound cuts.
-Set this value to ``1`` to enable implied bound cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Clique Cuts
-^^^^^^^^^^^^
-
-``CUOPT_MIP_CLIQUE_CUTS`` controls whether to use clique cuts.
-Set this value to ``-1`` (automatic) to let the solver decide.
-Set this value to ``0`` to disable clique cuts.
-Set this value to ``1`` to enable clique cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Zero-Half Cuts
-^^^^^^^^^^^^^^
-
-``CUOPT_MIP_ZERO_HALF_CUTS`` controls whether to use zero-half cuts.
-Set this value to ``-1`` (automatic) to let the solver decide.
-Set this value to ``0`` to disable zero-half cuts.
-Set this value to ``1`` to enable zero-half cuts.
-
-.. note:: The default value is ``-1`` (automatic).
 
 Objective Step
 ^^^^^^^^^^^^^^^
@@ -360,6 +359,58 @@ A semi-continuous variable is either zero or takes a value in the range ``[lower
 Set this to a positive value that is at least as large as the upper bound of any semi-continuous variable in the problem.
 
 .. note:: By default cuOpt derives the Big-M from the variable's upper bound.
+
+RENS
+^^^^
+
+``CUOPT_MIP_RENS`` controls whether the RENS (Relaxation Enforced Neighborhood Search) heuristic is used. RENS builds a sub-MIP from the solution of the LP relaxation:
+integer variables that already take integral values in the relaxation are fixed, and the remaining integer variables are restricted to their neighboring integer values.
+The sub-MIP is then solved to look for improved feasible solutions.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use RENS.
+Set this value to 0 to disable RENS.
+Set this value to 1 to enable RENS.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Mutation
+^^^^^^^^
+
+``CUOPT_MIP_MUTATION`` controls whether the mutation heuristic is used. Mutation fixes a random subset of the integer variables to their values in the current incumbent
+and solves the resulting sub-MIP. It only runs once an incumbent solution is available.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use mutation.
+Set this value to 0 to disable mutation.
+Set this value to 1 to enable mutation.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Primal Degenerate Pivots
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_PRIMAL_DEGENERATE_PIVOTS`` controls whether primal degenerate pivots are performed to improve reduced cost strengthening. These pivots attempt to move
+basic integer variables on their bound out of the basis. This can lead to more reduced cost bound strengthening. This setting only has an affect when
+``CUOPT_REDUCED_COST_STRENGTHENING`` is enabled.
+The default value of ``-1`` (automatic) means the solver will decide whether to do primal degenerate pivots.
+Set this value to 0 to disable primal degenerate pivots.
+Set this value to 1 to enable primal degenerate pivots.
+
+Dual Degenerate Pivots
+^^^^^^^^^^^^^^^^^^^^^^
+``CUOPT_MIP_DUAL_DEGENERATE_PIVOTS`` controls whether dual degenerate pivots are performed. These pivots attempt to remove fractional integer variables from the basis.
+This can lead to less integer infeasibilities.
+The default value of ``-1`` (automatic) means the solver will decide whether to do dual degenerate pivots.
+Set this value to 0 to disable dual degenerate pivots.
+Set this value to 1 to enable dual degenerate pivots at the root node.
+Set this value to 2 to enable dual degenerate pivots at all branch and bound nodes.
+
+Dual Degenerate Feasibility Pump
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``CUOPT_MIP_DUAL_DEGENERATE_FEASIBILITY_PUMP`` controls whether the dual degenerate feasibility pump is run. If the solution of the root relaxation is dual degenerate,
+an auxillarly LP is constructed that is restricted to the optimal face; the feasibility pump is used to alter the objective of the LP to attempt to reduce the number of integer infeasibilities
+in the relaxation solution. This LP is solved with the primal simplex method.
+The default value of ``-1`` (automatic) means the solver will decide whether to run the dual degenerate feasibility pump.
+Set this value to 0 to disable the dual degenerate feasibility pump.
+Set this value to 1 to enable the dual degenerate feasibility pump.
+
 
 Work Limit
 ^^^^^^^^^^

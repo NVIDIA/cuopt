@@ -64,7 +64,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
   f_t global_obj_sq   = f_t(0);
   for_each_shard([&](auto& s) {
     const auto& scaled = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
-    const auto stream  = s.stream.view();
+    const cuda::stream_ref stream = s.stream;
     rmm::device_scalar<f_t> d_bound_sq(zero_v<f_t>, stream);
     rmm::device_scalar<f_t> d_obj_sq(zero_v<f_t>, stream);
 
@@ -286,12 +286,12 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
     const i_t var_total  = s.rank_data.total_var_size;
     const i_t n_owned    = s.rank_data.owned_cstr_size;
 
-    q.emplace_back(static_cast<std::size_t>(cstr_total), s.stream.view());
-    z.emplace_back(static_cast<std::size_t>(cstr_total), s.stream.view());
-    atq.emplace_back(static_cast<std::size_t>(var_total), s.stream.view());
-    sigma_sq.emplace_back(s.stream.view());
-    norm_q.emplace_back(s.stream.view());
-    residual_norm.emplace_back(s.stream.view());
+    q.emplace_back(static_cast<std::size_t>(cstr_total), s.stream);
+    z.emplace_back(static_cast<std::size_t>(cstr_total), s.stream);
+    atq.emplace_back(static_cast<std::size_t>(var_total), s.stream);
+    sigma_sq.emplace_back(s.stream);
+    norm_q.emplace_back(s.stream);
+    residual_norm.emplace_back(s.stream);
     q_dn[r]   = make_dnvec<f_t>(static_cast<int64_t>(cstr_total), q.back().data());
     z_dn[r]   = make_dnvec<f_t>(static_cast<int64_t>(cstr_total), z.back().data());
     atq_dn[r] = make_dnvec<f_t>(static_cast<int64_t>(var_total), atq.back().data());
@@ -306,9 +306,8 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
                    s.rank_data.local_to_global_cstr.begin() + n_owned,
                    h_global_z.begin(),
                    h_owned_z.begin());
-    raft::copy(
-      z.back().data(), h_owned_z.data(), static_cast<std::size_t>(n_owned), s.stream.view());
-    thrust::fill(rmm::exec_policy_nosync(s.stream.view()),
+    raft::copy(z.back().data(), h_owned_z.data(), static_cast<std::size_t>(n_owned), s.stream);
+    thrust::fill(rmm::exec_policy_nosync(s.stream),
                  z.back().data() + n_owned,
                  z.back().data() + cstr_total,
                  f_t(0));
@@ -328,7 +327,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
     // q := z on the owned slice (the carried iterate).
     for_each_shard([&](auto& s, int r) {
       const i_t n_owned = s.rank_data.owned_cstr_size;
-      raft::copy(q[r].data(), z[r].data(), n_owned, s.stream.view());
+      raft::copy(q[r].data(), z[r].data(), n_owned, s.stream);
     });
 
     // ||q||₂ over the global OWNED cstr slice (one allreduce-sum + sqrt).
@@ -342,7 +341,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
                                       q[r].data(),
                                       n_owned,
                                       divide_by_device_scalar_t<f_t>{norm_q[r].data()},
-                                      s.stream.view().get());
+                                      s.stream.value());
     });
 
     // atq = A^T q  (fused halo-refresh of q + per-shard local SpMV).
@@ -362,7 +361,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
                                       q[r].data(),
                                       n_owned,
                                       residual_fma_neg_scalar_t<f_t>{sigma_sq[r].data()},
-                                      s.stream.view().get());
+                                      s.stream.value());
     });
 
     // Convergence check via global residual norm.
@@ -370,7 +369,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
     auto& s0 = *shards[0];
     raft::device_setter guard0(s0.device_id);
     f_t h_res{};
-    raft::copy(&h_res, residual_norm[0].data(), 1, s0.stream.view());
+    raft::copy(&h_res, residual_norm[0].data(), 1, s0.stream);
     s0.stream.synchronize();
     if (h_res < tolerance) break;
   }
@@ -379,7 +378,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
   auto& s0 = *shards[0];
   raft::device_setter guard0(s0.device_id);
   f_t sigma_sq_h{};
-  raft::copy(&sigma_sq_h, sigma_sq[0].data(), 1, s0.stream.view());
+  raft::copy(&sigma_sq_h, sigma_sq[0].data(), 1, s0.stream);
   s0.stream.synchronize();
 
   return sigma_sq_h;

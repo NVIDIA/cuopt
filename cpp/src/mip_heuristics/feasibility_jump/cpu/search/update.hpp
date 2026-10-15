@@ -219,9 +219,14 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
   // noise, so rebuild here rather than setting the deferred flag: the gate is in this same function
   // and would otherwise latch on the value this move just made unreliable. The row loop and the
   // assignment write are done, so the state a rebuild reads is consistent.
+  // The gate can only fire on a point with no violated rows, so the O(nnz) rebuild is only needed
+  // then. Rebuilding on every move made each move O(nnz) whenever |objective| exceeds
+  // breakthrough_move_epsilon / eps (~4.5e11), which stalled large models (e.g. millions of
+  // epigraph projections before the search loop, with no halt check in between).
   const f_t obj_resolution =
     std::numeric_limits<f_t>::epsilon() * std::max(std::fabs(obj_old), std::fabs(obj_y));
-  if (obj_resolution > (f_t)fj_cpu.settings.parameters.breakthrough_move_epsilon) {
+  if (obj_resolution > (f_t)fj_cpu.settings.parameters.breakthrough_move_epsilon &&
+      fj_cpu.violated_constraints.empty()) {
     recompute_slack(fj_cpu);
   }
   cuopt_func_call(audit_objective_update(fj_cpu, var_idx, old_val, delta, obj_old, obj_y));

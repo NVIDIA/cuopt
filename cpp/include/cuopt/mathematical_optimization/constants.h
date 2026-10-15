@@ -36,7 +36,7 @@
 #define CUOPT_NODE_LIMIT                            "node_limit"
 #define CUOPT_PDLP_SOLVER_MODE                      "pdlp_solver_mode"
 #define CUOPT_METHOD                                "method"
-#define CUOPT_CONCURRENT_NNZ_CUTOFF                 "concurrent_nnz_cutoff"
+#define CUOPT_LARGE_NNZ_THRESHOLD                   "large_nnz_threshold"
 #define CUOPT_PER_CONSTRAINT_RESIDUAL               "per_constraint_residual"
 #define CUOPT_SAVE_BEST_PRIMAL_SO_FAR               "save_best_primal_so_far"
 #define CUOPT_FIRST_PRIMAL_FEASIBLE                 "first_primal_feasible"
@@ -175,6 +175,9 @@
 /* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
 #define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
 
+/* @brief PDLP reduced-matrix mode */
+#define CUOPT_PDLP_HYPER_REDUCED_MATRIX "pdlp_hyper_reduced_matrix"
+
 /* @brief PDLP hyper-parameter: -1 solver-mode preset, 0 off, 1 on */
 #define CUOPT_PDLP_HYPER_PROJECT_INITIAL_PRIMAL "pdlp_hyper_project_initial_primal"
 
@@ -245,6 +248,11 @@
 #define CUOPT_PDLP_SINGLE_PRECISION  0
 #define CUOPT_PDLP_DOUBLE_PRECISION  1
 #define CUOPT_PDLP_MIXED_PRECISION   2
+
+/* @brief PDLP reduced-matrix mode constants */
+#define CUOPT_PDLP_REDUCED_MATRIX_DEFAULT          -1
+#define CUOPT_PDLP_REDUCED_MATRIX_OFF              0
+#define CUOPT_PDLP_REDUCED_MATRIX_COLUMN_REDUCTION 1
 
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0

@@ -1,54 +1,48 @@
+======
 Server
 ======
 
-The **NVIDIA cuOpt self-hosted server** is a **REST** (HTTP/JSON) service for integrations that speak HTTP. Use :doc:`quick-start` for deployment, :doc:`server-api/index` for the API, and :doc:`client-api/index` for clients (including cuopt-sh-client).
+.. note::
 
-For **gRPC remote execution** (Python, C API, ``cuopt_cli``, or custom clients to ``cuopt_grpc_server``), see :doc:`../cuopt-grpc/index` — it uses a different protocol and is not part of the HTTP REST surface.
+   The :doc:`legacy HTTP server <legacy-http-server>` is **deprecated**. It is
+   still shipped in 26.10 and will be removed in 26.12. It is being replaced
+   with a HTTP proxy server which forwards requests to ``cuopt_grpc_server``.
+   These pages describe the HTTP proxy server.
 
-.. image:: images/cuOpt-self-hosted.png
-  :width: 500
-  :align: center
+   For routing, the proxy server currently supports problems of up to about 5500 locations
+   when a travel time matrix is included, or about 8000 locations when it is
+   not. For a larger problem, use a local :func:`cuopt.routing.Solve` or the
+   :doc:`legacy HTTP server <../cuopt-server/legacy-http-server>`.
 
-Please refer to the following sections for REST deployment, API reference, and examples.
+The **NVIDIA cuOpt HTTP proxy server** provides a **REST** (HTTP/JSON)
+interface which forwards requests to ``cuopt_grpc_server``. Use
+:doc:`quick-start` for deployment, :doc:`server-api/index` for the API, and
+:doc:`client-api/index` for clients (including cuopt-sh-client).
+
+.. _legacy-http-differences:
+
+Deprecated Interfaces Not Provided by the Proxy Server
+======================================================
+
+This section lists HTTP behavior the proxy does not carry forward from the legacy server.
+
+* ``POST /cuopt/solution`` (an uploaded solution) returns 501.
+* On ``POST /cuopt/request``, the query parameters ``cache`` and ``reqId`` return 501.
+* A JSON list of LP problems (batch LP) returns 501.
+* ``DELETE /cuopt/request/*`` returns 501.
+* On ``DELETE /cuopt/request``, the query flags ``running``, ``queued``, and ``cached`` return 501.
+* ``initialId`` is a completed routing solution from an earlier request. An uploaded solution cannot be passed as ``initialId``. ``initialId`` on an LP or MILP request returns 501.
+* ``DELETE /cuopt/log/{id}`` is a no-op. The call returns 200 when the log can be fetched and leaves the file in place. ``cuopt_grpc_server`` removes that file when the job is deleted.
 
 .. toctree::
-   :caption: Quickstart
-   :name: Quickstart
-   :titlesonly:
+   :maxdepth: 2
+   :caption: In this section
+   :name: cuopt-server-contents
 
    quick-start.rst
-
-.. toctree::
-   :caption: Server API
-   :name: Server API
-   :titlesonly:
-
-   Server-API<server-api/index.rst>
-
-.. toctree::
-   :caption: Client API
-   :name: Client API
-   :titlesonly:
-
-   Client-API<client-api/index.rst>
-
-.. toctree::
-   :caption: Examples
-   :name: Examples
-   :titlesonly:
-
-   Examples<examples/index.rst>
-
-.. toctree::
-   :caption: CSP Guides
-   :name: CSP Guides
-   :titlesonly:
-
-   CSP-Guides<csp-guides/index.rst>
-
-.. toctree::
-   :caption: NIM Operator
-   :name: NIM Operator
-   :titlesonly:
-
-   NIM-Operator<nim-operator/index.rst>
+   advanced.rst
+   server-api/index.rst
+   client-api/index.rst
+   examples/index.rst
+   csp-guides/index.rst
+   nim-operator/index.rst

@@ -14,6 +14,11 @@ if [ -z "${PIP_CONSTRAINT:-}" ]; then
     exit 1
 fi
 
+if ! python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'; then
+    rapids-logger "SKIPPING pulp tests: current PuLP requires Python >= 3.12, found $(python --version 2>&1)"
+    exit 0
+fi
+
 git clone --depth 1 https://github.com/coin-or/pulp.git
 pushd ./pulp || exit 1
 

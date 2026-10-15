@@ -293,7 +293,6 @@ void compute_dual_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
 
-  y.resize(m, 0.0);
   std::vector<f_t> cB(m);
   for (i_t k = 0; k < m; ++k) {
     const i_t j = basic_list[k];
@@ -302,7 +301,7 @@ void compute_dual_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
   sparse_vector_t<i_t, f_t> cB_sparse(cB);
   sparse_vector_t<i_t, f_t> y_sparse(m, 1);
   ft.b_transpose_solve(cB_sparse, y_sparse);
-  y_sparse.scatter(y);
+  y_sparse.to_dense(y);
 
   // We want A'y + z = c
   // A = [ B N ]
