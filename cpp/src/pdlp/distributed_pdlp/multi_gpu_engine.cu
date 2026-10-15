@@ -116,13 +116,13 @@ template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::graph_capture_fork_to_shards(cuda::stream_ref master_stream)
 {
   graph_master_ready_event_->record(master_stream);
-  for_each_shard([&](auto& s) { graph_master_ready_event_->stream_wait(s.stream.view()); });
+  for_each_shard([&](auto& s) { graph_master_ready_event_->stream_wait(s.stream); });
 }
 
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::graph_capture_join_from_shards(cuda::stream_ref master_stream)
 {
-  for_each_shard([&](auto& s, int r) { graph_shard_ready_events_[r]->record(s.stream.view()); });
+  for_each_shard([&](auto& s, int r) { graph_shard_ready_events_[r]->record(s.stream); });
   for (auto& e : graph_shard_ready_events_) {
     e->stream_wait(master_stream);
   }
@@ -132,13 +132,13 @@ template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::sync_await_master(cuda::stream_ref master_stream)
 {
   sync_master_ready_event_->record(master_stream);
-  for_each_shard([&](auto& s) { sync_master_ready_event_->stream_wait(s.stream.view()); });
+  for_each_shard([&](auto& s) { sync_master_ready_event_->stream_wait(s.stream); });
 }
 
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::sync_await_shards(cuda::stream_ref master_stream)
 {
-  for_each_shard([&](auto& s, int r) { sync_shard_ready_events_[r]->record(s.stream.view()); });
+  for_each_shard([&](auto& s, int r) { sync_shard_ready_events_[r]->record(s.stream); });
   for (auto& e : sync_shard_ready_events_) {
     e->stream_wait(master_stream);
   }
@@ -167,7 +167,7 @@ void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
     for (int peer = 0; peer < nb; ++peer) {
       if (peer == r) continue;
       if (ax.send_indices[peer].size() == 0) continue;
-      thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
+      thrust::gather(rmm::exec_policy_nosync(s.stream),
                      ax.send_indices[peer].begin(),
                      ax.send_indices[peer].end(),
                      x.data(),
@@ -186,7 +186,7 @@ void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
                               nccl_data_type<f_t>(),
                               peer,
                               s.comm.get(),
-                              s.stream.view().get()));
+                              s.stream.value()));
     }
   });
   for_each_shard([&](auto& s, int r) {
@@ -200,7 +200,7 @@ void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
                               nccl_data_type<f_t>(),
                               peer,
                               s.comm.get(),
-                              s.stream.view().get()));
+                              s.stream.value()));
     }
   });
   CUOPT_NCCL_TRY(ncclGroupEnd());
@@ -272,7 +272,7 @@ void multi_gpu_engine_t<i_t, f_t>::gather_owned_to_master_bufs_impl(
     const std::size_t n_owned = shard_owned[r].size();
     if (n_owned == 0) return;
     std::vector<f_t> tmp(n_owned);
-    raft::copy(tmp.data(), shard_owned[r].data(), n_owned, s.stream.view());
+    raft::copy(tmp.data(), shard_owned[r].data(), n_owned, s.stream);
     // Sync so tmp is populated before the host scatter (and stays valid).
     s.stream.synchronize();
     thrust::scatter(
@@ -280,7 +280,7 @@ void multi_gpu_engine_t<i_t, f_t>::gather_owned_to_master_bufs_impl(
   });
 
   // Single H->D onto master's device (`stream` lives on the master device).
-  raft::copy(master_buf.data(), h_master.data(), master_buf.size(), stream.view());
+  raft::copy(master_buf.data(), h_master.data(), master_buf.size(), stream);
   stream.synchronize();
 }
 
@@ -318,7 +318,7 @@ void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_bufs(
                                  nccl_data_type<f_t>(),
                                  ncclSum,
                                  s.comm.get(),
-                                 s.stream.view().get()));
+                                 s.stream.value()));
   });
   CUOPT_NCCL_TRY(ncclGroupEnd());
 }
@@ -364,7 +364,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_dot_bufs(
                                                     b_bufs[r].data(),
                                                     1,
                                                     out_scalars[r].data_handle(),
-                                                    s.stream.view().get()));
+                                                    s.stream.value()));
   });
 
   allreduce_sum_inplace_bufs(out_scalars);
@@ -395,7 +395,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_bufs(
       out_scalars[r].data_handle(),
       1,
       [] __device__(f_t x) { return cuda::std::sqrt(x); },
-      s.stream.view().get());
+      s.stream.value());
   });
 }
 

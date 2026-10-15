@@ -313,8 +313,8 @@ void fj_t<i_t, f_t>::device_init(cuda::stream_ref stream)
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::climber_init(i_t climber_idx)
 {
-  auto& climber       = climbers[climber_idx];
-  auto climber_stream = climber->stream.view();
+  auto& climber                   = climbers[climber_idx];
+  cuda::stream_ref climber_stream = climber->stream;
   if (climber_idx == 0) climber_stream = handle_ptr->get_stream();
 
   return climber_init(climber_idx, climber_stream);
@@ -600,8 +600,8 @@ void fj_t<i_t, f_t>::set_fj_settings(fj_settings_t settings_)
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::run_step_device(i_t climber_idx, bool use_graph)
 {
-  auto& data          = *climbers[climber_idx];
-  auto climber_stream = data.stream.view();
+  auto& data                      = *climbers[climber_idx];
+  cuda::stream_ref climber_stream = data.stream;
 
   return run_step_device(climber_stream, climber_idx, use_graph);
 }
@@ -631,26 +631,26 @@ void fj_t<i_t, f_t>::load_balancing_score_update(cuda::stream_ref stream, i_t cl
   data.load_balancing_start_event.record(stream);
 
   if (pb_ptr->binary_indices.size() > 0) {
-    data.load_balancing_start_event.stream_wait(data.load_balancing_bin_stream.view());
+    data.load_balancing_start_event.stream_wait(data.load_balancing_bin_stream);
     // compute the scores for binary variables (unique delta)
     launch_load_balancing_compute_scores_binary<i_t, f_t>(grid_load_balancing_binary,
                                                           blocks_load_balancing_binary,
                                                           kernel_args,
-                                                          data.load_balancing_bin_stream.view());
-    data.load_balancing_bin_finished_event.record(data.load_balancing_bin_stream.view());
+                                                          data.load_balancing_bin_stream);
+    data.load_balancing_bin_finished_event.record(data.load_balancing_bin_stream);
   }
   if (pb_ptr->nonbinary_indices.size() > 0) {
-    data.load_balancing_start_event.stream_wait(data.load_balancing_nonbin_stream.view());
+    data.load_balancing_start_event.stream_wait(data.load_balancing_nonbin_stream);
     launch_load_balancing_mtm_compute_candidates<i_t, f_t>(
       grid_load_balancing_mtm_compute_candidates,
       blocks_load_balancing_mtm_compute_candidates,
       kernel_args,
-      data.load_balancing_nonbin_stream.view());
+      data.load_balancing_nonbin_stream);
     launch_load_balancing_mtm_compute_scores<i_t, f_t>(grid_load_balancing_mtm_compute_scores,
                                                        blocks_load_balancing_mtm_compute_scores,
                                                        kernel_args,
-                                                       data.load_balancing_nonbin_stream.view());
-    data.load_balancing_nonbin_finished_event.record(data.load_balancing_nonbin_stream.view());
+                                                       data.load_balancing_nonbin_stream);
+    data.load_balancing_nonbin_finished_event.record(data.load_balancing_nonbin_stream);
   }
 
   if (pb_ptr->binary_indices.size() > 0) data.load_balancing_bin_finished_event.stream_wait(stream);
@@ -804,7 +804,7 @@ void fj_t<i_t, f_t>::round_remaining_fractionals(
 {
   auto& data = *climbers[climber_idx];
 
-  auto climber_stream = data.stream.view();
+  cuda::stream_ref climber_stream = data.stream;
   if (climber_idx == 0) climber_stream = handle_ptr->get_stream();
 
   bool handle_fractionals_only = true;
@@ -840,7 +840,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution,
   auto& data = *climbers[climber_idx];
   auto v     = data.view();  // == climber_views[climber_idx]
 
-  auto climber_stream = data.stream.view();
+  cuda::stream_ref climber_stream = data.stream;
   if (climber_idx == 0) climber_stream = handle_ptr->get_stream();
 
   auto [grid_resetmoves, blocks_resetmoves] = resetmoves_launch_dims;

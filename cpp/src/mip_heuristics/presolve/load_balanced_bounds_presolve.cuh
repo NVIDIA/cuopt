@@ -61,7 +61,7 @@ class managed_stream_pool {
   {
     int stream_id = (next_stream++) % streams_.size();
     end_unsycned  = std::max(stream_id, end_unsycned);
-    return streams_[stream_id].view();
+    return streams_[stream_id];
   }
 
   /**
@@ -76,7 +76,7 @@ class managed_stream_pool {
   void wait_issued_on_event(cudaEvent_t e)
   {
     for (int i = 0; i < end_unsycned + 1; ++i) {
-      cudaStreamWaitEvent(streams_[i].view().get(), e, 0);
+      cudaStreamWaitEvent(streams_[i].value(), e, 0);
     }
   }
 
@@ -95,7 +95,7 @@ class managed_stream_pool {
       cudaEventCreate(&e);
     }
     for (int i = 0; i < end_unsycned + 1; ++i) {
-      cudaEventRecord(events[i], streams_[i].view().get());
+      cudaEventRecord(events[i], streams_[i].value());
     }
     return events;
   }
@@ -104,7 +104,7 @@ class managed_stream_pool {
   {
     for (int i = 0; i < end_unsycned + 1; ++i) {
       streams_[i].synchronize();
-      RAFT_CHECK_CUDA(streams_[i].view().get());
+      RAFT_CHECK_CUDA(streams_[i].value());
     }
     end_unsycned = -1;
     next_stream  = 0;
