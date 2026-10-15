@@ -128,6 +128,9 @@ for DEP in "${DEPENDENCIES[@]}"; do
   done
 done
 
+# Update nightly Docker tags in README.md
+sed_runner 's|nvidia/cuopt:[0-9]\+\.[0-9]\+\.[0-9]\+a-|nvidia/cuopt:'${DOCKER_TAG}'a-|g' README.md
+
 # Update the Java API version. Maven has no notion of the zero-padded RAPIDS patch field, and a
 # padded patch would sort oddly against a later unpadded one, so the padding is stripped here.
 # This matches how cuvs versions its Java artifact.
