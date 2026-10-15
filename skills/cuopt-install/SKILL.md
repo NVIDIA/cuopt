@@ -108,8 +108,8 @@ conda install -c rapidsai -c conda-forge -c nvidia cuopt-server cuopt-sh-client
 ### Docker
 
 ```bash
-docker pull nvidia/cuopt:latest-cuda12.9-py3.13
-docker run --gpus all -it --rm -p 8000:8000 nvidia/cuopt:latest-cuda12.9-py3.13
+docker pull nvidia/cuopt:latest-cu12
+docker run --gpus all -it --rm -p 8000:8000 nvidia/cuopt:latest-cu12
 ```
 
 ### Verify

@@ -151,7 +151,7 @@ python -c "import rmm; print(f'rmm: {rmm.__version__}')"
 
 ```bash
 # Pull and run
-docker run --gpus all --rm nvidia/cuopt:latest-cuda12.9-py3.13 python -c "
+docker run --gpus all --rm nvidia/cuopt:latest-cu12 python -c "
 import cuopt
 print(f'cuOpt version: {cuopt.__version__}')
 from cuopt import routing
