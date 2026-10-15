@@ -13,7 +13,6 @@
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>  // For pdlp_termination_status_t
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 
 #include <cuopt/mathematical_optimization/utilities/cython_types.hpp>
@@ -332,7 +331,7 @@ class lp_solution_interface_t : public optimization_problem_solution_interface_t
   /**
    * @brief Convert to Python/Cython return type (polymorphic version)
    * This method allows backend-agnostic conversion to Python return structs.
-   * GPU solutions populate the gpu_solutions_t variant; CPU solutions populate cpu_solutions_t.
+   * GPU solutions populate the lp_gpu_ptr alternative; CPU solutions populate cpu_solutions_t.
    */
   virtual cuopt::cython::linear_programming_ret_t to_python_lp_ret() = 0;
 };
@@ -471,7 +470,7 @@ class mip_solution_interface_t : public optimization_problem_solution_interface_
   /**
    * @brief Convert to Python/Cython return type (polymorphic version)
    * This method allows backend-agnostic conversion to Python return structs.
-   * GPU solutions populate the gpu_buffer variant; CPU solutions populate cpu_buffer.
+   * GPU solutions populate the mip_gpu_ptr alternative; CPU solutions populate cpu_buffer.
    */
   virtual cuopt::cython::mip_ret_t to_python_mip_ret() = 0;
 };

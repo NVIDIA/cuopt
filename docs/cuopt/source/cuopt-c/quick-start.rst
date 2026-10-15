@@ -13,4 +13,6 @@ Choose your install method below; the selector is pre-set for the C API (libcuop
 .. install-selector::
    :default-iface: c
 
+For pip/Conda, the selector's Component option installs a single piece of ``libcuopt`` (client, mathopt, or routing) instead of the full library, for callers who only need one.
+
 Please visit examples under each section to learn how to use the cuOpt C API.

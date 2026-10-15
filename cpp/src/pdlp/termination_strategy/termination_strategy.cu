@@ -188,7 +188,7 @@ void pdlp_termination_strategy_t<i_t, f_t>::evaluate_termination_criteria(
   check_termination_criteria();
 
   // Sync to make sure the termination status is updated
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 }
 
 template <typename i_t, typename f_t>
@@ -420,13 +420,13 @@ void pdlp_termination_strategy_t<i_t, f_t>::check_termination_criteria()
 #endif
   const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
   check_termination_criteria_kernel<i_t, f_t>
-    <<<grid_size, block_size, 0, stream_view_>>>(convergence_information_.view(),
-                                                 infeasibility_information_.view(),
-                                                 make_span(termination_status_),
-                                                 settings_.tolerances,
-                                                 settings_.detect_infeasibility,
-                                                 settings_.per_constraint_residual,
-                                                 climber_strategies_.size());
+    <<<grid_size, block_size, 0, stream_view_.get()>>>(convergence_information_.view(),
+                                                       infeasibility_information_.view(),
+                                                       make_span(termination_status_),
+                                                       settings_.tolerances,
+                                                       settings_.detect_infeasibility,
+                                                       settings_.per_constraint_residual,
+                                                       climber_strategies_.size());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -499,7 +499,7 @@ void pdlp_termination_strategy_t<i_t, f_t>::fill_gpu_terms_stats(i_t number_of_i
   const bool accept_primal_feasible =
     settings_.first_primal_feasible || settings_.all_primal_feasible;
   const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
-  fill_gpu_terms_stats_kernel<i_t, f_t><<<grid_size, block_size, 0, stream_view_>>>(
+  fill_gpu_terms_stats_kernel<i_t, f_t><<<grid_size, block_size, 0, stream_view_.get()>>>(
     make_span(termination_status_),
     make_span(original_index_),
     gpu_batch_additional_termination_information_.view(),
@@ -509,7 +509,7 @@ void pdlp_termination_strategy_t<i_t, f_t>::fill_gpu_terms_stats(i_t number_of_i
     settings_.per_constraint_residual,
     force_all);
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 }
 
 template <typename i_t, typename f_t>
@@ -555,7 +555,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
   std::vector<pdlp_termination_status_t>&& termination_status,
   bool deep_copy)
 {
-  // Skip the size checks on the distributed master: its pdhg_solver_ is built from a
+  // Skip the size checks on the multi-GPU master: its pdhg_solver_ is built from a
   // shape-0 placeholder while termination_strategy is built from the full problem size
   if (!current_pdhg_solver.is_distributed_master()) {
     cuopt_assert(
@@ -566,7 +566,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
       "Dual iterate size mismatch");
   }
 
-  // In distributed PDLP, gather solutions from the shards to the master.
+  // In multi-GPU PDLP, gather solutions from the shards to the master.
   if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
     const bool is_current_live_iterate =
       (&primal_iterate == &current_pdhg_solver.get_potential_next_primal_solution()) ||
@@ -641,7 +641,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
     }
   }
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 
   if (deep_copy) {
     cuopt_assert(

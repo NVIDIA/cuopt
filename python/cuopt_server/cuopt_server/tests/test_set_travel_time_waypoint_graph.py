@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
@@ -78,7 +78,7 @@ def test_invalid_topology_routes(cuoptproc):  # noqa
     assert response_set_edges.status_code == 400
     assert response_set_edges.json() == {
         "error": "Graph topology of primary and travel time waypoint graphs must match. Travel Time waypoint graph edges must match primary waypoint graph edges",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     test_data["travel_time_waypoint_graph_data"] = graph_data_mismatch_offsets
@@ -90,7 +90,7 @@ def test_invalid_topology_routes(cuoptproc):  # noqa
     assert response_set_offsets.status_code == 400
     assert response_set_offsets.json() == {
         "error": "Graph topology of primary and travel time waypoint graphs must match. Travel Time waypoint graph offsets must match primary waypoint graph offsets",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 

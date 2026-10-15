@@ -55,7 +55,7 @@ data_model_view_t<i_t, f_t> mps_writer_t<i_t, f_t>::create_view(
   const auto& A_values  = model.get_constraint_matrix_values();
   const auto& A_indices = model.get_constraint_matrix_indices();
   const auto& A_offsets = model.get_constraint_matrix_offsets();
-  if (!A_values.empty()) {
+  if (!A_offsets.empty()) {
     view.set_csr_constraint_matrix(A_values.data(),
                                    static_cast<i_t>(A_values.size()),
                                    A_indices.data(),
@@ -150,6 +150,11 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     n_constraints = problem_.get_constraint_bounds().size();
   else
     n_constraints = problem_.get_constraint_lower_bounds().size();
+  const auto& A_offsets = problem_.get_constraint_matrix_offsets();
+  mps_parser_expects(A_offsets.size() == static_cast<size_t>(n_constraints) + 1 ||
+                       (n_constraints == 0 && A_offsets.empty()),
+                     error_type_t::ValidationError,
+                     "Constraint matrix offsets must have one entry per row plus one");
   const auto& quadratic_constraints = problem_.get_quadratic_constraints();
   const i_t n_quadratic_constraints = static_cast<i_t>(quadratic_constraints.size());
 
@@ -229,8 +234,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   // save coefficients with full precision
   mps_file << std::setprecision(std::numeric_limits<f_t>::max_digits10);
 
-  // NAME section
-  mps_file << "NAME          " << problem_.get_problem_name() << "\n";
+  const std::string& pname = problem_.get_problem_name();
+  mps_file << "NAME          " << (pname.empty() ? "cuopt" : pname) << "\n";
 
   if (problem_.get_sense()) { mps_file << "OBJSENSE\n MAXIMIZE\n"; }
 
@@ -358,16 +363,10 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
     std::string row_name =
       k < problem_.get_row_names().size() ? problem_.get_row_names()[k] : "R" + std::to_string(k);
-    f_t rhs{0};
-    if (constraint_bounds.size() > 0)
-      rhs = constraint_bounds[k];
-    else if (std::isinf(constraint_lower_bounds[k])) {
-      rhs = constraint_upper_bounds[k];
-    } else if (std::isinf(constraint_upper_bounds[k])) {
-      rhs = constraint_lower_bounds[k];
-    } else {
-      rhs = constraint_lower_bounds[k];
-    }
+    // Match the sense emitted in ROWS, including L rows with a finite range.
+    char const type =
+      linear_row_type_from_bounds(constraint_lower_bounds[k], constraint_upper_bounds[k]);
+    f_t const rhs = type == 'L' ? constraint_upper_bounds[k] : constraint_lower_bounds[k];
     if (std::isfinite(rhs) && rhs != 0.0) {
       mps_file << "    RHS1      " << row_name << " " << rhs << "\n";
     }
@@ -397,7 +396,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
         mps_file << "RANGES\n";
         has_ranges = true;
       }
-      std::string row_name = "R" + std::to_string(i);
+      std::string row_name =
+        i < problem_.get_row_names().size() ? problem_.get_row_names()[i] : "R" + std::to_string(i);
       mps_file << "    RNG1      " << row_name << " "
                << (constraint_upper_bounds[i] - constraint_lower_bounds[i]) << "\n";
     }
@@ -498,10 +498,11 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
   // QCMATRIX sections for quadratic constraints (QCQP)
   if (problem_.has_quadratic_constraints()) {
+    coo_canonicalization_scratch_t<i_t, f_t> qc_scratch;
     for (const auto& qc : problem_.get_quadratic_constraints()) {
       mps_file << "QCMATRIX   " << qc.constraint_row_name << "\n";
       typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t qc_canon = qc;
-      canonicalize_coo_matrix(qc_canon.rows, qc_canon.cols, qc_canon.vals);
+      canonicalize_coo_matrix(qc_canon.rows, qc_canon.cols, qc_canon.vals, qc_scratch);
       const i_t nnz = static_cast<i_t>(qc_canon.vals.size());
       for (i_t p = 0; p < nnz; ++p) {
         const i_t i              = qc_canon.rows[p];

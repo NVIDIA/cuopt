@@ -15,6 +15,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/device_mdspan.hpp>
 #include <raft/core/device_setter.hpp>
@@ -61,11 +62,11 @@ constexpr ncclDataType_t nccl_data_type()
 }
 
 /**
- * @brief Distributed PDLP terminology and ownership model.
+ * @brief Multi-GPU PDLP terminology and ownership model.
  *
  * - Master: the top-level `pdlp_solver_t` that owns the global, developer-facing
  *   solve.
- * - Multi-GPU engine: the host-side coordinator for one distributed solve. It
+ * - Multi-GPU engine: the host-side coordinator for one multi-GPU solve. It
  *   owns all shards and centralizes collective operations.
  * - Rank: Rank `r`, partition `r`, NCCL rank `r`, and `shards[r]` refer to the
  *   same worker on CUDA device `r`. A peer is any other rank participating in
@@ -140,7 +141,7 @@ struct multi_gpu_engine_t {
                   "distributed_transform_bufs: in_tuples / outs / sizes must "
                   "all have size == shards.size()");
     for_each_shard([&](auto& s, int r) {
-      cub::DeviceTransform::Transform(in_tuples[r], outs[r], sizes[r], op, s.stream.view());
+      cub::DeviceTransform::Transform(in_tuples[r], outs[r], sizes[r], op, s.stream.value());
     });
   }
 
@@ -345,14 +346,13 @@ struct multi_gpu_engine_t {
                  "set_scalar_on_master_and_shards requires set_master(...) to have been called");
     auto master_stream = master_pdlp_->get_handle_ptr()->get_stream();
     raft::copy(ptr_access(*master_pdlp_), &value, 1, master_stream);
-    for_each_shard([&](auto& shard) {
-      raft::copy(ptr_access(*shard.sub_pdlp), &value, 1, shard.stream.view());
-    });
+    for_each_shard(
+      [&](auto& shard) { raft::copy(ptr_access(*shard.sub_pdlp), &value, 1, shard.stream); });
     master_pdlp_->get_handle_ptr()->sync_stream(master_stream);
     synchronize_shards();
   }
 
-  // -------- Distributed dot / L2 norm -------------------------------------
+  // -------- Multi-GPU dot / L2 norm ---------------------------------------
   // Computes the dot product of two vectors for each shard. Returns the global result in
   // out_scalars.
   void distributed_dot_bufs(std::vector<raft::device_span<f_t>> const& a_bufs,
@@ -436,28 +436,28 @@ struct multi_gpu_engine_t {
   }
 
   // -------- High-level: A @ x and A_T @ y ---------------------------------
-  // Distributed counterpart to pdhg_solver_t::compute_A_x() / compute_At_y().
+  // Multi-GPU counterpart to pdhg_solver_t::compute_A_x() / compute_At_y().
   void distributed_compute_A_x();
   void distributed_compute_At_y();
 
-  // Distributed A^T @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
+  // Multi-GPU A^T @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
   // (cstr axis, since the input is cstr-shaped), then dispatches each shard's
   // local spmv_At_into that reads from in_descs[r] and writes into out_descs[r].
   void distributed_spmv_At(std::vector<rmm::device_uvector<f_t>>& in_bufs,
-                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
-                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs);
+                           std::vector<cusparse_dn_vec_uptr>& in_descs,
+                           std::vector<cusparse_dn_vec_uptr>& out_descs);
 
-  // Distributed A @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
+  // Multi-GPU A @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
   // (var axis, since the input is var-shaped), then dispatches each shard's
   // local spmv_A_into. Caller owns / sizes the descriptor vectors as above
   // (in_descs to var_total, out_descs to cstr_total).
   void distributed_spmv_A(std::vector<rmm::device_uvector<f_t>>& in_bufs,
-                          std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
-                          std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs);
+                          std::vector<cusparse_dn_vec_uptr>& in_descs,
+                          std::vector<cusparse_dn_vec_uptr>& out_descs);
 
   // -------- High-level algorithms (defined in distributed_algorithms.cu) ---
   // Refreshes the halo copies of the cumulative variable + constraint scalings on
-  // every shard. Used by the matrix-scaling passes (Ruiz, Pock-Chambolle)
+  // every shard. Used by the matrix-scaling passes (Curtis-Reid, Ruiz, Pock-Chambolle)
   void refresh_halo_cummulative_scalings();
 
   // Global bound/objective rescaling: allreduce the owned partial squared norms
@@ -465,18 +465,25 @@ struct multi_gpu_engine_t {
   // scalar on every shard.
   void distributed_bound_objective_rescaling(f_t c_scaling_weight);
 
-  // Distributed Ruiz inf-scaling (num_iter passes). Each shard computes both its
+  // Multi-GPU Curtis-Reid prescaling. Each iteration is a shard-local row log-mean,
+  // a constraint-halo exchange of that log-scale, a shard-local column log-mean, and a
+  // variable-halo exchange. After the last iteration every shard folds
+  // cumulative *= exp(clamp(log_scale)) and the cumulative halo is refreshed.
+  void distributed_curtis_reid_scaling(int num_iter, i_t n_global_vars);
+
+  // Multi-GPU Ruiz inf-scaling (num_iter passes). Each shard computes both its
   // owned-row and owned-column inf-norms locally then broadcasts the cumulative scalings to all
   // shards.
   void distributed_ruiz_inf_scaling(int num_iter, i_t n_global_vars);
 
-  // Distributed Pock-Chambolle scaling (one pass), mirroring the single-GPU
+  // Multi-GPU Pock-Chambolle scaling (one pass), mirroring the single-GPU
   // pock_chambolle_scaling.
   void distributed_pock_chambolle_scaling(f_t alpha, i_t n_global_vars);
 
-  // Full distributed scaling entry point. Mirrors what scale_problem() does in
+  // Full multi-GPU scaling entry point. Mirrors what scale_problem() does in
   // single-GPU by orchestrating:
-  //   - Ruiz inf-scaling -> populates cumulative row/col scalings
+  //   - Curtis-Reid prescaling (skipped inside MIP) -> populates cumulative row/col scalings
+  //   - Ruiz inf-scaling -> same
   //   - Pock-Chambolle scaling -> same
   //   - per-shard apply_cummulative_scaling_to_problem()
   //   - global bound/objective rescaling via distributed_bound_objective_rescaling
@@ -484,21 +491,21 @@ struct multi_gpu_engine_t {
                            i_t n_global_vars,
                            bool inside_mip);
 
-  // Distributed sigma_max(A)^2 via power iteration (used to seed the initial
+  // Multi-GPU sigma_max(A)^2 via power iteration (used to seed the initial
   // step size). Returns the square of the largest singular value of the scaled
   // constraint matrix.
   f_t distributed_max_singular_value_squared(i_t n_global_cstrs,
                                              int max_iterations = 5000,
                                              f_t tolerance      = 1e-4);
 
-  // Distributed counterpart of pdlp_solver_t::compute_initial_step_size.
+  // Multi-GPU counterpart of pdlp_solver_t::compute_initial_step_size.
   void distributed_compute_initial_step_size(pdlp_hyper_params_t const& hyper_params,
                                              i_t n_global_cstrs,
                                              f_t scaling_factor,
                                              int max_iterations,
                                              f_t tolerance);
 
-  // Distributed counterpart of pdlp_solver_t::compute_initial_primal_weight.
+  // Multi-GPU counterpart of pdlp_solver_t::compute_initial_primal_weight.
   // Writes primal_weight = best_primal_weight = 1 onto master + every shard,
   // mirroring the Stable3-shaped short-circuit
   // (!initial_primal_weight_combined_bounds && bound_objective_rescaling).
@@ -536,18 +543,18 @@ struct multi_gpu_engine_t {
   std::vector<std::unique_ptr<cuopt::event_handler_t>> sync_shard_ready_events_;
 
   // Forks master stream to shards, so that the captured graph can see the work on the shards
-  void graph_capture_fork_to_shards(rmm::cuda_stream_view master_stream);
+  void graph_capture_fork_to_shards(cuda::stream_ref master_stream);
 
   // Joins shards back to master stream for correct graph capture
-  void graph_capture_join_from_shards(rmm::cuda_stream_view master_stream);
+  void graph_capture_join_from_shards(cuda::stream_ref master_stream);
 
   // Functionnaly same as graph_capture_fork_to_shards but on a different event to avoid race
   // conditions Can be used as a way to sync shards with master stream
-  void sync_await_master(rmm::cuda_stream_view master_stream);
+  void sync_await_master(cuda::stream_ref master_stream);
 
   // Same as sync_await_master
   // Can be used as a way to sync master stream with shards
-  void sync_await_shards(rmm::cuda_stream_view master_stream);
+  void sync_await_shards(cuda::stream_ref master_stream);
 };
 
 }  // namespace cuopt::mathematical_optimization::pdlp

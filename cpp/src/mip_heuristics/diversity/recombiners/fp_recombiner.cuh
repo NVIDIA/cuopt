@@ -11,9 +11,9 @@
 
 #include <mip_heuristics/local_search/feasibility_pump/feasibility_pump.cuh>
 #include <mip_heuristics/local_search/rounding/constraint_prop.cuh>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mip_heuristics/solution/solution.cuh>
-#include <utilities/seed_generator.cuh>
 
 #include <thrust/partition.h>
 
@@ -29,7 +29,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
                   line_segment_search_t<i_t, f_t>& line_segment_search,
                   rmm::device_uvector<f_t>& lp_optimal_solution,
                   const raft::handle_t* handle_ptr)
-    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr),
+    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr, rng_id_t::recombiner_fp),
       vars_to_fix(n_vars, handle_ptr->get_stream()),
       fp(context, fj, constraint_prop, line_segment_search, lp_optimal_solution)
   {
@@ -53,7 +53,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     i_t n_vars_from_other = n_different_vars;
     if (n_vars_from_other > (i_t)fp_recombiner_config_t::max_n_of_vars_from_other) {
       n_vars_from_other = fp_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
+      thrust::default_random_engine g{this->rng.next_u32()};
       thrust::shuffle(a.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + n_different_vars,
@@ -103,7 +103,30 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
       fp.resize_vectors(*offspring.problem_ptr, offspring.handle_ptr);
       fp.config.alpha                 = fp_recombiner_config_t::alpha;
       fp.config.alpha_decrease_factor = fp_recombiner_config_t::alpha_decrease_factor;
-      bool is_feasible                = fp.run_single_fp_descent(offspring);
+      bool is_feasible;
+      fp.improvement_callback = {};
+      if (this->context.solution_publication.enabled()) {
+        solution_t<i_t, f_t> publication_solution(*orig_problem_ptr);
+        publication_solution.copy_new_assignment(old_assignment);
+        rmm::device_uvector<f_t> reduced_assignment(fixed_problem.n_variables,
+                                                    offspring.handle_ptr->get_stream());
+        fp.improvement_callback = [this, &publication_solution, &reduced_assignment, &variable_map](
+                                    f_t, const std::vector<f_t>& h_reduced_assignment) {
+          cuopt_assert(h_reduced_assignment.size() == reduced_assignment.size(),
+                       "Fixed-problem assignment size mismatch");
+          cuopt::device_copy(reduced_assignment,
+                             h_reduced_assignment,
+                             publication_solution.handle_ptr->get_stream());
+          publication_solution.unfix_variables(reduced_assignment, variable_map);
+          auto assignment = publication_solution.get_host_assignment();
+          this->context.solution_publication.publish_if_better(
+            publication_solution.problem_ptr, assignment, publication_solution.get_objective());
+        };
+        is_feasible             = fp.run_single_fp_descent(offspring);
+        fp.improvement_callback = {};
+      } else {
+        is_feasible = fp.run_single_fp_descent(offspring);
+      }
       if (is_feasible) { CUOPT_LOG_DEBUG("FP recombiner found feasible!"); }
       CUOPT_LOG_DEBUG("FP completed after recombiner!");
       offspring.handle_ptr->sync_stream();
@@ -114,7 +137,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     }
     // unfix the assignment on given result no matter if it is feasible
     offspring.unfix_variables(fixed_assignment, variable_map);
-    if (!run_fp) { offspring.round_nearest(); }
+    if (!run_fp) { offspring.round_nearest(this->rng.next_u64()); }
     cuopt_assert(offspring.test_number_all_integer(), "All must be integers after offspring");
     offspring.compute_feasibility();
     bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);

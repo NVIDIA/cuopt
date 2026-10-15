@@ -5,13 +5,13 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <pdlp/utilities/ping_pong_graph.cuh>
 
 namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t>
-ping_pong_graph_t<i_t>::ping_pong_graph_t(rmm::cuda_stream_view stream_view,
-                                          bool is_legacy_batch_mode)
+ping_pong_graph_t<i_t>::ping_pong_graph_t(cuda::stream_ref stream_view, bool is_legacy_batch_mode)
   : stream_view_(stream_view), is_legacy_batch_mode_(is_legacy_batch_mode)
 {
 }

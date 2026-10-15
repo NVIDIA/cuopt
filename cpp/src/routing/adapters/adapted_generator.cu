@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -72,7 +72,7 @@ void generate_tsp_solution(adapted_sol_t<i_t, f_t, REQUEST>& sol,
   for (i_t i = 0; i < (i_t)node_infos.size(); ++i) {
     node_infos[i] = sol.problem->get_node_info_of_node(i + sol.problem->order_info.depot_included_);
   }
-  std::mt19937 rng(seed_generator::get_seed());
+  std::mt19937 rng(sol.problem->seed_gen.get_seed());
   std::shuffle(node_infos.begin(), node_infos.end(), rng);
   std::vector<std::pair<i_t, std::vector<NodeInfo<>>>> routes_to_add;
   routes_to_add.push_back({0, node_infos});

@@ -61,6 +61,16 @@ jobs:
         run: |
           git rev-parse HEAD > ./ci/docker/context/COMMIT_SHA
           git log -n1 --pretty='%ct' > ./ci/docker/context/COMMIT_TIME
+      # cpp/include and cpp/src aren't in the pip wheel; cuopt_jni.cpp needs both (the latter for
+      # internal headers like pdlp/cuopt_c_internal.hpp) to build the JNI library in-image.
+      - name: Stage Java sources for the in-image dynamic build
+        run: |
+          mkdir -p ./ci/docker/context/repo
+          cp -r ./java ./ci/docker/context/repo/java
+          mkdir -p ./ci/docker/context/repo/cpp
+          cp -r ./cpp/include ./ci/docker/context/repo/cpp/include
+          cp -r ./cpp/src ./ci/docker/context/repo/cpp/src
+          cp ./ci/docker/build_java_dynamic.sh ./ci/docker/context/build_java_dynamic.sh
       - name: Login to NGC
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:

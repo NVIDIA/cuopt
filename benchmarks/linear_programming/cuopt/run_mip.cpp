@@ -9,11 +9,14 @@
 #include "miplib2017_bks.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
+#include <mutex>
 #include <utilities/logger.hpp>
 
 #include <raft/core/handle.hpp>
@@ -30,11 +33,14 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <argparse/argparse.hpp>
+#include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <queue>
 #include <stdexcept>
 #include <string>
+#include <syncstream>
 #include <vector>
 
 #include "initial_problem_check.hpp"
@@ -136,6 +142,111 @@ std::vector<std::vector<double>> read_solution_from_dir(const std::string file_p
   return initial_solutions;
 }
 
+struct incumbent_record_t {
+  std::vector<double> solution;
+  double reported_objective;
+  double work_timestamp;
+  double wall_time;
+  bool from_lns;
+};
+
+class incumbent_tracker_t : public cuopt::internals::get_solution_callback_with_data_t {
+ public:
+  incumbent_tracker_t(std::chrono::steady_clock::time_point start_time, size_t num_variables)
+    : start_time_(start_time), num_variables_(num_variables)
+  {
+  }
+
+  void get_solution_with_data(
+    void* data,
+    void* cost,
+    void* /*solution_bound*/,
+    void* /*user_data*/,
+    const cuopt::internals::solution_callback_data_t& callback_data) override
+  {
+    record_solution(
+      static_cast<double*>(data), *static_cast<double*>(cost), callback_data.from_lns);
+  }
+
+  void record_solution(const double* solution, double objective, bool from_lns)
+  {
+    std::lock_guard<std::mutex> lock(records_mutex_);
+    const auto now = std::chrono::steady_clock::now();
+    records_.push_back({std::vector<double>(solution, solution + num_variables_),
+                        objective,
+                        0.0,
+                        std::chrono::duration<double>(now - start_time_).count(),
+                        from_lns});
+  }
+
+  void write_csv(
+    const std::string& path,
+    const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& problem,
+    const cuopt::mathematical_optimization::mip_solver_settings_t<int, double>::tolerances_t&
+      tolerances,
+    int num_cpu_threads) const
+  {
+    std::ofstream file(path);
+    if (!file.is_open()) {
+      std::cerr << "Error opening incumbent file " << path << std::endl;
+      return;
+    }
+    constexpr double bks_rounding_threshold = 0.5e-6;
+    const auto bks = cuopt_bench::lookup_miplib_bks(problem.get_problem_name());
+    file << "index,objective,work_timestamp,wall_time_s,valid,origin\n";
+    std::vector<char> valid(records_.size());
+#pragma omp parallel for schedule(static) num_threads(num_cpu_threads)
+    for (size_t i = 0; i < records_.size(); ++i) {
+      valid[i] = verify_solution(
+        problem, records_[i].solution, records_[i].reported_objective, tolerances, i);
+      if (bks.has_value()) {
+        const double objective      = records_[i].reported_objective;
+        const double scale          = std::max({std::abs(objective), std::abs(*bks), 1.0});
+        const double normalized_gap = (objective - *bks) / scale;
+        if (normalized_gap < -bks_rounding_threshold) {
+          std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << i << " objective "
+                                      << objective << " is below MIPLIB BKS " << *bks << "\n";
+          valid[i] = 0;
+        }
+      }
+    }
+    for (size_t i = 0; i < records_.size(); ++i) {
+      file << i << "," << std::setprecision(15) << records_[i].reported_objective << ","
+           << records_[i].work_timestamp << "," << std::setprecision(17) << records_[i].wall_time
+           << "," << int(valid[i]) << "," << (records_[i].from_lns ? "lns" : "solver") << "\n";
+    }
+  }
+
+  size_t size() const { return records_.size(); }
+
+ private:
+  std::chrono::steady_clock::time_point start_time_;
+  size_t num_variables_;
+  std::vector<incumbent_record_t> records_;
+  std::mutex records_mutex_;
+};
+
+static void write_incumbent_trace(
+  const incumbent_tracker_t& tracker,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& problem,
+  const cuopt::mathematical_optimization::mip_solver_settings_t<int, double>& settings,
+  const std::string& out_dir,
+  const std::string& base_filename,
+  int num_cpu_threads)
+{
+  if (out_dir != "") {
+    std::string csv_path =
+      out_dir + "/" + base_filename.substr(0, base_filename.find(".mps")) + "_incumbents.csv";
+    const auto csv_start = std::chrono::steady_clock::now();
+    tracker.write_csv(csv_path, problem, settings.get_tolerances(), num_cpu_threads);
+    const auto csv_end = std::chrono::steady_clock::now();
+    std::cerr << "Incumbent csv generation took "
+              << std::chrono::duration<double>(csv_end - csv_start).count() << " s ("
+              << tracker.size() << " entries) -> " << csv_path << std::endl;
+    CUOPT_LOG_INFO("Incumbent trace (%zu entries) written to %s", tracker.size(), csv_path.c_str());
+  }
+}
+
 int run_single_file(std::string file_path,
                     int device,
                     int batch_id,
@@ -151,7 +262,9 @@ int run_single_file(std::string file_path,
                     double work_limit,
                     bool deterministic)
 {
-  const raft::handle_t handle_{};
+  (void)cudaFree(0);
+
+  auto handle = std::make_unique<raft::handle_t>();
   cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings;
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
   // if output directory is given, set the log file
@@ -163,44 +276,6 @@ int run_single_file(std::string file_path,
     } else {
       std::string log_file = base_filename.substr(0, base_filename.find(".mps")) + ".log";
       settings.log_file    = log_file;
-    }
-  }
-
-  constexpr bool input_mps_strict = false;
-  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_data_model;
-  bool parsing_failed = false;
-  {
-    CUOPT_LOG_INFO("running file %s on gpu : %d", base_filename.c_str(), device);
-    try {
-      mps_data_model =
-        cuopt::mathematical_optimization::io::read_mps<int, double>(file_path, input_mps_strict);
-    } catch (const std::logic_error& e) {
-      CUOPT_LOG_ERROR("MPS parser execption: %s", e.what());
-      parsing_failed = true;
-    }
-  }
-  if (parsing_failed) {
-    CUOPT_LOG_ERROR("Parsing MPS failed exiting!");
-    return -1;
-  }
-  // Use the benchmark filename for downstream instance-level reporting.
-  // This keeps per-instance metrics aligned with the run list even if the MPS NAME card differs.
-  mps_data_model.set_problem_name(base_filename);
-
-  if (initial_solution_dir.has_value()) {
-    auto initial_solutions = read_solution_from_dir(
-      initial_solution_dir.value(), base_filename, mps_data_model.get_variable_names());
-    for (auto& initial_solution : initial_solutions) {
-      bool feasible_variables =
-        test_constraint_and_variable_sanity(mps_data_model,
-                                            initial_solution,
-                                            settings.tolerances.absolute_tolerance,
-                                            settings.tolerances.relative_tolerance,
-                                            settings.tolerances.integrality_tolerance);
-      if (feasible_variables) {
-        settings.add_initial_solution(
-          initial_solution.data(), initial_solution.size(), handle_.get_stream());
-      }
     }
   }
   settings.time_limit       = time_limit;
@@ -215,83 +290,151 @@ int run_single_file(std::string file_path,
   settings.reliability_branching         = reliability_branching;
   settings.clique_cuts                   = -1;
   settings.seed                          = 42;
-  cuopt::mathematical_optimization::benchmark_info_t benchmark_info;
-  settings.benchmark_info_ptr = &benchmark_info;
-  auto start_run_solver       = std::chrono::high_resolution_clock::now();
-  auto solution = cuopt::mathematical_optimization::solve_mip(&handle_, mps_data_model, settings);
-  CUOPT_LOG_INFO(
-    "first obj: %f last improvement of best feasible: %f last improvement after recombination: %f",
-    benchmark_info.objective_of_initial_population,
-    benchmark_info.last_improvement_of_best_feasible,
-    benchmark_info.last_improvement_after_recombination);
-  // solution.write_to_sol_file(base_filename + ".sol", handle_.get_stream());
-  std::chrono::milliseconds duration;
-  auto end = std::chrono::high_resolution_clock::now();
-  duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_run_solver);
-  CUOPT_LOG_INFO("run_solver %d", duration.count());
-  handle_.sync_stream();
-  int sol_found  = int(solution.get_termination_status() ==
-                        cuopt::mathematical_optimization::mip_termination_status_t::FeasibleFound ||
-                      solution.get_termination_status() ==
-                        cuopt::mathematical_optimization::mip_termination_status_t::Optimal);
-  double obj_val = sol_found ? solution.get_objective_value() : std::numeric_limits<double>::max();
-  if (sol_found) {
-    CUOPT_LOG_INFO("%s: solution found, obj: %f", base_filename.c_str(), obj_val);
-  } else {
-    CUOPT_LOG_INFO("%s: no solution found", base_filename.c_str());
-  }
 
-  // Per-instance "gap closed to BKS" stat. Emits a single
-  // grep-friendly "MIPLIBGapStat ..." line via printf so cross-branch
-  // comparison is just `grep '^MIPLIBGapStat' branchA.log` then diff.
-  // BKS values are looked up from the in-source MIPLIB2017 benchmark-set
-  // table (miplib2017_bks.hpp); unknown instances emit "opt=TBD"
-  // and infeasibility-flagged instances emit "opt=Infeasible".
-  {
-    const double _gap_seconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                  std::chrono::high_resolution_clock::now() - start_run_solver)
-                                  .count() /
-                                1000.0;
-    std::string _status_str;
-    switch (solution.get_termination_status()) {
-      case cuopt::mathematical_optimization::mip_termination_status_t::Optimal:
-        _status_str = "Optimal";
-        break;
-      case cuopt::mathematical_optimization::mip_termination_status_t::FeasibleFound:
-        _status_str = "FeasibleFound";
-        break;
-      case cuopt::mathematical_optimization::mip_termination_status_t::TimeLimit:
-        _status_str = "TimeLimit";
-        break;
-      case cuopt::mathematical_optimization::mip_termination_status_t::Infeasible:
-        _status_str = "Infeasible";
-        break;
-      default: _status_str = "Other"; break;
+  // This benchmark and the solver library have separate loggers, both writing settings.log_file.
+  // Configure the solver's first so its own initializer reuses that configuration rather than
+  // truncating the file mid-solve; this image's logger then appends to it. Without one, this
+  // image's own messages would sit unflushed in the buffer sink.
+  auto solver_log = cuopt::mathematical_optimization::configure_logging(
+    settings.log_file, log_to_console, /*truncate=*/true);
+  cuopt::init_logger_t bench_log(settings.log_file, log_to_console, /*truncate=*/false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_data_model;
+  std::unique_ptr<incumbent_tracker_t> incumbent_tracker;
+  try {
+    if (time_limit < 0) { throw std::invalid_argument("time_limit must be nonnegative"); }
+    if (work_limit < 0) { throw std::invalid_argument("work_limit must be nonnegative"); }
+    if (reliability_branching < -1) {
+      throw std::invalid_argument("reliability_branching must be at least -1");
     }
-    cuopt_bench::print_miplib_gap_stat(base_filename,
-                                       solution,
-                                       _gap_seconds,
-                                       _status_str,
-                                       benchmark_info.root_lp_no_cuts,
-                                       benchmark_info.root_lp_with_cuts,
-                                       benchmark_info.cut_generation_time_sec);
-  }
+    constexpr bool input_mps_strict = false;
+    bool parsing_failed             = false;
+    {
+      CUOPT_LOG_INFO("running file %s on gpu : %d", base_filename.c_str(), device);
+      try {
+        mps_data_model =
+          cuopt::mathematical_optimization::io::read_mps<int, double>(file_path, input_mps_strict);
+      } catch (const std::logic_error& e) {
+        CUOPT_LOG_ERROR("MPS parser execption: %s", e.what());
+        parsing_failed = true;
+      }
+    }
+    if (parsing_failed) {
+      CUOPT_LOG_ERROR("Parsing MPS failed exiting!");
+      return -1;
+    }
+    // Use the benchmark filename for downstream instance-level reporting.
+    // This keeps per-instance metrics aligned with the run list even if the MPS NAME card differs.
+    mps_data_model.set_problem_name(base_filename);
 
-  std::stringstream ss;
-  int decimal_places = 2;
-  double mip_gap     = solution.get_mip_gap();
-  int is_optimal     = solution.get_termination_status() ==
-                       cuopt::mathematical_optimization::mip_termination_status_t::Optimal
-                         ? 1
-                         : 0;
-  ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found << ","
-     << obj_val << "," << benchmark_info.objective_of_initial_population << ","
-     << benchmark_info.last_improvement_of_best_feasible << ","
-     << benchmark_info.last_improvement_after_recombination << "," << mip_gap << "," << is_optimal
-     << "\n";
-  write_to_output_file(out_dir, base_filename, device, n_gpus, batch_id, ss.str());
-  CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
-  return sol_found;
+    if (initial_solution_dir.has_value()) {
+      auto initial_solutions = read_solution_from_dir(
+        initial_solution_dir.value(), base_filename, mps_data_model.get_variable_names());
+      for (auto& initial_solution : initial_solutions) {
+        bool feasible_variables =
+          test_constraint_and_variable_sanity(mps_data_model,
+                                              initial_solution,
+                                              settings.tolerances.absolute_tolerance,
+                                              settings.tolerances.relative_tolerance,
+                                              settings.tolerances.integrality_tolerance);
+        if (feasible_variables) {
+          settings.add_initial_solution(
+            initial_solution.data(), initial_solution.size(), handle->get_stream());
+        }
+      }
+    }
+    cuopt::mathematical_optimization::benchmark_info_t benchmark_info;
+    settings.benchmark_info_ptr = &benchmark_info;
+    // Build the GPU problem before starting the incumbent clock.
+    auto problem = cuopt::mathematical_optimization::mps_data_model_to_optimization_problem(
+      handle.get(), mps_data_model);
+    const auto start_run_solver = std::chrono::steady_clock::now();
+    incumbent_tracker =
+      std::make_unique<incumbent_tracker_t>(start_run_solver, mps_data_model.get_n_variables());
+    settings.set_mip_callback(incumbent_tracker.get());
+    auto solution = cuopt::mathematical_optimization::solve_mip(problem, settings);
+    if (solution.get_error_status().get_error_type() != cuopt::error_type_t::Success) {
+      throw solution.get_error_status();
+    }
+    const auto termination_status = solution.get_termination_status();
+    using termination_status_t    = cuopt::mathematical_optimization::mip_termination_status_t;
+    CUOPT_LOG_INFO(
+      "first obj: %f last improvement of best feasible: %f last improvement after recombination: "
+      "%f",
+      benchmark_info.objective_of_initial_population,
+      benchmark_info.last_improvement_of_best_feasible,
+      benchmark_info.last_improvement_after_recombination);
+    std::chrono::milliseconds duration;
+    auto end = std::chrono::steady_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_run_solver);
+    CUOPT_LOG_INFO("run_solver %d", duration.count());
+    handle->sync_stream();
+    int sol_found = int(termination_status == termination_status_t::FeasibleFound ||
+                        termination_status == termination_status_t::Optimal);
+    double obj_val =
+      sol_found ? solution.get_objective_value() : std::numeric_limits<double>::max();
+    if (sol_found) {
+      CUOPT_LOG_INFO("%s: solution found, obj: %f", base_filename.c_str(), obj_val);
+    } else {
+      CUOPT_LOG_INFO("%s: no solution found", base_filename.c_str());
+    }
+
+    // Per-instance "gap closed to BKS" stat. Emits a single
+    // grep-friendly "MIPLIBGapStat ..." line via printf so cross-branch
+    // comparison is just `grep '^MIPLIBGapStat' branchA.log` then diff.
+    // BKS values are looked up from the in-source MIPLIB2017 benchmark-set
+    // table (miplib2017_bks.hpp); unknown instances emit "opt=TBD"
+    // and infeasibility-flagged instances emit "opt=Infeasible".
+    {
+      const double _gap_seconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - start_run_solver)
+                                    .count() /
+                                  1000.0;
+      std::string _status_str;
+      switch (termination_status) {
+        case termination_status_t::Optimal: _status_str = "Optimal"; break;
+        case termination_status_t::FeasibleFound: _status_str = "FeasibleFound"; break;
+        case termination_status_t::TimeLimit: _status_str = "TimeLimit"; break;
+        case termination_status_t::Infeasible: _status_str = "Infeasible"; break;
+        default: _status_str = "Other"; break;
+      }
+      cuopt_bench::print_miplib_gap_stat(base_filename,
+                                         solution,
+                                         _gap_seconds,
+                                         _status_str,
+                                         benchmark_info.root_lp_no_cuts,
+                                         benchmark_info.root_lp_with_cuts,
+                                         benchmark_info.cut_generation_time_sec);
+    }
+
+    std::stringstream ss;
+    int decimal_places = 5;
+    double mip_gap     = solution.get_mip_gap();
+    int is_optimal     = termination_status == termination_status_t::Optimal ? 1 : 0;
+    ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found
+       << "," << obj_val << "," << benchmark_info.objective_of_initial_population << ","
+       << benchmark_info.last_improvement_of_best_feasible << ","
+       << benchmark_info.last_improvement_after_recombination << "," << mip_gap << "," << is_optimal
+       << "\n";
+    write_to_output_file(out_dir, base_filename, device, n_gpus, batch_id, ss.str());
+    CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
+    write_incumbent_trace(
+      *incumbent_tracker, mps_data_model, settings, out_dir, base_filename, num_cpu_threads);
+    return sol_found;
+  } catch (const std::exception& e) {
+    CUOPT_LOG_ERROR("BenchmarkError instance=%s message=%s", base_filename.c_str(), e.what());
+    std::cerr << "BenchmarkError instance=" << base_filename << " message=" << e.what() << '\n';
+    if (!out_dir.empty()) {
+      std::ofstream error_file(out_dir + "/" + base_filename + "_error.txt");
+      error_file << e.what() << '\n';
+    }
+    if (incumbent_tracker) {
+      write_incumbent_trace(
+        *incumbent_tracker, mps_data_model, settings, out_dir, base_filename, num_cpu_threads);
+    }
+    // A solver failure is not a completed solve with no incumbent. Do not emit a
+    // normal final-result row; let the runner flag the incomplete benchmark.
+    return -1;
+  }
 }
 
 void run_single_file_mp(std::string file_path,
@@ -328,25 +471,32 @@ void run_single_file_mp(std::string file_path,
                                   deterministic);
   // this is a bad design to communicate the result but better than adding complexity of IPC or
   // pipes
-  exit(sol_found);
+  exit(sol_found < 0 ? 2 : sol_found);
 }
 
-void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
+bool return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
                              std::unordered_map<pid_t, std::string>& pid_file_map,
                              std::queue<int>& gpu_queue)
 {
   int status;
   pid_t pid = wait(&status);
+  if (pid < 0) { throw std::runtime_error("Failed to wait for benchmark child"); }
+  bool failed = !WIFEXITED(status) || WEXITSTATUS(status) > 1;
   if (!WIFEXITED(status)) {
     auto file_name    = pid_file_map[pid];
     int signal_number = WTERMSIG(status);
     printf("error occured on %s with signal %d\n", file_name.c_str(), signal_number);
+  }
+  if (WIFEXITED(status) && failed) {
+    std::cerr << "BenchmarkError instance=" << pid_file_map[pid]
+              << " exit_code=" << WEXITSTATUS(status) << '\n';
   }
   int gpu        = pid_gpu_map[pid];
   auto file_name = pid_file_map[pid];
   gpu_queue.push(gpu);
   pid_gpu_map.erase(pid);
   pid_file_map.erase(pid);
+  return failed;
 }
 
 int main(int argc, char* argv[])
@@ -482,6 +632,7 @@ int main(int argc, char* argv[])
     initial_solution_file = program.get<std::string>("--initial-solution-path");
   }
 
+  int failures = 0;
   if (run_dir) {
     std::queue<std::string> task_queue;
     std::queue<int> gpu_queue;
@@ -491,7 +642,6 @@ int main(int argc, char* argv[])
     for (int i = 0; i < n_gpus; ++i) {
       gpu_queue.push(i);
     }
-    int tests_ran = 0;
     std::vector<std::string> paths;
     if (run_selected) {
       for (const auto& instance : instances) {
@@ -559,50 +709,48 @@ int main(int argc, char* argv[])
             exit(1);
           }
         } else {
-          return_gpu_to_the_queue(pid_gpu_map, pid_file_map, gpu_queue);
+          failures += return_gpu_to_the_queue(pid_gpu_map, pid_file_map, gpu_queue);
         }
         sleep(1);
       }
-      int remaining = paths.size() - tests_ran;
-      // wait for all processes to finish
-      for (int i = 0; i < remaining; ++i) {
-        return_gpu_to_the_queue(pid_gpu_map, pid_file_map, gpu_queue);
+      while (!pid_gpu_map.empty()) {
+        failures += return_gpu_to_the_queue(pid_gpu_map, pid_file_map, gpu_queue);
       }
     }
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
     auto memory_resource = make_async();
     auto run_single      = [&]() {
-      run_single_file(path,
-                      0,
-                      0,
-                      n_gpus,
-                      out_dir,
-                      initial_solution_file,
-                      heuristics_only,
-                      num_cpu_threads,
-                      write_log_file,
-                      log_to_console,
-                      reliability_branching,
-                      time_limit,
-                      work_limit,
-                      deterministic);
+      return run_single_file(path,
+                             0,
+                             0,
+                             n_gpus,
+                             out_dir,
+                             initial_solution_file,
+                             heuristics_only,
+                             num_cpu_threads,
+                             write_log_file,
+                             log_to_console,
+                             reliability_branching,
+                             time_limit,
+                             work_limit,
+                             deterministic);
     };
     if (memory_limit > 0) {
       auto limiting_adaptor =
         rmm::mr::limiting_resource_adaptor(memory_resource, memory_limit * 1024ULL * 1024ULL);
       rmm::mr::set_current_device_resource(limiting_adaptor);
-      run_single();
+      failures += run_single() < 0;
     } else if (track_allocations) {
       rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource,
                                                           /*capture_stacks=*/true);
       rmm::mr::set_current_device_resource(tracking_adaptor);
-      run_single();
+      failures += run_single() < 0;
     } else {
       rmm::mr::set_current_device_resource(memory_resource);
-      run_single();
+      failures += run_single() < 0;
     }
   }
 
-  return 0;
+  return failures ? 2 : 0;
 }

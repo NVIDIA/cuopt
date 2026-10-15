@@ -20,11 +20,13 @@
 
 inline std::vector<uint8_t> build_incumbent_proto(const std::string& job_id,
                                                   double objective,
+                                                  double bound,
                                                   const std::vector<double>& assignment)
 {
   cuopt::remote::Incumbent msg;
   msg.set_job_id(job_id);
   msg.set_objective(objective);
+  msg.set_bound(bound);
   for (double v : assignment) {
     msg.add_assignment(v);
   }
@@ -39,6 +41,7 @@ inline bool parse_incumbent_proto(const uint8_t* data,
                                   size_t size,
                                   std::string& job_id,
                                   double& objective,
+                                  double& bound,
                                   std::vector<double>& assignment)
 {
   cuopt::remote::Incumbent incumbent_msg;
@@ -46,6 +49,7 @@ inline bool parse_incumbent_proto(const uint8_t* data,
 
   job_id    = incumbent_msg.job_id();
   objective = incumbent_msg.objective();
+  bound     = incumbent_msg.bound();
   assignment.clear();
   assignment.reserve(incumbent_msg.assignment_size());
   for (int i = 0; i < incumbent_msg.assignment_size(); ++i) {

@@ -18,35 +18,35 @@
 namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
+// A is passed as its CSR pieces rather than as a matrix so callers can hand over a matrix that
+// only happens to be CSR(A), such as a CSC holding A^T.
 void initialize_cusparse_data(raft::handle_t const* handle,
-                              device_csr_matrix_t<i_t, f_t>& A,
+                              i_t A_rows,
+                              i_t A_cols,
+                              i_t A_nnz,
+                              i_t* A_offsets,
+                              i_t* A_indices,
+                              f_t* A_values,
                               device_csc_matrix_t<i_t, f_t>& DAT,
                               device_csr_matrix_t<i_t, f_t>& ADAT,
                               cusparse_info_t<i_t, f_t>& cusparse_data)
 {
-  auto A_nnz         = A.nz_max;
   auto DAT_nnz       = DAT.nz_max;
   f_t chunk_fraction = 0.15;
 
   // Create matrix descriptors
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatecsr(
-    &cusparse_data.matA_descr, A.m, A.n, A_nnz, A.row_start.data(), A.j.data(), A.x.data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatecsr(&cusparse_data.matDAT_descr,
-                                                            DAT.n,
-                                                            DAT.m,
-                                                            DAT_nnz,
-                                                            DAT.col_start.data(),
-                                                            DAT.i.data(),
-                                                            DAT.x.data()));
+  cusparse_data.matA_descr =
+    pdlp::make_csr<i_t, f_t>(A_rows, A_cols, A_nnz, A_offsets, A_indices, A_values);
+  cusparse_data.matDAT_descr = pdlp::make_csr<i_t, f_t>(
+    DAT.n, DAT.m, DAT_nnz, DAT.col_start.data(), DAT.i.data(), DAT.x.data());
+  cusparse_data.matADAT_descr = pdlp::make_csr<i_t, f_t>(
+    ADAT.m, ADAT.n, 0, ADAT.row_start.data(), ADAT.j.data(), ADAT.x.data());
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatecsr(&cusparse_data.matADAT_descr,
-                                                            ADAT.m,
-                                                            ADAT.n,
-                                                            0,
-                                                            ADAT.row_start.data(),
-                                                            ADAT.j.data(),
-                                                            ADAT.x.data()));
-  RAFT_CUSPARSE_TRY(cusparseSpGEMM_createDescr(&cusparse_data.spgemm_descr));
+  {
+    cusparseSpGEMMDescr_t raw{nullptr};
+    RAFT_CUSPARSE_TRY(cusparseSpGEMM_createDescr(&raw));
+    cusparse_data.spgemm_descr = cusparse_spgemm_uptr{raw};
+  }
 
   // Buffer size
   size_t buffer_size;
@@ -54,13 +54,13 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   cusparse_data.alpha.data(),
-                                                  cusparse_data.matA_descr,
-                                                  cusparse_data.matDAT_descr,
+                                                  cusparse_data.matA_descr.get(),
+                                                  cusparse_data.matDAT_descr.get(),
                                                   cusparse_data.beta.data(),
-                                                  cusparse_data.matADAT_descr,
+                                                  cusparse_data.matADAT_descr.get(),
                                                   CUDA_R_64F,
                                                   CUSPARSE_SPGEMM_ALG3,
-                                                  cusparse_data.spgemm_descr,
+                                                  cusparse_data.spgemm_descr.get(),
                                                   &buffer_size,
                                                   nullptr));
   cusparse_data.buffer_size.resize(buffer_size, handle->get_stream());
@@ -69,31 +69,31 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   cusparse_data.alpha.data(),
-                                                  cusparse_data.matA_descr,
-                                                  cusparse_data.matDAT_descr,
+                                                  cusparse_data.matA_descr.get(),
+                                                  cusparse_data.matDAT_descr.get(),
                                                   cusparse_data.beta.data(),
-                                                  cusparse_data.matADAT_descr,
+                                                  cusparse_data.matADAT_descr.get(),
                                                   CUDA_R_64F,
                                                   CUSPARSE_SPGEMM_ALG3,
-                                                  cusparse_data.spgemm_descr,
+                                                  cusparse_data.spgemm_descr.get(),
                                                   &buffer_size,
                                                   cusparse_data.buffer_size.data()));
 
   int64_t num_prods;
-  RAFT_CUSPARSE_TRY(cusparseSpGEMM_getNumProducts(cusparse_data.spgemm_descr, &num_prods));
+  RAFT_CUSPARSE_TRY(cusparseSpGEMM_getNumProducts(cusparse_data.spgemm_descr.get(), &num_prods));
 
   size_t buffer_size_3_size;
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_estimateMemory(handle->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   cusparse_data.alpha.data(),
-                                                  cusparse_data.matA_descr,
-                                                  cusparse_data.matDAT_descr,
+                                                  cusparse_data.matA_descr.get(),
+                                                  cusparse_data.matDAT_descr.get(),
                                                   cusparse_data.beta.data(),
-                                                  cusparse_data.matADAT_descr,
+                                                  cusparse_data.matADAT_descr.get(),
                                                   CUDA_R_64F,
                                                   CUSPARSE_SPGEMM_ALG3,
-                                                  cusparse_data.spgemm_descr,
+                                                  cusparse_data.spgemm_descr.get(),
                                                   chunk_fraction,
                                                   &buffer_size_3_size,
                                                   nullptr,
@@ -104,13 +104,13 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   cusparse_data.alpha.data(),
-                                                  cusparse_data.matA_descr,
-                                                  cusparse_data.matDAT_descr,
+                                                  cusparse_data.matA_descr.get(),
+                                                  cusparse_data.matDAT_descr.get(),
                                                   cusparse_data.beta.data(),
-                                                  cusparse_data.matADAT_descr,
+                                                  cusparse_data.matADAT_descr.get(),
                                                   CUDA_R_64F,
                                                   CUSPARSE_SPGEMM_ALG3,
-                                                  cusparse_data.spgemm_descr,
+                                                  cusparse_data.spgemm_descr.get(),
                                                   chunk_fraction,
                                                   &buffer_size_3_size,
                                                   cusparse_data.buffer_size_3.data(),
@@ -120,9 +120,9 @@ void initialize_cusparse_data(raft::handle_t const* handle,
 }
 
 template <typename i_t, typename f_t>
+// Operates purely on the descriptors built by initialize_cusparse_data; ADAT is resized to the
+// nnz cuSPARSE reports.
 void multiply_kernels(raft::handle_t const* handle,
-                      device_csr_matrix_t<i_t, f_t>& A,
-                      device_csc_matrix_t<i_t, f_t>& DAT,
                       device_csr_matrix_t<i_t, f_t>& ADAT,
                       cusparse_info_t<i_t, f_t>& cusparse_data)
 {
@@ -131,20 +131,20 @@ void multiply_kernels(raft::handle_t const* handle,
                            CUSPARSE_OPERATION_NON_TRANSPOSE,
                            CUSPARSE_OPERATION_NON_TRANSPOSE,
                            cusparse_data.alpha.data(),
-                           cusparse_data.matA_descr,    // non-const descriptor supported
-                           cusparse_data.matDAT_descr,  // non-const descriptor supported
+                           cusparse_data.matA_descr.get(),    // non-const descriptor supported
+                           cusparse_data.matDAT_descr.get(),  // non-const descriptor supported
                            cusparse_data.beta.data(),
-                           cusparse_data.matADAT_descr,
+                           cusparse_data.matADAT_descr.get(),
                            CUDA_R_64F,
                            CUSPARSE_SPGEMM_ALG3,
-                           cusparse_data.spgemm_descr,
+                           cusparse_data.spgemm_descr.get(),
                            &cusparse_data.buffer_size_2_size,
                            cusparse_data.buffer_size_2.data()));
 
   // get matrix C non-zero entries C_nnz1
   int64_t ADAT_num_rows, ADAT_num_cols, ADAT_nnz1;
-  RAFT_CUSPARSE_TRY(
-    cusparseSpMatGetSize(cusparse_data.matADAT_descr, &ADAT_num_rows, &ADAT_num_cols, &ADAT_nnz1));
+  RAFT_CUSPARSE_TRY(cusparseSpMatGetSize(
+    cusparse_data.matADAT_descr.get(), &ADAT_num_rows, &ADAT_num_cols, &ADAT_nnz1));
   // cuSPARSE sizes the product in 64 bits while the CSR arrays are indexed by i_t; narrowing would
   // reach RMM as a negative count and surface as an unrelated device_uvector overflow.
   if (ADAT_nnz1 > std::numeric_limits<i_t>::max()) {
@@ -160,19 +160,19 @@ void multiply_kernels(raft::handle_t const* handle,
 
   // update matC with the new pointers
   RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(
-    cusparse_data.matADAT_descr, ADAT.row_start.data(), ADAT.j.data(), ADAT.x.data()));
+    cusparse_data.matADAT_descr.get(), ADAT.row_start.data(), ADAT.j.data(), ADAT.x.data()));
 
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_copy(handle->get_cusparse_handle(),
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         cusparse_data.alpha.data(),
-                                        cusparse_data.matA_descr,
-                                        cusparse_data.matDAT_descr,
+                                        cusparse_data.matA_descr.get(),
+                                        cusparse_data.matDAT_descr.get(),
                                         cusparse_data.beta.data(),
-                                        cusparse_data.matADAT_descr,
+                                        cusparse_data.matADAT_descr.get(),
                                         CUDA_R_64F,
                                         CUSPARSE_SPGEMM_ALG3,
-                                        cusparse_data.spgemm_descr));
+                                        cusparse_data.spgemm_descr.get()));
 
   handle->sync_stream();
 }

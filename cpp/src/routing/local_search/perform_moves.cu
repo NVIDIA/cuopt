@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -419,7 +419,7 @@ bool local_search_t<i_t, f_t, REQUEST>::populate_cross_moves(
     return false;
   }
   populate_cross_list_kernel<i_t, f_t, REQUEST>
-    <<<solution.get_num_orders() - 1, TPB, sh_size, solution.sol_handle->get_stream()>>>(
+    <<<solution.get_num_orders() - 1, TPB, sh_size, solution.sol_handle->get_stream().get()>>>(
       solution.view(), move_candidates.view());
 
   sh_size = sizeof(i_t) * (solution.n_routes + 1) * solution.n_routes;
@@ -428,8 +428,8 @@ bool local_search_t<i_t, f_t, REQUEST>::populate_cross_moves(
     return false;
   }
   populate_cross_moves_kernel<i_t, f_t, REQUEST>
-    <<<1, TPB, sh_size, solution.sol_handle->get_stream()>>>(solution.view(),
-                                                             move_candidates.view());
+    <<<1, TPB, sh_size, solution.sol_handle->get_stream().get()>>>(solution.view(),
+                                                                   move_candidates.view());
   solution.sol_handle->sync_stream();
   return true;
 }
@@ -442,11 +442,12 @@ void local_search_t<i_t, f_t, REQUEST>::populate_move_path(
   auto n_cycles = move_candidates.cycles.n_cycles_.value(solution.sol_handle->get_stream());
   if (n_cycles) {
     populate_move_path_kernel<i_t, f_t, REQUEST>
-      <<<n_cycles, 32, 0, solution.sol_handle->get_stream()>>>(solution.view(),
-                                                               move_candidates.view());
+      <<<n_cycles, 32, 0, solution.sol_handle->get_stream().get()>>>(solution.view(),
+                                                                     move_candidates.view());
   }
   populate_intra_candidates<i_t, f_t, REQUEST>
-    <<<1, 128, 0, solution.sol_handle->get_stream()>>>(solution.view(), move_candidates.view());
+    <<<1, 128, 0, solution.sol_handle->get_stream().get()>>>(solution.view(),
+                                                             move_candidates.view());
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -464,7 +465,7 @@ void local_search_t<i_t, f_t, REQUEST>::perform_moves(solution_t<i_t, f_t, REQUE
   cuopt_assert(is_set, "Not enough shared memory on device for performing the local search move!");
   cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
   insert_graph_nodes_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, shared_size, stream>>>(solution.view(), move_candidates.view());
+    <<<n_blocks, TPB, shared_size, stream.get()>>>(solution.view(), move_candidates.view());
   solution.compute_route_id_per_node();
   solution.compute_cost();
   solution.global_runtime_checks(false, false, "perform_moves_end");

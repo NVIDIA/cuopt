@@ -4,6 +4,7 @@
 # cmake-format: on
 
 ConfigureTest(LP_UNIT_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/lp_solution_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
     LABELS numopt)
@@ -13,7 +14,7 @@ ConfigureTest(LP_UNIT_TEST
 # (cpp/tests/internal/CMakeLists.txt). Under hidden symbol visibility it needs
 # cuopt_static, so it runs there rather than as a separate shared-linked binary.
 
-# Multi-GPU distributed PDLP tests. Binary name ends in _MG_TEST so that
+# Multi-GPU PDLP tests. Binary name ends in _MG_TEST so that
 # ci/test_cpp_multi_gpu.sh picks it up via its *_MG_TEST glob. Each test
 # calls GTEST_SKIP when fewer than 2 GPUs are visible so the binary is
 # harmless on single-GPU runners. STATIC_LIB: needs internal (hidden) PDLP symbols.
@@ -70,10 +71,13 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
         "${CMAKE_CURRENT_SOURCE_DIR}/c_api_tests"
     )
 
+    # Links cuopt_mathopt rather than the cuopt umbrella: this test is the standing check
+    # that the mathopt component carries the whole C API on its own. cuopttestutils is
+    # deliberately absent -- it is routing code, and taking it would pull the routing
+    # engine back in and hide an incomplete mathopt link line.
     target_link_libraries(C_API_TEST
         PRIVATE
-        cuopt
-        cuopttestutils
+        cuopt_mathopt
         c_api_tester
         GTest::gmock
         GTest::gmock_main

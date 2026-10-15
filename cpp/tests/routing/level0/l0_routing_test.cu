@@ -372,11 +372,11 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
       raft::copy(this->vehicle_earliest_d.data(),
                  this->vehicle_earliest_h.data(),
                  input_.n_vehicles,
-                 this->stream_view_.value());
+                 this->stream_view_.get());
       raft::copy(this->vehicle_latest_d.data(),
                  this->vehicle_latest_h.data(),
                  input_.n_vehicles,
-                 this->stream_view_.value());
+                 this->stream_view_.get());
       data_model.set_vehicle_time_windows(this->vehicle_earliest_d.data(),
                                           this->vehicle_latest_d.data());
     }
@@ -392,7 +392,7 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
       raft::copy(d_int_drop_return_trip.data(),
                  this->drop_return_trips_h.data(),
                  input_.n_vehicles,
-                 this->stream_view_.value());
+                 this->stream_view_.get());
       thrust::transform(this->handle_.get_thrust_policy(),
                         d_int_drop_return_trip.begin(),
                         d_int_drop_return_trip.end(),
@@ -402,13 +402,13 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
       raft::copy(d_int_skip_first_trip.data(),
                  this->skip_first_trips_h.data(),
                  input_.n_vehicles,
-                 this->stream_view_.value());
+                 this->stream_view_.get());
       thrust::transform(this->handle_.get_thrust_policy(),
                         d_int_skip_first_trip.begin(),
                         d_int_skip_first_trip.end(),
                         d_skip_first_trip.begin(),
                         id);
-      RAFT_CUDA_TRY(cudaStreamSynchronize(this->stream_view_.value()));
+      this->stream_view_.sync();
       data_model.set_drop_return_trips(d_drop_return_trip.data());
       data_model.set_skip_first_trips(d_skip_first_trip.data());
     }
@@ -423,11 +423,11 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
       raft::copy(this->random_demand_d.data(),
                  shuffled_vec.data(),
                  this->n_orders,
-                 this->stream_view_.value());
+                 this->stream_view_.get());
       raft::copy(this->mixed_capacity_d.data(),
                  input_.mixed_capacity_h.data(),
                  this->n_vehicles,
-                 this->stream_view_.value());
+                 this->stream_view_.get());
       data_model.add_capacity_dimension(
         "random", this->random_demand_d.data(), this->mixed_capacity_d.data());
     }
@@ -440,12 +440,12 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
     if (this->vehicle_lower_bound_) data_model.set_min_vehicles(this->vehicle_lower_bound_);
 
     if (this->vehicle_max_costs_) {
-      auto max_dist_depot    = thrust::reduce(this->handle_.get_thrust_policy(),
+      auto max_depot_cost    = thrust::reduce(this->handle_.get_thrust_policy(),
                                            this->cost_matrix_d.data(),
                                            this->cost_matrix_d.data() + this->n_locations,
                                            -1,
                                            thrust::maximum<f_t>());
-      auto vehicle_max_costs = max_dist_depot * (2 + (i_t)this->pickup_delivery_) + 2;
+      auto vehicle_max_costs = max_depot_cost * (2 + (i_t)this->pickup_delivery_) + 2;
       thrust::fill(this->handle_.get_thrust_policy(),
                    this->vehicle_max_costs_d.begin(),
                    this->vehicle_max_costs_d.end(),
@@ -464,12 +464,12 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
                                         this->service_time_d.data() + this->n_orders,
                                         -1,
                                         thrust::maximum<f_t>());
-      auto max_dist_depot    = thrust::reduce(this->handle_.get_thrust_policy(),
-                                           this->cost_matrix_d.data(),
-                                           this->cost_matrix_d.data() + this->n_locations,
-                                           -1,
-                                           thrust::maximum<f_t>());
-      auto vehicle_max_times = max_dist_depot * (2 + (i_t)this->pickup_delivery_) + 2 +
+      auto max_depot_transit = thrust::reduce(this->handle_.get_thrust_policy(),
+                                              this->cost_matrix_d.data(),
+                                              this->cost_matrix_d.data() + this->n_locations,
+                                              -1,
+                                              thrust::maximum<f_t>());
+      auto vehicle_max_times = max_depot_transit * (2 + (i_t)this->pickup_delivery_) + 2 +
                                (1 + (i_t)this->pickup_delivery_) * max_service;
       thrust::fill(this->handle_.get_thrust_policy(),
                    this->vehicle_max_times_d.begin(),

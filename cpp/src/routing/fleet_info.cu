@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -153,9 +153,9 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
   if (auto [start_locations, return_locations] = data_model.get_vehicle_locations();
       start_locations != nullptr) {
     raft::copy(
-      fleet_info_.v_start_locations_.data(), start_locations, fleet_size, stream_view.value());
+      fleet_info_.v_start_locations_.data(), start_locations, fleet_size, stream_view.get());
     raft::copy(
-      fleet_info_.v_return_locations_.data(), return_locations, fleet_size, stream_view.value());
+      fleet_info_.v_return_locations_.data(), return_locations, fleet_size, stream_view.get());
     is_homogenous =
       is_homogenous &&
       all_entries_are_equal(handle_ptr_, fleet_info_.v_start_locations_.data(), fleet_size);
@@ -176,7 +176,7 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
 
   if (auto drop_return_trip = data_model.get_drop_return_trips(); drop_return_trip) {
     raft::copy(
-      fleet_info_.v_drop_return_trip_.data(), drop_return_trip, fleet_size, stream_view.value());
+      fleet_info_.v_drop_return_trip_.data(), drop_return_trip, fleet_size, stream_view.get());
     is_homogenous =
       is_homogenous &&
       all_entries_are_equal(handle_ptr_, fleet_info_.v_drop_return_trip_.data(), fleet_size);
@@ -189,7 +189,7 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
 
   if (auto skip_first_trip = data_model.get_skip_first_trips(); skip_first_trip) {
     raft::copy(
-      fleet_info_.v_skip_first_trip_.data(), skip_first_trip, fleet_size, stream_view.value());
+      fleet_info_.v_skip_first_trip_.data(), skip_first_trip, fleet_size, stream_view.get());
     is_homogenous =
       is_homogenous &&
       all_entries_are_equal(handle_ptr_, fleet_info_.v_skip_first_trip_.data(), fleet_size);

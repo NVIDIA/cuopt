@@ -24,6 +24,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ITERATION_LIMIT,
     CUOPT_METHOD,
     CUOPT_MIP_HEURISTICS_ONLY,
+    CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
@@ -289,6 +290,8 @@ def _non_default_solver_param_value(name, current):
         return 0 if int(current) == 1 else 1
     if name == "pdlp_precision":
         return 1 if int(current) == 0 else 0
+    if name == "primal_simplex_pricing":
+        return 0 if int(current) == 1 else 1
     if name == "mip_objective_step":
         return 0 if int(current) == 1 else 1
     if isinstance(current, bool):
@@ -530,6 +533,8 @@ def test_parse_var_names():
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     settings.set_parameter(CUOPT_PRESOLVE, 0)
+    # Expected primal values below were recorded prior to implementing Curtis-Reid scaling.
+    settings.set_parameter(CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, False)
     solution = solver.Solve(data_model_obj, settings)
 
     expected_dict = {
@@ -576,6 +581,11 @@ def test_parse_var_names():
         )
 
 
+@pytest.mark.skip(
+    reason="Intermittently hangs inside LP BatchSolve on CUDA 13.3, see "
+    "https://github.com/NVIDIA/cuopt/issues/1781. The test never returns, so "
+    "the step's outer timeout kills the whole run; xfail cannot catch it."
+)
 def test_parser_and_batch_solver():
     data_model_list = []
     file_path = (
@@ -641,6 +651,43 @@ def test_warm_start():
         Exception, match="Cannot use warmstart data with Batch Solve"
     ):
         solver.BatchSolve(data_model_list, settings)
+
+
+@pytest.mark.parametrize("presolve", [2, 1])  # PSLP, Papilo
+def test_initial_solution_with_presolve(presolve):
+    # An initial primal/dual solution set on the DataModel is in the original
+    # problem's space. PSLP maps it into the presolved problem; Papilo cannot,
+    # so presolve is skipped. Either way, starting from the optimum should
+    # converge to the same objective in fewer iterations.
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
+    data_model_obj = Read(file_path)
+
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    settings.set_parameter(CUOPT_PRESOLVE, presolve)
+
+    cold = solver.Solve(data_model_obj, settings)
+    assert cold.get_termination_reason() == "Optimal"
+    primal = np.array(cold.get_primal_solution())
+    dual = np.array(cold.get_dual_solution())
+    assert len(primal) == len(data_model_obj.get_objective_coefficients())
+    assert len(dual) == len(data_model_obj.get_constraint_matrix_offsets()) - 1
+
+    data_model_obj.set_initial_primal_solution(primal)
+    data_model_obj.set_initial_dual_solution(dual)
+    warm = solver.Solve(data_model_obj, settings)
+    assert warm.get_termination_reason() == "Optimal"
+    assert warm.get_primal_objective() == pytest.approx(
+        cold.get_primal_objective(), rel=1e-3
+    )
+    assert len(warm.get_primal_solution()) == len(primal)
+    assert len(warm.get_dual_solution()) == len(dual)
+    assert (
+        warm.get_lp_stats()["nb_iterations"]
+        < cold.get_lp_stats()["nb_iterations"]
+    )
 
 
 def test_solved_by():

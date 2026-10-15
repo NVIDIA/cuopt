@@ -1244,6 +1244,58 @@ void compare_data_models(const mps_data_model_t<i_t, f_t>& original,
   }
 }
 
+TEST(mps_roundtrip, empty_constraint_matrix)
+{
+  mps_data_model_t<int, double> model;
+  std::vector<double> values;
+  std::vector<int> indices;
+  std::vector<int> offsets{0, 0};
+  std::vector<double> rhs{1.0};
+  std::vector<double> objective{1.0};
+  std::vector<double> lower_bounds{0.0};
+  std::vector<double> upper_bounds{1.0};
+  std::vector<char> row_types{'L'};
+
+  model.set_csr_constraint_matrix(values, indices, offsets);
+  model.set_constraint_bounds(rhs);
+  model.set_objective_coefficients(objective);
+  model.set_variable_lower_bounds(lower_bounds);
+  model.set_variable_upper_bounds(upper_bounds);
+  model.set_row_types(row_types);
+  model.set_variable_names({"x"});
+  model.set_row_names({"empty"});
+
+  temp_file_t temp_file(".mps");
+  mps_writer_t<int, double> writer(model);
+  writer.write(temp_file.string());
+
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  EXPECT_THAT(reloaded.get_constraint_matrix_offsets(), ElementsAre(0, 0));
+  EXPECT_TRUE(reloaded.get_constraint_matrix_values().empty());
+  EXPECT_THAT(reloaded.get_constraint_bounds(), ElementsAre(1.0));
+  EXPECT_THAT(reloaded.get_row_names(), ElementsAre("empty"));
+}
+
+TEST(mps_writer_op, rejects_missing_constraint_offsets)
+{
+  mps_data_model_t<int, double> model;
+  std::vector<double> rhs{1.0};
+  std::vector<double> objective{1.0};
+  std::vector<double> lower_bounds{0.0};
+  std::vector<double> upper_bounds{1.0};
+  std::vector<char> row_types{'L'};
+
+  model.set_constraint_bounds(rhs);
+  model.set_objective_coefficients(objective);
+  model.set_variable_lower_bounds(lower_bounds);
+  model.set_variable_upper_bounds(upper_bounds);
+  model.set_row_types(row_types);
+
+  temp_file_t temp_file(".mps");
+  mps_writer_t<int, double> writer(model);
+  EXPECT_ANY_THROW(writer.write(temp_file.string()));
+}
+
 TEST(mps_roundtrip, linear_programming_basic)
 {
   std::string input_file =

@@ -28,6 +28,13 @@ _MAX_TESTS = 50
 # without the timing suffix; the dedup set collapses the duplicate.
 _GTEST_FAILED = re.compile(r"\[  FAILED  \] (\S+\.\S+?)(?: \(\d+ ms\))?$")
 
+# Binary-level failures never reach gtest's own FAILED output, so
+# ci/run_ctests.sh prints these instead:
+#   "CRASH: FOO_TEST died from SIGABRT (exit code 134)"
+#   "FAILED: FOO_TEST (exit code 1)"
+_BINARY_CRASH = re.compile(r"CRASH: (\S+) died from (\w+) \(exit code \d+\)")
+_BINARY_FAILED = re.compile(r"FAILED: (\S+) \(exit code (\d+)\)")
+
 
 class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
     # GitHub's job-log endpoint redirects to a presigned S3 URL. Forwarding
@@ -115,6 +122,16 @@ def _analyze_job_log(job_id, repo, token):
                     _add(m.group(1))
                     continue
 
+                m = _BINARY_CRASH.match(line)
+                if m:
+                    _add(f"{m.group(1)} (crashed: {m.group(2)})")
+                    continue
+
+                m = _BINARY_FAILED.match(line)
+                if m:
+                    _add(f"{m.group(1)} (exit code {m.group(2)})")
+                    continue
+
                 if "short test summary info" in line:
                     in_pytest_summary = True
                 elif in_pytest_summary:
@@ -156,6 +173,12 @@ def _build_body(failed, passed, skipped, cancelled, job_analysis):
         for job in failed:
             tests = job_analysis[job["id"]]
             if not tests:
+                # Don't hide a failed job just because nothing was parsed.
+                lines += [
+                    "",
+                    f"- `{job['name']}` — failed; no test names found in log "
+                    f"([job log]({job['html_url']}))",
+                ]
                 continue
             n = len(tests)
             lines += [

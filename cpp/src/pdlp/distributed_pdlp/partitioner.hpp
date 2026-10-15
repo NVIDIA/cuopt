@@ -21,7 +21,7 @@ struct csr_host_view_t {
   i_t num_cols{0};
 };
 
-// Inputs shared by all distributed-PDLP partitioners.
+// Inputs shared by all multi-GPU PDLP partitioners.
 // Returns a flat vector of length (nb_cstr + nb_vars): constraint part-ids first,
 // then variable part-ids, each in [0, nb_parts).
 template <typename i_t, typename f_t>

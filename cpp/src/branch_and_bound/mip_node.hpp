@@ -43,36 +43,23 @@ class mip_node_t {
  public:
   ~mip_node_t()
   {
-    // Iterative teardown to avoid stack overflow on deep trees.
-    // Detach all descendants breadth-first, then destroy them as leaves.
-    // vector::push_back can throw bad_alloc; the catch-all keeps the destructor
-    // exception-free. Under OOM, any not-yet-detached descendants are destroyed
-    // via the recursive unique_ptr chain in `children` as this frame unwinds.
-    try {
-      std::vector<std::unique_ptr<mip_node_t>> nodes;
-      for (auto& c : children) {
-        if (c) { nodes.push_back(std::move(c)); }
-      }
-      // nodes.size() grows so that this loop only terminates when only leaves remain
-      for (size_t i = 0; i < nodes.size(); ++i) {
-        for (auto& c : nodes[i]->children) {
-          if (c) { nodes.push_back(std::move(c)); }
+    // Rotate each subtree into a right-going chain while deleting its leaves.
+    // This needs neither allocation nor recursive traversal, including for deep
+    // trees and moved subtrees whose parent pointers can be stale.
+    for (auto& child : children) {
+      auto node = std::move(child);
+      while (node) {
+        if (node->children[0]) {
+          auto left         = std::move(node->children[0]);
+          node->children[0] = std::move(left->children[1]);
+          left->children[1] = std::move(node);
+          node              = std::move(left);
+        } else {
+          auto next = std::move(node->children[1]);
+          node.reset();
+          node = std::move(next);
         }
       }
-
-      // scope-exit ensure destruction of all detached leaves
-    } catch (const std::exception& e) {
-      // fprintf to stderr is allocation-free and cannot throw; using the
-      // project logger here would risk a secondary bad_alloc that would
-      // escape the destructor and re-introduce std::terminate.
-      std::fprintf(stderr,
-                   "mip_node_t destructor: iterative teardown failed (%s); falling back to "
-                   "recursive unique_ptr destruction.\n",
-                   e.what());
-    } catch (...) {
-      std::fprintf(stderr,
-                   "mip_node_t destructor: iterative teardown failed (unknown exception); "
-                   "falling back to recursive unique_ptr destruction.\n");
     }
   }
 

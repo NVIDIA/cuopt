@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -402,6 +402,10 @@ __global__ void eject_inserted_requests(
   }
 }
 
+/**
+ * @brief Inserts each missing break dimension into routes that lack it, one break per outer
+ *        iteration, picking the least-cost insertion position for each. One block per route.
+ */
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
                                       const bool include_objective,
@@ -479,7 +483,8 @@ __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::vi
     __shared__ double reduction_buf[2 * raft::WarpSize];
     block_reduce_ranked(thread_best_cost, t_id, reduction_buf, &reduction_idx);
 
-    if (threadIdx.x == reduction_idx) {
+    if (threadIdx.x == reduction_idx && thread_best_break_node_id >= 0 &&
+        reduction_buf[0] != std::numeric_limits<double>::max()) {
       auto break_node = create_break_node<i_t, f_t, REQUEST>(
         break_nodes, thread_best_break_node_id, solution.problem.dimensions_info);
       // do not update the intra indices yet

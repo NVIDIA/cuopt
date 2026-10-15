@@ -2,27 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from cuopt_server.webserver import app as cuoptapp
+from cuopt_server.proxy_webserver import app as cuoptapp
 from fastapi.openapi.utils import get_openapi
 import datetime
 import cuopt
 import yaml
 from packaging.version import Version
+import shutil
 import subprocess
 import sys
 import os
 import tempfile
 import json
+import xml.etree.ElementTree as ET
 from sphinx.util.fileutil import copy_asset_file
 from pathlib import Path
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
 
-# Run cuopt server help command and save output
-subprocess.run(
-    ["python", "-m", "cuopt_server.cuopt_service", "--help"],
-    stdout=open("cuopt-server/server-api/server-cli-help.txt", "w"),
-)
 # Run cuopt_sh help command and save output
 subprocess.run(
     ["cuopt_sh", "--help"],
@@ -33,6 +30,21 @@ subprocess.run(
 subprocess.run(
     ["cuopt_cli", "--help"], stdout=open("cuopt-cli/cuopt-cli-help.txt", "w")
 )
+
+# Copy the gRPC protos next to the docs so api.rst can offer them for download. They import
+# each other by file name, so they share one directory.
+_grpc_src = Path(__file__).resolve().parents[3] / "cpp" / "src" / "grpc"
+_proto_dir = Path("cuopt-grpc/protos")
+_proto_dir.mkdir(exist_ok=True)
+for _proto in (
+    "cuopt_remote_service.proto",
+    "cuopt_remote.proto",
+    "codegen/generated/cuopt_remote_data.proto",
+    "routing/cuopt_routing.proto",
+    "routing/cuopt_routing_solution.proto",
+):
+    shutil.copy(_grpc_src / _proto, _proto_dir)
+shutil.make_archive("cuopt-grpc/cuopt-protos", "zip", _proto_dir)
 
 with open("cuopt_spec.yaml", "w") as f:
     yaml.dump(
@@ -182,7 +194,51 @@ html_extra_path = ["versions1.json"]
 
 
 # -- Options for Breathe (Doxygen) ----------------------------------------
-breathe_projects = {"libcuopt": "../../../cpp/doxygen/xml"}
+doxygen_xml_path = Path("../../../cpp/doxygen/xml")
+
+
+def normalize_function_pointer_typedefs(path):
+    """Restore the function-pointer XML shape expected by Breathe."""
+    for filename in path.glob("*.xml"):
+        tree = ET.parse(filename)
+        changed = False
+        for member in tree.getroot().findall(".//memberdef[@kind='typedef']"):
+            type_node = member.find("type")
+            definition_node = member.find("definition")
+            args_node = member.find("argsstring")
+            name = member.findtext("name")
+            if (
+                type_node is None
+                or definition_node is None
+                or args_node is None
+                or type_node.text is None
+                or definition_node.text is None
+                or args_node.text is None
+                or name is None
+                or not type_node.text.endswith("(*)")
+                or not args_node.text.startswith("(")
+            ):
+                continue
+
+            expected = f"typedef {type_node.text} {name}{args_node.text}"
+            if definition_node.text != expected:
+                continue
+
+            return_type = type_node.text.removesuffix("(*)")
+            type_node.text = f"{return_type}(*"
+            definition_node.text = (
+                f"typedef {return_type}(* {name}) {args_node.text}"
+            )
+            args_node.text = f"){args_node.text}"
+            changed = True
+
+        if changed:
+            tree.write(filename)
+
+
+normalize_function_pointer_typedefs(doxygen_xml_path)
+
+breathe_projects = {"libcuopt": str(doxygen_xml_path)}
 breathe_default_project = "libcuopt"
 
 # Configure Breathe to handle file types
@@ -369,7 +425,7 @@ linkcheck_timeout = 30
 linkcheck_workers = 5
 linkcheck_rate_limit_timeout = 60
 
-# GitHub and GitLab link checker exceptions
+# GitHub, GitLab, and PyPI link checker exceptions
 linkcheck_ignore = [
     # GitHub (Rate Limited)
     r"https://github\.com/.*",
@@ -381,11 +437,13 @@ linkcheck_ignore = [
     r"https://api\.gitlab\.com/.*",
     r"https://gitlab\.org/.*",
     r"https://api\.gitlab\.org/.*",
+    # PyPI (Unreliable in CI networks)
+    r"https://pypi\.org/.*",
 ]
 
 
 class InstallSelector(Directive):
-    """Embed the install selector widget. Optional :default-iface: (python, c, server, cli)."""
+    """Embed the install selector widget. Optional :default-iface: (python, c, server, cli, java)."""
 
     optional_arguments = 0
     option_spec = {"default-iface": directives.unchanged}
@@ -395,7 +453,7 @@ class InstallSelector(Directive):
         default_iface = (
             (self.options.get("default-iface") or "").strip().lower()
         )
-        if default_iface not in ("python", "c", "server", "cli"):
+        if default_iface not in ("python", "c", "server", "cli", "java"):
             default_iface = ""
         data_attr = (
             ' data-default-iface="' + default_iface + '"'

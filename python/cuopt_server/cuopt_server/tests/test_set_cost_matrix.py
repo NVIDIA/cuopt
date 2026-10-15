@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
@@ -35,7 +35,7 @@ def test_invalid_row_length_cost_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All rows in the cost matrix must be of the same length",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -49,7 +49,7 @@ def test_invalid_shape_set_cost_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Cost matrix must be a square matrix",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -65,7 +65,7 @@ def test_invalid_values_set_cost_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All values in cost matrix must be >= 0",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -84,7 +84,7 @@ def test_invalid_matrices_shape_set_cost_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Matrices for all vehicle types must be the same shape",
-        "error_result": True,
+        "error_result": False,
     }
 
 

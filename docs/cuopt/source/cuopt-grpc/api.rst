@@ -6,18 +6,41 @@
 gRPC API (Reference)
 ======================
 
-The **CuOptRemoteService** gRPC API is defined in Protocol Buffers under the ``cuopt.remote`` package. Source files in the repository:
+The **CuOptRemoteService** gRPC API is defined in Protocol Buffers under the ``cuopt.remote`` package:
 
-* ``cpp/src/grpc/cuopt_remote_service.proto`` — service and job/chunk/log RPCs
-* ``cpp/src/grpc/cuopt_remote.proto`` — LP/MIP problem, settings, and result messages
+* :download:`cuopt_remote_service.proto <protos/cuopt_remote_service.proto>` — service and job/chunk/log RPCs
+* :download:`cuopt_remote.proto <protos/cuopt_remote.proto>` — LP/MIP problem, settings, and result messages
+* :download:`cuopt_remote_data.proto <protos/cuopt_remote_data.proto>` — problem and result fields, including the array field ids used by chunked transfer. Generated from ``cpp/src/grpc/codegen/field_registry.yaml`` and committed to the repository.
+* :download:`cuopt_routing.proto <protos/cuopt_routing.proto>` — VRP request messages
+* :download:`cuopt_routing_solution.proto <protos/cuopt_routing_solution.proto>` — VRP result messages
+
+Download all five as :download:`cuopt-protos.zip <cuopt-protos.zip>`. They import each other by file name, so keep them in one directory.
+
+The ``libcuopt-client`` wheel and conda package install the same five files:
+
+* pip: ``<site-packages>/libcuopt_client/share/cuopt/proto``
+* conda: ``$CONDA_PREFIX/share/cuopt/proto``
+
+Generate stubs for your language with that directory as the include path, for example for Python:
+
+.. code-block:: bash
+
+   python -m grpc_tools.protoc -I "$PROTO_DIR" --python_out=. --grpc_python_out=. \
+     "$PROTO_DIR"/*.proto
+
+The same files are in the repository under ``cpp/src/grpc/``, ``cpp/src/grpc/routing/`` and ``cpp/src/grpc/codegen/generated/``. The chunked-transfer wire format is described in `GRPC_INTERFACE.md <https://github.com/NVIDIA/cuopt/blob/main/cpp/src/grpc/GRPC_INTERFACE.md>`_.
 
 Most users do **not** call these RPCs directly:
 
-* **Remote execution** — Python, C (``cuOptSolve``), and ``cuopt_cli`` forward
-  solves when ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are set
+* **Remote execution** — Python, C (``cuOptSolve``), ``cuopt_cli``, and
+  modeling-language integrations that call those APIs forward LP, MIP, and
+  QP solves when ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are set
   (:doc:`quick-start`, :doc:`advanced`).
-* **Python async gRPC client** — ``cuopt.grpc.linear_programming.Client``
+* **gRPC linear programming client** —
+  ``cuopt.grpc.linear_programming.Client`` for LP, MIP, and QP
   (:doc:`python-async-client`).
+* **gRPC routing client** — ``cuopt.grpc.routing.RoutingClient`` for VRP,
+  TSP, and PDP (:doc:`routing`).
 
 **Custom** clients call ``CuOptRemoteService`` over gRPC using these definitions.
 This page summarizes the service for custom integrators and debugging.
@@ -35,7 +58,8 @@ Asynchronous Jobs
    * - RPC
      - Purpose
    * - ``SubmitJob``
-     - Submit an LP or MIP job in one message (within gRPC message size limits).
+     - Submit an LP, MIP, or VRP job in one message (within gRPC message size
+       limits; VRP is unary-only today, see :doc:`routing`).
    * - ``CheckStatus``
      - Poll job status by ``job_id``.
    * - ``GetResult``
@@ -93,14 +117,21 @@ Streaming and Callbacks
    * - ``GetIncumbents``
      - MIP incumbent solutions since a given index (only if the job was
        submitted with ``enable_incumbents``; otherwise the list is empty).
+       ``enable_set_incumbent`` registers a server-side set-solution callback
+       that echoes the last get-incumbent into the solver (disables presolve).
 
 Messages and Constraints
 ========================
 
-* **Problem types** — Wire categories are LP/QP or MIP. QP is submitted as
-  ``lp_request`` (``SolveLPRequest``) with quadratic fields on
-  ``OptimizationProblem``. **Routing** over this gRPC service is **not**
-  available yet (planned; use REST for remote routing today).
+* **Problem types** — Wire categories are LP/QP, MIP, or VRP. QP is submitted
+  as ``lp_request`` (``SolveLPRequest``) with quadratic fields on
+  ``OptimizationProblem``. **VRP** rides the same ``SubmitJob``/``GetResult``
+  RPCs as LP/MIP, as a ``vrp_request`` payload typed by
+  ``cpp/src/grpc/routing/cuopt_routing.proto`` (problem) and
+  ``cuopt_routing_solution.proto`` (result) -- not a separate service. There
+  is no ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` remote-execution path for
+  routing; use the gRPC routing client (:doc:`routing`) or REST for remote
+  routing.
 * **Solver settings** — Carried as ``PDLPSolverSettings`` or ``MIPSolverSettings`` inside the request or chunked header, aligned with the NVIDIA cuOpt solver options documentation.
 * **Errors** — Transport failures use gRPC status codes. Some outcomes use
   ``Status::OK`` with response fields: ``CheckStatus`` reports unknown jobs as
@@ -112,6 +143,6 @@ Messages and Constraints
 Further Reading
 ===============
 
-* :doc:`python-async-client` / :doc:`python-async-client-api` — Python job client (``cuopt.grpc``) built on these RPCs.
+* :doc:`python-async-client` / :doc:`python-async-client-api` — gRPC linear programming client (``cuopt.grpc.linear_programming``) built on these RPCs. :doc:`routing` / :doc:`routing-api` — gRPC routing client.
 * :doc:`grpc-server-architecture` — Server process model and job lifecycle (overview); :doc:`advanced` for ``cuopt_grpc_server`` flags. Contributor details: ``cpp/docs/grpc-server-architecture.md``.
 * :doc:`advanced` — TLS, Docker, client environment variables, and limitations.

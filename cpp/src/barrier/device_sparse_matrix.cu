@@ -10,6 +10,8 @@
 
 #include <linear_algebra/sparse_matrix.hpp>
 
+#include <raft/sparse/linalg/transpose.cuh>
+
 // This translation unit provides out-of-line definitions and explicit
 // instantiations of shared sparse-matrix templates (csc_matrix_t,
 // matrix_transpose_vector_multiply) specialized with barrier's
@@ -73,3 +75,57 @@ template void csc_matrix_t<int, double>::scale_columns<PinnedHostAllocator<doubl
 #endif
 
 }  // namespace cuopt::mathematical_optimization
+
+namespace cuopt::mathematical_optimization::barrier {
+
+// Device CSC -> CSR. CSC(A) is exactly CSR(A^T), so transposing it yields CSR(A).
+template <typename i_t, typename f_t>
+void csc_to_csr_on_device(i_t m,
+                          i_t n,
+                          i_t nz,
+                          const i_t* col_start,
+                          const i_t* row_ind,
+                          const f_t* csc_val,
+                          i_t* out_offsets,
+                          i_t* out_indices,
+                          f_t* out_values,
+                          const raft::handle_t* handle_ptr)
+{
+  static_assert(std::is_signed_v<i_t>);
+  const auto stream = handle_ptr->get_stream();
+
+  if (nz == 0) {
+    // Empty matrix: offsets all zero; indices/values unused.
+    RAFT_CUDA_TRY(cudaMemsetAsync(out_offsets, 0, sizeof(i_t) * (m + 1), stream.get()));
+    return;
+  }
+
+  raft::sparse::linalg::csr_transpose(*handle_ptr,
+                                      col_start,
+                                      row_ind,
+                                      csc_val,
+                                      out_offsets,
+                                      out_indices,
+                                      out_values,
+                                      n,
+                                      m,
+                                      nz,
+                                      stream.get());
+}
+
+#ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
+
+template void csc_to_csr_on_device<int, double>(int m,
+                                                int n,
+                                                int nz,
+                                                const int* col_start,
+                                                const int* row_ind,
+                                                const double* csc_values,
+                                                int* out_offsets,
+                                                int* out_indices,
+                                                double* out_values,
+                                                const raft::handle_t* handle_ptr);
+
+#endif
+
+}  // namespace cuopt::mathematical_optimization::barrier

@@ -10,7 +10,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
+#include <utilities/device_scalar_init.hpp>
 
 #include <thrust/copy.h>
 #include <thrust/iterator/counting_iterator.h>
@@ -42,7 +42,7 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
     rmm::device_uvector<i_t> var_map(n_integers_to_round, solution.handle_ptr->get_stream());
     rmm::device_uvector<f_t> constraint_buf(n_configs * solution.problem_ptr->n_constraints,
                                             solution.handle_ptr->get_stream());
-    rmm::device_scalar<i_t> best_config(-1, solution.handle_ptr->get_stream());
+    rmm::device_scalar<i_t> best_config(neg_one_v<i_t>, solution.handle_ptr->get_stream());
     thrust::copy_if(
       solution.handle_ptr->get_thrust_policy(),
       solution.problem_ptr->integer_indices.begin(),
@@ -53,16 +53,18 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
 
     // // try all configs in parallel and compute feasibility
     brute_force_check_kernel<i_t, f_t>
-      <<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(solution.view(),
-                                                                n_integers_to_round,
-                                                                cuopt::make_span(var_map),
-                                                                cuopt::make_span(constraint_buf),
-                                                                best_config.data());
+      <<<n_blocks, TPB, 0, solution.handle_ptr->get_stream().get()>>>(
+        solution.view(),
+        n_integers_to_round,
+        cuopt::make_span(var_map),
+        cuopt::make_span(constraint_buf),
+        best_config.data());
     if (best_config.value(solution.handle_ptr->get_stream()) != -1) {
       CUOPT_LOG_DEBUG("Feasible found during brute force rounding!");
       // apply the feasible rounding
-      apply_feasible_rounding_kernel<i_t, f_t><<<1, TPB, 0, solution.handle_ptr->get_stream()>>>(
-        solution.view(), n_integers_to_round, cuopt::make_span(var_map), best_config.data());
+      apply_feasible_rounding_kernel<i_t, f_t>
+        <<<1, TPB, 0, solution.handle_ptr->get_stream().get()>>>(
+          solution.view(), n_integers_to_round, cuopt::make_span(var_map), best_config.data());
       solution.handle_ptr->sync_stream();
       bool feas = solution.compute_feasibility();
       cuopt_assert(feas, "Solution must be feasible!");
@@ -80,10 +82,10 @@ bool invoke_simple_rounding(solution_t<i_t, f_t>& solution)
   solution_t<i_t, f_t> sol_copy(*solution.problem_ptr);
   sol_copy.copy_from(solution);
 
-  rmm::device_scalar<bool> successful(true, solution.handle_ptr->get_stream());
+  rmm::device_scalar<bool> successful(true_v, solution.handle_ptr->get_stream());
   i_t TPB = 128;
   simple_rounding_kernel<i_t, f_t>
-    <<<2048, TPB, 0, solution.handle_ptr->get_stream()>>>(solution.view(), successful.data());
+    <<<2048, TPB, 0, solution.handle_ptr->get_stream().get()>>>(solution.view(), successful.data());
   if (!successful.value(solution.handle_ptr->get_stream())) {
     CUOPT_LOG_DEBUG("Simple rounding failed");
     solution.copy_from(sol_copy);
@@ -101,7 +103,7 @@ bool invoke_simple_rounding(solution_t<i_t, f_t>& solution)
 }
 
 template <typename i_t, typename f_t>
-void invoke_round_nearest(solution_t<i_t, f_t>& solution)
+void invoke_round_nearest(solution_t<i_t, f_t>& solution, uint64_t seed)
 {
   i_t TPB                     = 128;
   bool brute_force_found_feas = check_brute_force_rounding(solution);
@@ -111,23 +113,27 @@ void invoke_round_nearest(solution_t<i_t, f_t>& solution)
   if (simple_round) { return; }
 
   i_t n_blocks = (solution.problem_ptr->n_integer_vars + TPB - 1) / TPB;
-  nearest_rounding_kernel<i_t, f_t><<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(
-    solution.view(), cuopt::seed_generator::get_seed());
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  nearest_rounding_kernel<i_t, f_t>
+    <<<n_blocks, TPB, 0, solution.handle_ptr->get_stream().get()>>>(solution.view(), seed);
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t>
-void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_random_rounds)
+void invoke_random_round_nearest(solution_t<i_t, f_t>& solution,
+                                 i_t n_target_random_rounds,
+                                 uint64_t seed)
 {
+  pcgenerator_t seed_rng(seed);
   i_t TPB        = 128;
   i_t n_blocks   = (solution.problem_ptr->n_variables + TPB - 1) / TPB;
   i_t n_integers = solution.compute_number_of_integers();
   CUOPT_LOG_TRACE("before random roundin n_integers %d total n_integers %d",
                   n_integers,
                   solution.problem_ptr->n_integer_vars);
-  rmm::device_scalar<i_t> n_randomly_rounded(0, solution.handle_ptr->get_stream());
-  random_nearest_rounding_kernel<i_t, f_t><<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(
-    solution.view(), cuopt::seed_generator::get_seed(), n_randomly_rounded.data());
+  rmm::device_scalar<i_t> n_randomly_rounded(zero_v<i_t>, solution.handle_ptr->get_stream());
+  random_nearest_rounding_kernel<i_t, f_t>
+    <<<n_blocks, TPB, 0, solution.handle_ptr->get_stream().get()>>>(
+      solution.view(), seed_rng.next_u64(), n_randomly_rounded.data());
   i_t h_n_random_rounds = n_randomly_rounded.value(solution.handle_ptr->get_stream());
   CUOPT_LOG_TRACE("Randomly rounded integers %d", h_n_random_rounds);
   i_t additional_roundings_needed = n_target_random_rounds - h_n_random_rounds;
@@ -135,24 +141,24 @@ void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_ra
     // TODO sort the remaining integers with fractionality and round them randomly
     rmm::device_uvector<i_t> shuffled_indices(solution.problem_ptr->integer_indices,
                                               solution.handle_ptr->get_stream());
-    thrust::default_random_engine rng(cuopt::seed_generator::get_seed());
+    thrust::default_random_engine rng(seed_rng.next_u32());
     // from the remaining integers, populate randomly.
     thrust::shuffle(solution.handle_ptr->get_thrust_policy(),
                     shuffled_indices.begin(),
                     shuffled_indices.end(),
                     rng);
     random_rounding_kernel<i_t, f_t>
-      <<<1, 1, 0, solution.handle_ptr->get_stream()>>>(solution.view(),
-                                                       cuopt::seed_generator::get_seed(),
-                                                       shuffled_indices.data(),
-                                                       n_randomly_rounded.data(),
-                                                       additional_roundings_needed);
+      <<<1, 1, 0, solution.handle_ptr->get_stream().get()>>>(solution.view(),
+                                                             seed_rng.next_u64(),
+                                                             shuffled_indices.data(),
+                                                             n_randomly_rounded.data(),
+                                                             additional_roundings_needed);
     h_n_random_rounds = n_randomly_rounded.value(solution.handle_ptr->get_stream());
     CUOPT_LOG_TRACE("Randomly rounded integers, after adding close integers too %d",
                     h_n_random_rounds);
   }
-  solution.round_nearest();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  solution.round_nearest(seed_rng.next_u64());
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t>
@@ -172,9 +178,10 @@ void invoke_correct_integers(solution_t<i_t, f_t>& solution, f_t tol)
 
 #define INSTANTIATE(F_TYPE)                                                                  \
   template bool check_brute_force_rounding<int, F_TYPE>(solution_t<int, F_TYPE> & solution); \
-  template void invoke_random_round_nearest<int, F_TYPE>(solution_t<int, F_TYPE> & solution, \
-                                                         int n_target_random_rounds);        \
-  template void invoke_round_nearest<int, F_TYPE>(solution_t<int, F_TYPE> & solution);       \
+  template void invoke_random_round_nearest<int, F_TYPE>(                                    \
+    solution_t<int, F_TYPE> & solution, int n_target_random_rounds, uint64_t seed);          \
+  template void invoke_round_nearest<int, F_TYPE>(solution_t<int, F_TYPE> & solution,        \
+                                                  uint64_t seed);                            \
   template bool invoke_simple_rounding<int, F_TYPE>(solution_t<int, F_TYPE> & solution);     \
   template void invoke_correct_integers<int, F_TYPE>(solution_t<int, F_TYPE> & solution,     \
                                                      F_TYPE tol);

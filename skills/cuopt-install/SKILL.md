@@ -1,6 +1,6 @@
 ---
 name: cuopt-install
-version: "26.10.00"
+version: "26.12.00"
 description: Install cuOpt for Python, C, or server via pip, conda, or Docker; verify the install. For building cuOpt from source, see cuopt-developer.
 license: Apache-2.0
 metadata:
@@ -12,6 +12,7 @@ metadata:
     - python
     - server
 ---
+
 
 
 # cuOpt Install (user)
@@ -107,8 +108,8 @@ conda install -c rapidsai -c conda-forge -c nvidia cuopt-server cuopt-sh-client
 ### Docker
 
 ```bash
-docker pull nvidia/cuopt:latest-cuda12.9-py3.13
-docker run --gpus all -it --rm -p 8000:8000 nvidia/cuopt:latest-cuda12.9-py3.13
+docker pull nvidia/cuopt:latest-cu12
+docker run --gpus all -it --rm -p 8000:8000 nvidia/cuopt:latest-cu12
 ```
 
 ### Verify

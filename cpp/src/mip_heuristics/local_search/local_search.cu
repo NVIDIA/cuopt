@@ -11,16 +11,34 @@
 #include <cuopt/error.hpp>
 
 #include <branch_and_bound/branch_and_bound.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/diversity/diversity_manager.cuh>
-#include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/lns/cpufj.cuh>
+#include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mip_heuristics/utils.cuh>
-#include <utilities/seed_generator.cuh>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
+#include <mip_heuristics/feasibility_jump/cpu/search/api.hpp>
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <random>
+
 namespace cuopt::mathematical_optimization::mip {
+
+// Apply the existing feasibility-portfolio thresholds to the capacity remaining
+// after reserving the persistent CPUFJ LNS worker.
+template <typename i_t, typename f_t>
+static int feasibility_team_size(const mip_solver_context_t<i_t, f_t>& context)
+{
+  const int team = omp_get_num_threads();
+  return team -
+         lns_worker_count(team, context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
+}
 
 template <typename i_t, typename f_t>
 local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context_,
@@ -39,7 +57,7 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
        constraint_prop,
        line_segment_search,
        lp_optimal_solution_),
-    rng(cuopt::seed_generator::get_seed()),
+    rng(derive_seed(context.base_seed, rng_id_t::local_search)),
     problem_with_objective_cut(*context.problem_ptr, context.problem_ptr->handle_ptr)
 {
   const int n_cpufj = context.settings.heuristic_params.num_cpufj_threads;
@@ -49,10 +67,22 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
 }
 
 template <typename i_t, typename f_t>
+fj_improvement_callback_t<f_t> local_search_t<i_t, f_t>::make_fj_improvement_callback(
+  problem_t<i_t, f_t>* publication_problem)
+{
+  if (!context.solution_publication.enabled()) { return {}; }
+  cuopt_assert(publication_problem != nullptr, "Publication problem pointer must not be null");
+  return [this, publication_problem](f_t user_obj, const std::vector<f_t>& assignment) {
+    context.solution_publication.publish_if_better(
+      publication_problem, assignment, publication_problem->get_solver_obj_from_user_obj(user_obj));
+  };
+}
+
+template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t>& population)
 {
   // TODO: Find a way to enable this in low core count scenarios
-  if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
+  if (feasibility_team_size(context) < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
 
   pop_ptr = &population;
   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
@@ -65,12 +95,13 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
   solution.clamp_within_bounds();
   i_t counter = 0;
   for (auto& cpu_fj : scratch_cpu_fj) {
-    if (counter > 0) solution.assign_random_within_bounds(0.4);
+    if (counter > 0) solution.assign_random_within_bounds(rng(), 0.4);
     cpu_fj = fj.create_cpu_climber(solution,
                                    default_weights,
                                    default_weights,
                                    0.,
                                    context.preempt_heuristic_solver_,
+                                   &constraint_prop.bounds_update.probing_cache,
                                    fj_settings_t{},
                                    /*randomize=*/counter > 0);
 
@@ -103,11 +134,82 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
 }
 
 template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::start_cpufj_lns_improvement_thread(
+  population_t<i_t, f_t>& population)
+{
+  // Share the solve team and leave capacity for feasibility discovery.
+  const int workers = lns_worker_count(
+    omp_get_num_threads(), context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
+  if (workers == 0) return;
+  auto* exception_ptr = context.task_exception;
+  cuopt_assert(exception_ptr != nullptr, "LNS worker needs the team exception slot");
+
+  std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
+  solution_t<i_t, f_t> solution(*context.problem_ptr);
+  thrust::fill(solution.handle_ptr->get_thrust_policy(),
+               solution.assignment.begin(),
+               solution.assignment.end(),
+               0.0);
+  solution.clamp_within_bounds();
+
+  // Paid once: every subsequent ruin-and-repair iteration reuses this exact climber, mutating
+  // its assignment directly and calling cpufj_solve() again instead of reconstructing (which
+  // would re-download the whole problem from device and re-pay O(nnz) setup every iteration).
+  scratch_cpu_fj_lns             = fj.create_cpu_climber(solution,
+                                             default_weights,
+                                             default_weights,
+                                             0.,
+                                             context.preempt_heuristic_solver_,
+                                             &constraint_prop.bounds_update.probing_cache,
+                                             fj_settings_t{},
+                                             /*randomize=*/true,
+                                             /*preserve_rng=*/true);
+  scratch_cpu_fj_lns->log_prefix = "******* lns improvement: ";
+  scratch_cpu_fj_lns->improvement_callback =
+    [&population](f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
+      population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ, /*from_lns=*/true);
+    };
+
+  lns_population_feed = std::make_unique<lns_population_feed_t<i_t, f_t>>(population);
+  auto stream         = context.problem_ptr->handle_ptr->get_stream();
+  lns_original_bounds = cuopt::host_copy_async(context.problem_ptr->variable_bounds, stream);
+  lns_original_types  = cuopt::host_copy_async(context.problem_ptr->variable_types, stream);
+  context.problem_ptr->handle_ptr->sync_stream();
+  auto* bounds_ptr = &lns_original_bounds;
+  auto* types_ptr  = &lns_original_types;
+  auto* feed_ptr   = lns_population_feed.get();
+  auto* ptr        = scratch_cpu_fj_lns.get();
+  const size_t n   = context.problem_ptr->n_variables;
+  CUOPT_LOG_DEBUG("Launching CPUFJ LNS improvement task");
+#pragma omp task firstprivate(ptr, feed_ptr, bounds_ptr, types_ptr, exception_ptr, n) \
+  priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *ptr) default(none)
+  {
+    const int previous_max_threads = omp_get_max_threads();
+    omp_set_num_threads(1);
+    try {
+      run_cpufj_lns_ruin_repair<i_t, f_t>(
+        ptr,
+        [feed_ptr, n](auto& assignment) {
+          assignment.resize(n);
+          return feed_ptr->best_feasible(assignment);
+        },
+        [ptr, bounds_ptr, types_ptr](const auto& assignment) {
+          return verify_cpufj_lns_feasible(*ptr->problem, *bounds_ptr, *types_ptr, assignment);
+        });
+    } catch (...) {
+#pragma omp critical(cuopt_mip_task_exception)
+      if (!*exception_ptr) *exception_ptr = std::current_exception();
+    }
+    omp_set_num_threads(previous_max_threads);
+  }
+}
+
+template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   population_t<i_t, f_t>& population)
 {
   // TODO: Find a way to enable this in low core count scenarios
-  if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
+  if (feasibility_team_size(context) < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
 
   pop_ptr = &population;
 
@@ -116,9 +218,13 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
   solution_lp.copy_new_assignment(
     host_copy(lp_optimal_solution, context.problem_ptr->handle_ptr->get_stream()));
-  solution_lp.round_random_nearest(500);
-  scratch_cpu_fj_on_lp_opt = fj.create_cpu_climber(
-    solution_lp, default_weights, default_weights, 0., context.preempt_heuristic_solver_);
+  solution_lp.round_random_nearest(500, rng());
+  scratch_cpu_fj_on_lp_opt             = fj.create_cpu_climber(solution_lp,
+                                                   default_weights,
+                                                   default_weights,
+                                                   0.,
+                                                   context.preempt_heuristic_solver_,
+                                                   &constraint_prop.bounds_update.probing_cache);
   scratch_cpu_fj_on_lp_opt->log_prefix = "******* scratch on LP optimal: ";
   scratch_cpu_fj_on_lp_opt->improvement_callback =
     [this, &population](f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
@@ -143,19 +249,28 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
-  if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
-
+  // Signal every persistent worker before reaching any task scheduling point.
+  // LNS can run on teams too small to launch the scratch feasibility lanes.
+  if (scratch_cpu_fj_lns) scratch_cpu_fj_lns->halted = true;
+  if (scratch_cpu_fj_on_lp_opt) scratch_cpu_fj_on_lp_opt->halted = true;
+  for (auto& cpu_fj : scratch_cpu_fj) {
+    if (cpu_fj) cpu_fj->halted = true;
+  }
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
-    scratch_cpu_fj[i]->halted = true;
+    if (!scratch_cpu_fj[i]) continue;
 #pragma omp taskwait depend(in : *scratch_cpu_fj[i])  // Wait for each scratch CPU FJ task to finish
   }
 
   if (scratch_cpu_fj_on_lp_opt) {
-    scratch_cpu_fj_on_lp_opt->halted = true;
 #pragma omp taskwait depend( \
     in : *scratch_cpu_fj_on_lp_opt)  // Wait for the scratch CPU FJ (LP optimal) task to finish
 
     CUOPT_LOG_DEBUG("All scratch CPUFJ tasks were stopped");
+  }
+
+  if (scratch_cpu_fj_lns) {
+#pragma omp taskwait depend(in : *scratch_cpu_fj_lns)  // Wait for the LNS improvement task
+    CUOPT_LOG_DEBUG("CPUFJ LNS improvement task was stopped");
   }
 }
 
@@ -164,7 +279,7 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(mip::branch_and_bound_t
 {
   producer_sync_t& producer_sync = bb.get_producer_sync();
 
-  if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) {
+  if (feasibility_team_size(context) < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) {
     producer_sync.registration_complete();
     return;
   }
@@ -183,6 +298,7 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(mip::branch_and_bound_t
                                                default_weights,
                                                0.,
                                                context.preempt_heuristic_solver_,
+                                               &constraint_prop.bounds_update.probing_cache,
                                                fj_settings_t{},
                                                /*randomize=*/true);
 
@@ -224,6 +340,99 @@ void local_search_t<i_t, f_t>::stop_cpufj_deterministic()
 }
 
 template <typename i_t, typename f_t>
+static void log_cpufj_portfolio_timing(
+  const std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>>& climbers,
+  size_t launched,
+  const std::string& source,
+  double construct_seconds,
+  double launch_time,
+  double halt_signal_time,
+  double run_before_halt,
+  double halt_join_seconds)
+{
+  cuopt_assert(launched <= climbers.size(), "launched lane count exceeds configured lanes");
+
+  [[maybe_unused]] double queue_max          = 0;
+  [[maybe_unused]] double search_max         = 0;
+  [[maybe_unused]] double halt_lane_max      = 0;
+  [[maybe_unused]] double start_phase_max    = 0;
+  [[maybe_unused]] double bound_phase_max    = 0;
+  [[maybe_unused]] double lp_phase_max       = 0;
+  [[maybe_unused]] double lp_relaxation_max  = 0;
+  [[maybe_unused]] double coloring_phase_max = 0;
+  [[maybe_unused]] double features_phase_max = 0;
+  [[maybe_unused]] double lhs_phase_max      = 0;
+  [[maybe_unused]] double binary_phase_max   = 0;
+  [[maybe_unused]] size_t search_before_halt = 0;
+  [[maybe_unused]] size_t search_after_halt  = 0;
+  [[maybe_unused]] size_t never_searched     = 0;
+  [[maybe_unused]] int slow_halt_lane        = -1;
+  [[maybe_unused]] i_t min_iterations        = std::numeric_limits<i_t>::max();
+  [[maybe_unused]] i_t max_iterations        = 0;
+  for (size_t i = 0; i < launched; ++i) {
+    const auto& cpu_fj = *climbers[i];
+    cuopt_assert(cpu_fj.solve_started_at > 0, "launched CPUFJ lane did not start");
+    cuopt_assert(cpu_fj.solve_finished_at >= cpu_fj.solve_started_at,
+                 "CPUFJ lane finished before it started");
+    queue_max = std::max(queue_max, cpu_fj.solve_started_at - launch_time);
+    if (cpu_fj.search_started_at == 0) {
+      ++never_searched;
+    } else {
+      search_max = std::max(search_max, cpu_fj.search_started_at - cpu_fj.solve_started_at);
+      if (cpu_fj.search_started_at <= halt_signal_time) {
+        ++search_before_halt;
+      } else {
+        ++search_after_halt;
+      }
+    }
+    const double halt_lane = std::max(0.0, cpu_fj.solve_finished_at - halt_signal_time);
+    if (halt_lane > halt_lane_max) {
+      halt_lane_max  = halt_lane;
+      slow_halt_lane = i;
+    }
+    start_phase_max    = std::max(start_phase_max, cpu_fj.stats.t_start);
+    bound_phase_max    = std::max(bound_phase_max, cpu_fj.stats.t_bound_prop);
+    lp_phase_max       = std::max(lp_phase_max, cpu_fj.stats.t_lp_start);
+    lp_relaxation_max  = std::max(lp_relaxation_max, cpu_fj.stats.t_lp_relaxation);
+    coloring_phase_max = std::max(coloring_phase_max, cpu_fj.stats.t_coloring);
+    features_phase_max = std::max(features_phase_max, cpu_fj.stats.t_features);
+    lhs_phase_max      = std::max(lhs_phase_max, cpu_fj.stats.t_init_lhs);
+    binary_phase_max   = std::max(binary_phase_max, cpu_fj.stats.bin_setup.total());
+    min_iterations     = std::min(min_iterations, cpu_fj.iterations);
+    max_iterations     = std::max(max_iterations, cpu_fj.iterations);
+  }
+  if (launched == 0) min_iterations = 0;
+  CUOPT_LOG_DEBUG(
+    "CPUFJ timing[%s]: configured %zu, launched %zu, construct %.4fs, queue max %.4fs, search max "
+    "%.4fs, run %.4fs, halt/join %.4fs (lane %d: %.4fs), search before/after/never %zu/%zu/%zu, "
+    "iterations %d..%d, phases max start %.4fs, bound %.4fs, LP %.4fs, LP relaxation %.4fs, "
+    "coloring %.4fs, features %.4fs, lhs %.4fs, binary %.4fs",
+    source.c_str(),
+    climbers.size(),
+    launched,
+    construct_seconds,
+    queue_max,
+    search_max,
+    run_before_halt,
+    halt_join_seconds,
+    slow_halt_lane,
+    halt_lane_max,
+    search_before_halt,
+    search_after_halt,
+    never_searched,
+    min_iterations,
+    max_iterations,
+    start_phase_max,
+    bound_phase_max,
+    lp_phase_max,
+    lp_relaxation_max,
+    coloring_phase_max,
+    features_phase_max,
+    lhs_phase_max,
+    binary_phase_max);
+}
+
+template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                                            fj_t<i_t, f_t>& in_fj,
                                            f_t time_limit,
@@ -252,23 +461,49 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   }
   auto h_weights          = cuopt::host_copy(in_fj.cstr_weights, solution.handle_ptr->get_stream());
   auto h_objective_weight = in_fj.objective_weight.value(solution.handle_ptr->get_stream());
-  for (auto& cpu_fj : ls_cpu_fj) {
-    cpu_fj = fj.create_cpu_climber(solution,
-                                   h_weights,
-                                   h_weights,
-                                   h_objective_weight,
-                                   context.preempt_heuristic_solver_,
-                                   fj_settings_t{},
-                                   true);
+  const int64_t lane_base_seed    = derive_seed(context.base_seed, rng_id_t::local_search_cpu_fj);
+  constexpr bool enable_starts    = false;
+  constexpr bool randomize_params = true;
+  constexpr bool preserve_rng     = false;
+  constexpr bool copy_related_variables = false;
+  const double construct_start          = tic();
+  if (!ls_cpu_fj.empty()) {
+    ls_cpu_fj[0] = fj.create_cpu_climber(solution,
+                                         h_weights,
+                                         h_weights,
+                                         h_objective_weight,
+                                         context.preempt_heuristic_solver_,
+                                         &constraint_prop.bounds_update.probing_cache,
+                                         fj_settings_t{},
+                                         randomize_params,
+                                         preserve_rng,
+                                         copy_related_variables);
+    for (size_t lane = 1; lane < ls_cpu_fj.size(); ++lane) {
+      fj_settings_t settings;
+      settings.seed = fj.next_seed();
+      ls_cpu_fj[lane] =
+        init_fj_cpu_clone(*ls_cpu_fj[0], context.preempt_heuristic_solver_, settings);
+    }
+    for (size_t lane = 0; lane < ls_cpu_fj.size(); ++lane) {
+      apply_lane_diversification(*ls_cpu_fj[lane], lane, lane_base_seed, enable_starts);
+      ls_cpu_fj[lane]->use_bound_prop = false;
+    }
   }
+  const double construct_seconds = toc(construct_start);
 
-  auto solution_copy = solution;
+  auto solution_copy                       = solution;
+  size_t launched                          = 0;
+  const double launch_time                 = tic();
+  [[maybe_unused]] double halt_signal_time = 0;
+  [[maybe_unused]] double run_before_halt  = 0;
 
   // Start CPU solver in background thread
 #pragma omp taskgroup
   {
-    if (ls_cpu_fj.size() > 0 && omp_get_num_threads() > CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) {
-      size_t n = std::min<size_t>(omp_get_num_threads() - 1, ls_cpu_fj.size());
+    if (ls_cpu_fj.size() > 0 &&
+        feasibility_team_size(context) > CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) {
+      size_t n = std::min<size_t>(feasibility_team_size(context) - 1, ls_cpu_fj.size());
+      launched = n;
       CUOPT_LOG_DEBUG("Launching %d CPUFJ tasks", n);
 
 #pragma omp taskloop shared(ls_cpu_fj) default(none) num_tasks(n) \
@@ -280,12 +515,25 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
 
     // Run GPU solver
     in_fj.settings.time_limit = timer.remaining_time();
-    in_fj.solve(solution);
+    in_fj.solve(solution, make_fj_improvement_callback(solution.problem_ptr));
+    CUOPT_LOG_DEBUG("GPU solver finished");
 
+    halt_signal_time = tic();
+    run_before_halt  = toc(launch_time);
     for (size_t i = 0; i < ls_cpu_fj.size(); ++i) {
       ls_cpu_fj[i]->halted = true;
     }
   }  // implicit barrier that waits all CPU FJ tasks to finish
+
+  const double halt_join_seconds = toc(halt_signal_time);
+  log_cpufj_portfolio_timing(ls_cpu_fj,
+                             launched,
+                             source,
+                             construct_seconds,
+                             launch_time,
+                             halt_signal_time,
+                             run_before_halt,
+                             halt_join_seconds);
 
   CUOPT_LOG_DEBUG("All CPUFJ tasks were stopped");
 
@@ -494,7 +742,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
   if (perturb) {
     CUOPT_LOG_DEBUG("Perturbating solution on initial fj on optimal run!");
     f_t perturbation_ratio = 0.2;
-    solution.assign_random_within_bounds(perturbation_ratio);
+    solution.assign_random_within_bounds(rng(), perturbation_ratio);
   }
   cuopt_func_call(solution.test_variable_bounds(false));
   f_t lp_run_time_after_feasible = std::min(1., timer.remaining_time());
@@ -557,6 +805,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
   if (binary_only || integer_only) {
     return run_fp(solution, timer, population_ptr);
   } else {
+    fp.improvement_callback   = make_fj_improvement_callback(solution.problem_ptr);
     const i_t n_fp_iterations = 1000000;
     fp.cycle_queue.reset(solution);
     fp.reset();
@@ -583,7 +832,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
         if (is_feasible) { break; }
         if (timer.check_time_limit()) {
           fp.revert_relaxation(solution);
-          solution.round_nearest();
+          solution.round_nearest(rng());
           CUOPT_LOG_DEBUG("Time limit reached during binary stage!");
           return false;
         }
@@ -610,7 +859,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
         if (is_feasible) { return true; }
         if (timer.check_time_limit()) {
           CUOPT_LOG_DEBUG("FP time limit reached during integer stage!");
-          solution.round_nearest();
+          solution.round_nearest(rng());
           return false;
         }
         is_feasible = fp.restart_fp(solution);
@@ -748,6 +997,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
   rmm::device_uvector<f_t> best_solution(solution.assignment, solution.handle_ptr->get_stream());
   problem_t<i_t, f_t>* old_problem_ptr = solution.problem_ptr;
   fp.timer                             = timer_t(timer.remaining_time());
+  fp.improvement_callback              = make_fj_improvement_callback(old_problem_ptr);
   // if it has not been initialized yet, create a new problem and move it to the cut problem
   if (!problem_with_objective_cut.cutting_plane_added) {
     problem_with_objective_cut = std::move(problem_t<i_t, f_t>(*old_problem_ptr));

@@ -7,8 +7,6 @@
 
 #pragma once
 
-#include <cub/cub.cuh>
-
 #include "problem.cuh"
 
 namespace cuopt::mathematical_optimization::mip {

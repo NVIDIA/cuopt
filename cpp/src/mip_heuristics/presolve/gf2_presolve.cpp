@@ -12,6 +12,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
+#include <optional>
 #include <unordered_map>
 
 #if GF2_PRESOLVE_DEBUG
@@ -35,7 +37,32 @@ static inline i_t positive_modulo(i_t i, i_t n)
   return (i % n + n) % n;
 }
 
+// Value the row is pinned to, if any. Papilo drops a side once the row activity makes it
+// redundant, so an equality can reach a presolver as a one-sided row; conversely a one-sided row
+// whose activity reaches its side exactly holds with equality at every feasible point.
+template <typename f_t>
+static std::optional<f_t> pinned_row_value(const papilo::RowFlags& flags,
+                                           const papilo::RowActivity<f_t>& activity,
+                                           f_t lhs,
+                                           f_t rhs,
+                                           const papilo::Num<f_t>& num)
+{
+  if (flags.test(papilo::RowFlag::kEquation)) { return lhs; }
+  if (!flags.test(papilo::RowFlag::kRhsInf) && activity.ninfmin == 0 &&
+      num.isEq(activity.min, rhs)) {
+    return rhs;
+  }
+  if (!flags.test(papilo::RowFlag::kLhsInf) && activity.ninfmax == 0 &&
+      num.isEq(activity.max, lhs)) {
+    return lhs;
+  }
+  return std::nullopt;
+}
+
 static constexpr int GF2_WORD_BITS = 64;
+
+// up to the mantissa bits of float, to err on the safe side
+static constexpr int GF2_MAX_ROW_VALUE = 1 << std::numeric_limits<float>::digits;
 
 static inline int gf2_nwords(int N) { return (N + GF2_WORD_BITS - 1) / GF2_WORD_BITS; }
 
@@ -151,7 +178,10 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
   const auto& lower_bounds      = domains.lower_bounds;
   const auto& upper_bounds      = domains.upper_bounds;
 
+  const auto& row_activities = problem.getRowActivities();
+
   const int num_rows = constraint_matrix.getNRows();
+  cuopt_assert(row_activities.size() == num_rows, "row activities not initialized");
 
   std::unordered_map<size_t, size_t> gf2_bin_vars;
   std::unordered_map<size_t, size_t> gf2_key_vars;
@@ -170,17 +200,21 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
     const int* row_indices = row_coeff.getIndices();
     const f_t* row_values  = row_coeff.getValues();
     const int row_length   = row_coeff.getLength();
-    f_t rhs                = std::round(lhs_values[cstr_idx]);
+    int rhs                = 0;
 
-    // Check if this is an equality constraint
-    if (!num.isEq(lhs_values[cstr_idx], rhs_values[cstr_idx]))
-      NOT_GF2("not eq", lhs_values[cstr_idx], rhs_values[cstr_idx]);
-    if (!std::isfinite(lhs_values[cstr_idx])) NOT_GF2("not finite", lhs_values[cstr_idx]);
-    if (!is_integer(lhs_values[cstr_idx], integrality_tolerance))
-      NOT_GF2("not integer", lhs_values[cstr_idx]);
+    const std::optional<f_t> row_value = pinned_row_value(row_flags[cstr_idx],
+                                                          row_activities[cstr_idx],
+                                                          lhs_values[cstr_idx],
+                                                          rhs_values[cstr_idx],
+                                                          num);
 
-    // Only accept 0, 1, -1 as rhs
-    if (rhs != 0.0 && rhs != 1.0 && rhs != -1.0) NOT_GF2("not 0, 1, -1", rhs);
+    if (row_flags[cstr_idx].test(papilo::RowFlag::kRedundant)) NOT_GF2("redundant");
+
+    if (!row_value.has_value()) NOT_GF2("not eq");
+    if (!std::isfinite(*row_value)) NOT_GF2("not finite", *row_value);
+    if (!is_integer(*row_value, integrality_tolerance)) NOT_GF2("not integer", *row_value);
+    if (std::abs(*row_value) > GF2_MAX_ROW_VALUE) NOT_GF2("side too large", *row_value);
+    rhs = (int)std::round(*row_value);
 
     for (int j = 0; j < row_length; ++j) {
       if (!is_integer(row_values[j], integrality_tolerance)) {
@@ -228,7 +262,7 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
     gf2_constraints.emplace_back((size_t)cstr_idx,
                                  std::move(constraint_bin_vars),
                                  std::pair<size_t, f_t>{key_var_idx, key_var_coeff},
-                                 positive_modulo((int)rhs, 2));
+                                 rhs);
     continue;
   not_valid:
     continue;
@@ -262,7 +296,7 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
     for (auto [bin_var, _] : cons.bin_vars) {
       gf2_set_bit(A[gf2_cstr_idx], (int)gf2_bin_vars[bin_var]);
     }
-    b[gf2_cstr_idx] = cons.rhs;
+    b[gf2_cstr_idx] = positive_modulo(cons.rhs, 2);
   }
 
   std::vector<int> solution(n);
@@ -290,8 +324,7 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
     if (!all_bins_determined) continue;
 
     auto [key_var_idx, key_var_coeff] = cons.key_var;
-    const f_t constraint_rhs          = std::round(lhs_values[cons.cstr_idx]);
-    f_t lhs                           = -constraint_rhs;
+    f_t lhs                           = -cons.rhs;
     for (auto [bin_var, coeff] : cons.bin_vars) {
       cuopt_assert(fixings.count(bin_var), "");
       lhs += fixings[bin_var] * coeff;

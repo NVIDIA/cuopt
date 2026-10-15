@@ -126,11 +126,14 @@ cuOpt supports the following APIs:
 - Python support
    - :doc:`Routing (TSP, VRP, and PDP) - Python <cuopt-python/quick-start>`
    - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Programming (MIP) - Python <cuopt-python/quick-start>`
+- Java support (experimental)
+   - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Programming (MIP) - Java <cuopt-java/quick-start>`
 - gRPC remote execution and gRPC clients
-   - :doc:`Remote execution (zero code change) <cuopt-grpc/quick-start>` — set ``CUOPT_REMOTE_HOST`` / ``CUOPT_REMOTE_PORT``; Python, C (``cuOptSolve``), and ``cuopt_cli`` forward automatically
-   - :doc:`Python async gRPC client <cuopt-grpc/python-async-client>` — explicit job API (submit / wait / cancel / stream logs and incumbents)
+   - :doc:`Remote execution (zero code change) <cuopt-grpc/quick-start>` — set ``CUOPT_REMOTE_HOST`` / ``CUOPT_REMOTE_PORT``; the Python solver APIs, C (``cuOptSolve``), ``cuopt_cli``, and modeling-language integrations that call those APIs forward LP, MIP, and QP automatically
+   - :doc:`gRPC linear programming client <cuopt-grpc/python-async-client>` — explicit LP, MIP, and QP job API (submit / wait / cancel / stream logs and incumbents)
+   - :doc:`gRPC routing client <cuopt-grpc/routing>` — explicit VRP, TSP, and PDP job API (submit / wait / result / delete)
    - :doc:`Custom CuOptRemoteService clients <cuopt-grpc/api>` — speak the gRPC protos directly
-- Server support
+- Server support (HTTP)
    - :doc:`Linear Programming (LP) - Server <cuopt-server/quick-start>`
    - :doc:`Mixed Integer Programming (MIP) - Server <cuopt-server/quick-start>`
    - :doc:`Routing (TSP, VRP, and PDP) - Server <cuopt-server/quick-start>`

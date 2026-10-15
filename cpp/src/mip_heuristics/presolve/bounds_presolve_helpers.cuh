@@ -11,8 +11,6 @@
 #include <thrust/tuple.h>
 #include <utilities/device_utils.cuh>
 
-#include <cub/cub.cuh>
-
 #include "bounds_update_data.cuh"
 
 namespace cuopt::mathematical_optimization::mip {

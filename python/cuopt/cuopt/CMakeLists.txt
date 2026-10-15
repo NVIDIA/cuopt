@@ -3,15 +3,33 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-add_subdirectory(distance_engine)
 add_subdirectory(linear_programming/data_model)
 add_subdirectory(linear_programming/io)
 add_subdirectory(linear_programming/solver)
 add_subdirectory(linear_programming/solver_settings)
-add_subdirectory(grpc)
+# grpc_client.pyx cimports cuopt::routing headers unconditionally (see grpc/client/CMakeLists.txt),
+# so test the resolved target rather than CUOPT_HAS_GRPC_ROUTING -- that flag reflects whichever
+# sibling wheel's cuopt-config.cmake resolved find_package(cuopt), not what is actually installed.
+if(CUOPT_HAS_GRPC AND TARGET cuopt::routing)
+    add_subdirectory(grpc)
+else()
+    message(STATUS "cuOpt built without gRPC or without its VRP arm -- skipping the gRPC client extension module")
+endif()
 
-add_subdirectory(routing)
+# These two link cuopt::routing, which a SKIP_ROUTING_BUILD install does not provide.
+# Tested on the found package rather than on SKIP_ROUTING_BUILD: this build only does
+# find_package(cuopt) and never sees that option, so the variable would be empty here
+# and the guard would always pass.
+if(TARGET cuopt::routing)
+    add_subdirectory(distance_engine)
+    add_subdirectory(routing)
+else()
+    message(STATUS "cuopt::routing not found -- skipping the routing and distance_engine extension modules")
+endif()
 
+# No sources here -- every extension module is created in a subdirectory, and each links
+# the component it actually resolves symbols from. Anything added here would link the
+# cuopt umbrella and pull in both engines, so add it to the owning subdirectory instead.
 set(cython_sources)
 set(linked_libraries cuopt::cuopt)
 

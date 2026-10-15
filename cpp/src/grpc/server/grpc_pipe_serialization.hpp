@@ -61,7 +61,7 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
   uint32_t size;
   if (!read_from_pipe(fd, &size, sizeof(size))) return false;
   if (size > kMaxProtobufMessageBytes) return false;
-  if (size == 0) return msg.ParseFromArray(nullptr, 0);
+  if (size == 0) return msg.ParseFromArray(static_cast<const void*>(nullptr), 0);
   std::vector<uint8_t> buf(size);
   if (!read_from_pipe(fd, buf.data(), size)) return false;
   return msg.ParseFromArray(buf.data(), static_cast<int>(size));
@@ -84,8 +84,8 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
 // Numeric arrays — both top-level and per-container — bypass protobuf
 // serialization and flow directly through the pipe as raw bytes.
 //
-// The pipe is intra-process (forked worker), so this format is not a
-// public protocol and can evolve in lockstep with the server binary.
+// The pipe connects the server process to an exec'd worker, so this format
+// is not a public protocol and can evolve in lockstep with the server binary.
 // =============================================================================
 
 // Tri-state result for write_chunked_request_to_pipe.  The distinction lets

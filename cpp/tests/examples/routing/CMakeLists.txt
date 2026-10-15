@@ -23,9 +23,11 @@ foreach(target
       "${CMAKE_CURRENT_SOURCE_DIR}/../../routing/utilities"
       "${CMAKE_CURRENT_SOURCE_DIR}/../../../src/utilities"
   )
+  # Links cuopt_routing directly so these examples verify the routing component is
+  # self-contained, rather than passing by way of the cuopt umbrella.
   target_link_libraries(${target}
     PRIVATE
-      cuopt
+      cuopt_routing
       cuopttestutils
       OpenMP::OpenMP_CXX
   )

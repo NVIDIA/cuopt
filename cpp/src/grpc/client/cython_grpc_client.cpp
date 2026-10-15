@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
+#include "cython_grpc_client_impl.hpp"
 #include "grpc_client.hpp"
 
 #include <chrono>
@@ -48,23 +49,6 @@ grpc_status_result_t map_status_result(
   out.result_size_bytes = in.result_size_bytes;
   return out;
 }
-
-bool is_in_flight(grpc_job_status_t status)
-{
-  return status == grpc_job_status_t::QUEUED || status == grpc_job_status_t::PROCESSING;
-}
-
-}  // namespace
-
-struct grpc_python_client_t::impl_t {
-  cuopt::mathematical_optimization::grpc_client_t client;
-  explicit impl_t(cuopt::mathematical_optimization::grpc_client_config_t config)
-    : client(std::move(config))
-  {
-  }
-};
-
-namespace {
 
 cuopt::mathematical_optimization::grpc_client_config_t make_config(
   const std::string& host, int port, const grpc_python_client_connect_options_t& options)
@@ -113,10 +97,20 @@ bool grpc_python_client_t::connect(std::string& error_out)
   return true;
 }
 
+bool grpc_python_client_t::ping(std::string& error_out, int timeout_seconds)
+{
+  if (!impl_->client.ping(timeout_seconds)) {
+    error_out = impl_->client.get_last_error();
+    return false;
+  }
+  return true;
+}
+
 grpc_submit_result_t grpc_python_client_t::submit(
   cuopt::mathematical_optimization::io::data_model_view_t<int, double>* data_model,
   cuopt::mathematical_optimization::solver_settings_t<int, double>* settings,
-  bool enable_incumbents)
+  bool enable_incumbents,
+  bool enable_set_incumbent)
 {
   grpc_submit_result_t out;
   if (data_model == nullptr || settings == nullptr) {
@@ -125,7 +119,8 @@ grpc_submit_result_t grpc_python_client_t::submit(
   }
 
   cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double> cpu_problem;
-  cuopt::mathematical_optimization::populate_from_data_model_view(
+  // kHostOnly=true: remote client, so the GPU warm-start path is unreachable here.
+  cuopt::mathematical_optimization::populate_from_data_model_view<int, double, true>(
     &cpu_problem, data_model, settings, nullptr);
 
   const bool is_mip =
@@ -135,13 +130,13 @@ grpc_submit_result_t grpc_python_client_t::submit(
 
   if (is_mip) {
     auto sub =
-      impl_->client.submit_mip(cpu_problem, settings->get_mip_settings(), enable_incumbents);
+      impl_->client.submit_mip(cpu_problem, *settings, enable_incumbents, enable_set_incumbent);
     out.success       = sub.success;
     out.error_message = sub.error_message;
     out.job_id        = sub.job_id;
     out.is_mip        = true;
   } else {
-    auto sub          = impl_->client.submit_lp(cpu_problem, settings->get_pdlp_settings());
+    auto sub          = impl_->client.submit_lp(cpu_problem, *settings);
     out.success       = sub.success;
     out.error_message = sub.error_message;
     out.job_id        = sub.job_id;
@@ -282,6 +277,7 @@ grpc_incumbents_result_t grpc_python_client_t::fetch_incumbents(const std::strin
     grpc_incumbent_entry_t entry;
     entry.index      = inc.index;
     entry.objective  = inc.objective;
+    entry.bound      = inc.bound;
     entry.assignment = inc.assignment;
     out.incumbents.push_back(std::move(entry));
   }

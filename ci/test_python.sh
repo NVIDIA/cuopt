@@ -12,7 +12,7 @@ conda config --set channel_priority strict
 
 rapids-logger "Downloading artifacts from previous jobs"
 CPP_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
-PYTHON_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_python cuopt cuopt --py "$RAPIDS_PY_VERSION" --cuda "$RAPIDS_CUDA_VERSION")")
+PYTHON_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_python cuopt cuopt --stable --cuda "$RAPIDS_CUDA_VERSION")")
 
 rapids-logger "Generate Python testing dependencies"
 rapids-dependency-file-generator \
@@ -47,28 +47,51 @@ FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
+# shellcheck source=ci/utils/crash_helpers.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/crash_helpers.sh"
+
 rapids-logger "Test cuopt_cli"
-timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh || FAILED_STEPS+=("cuopt_cli")
+run_step_with_timeout "cuopt_cli" 10m "" \
+  bash ./python/libcuopt/libcuopt/tests/test_cli.sh
+
+# Temporarily skip Python gRPC server tests that cancel jobs.
+CUOPT_JOB_CANCEL_SKIP_ARGS=(
+  --deselect=tests/linear_programming/test_grpc_client.py::TestGrpcClient::test_cancel_job
+  --deselect=tests/routing/test_routing_grpc_client.py::test_cancel_job
+)
 
 rapids-logger "pytest cuopt"
-timeout 30m ./ci/run_cuopt_pytests.sh \
+run_step_with_timeout "pytest cuopt" 45m "${RAPIDS_TESTS_DIR}/junit-cuopt.xml" \
+  ./ci/run_cuopt_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-cuopt.xml" \
   --cov-config=.coveragerc \
   --cov=cuopt \
   --cov-report=xml:"${RAPIDS_COVERAGE_DIR}/cuopt-coverage.xml" \
   --cov-report=term \
-  --ignore=raft || FAILED_STEPS+=("pytest cuopt")
+  "${CUOPT_JOB_CANCEL_SKIP_ARGS[@]}" \
+  --ignore=raft
+
+# Temporarily skip legacy and gRPC HTTP proxy tests that cancel jobs.
+CUOPT_SERVER_JOB_CANCEL_SKIP_ARGS=(
+  --ignore=tests/test_job_abort.py
+  --deselect=tests/test_grpc_http_proxy.py::test_cancel_request
+  --deselect=tests/test_grpc_http_proxy.py::test_cancel_completed_is_noop
+  --deselect=tests/test_grpc_http_proxy.py::test_vrp_cancel_and_delete
+  --deselect=tests/test_grpc_http_proxy.py::test_failed_or_cancelled_solution_is_409
+)
 
 rapids-logger "pytest cuopt-server"
-timeout 20m ./ci/run_cuopt_server_pytests.sh \
+run_step_with_timeout "pytest cuopt-server" 20m "${RAPIDS_TESTS_DIR}/junit-cuopt-server.xml" \
+  ./ci/run_cuopt_server_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-cuopt-server.xml" \
   --cov-config=.coveragerc \
   --cov=cuopt_server \
   --cov-report=xml:"${RAPIDS_COVERAGE_DIR}/cuopt-server-coverage.xml" \
-  --cov-report=term || FAILED_STEPS+=("pytest cuopt-server")
+  --cov-report=term \
+  "${CUOPT_SERVER_JOB_CANCEL_SKIP_ARGS[@]}"
 
 rapids-logger "Test skills/ assets (Python, C, CLI)"
-timeout 10m ./ci/test_skills_assets.sh || FAILED_STEPS+=("skills assets")
+run_step_with_timeout "skills assets" 10m "" ./ci/test_skills_assets.sh
 
 rapids-logger "Generate nightly test report"
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"

@@ -13,6 +13,7 @@
 #include "../solution/solution_handle.cuh"
 #include "routing/routing_helpers.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
 
@@ -53,7 +54,7 @@ class capacity_route_t {
 
   capacity_route_t& operator=(capacity_route_t&& capacity_route) = default;
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
     i_t n_dims = dim_info.n_capacity_dimensions;
     if (n_dims == 0) { return; }
@@ -72,7 +73,7 @@ class capacity_route_t {
                                         std::min(old_stride, new_stride) * sizeof(i_t),
                                         n_dims,
                                         cudaMemcpyDeviceToDevice,
-                                        stream.value()));
+                                        stream.get()));
       }
       vec = std::move(new_vec);
     };

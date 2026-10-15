@@ -27,6 +27,7 @@
 
 #include <utilities/timer.hpp>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
 #include <rmm/device_scalar.hpp>
@@ -60,14 +61,14 @@ class pdlp_solver_t {
    * @param[in] op_problem An mip::problem_t<i_t, f_t> object with a
    * representation of a linear program
    * @param[in] is_distributed_sub_pdlp true when constructed as a shard of a
-   * distributed solve.
+   * multi-GPU solve.
    */
   pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                 pdlp_solver_settings_t<i_t, f_t> const& settings,
                 bool is_batch_mode           = false,
                 bool is_distributed_sub_pdlp = false);
 
-  // Distributed Solver Constructor
+  // Multi-GPU solver constructor
   pdlp_solver_t(mip::problem_t<i_t, f_t>& placeholder_problem,
                 cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
                 pdlp_solver_settings_t<i_t, f_t> const& settings);
@@ -107,7 +108,7 @@ class pdlp_solver_t {
 
   void compute_initial_step_size();
   void compute_initial_primal_weight();
-  // Thin dispatch wrappers used by run_solver so single-GPU and distributed
+  // Thin dispatch wrappers used by run_solver so single-GPU and multi-GPU
   // callers hit the same call sites.
   void scale_problem();
   void create_spmv_op_plans();
@@ -156,7 +157,7 @@ class pdlp_solver_t {
                  [[maybe_unused]] bool is_major_iteration);
   void take_adaptive_step(i_t total_pdlp_iterations, bool is_major_iteration);
   void take_constant_step(bool is_major_iteration);
-
+  void project_initial_primal_transform();
   /**
    * @brief Update current primal & dual solution by setting new solutions and triggering a
    * recomputation of the primal weight and step size
@@ -176,7 +177,7 @@ class pdlp_solver_t {
   bool batch_mode_{false};
 
   raft::handle_t const* handle_ptr_;
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
   // Intentionnaly take a copy to avoid an unintentional modification in the calling context
   const pdlp_solver_settings_t<i_t, f_t> settings_;
   mip::shared_strong_branching_context_view_t<i_t, f_t> sb_view_{settings_.shared_sb_solved};
@@ -222,9 +223,8 @@ class pdlp_solver_t {
 
   // Inner solver
   pdlp::pdhg_solver_t<i_t, f_t> pdhg_solver_;
-  void halpern_update();
 
-  // This solver is the distributed-PDLP master orchestrator iff it owns the
+  // This solver is the multi-GPU PDLP master orchestrator iff it owns the
   // multi-GPU engine. Shards (sub-solvers) leave the optional empty -> false.
   // Single-GPU PDLP reports false.
   bool is_distributed_master() const;

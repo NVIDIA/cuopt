@@ -360,7 +360,7 @@ else
         mapfile -t mps_files < <(find "$MPS_DIR" -type f \( -name "*.mps" -o -name "*.MPS" -o -name "*.SIF" \) | sort)
     else
         # Gather .mps/.MPS and .SIF files in the directory
-        mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps "$MPS_DIR"/*.MPS "$MPS_DIR"/*.SIF "$MPS_DIR"/*.mps.gz 2>/dev/null)
+        mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps "$MPS_DIR"/*.MPS "$MPS_DIR"/*.SIF "$MPS_DIR"/*.mps.gz "$MPS_DIR"/*.MPS.gz "$MPS_DIR"/*.SIF.gz 2>/dev/null)
     fi
 
     echo "Found ${#mps_files[@]} .mps and .SIF files in $MPS_DIR"
@@ -383,7 +383,7 @@ mps_files=("${mps_files[@]:$start_idx:$((end_idx-start_idx))}")
 file_count=${#mps_files[@]}
 
 # Initialize the index file for locking mechanism
-INDEX_FILE="/tmp/mps_file_index.$$"
+INDEX_FILE="${TMPDIR:-/tmp}/mps_file_index.$$"
 
 # Remove the index file if it exists
 rm -f "$INDEX_FILE"

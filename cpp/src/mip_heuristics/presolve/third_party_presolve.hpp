@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -114,6 +115,9 @@ class third_party_presolve_t {
     reduction_allowlist_ = std::move(allowlist);
   }
 
+  void set_indicator_strengthening(bool enabled) { indicator_strengthening_ = enabled; }
+  void set_dual_reductions(bool enabled) { dual_reductions_ = enabled; }
+
   // Apply the presolve on an simplex::user_problem in-place. Used in sub MIP and (in the future)
   // restarts.
   third_party_presolve_status_t apply_to_subproblem(
@@ -130,7 +134,7 @@ class third_party_presolve_t {
                         problem_category_t category,
                         bool status_to_skip,
                         bool dual_postsolve,
-                        rmm::cuda_stream_view stream_view);
+                        cuda::stream_ref stream_view);
 
   // Host-only postsolve. Resizes the vectors to original-problem dimensions.
   void undo(std::vector<f_t>& primal_solution,
@@ -141,7 +145,13 @@ class third_party_presolve_t {
             bool dual_postsolve);
 
   void uncrush_primal_solution(const std::vector<f_t>& reduced_primal,
-                               std::vector<f_t>& full_primal) const;
+                               std::vector<f_t>& full_primal,
+                               bool check_postsolve = true) const;
+
+  bool is_original_primal_solution_feasible(const std::vector<f_t>& original_primal,
+                                            f_t absolute_tolerance,
+                                            f_t relative_tolerance,
+                                            f_t integrality_tolerance) const;
 
   void crush_primal_solution(const optimization_problem_t<i_t, f_t>& reduced_problem,
                              const std::vector<f_t>& original_primal,
@@ -160,6 +170,17 @@ class third_party_presolve_t {
                                   const std::vector<f_t>& A_values,
                                   const std::vector<i_t>& A_indices,
                                   const std::vector<i_t>& A_offsets) const;
+
+  // PSLP only: map a primal and dual solution in the original space (e.g. a user-provided LP
+  // initial solution) into the presolved space. Both x_original and y_original are required and
+  // must match the original problem's dimensions. x_presolved is clipped to presolved_problem's
+  // variable bounds, which PSLP may have tightened.
+  void crush_primal_dual_solution_pslp(const optimization_problem_t<i_t, f_t>& presolved_problem,
+                                       const std::vector<f_t>& x_original,
+                                       const std::vector<f_t>& y_original,
+                                       std::vector<f_t>& x_presolved,
+                                       std::vector<f_t>& y_presolved) const;
+
   const std::vector<i_t>& get_reduced_to_original_map() const { return reduced_to_original_map_; }
   const std::vector<i_t>& get_original_to_reduced_map() const { return original_to_reduced_map_; }
 
@@ -203,6 +224,11 @@ class third_party_presolve_t {
   // PSLP settings
   Settings* pslp_stgs_{nullptr};
   Presolver* pslp_presolver_{nullptr};
+  // Set when PSLP flagged the problem infeasible on very large magnitude data and we chose not to
+  // trust it, continuing to solve the original problem instead (see apply_presolve_from_mps_data).
+  // pslp_presolver_ then holds state from that aborted run, not a real reduction, so undo_pslp
+  // must skip PSLP's postsolve entirely -- the solution is already in original-problem space.
+  bool pslp_postsolve_skip_{false};
 
   // Necessary due to a nvcc bug due to papilo's constexpr functions
   // Keep the papilo includes in the .cpp to avoid bringing them
@@ -218,6 +244,8 @@ class third_party_presolve_t {
   f_t original_objective_scaling_factor_{1};
 
   std::optional<std::unordered_set<std::string>> reduction_allowlist_{};
+  bool indicator_strengthening_{true};
+  bool dual_reductions_{true};
 };
 
 // Just for testing the conversion: user_problem -> Papilo problem -> user_problem.

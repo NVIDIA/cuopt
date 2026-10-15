@@ -15,8 +15,6 @@
 // #include <thrust/for_each.h>
 // #include <thrust/iterator/counting_iterator.h>
 
-// #include <cub/cub.cuh>
-
 #include <iostream>
 // #include <utilities/cuda_helpers.cuh>
 #include <vector>

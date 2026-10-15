@@ -12,46 +12,49 @@ ARGS=$*
 # NOTE: ensure all dir changes are relative to the location of this
 # script, and that this script resides in the repo dir!
 REPODIR=$(cd "$(dirname "$0")"; pwd)
-LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
+LIBCUOPT_BUILD_DIR=$(realpath -m "${LIBCUOPT_BUILD_DIR:-${REPODIR}/cpp/build}")
 
-VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client java docs deb --run-java-tests -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo --export-debug-symbols --split-compile [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
-   clean            - remove all existing build artifacts and configuration (start over)
-   codegen          - regenerate gRPC .inc files and proto from field_registry.yaml (requires pyyaml)
-   libcuopt         - build the cuopt C++ code
-   cuopt_grpc_server - build only the gRPC server binary (configures + builds libcuopt as needed)
-   cuopt            - build the cuopt Python package
-   cuopt_server     - build the cuopt_server Python package
-   cuopt_sh_client  - build cuopt self host client
-   docs             - build the docs
-   deb              - build deb package (requires libcuopt to be built first)
+   clean                      - remove all existing build artifacts and configuration (start over)
+   codegen                    - regenerate gRPC .inc files and proto from field_registry.yaml (requires pyyaml)
+   libcuopt                   - build the cuopt C++ library
+   cuopt_grpc_server          - build only the gRPC server binary (configures and builds libcuopt as needed)
+   cuopt                      - build the cuopt Python package
+   cuopt_server               - build the cuopt_server Python package
+   cuopt_sh_client            - build the cuopt self-hosted client
+   java                       - build the cuopt Java bindings (requires libcuopt; needs maven and a JDK)
+   docs                       - build the docs
+   deb                        - build the deb package (requires libcuopt to be built first)
  and <flag> is:
-   -v               - verbose build mode
-   -g               - build for debug
-   -a               - Enable assertion (by default in debug mode)
-   -b               - Build with benchmark settings
-   -fsanitize       - Build with AddressSanitizer and UndefinedBehaviorSanitizer
-   -tsan            - Build with ThreadSanitizer (cannot be used with -fsanitize or -msan)
-   -msan            - Build with MemorySanitizer (cannot be used with -fsanitize or -tsan)
-   --install        - install built libraries into the active conda environment (default: build only, no install)
-   --no-fetch-rapids  - don't fetch rapids dependencies
-   -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
-   --verbose-pdlp   - verbose mode for pdlp solver
-   --build-lp-only  - build only linear programming components, excluding routing package and MIP-specific files
-   --skip-c-python-adapters - skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)
-   --skip-tests-build  - disable building of all tests
-   --skip-routing-build - skip building routing components
-   --skip-grpc-build    - skip building gRPC and protobuf components (auto-enabled with -tsan)
-   --skip-fatbin-write      - skip the fatbin write
-   --host-lineinfo           - build with debug line information for host code
-   --cache-tool=<tool> - pass the build cache tool (eg: ccache, sccache, distcc) that will be used
-                      to speedup the build process.
-   --cmake-args=\\\"<args>\\\"   - pass arbitrary list of CMake configuration options (escape all quotes in argument)
-   --allgpuarch     - build for all supported GPU architectures
-   --ci-only-arch   - build for volta and ampere only
-   --show_depr_warn - show cmake deprecation warnings
-   -h               - print this text
+   -v                         - verbose build mode
+   -g                         - build for debug
+   -a                         - enable assertions (on by default in debug mode)
+   -b                         - build with benchmark settings
+   -fsanitize                 - build with AddressSanitizer and UndefinedBehaviorSanitizer
+   -tsan                      - build with ThreadSanitizer (cannot be used with -fsanitize or -msan)
+   -msan                      - build with MemorySanitizer (cannot be used with -fsanitize or -tsan)
+   --install                  - install the built libraries into the active conda environment (default: build only)
+   --no-fetch-rapids          - do not fetch the RAPIDS dependencies
+   --run-java-tests           - run the Java test suite as part of the 'java' target (needs a GPU)
+   -l=                        - log level: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF (default: INFO)
+   --verbose-pdlp             - verbose mode for the PDLP solver
+   --build-lp-only            - build only the LP components, excluding routing and MIP-specific files
+   --skip-c-python-adapters   - skip building the C and Python adapter files (cython_solve.cu and cuopt_c.cpp)
+   --skip-tests-build         - skip building all tests
+   --skip-routing-build       - skip building the routing components
+   --skip-grpc-build          - skip building the gRPC and protobuf components (auto-enabled with -tsan)
+   --skip-fatbin-write        - skip the fatbin write
+   --host-lineinfo            - build with debug line information for host code
+   --export-debug-symbols     - expose internal symbols (default: off)
+   --split-compile            - opt in to nvcc split compilation; builds may be nondeterministic
+   --cache-tool=<tool>        - build cache tool used to speed up the build (e.g. ccache, sccache, distcc)
+   --cmake-args=\\\"<args>\\\" - pass an arbitrary list of CMake options (escape all quotes in the argument)
+   --allgpuarch               - build for all supported GPU architectures
+   --ci-only-arch             - build for Volta and Ampere only
+   --show_depr_warn           - show CMake deprecation warnings
+   -h                         - print this text
 
  default action (no args) is to build 'libcuopt', 'cuopt', 'cuopt_server', and 'cuopt_sh_client' targets without installing into the conda environment (pass --install to also install libcuopt into the active conda environment; pass 'docs' explicitly to build documentation)
 
@@ -65,6 +68,12 @@ CUOPT_SERVER_BUILD_DIR=${REPODIR}/python/cuopt_server/build
 CUOPT_SH_CLIENT_BUILD_DIR=${REPODIR}/python/cuopt_self_hosted/build
 DOCS_BUILD_DIR=${REPODIR}/docs/cuopt/build
 BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
+
+CUDA_VERSION="${RAPIDS_CUDA_VERSION:-$(nvcc --version | sed -E -n 's/^.*release ([0-9]+\.[0-9]+).*$/\1/p')}"
+if [[ -z "$CUDA_VERSION" ]]; then
+    echo "Could not determine CUDA version. Please set RAPIDS_CUDA_VERSION or make sure your \$PATH contains a valid nvcc."
+    exit 1
+fi
 
 # Set defaults for vars modified by flags to this script
 VERBOSE_FLAG=""
@@ -85,8 +94,17 @@ SKIP_ROUTING_BUILD=0
 SKIP_GRPC_BUILD=0
 WRITE_FATBIN=1
 HOST_LINEINFO=0
+EXPORT_DEBUG_SYMBOLS=0
 CACHE_ARGS=()
-PYTHON_ARGS_FOR_INSTALL=("-m" "pip" "install" "--no-build-isolation" "--no-deps")
+PYTHON_ARGS_FOR_INSTALL=(
+    "-m"
+    "pip"
+    "install"
+    "--no-build-isolation"
+    "--no-deps"
+    "--config-settings=rapidsai.disable-cuda=true"
+    "--config-settings=rapidsai.matrix-entry=cuda=${CUDA_VERSION};cuda_suffixed=false;use_cuda_wheels=false"
+)
 LOGGING_ACTIVE_LEVEL="INFO"
 FETCH_RAPIDS=ON
 PARALLEL_LEVEL=${PARALLEL_LEVEL:=$(nproc)}
@@ -260,6 +278,14 @@ fi
 if hasArg --host-lineinfo; then
     HOST_LINEINFO=1
 fi
+if hasArg --export-debug-symbols; then
+    EXPORT_DEBUG_SYMBOLS=1
+fi
+if hasArg --split-compile; then
+    # nvcc split compilation can produce nondeterministic cuOpt builds, so keep it opt-in.
+    echo "WARNING: nvcc split compilation may produce nondeterministic cuOpt builds."
+    export NVCC_PREPEND_FLAGS="${NVCC_PREPEND_FLAGS:+${NVCC_PREPEND_FLAGS} }--split-compile=0"
+fi
 
 function contains_string {
     local search_string="$1"
@@ -395,6 +421,7 @@ if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
           -DSKIP_GRPC_BUILD=${SKIP_GRPC_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
           -DHOST_LINEINFO=${HOST_LINEINFO} \
+          -DEXPORT_DEBUG_SYMBOLS=${EXPORT_DEBUG_SYMBOLS} \
           -DPARALLEL_LEVEL="${PARALLEL_LEVEL}" \
           -DINSTALL_TARGET="${INSTALL_TARGET}" \
           "${CACHE_ARGS[@]}" \
@@ -432,8 +459,24 @@ fi
 if buildAll || hasArg cuopt; then
     cd "${REPODIR}"/python/cuopt
 
+    # Only 'cuopt' builds extension modules, so the stable ABI floor applies to it
+    # alone. If 'RAPIDS_PY_VERSION' is set, use it as that floor.
+    CUOPT_PYTHON_ARGS_FOR_INSTALL=("${PYTHON_ARGS_FOR_INSTALL[@]}")
+    if [ -n "${RAPIDS_PY_VERSION:-}" ]; then
+        CUOPT_PYTHON_ARGS_FOR_INSTALL+=(--config-settings "skbuild.wheel.py-api=cp${RAPIDS_PY_VERSION//./}")
+    fi
+
+    # Without --install, libcuopt's config and shared libraries only exist in its build tree.
+    CUOPT_LDFLAGS="${LDFLAGS:-}"
+    if [ -z "${INSTALL_TARGET}" ] && [ -f "${LIBCUOPT_BUILD_DIR}/cuopt-config.cmake" ] \
+        && ! contains_string "Dcuopt_DIR" "${EXTRA_CMAKE_ARGS[@]}"; then
+        EXTRA_CMAKE_ARGS+=("-Dcuopt_DIR=${LIBCUOPT_BUILD_DIR}")
+        CUOPT_LDFLAGS+=" -Wl,-rpath,${LIBCUOPT_BUILD_DIR}"
+    fi
+
+    LDFLAGS="${CUOPT_LDFLAGS}" \
     SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};$(IFS=';'; echo "${EXTRA_CMAKE_ARGS[*]}")" \
-        python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
+        python "${CUOPT_PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
 # Build and install the cuopt_server Python package
@@ -446,6 +489,57 @@ fi
 if buildAll || hasArg cuopt_sh_client; then
     cd "${REPODIR}"/python/cuopt_self_hosted/
     python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
+fi
+
+# Build the Java bindings (opt-in; pass 'java' explicitly to build)
+if hasArg java; then
+    if [ ! -f "${LIBCUOPT_BUILD_DIR}/libcuopt.so" ] && [ ! -f "${INSTALL_PREFIX}/lib/libcuopt.so" ]; then
+        echo "libcuopt was not found. Build it first: ./build.sh libcuopt"
+        exit 1
+    fi
+
+    # Prefer the build tree, so 'java' works without --install. libcuopt is compiled against
+    # the CPM-fetched rmm and raft under _deps, and rmm encodes its version in an inline
+    # namespace, so the JNI layer has to see those exact headers rather than any copy in the
+    # conda prefix. Mixing them links cleanly and then fails at dlopen with an undefined symbol.
+    if [ -f "${LIBCUOPT_BUILD_DIR}/libcuopt.so" ]; then
+        export CUOPT_LIBRARY="${LIBCUOPT_BUILD_DIR}/libcuopt.so"
+        JAVA_DEPS="${LIBCUOPT_BUILD_DIR}/_deps"
+        export CUOPT_EXTRA_INCLUDE_DIRS="${REPODIR}/cpp/include;${LIBCUOPT_BUILD_DIR}/include"
+        for dep in \
+            "${JAVA_DEPS}/rmm-src/cpp/include" \
+            "${JAVA_DEPS}/rmm-build/include" \
+            "${JAVA_DEPS}/raft-src/cpp/include" \
+            "${JAVA_DEPS}/raft-build/include" \
+            "${JAVA_DEPS}/rapids_logger-src/include" \
+            "${JAVA_DEPS}/cccl-src/thrust" \
+            "${JAVA_DEPS}/cccl-src/libcudacxx/include" \
+            "${JAVA_DEPS}/cccl-src/cub"; do
+            if [ -d "${dep}" ]; then
+                CUOPT_EXTRA_INCLUDE_DIRS="${CUOPT_EXTRA_INCLUDE_DIRS};${dep}"
+            fi
+        done
+        # Same reasoning at run time. libcuopt's RPATH lists the conda prefix first and DT_RPATH
+        # is searched ahead of LD_LIBRARY_PATH, so the CPM copies also have to be preloaded.
+        export CUOPT_EXTRA_LIBRARY_DIRS="${JAVA_DEPS}/rmm-build:${JAVA_DEPS}/rapids_logger-build"
+        export CUOPT_PRELOAD_LIBS="${JAVA_DEPS}/rmm-build/librmm.so ${JAVA_DEPS}/rapids_logger-build/librapids_logger.so"
+        export CUOPT_RUNTIME_LIBRARY_DIR="${LIBCUOPT_BUILD_DIR}"
+    fi
+
+    export CUOPT_JAVA_NATIVE_BUILD_DIR="${CUOPT_JAVA_NATIVE_BUILD_DIR:-${REPODIR}/java/cuopt/build/native}"
+    if hasArg --run-java-tests; then
+        bash "${REPODIR}"/java/cuopt/scripts/test.sh
+    else
+        bash "${REPODIR}"/java/cuopt/scripts/build_native.sh
+        source "${REPODIR}"/java/cuopt/scripts/maven.sh
+        cuopt_maven_args
+        # cd into java/cuopt so Maven's directory-search picks up java/cuopt/.mvn/maven.config --
+        # it walks up from the current working directory, not from -f's directory.
+        cd "${REPODIR}"/java/cuopt
+        cuopt_mvn -f pom.xml clean package \
+            -DskipTests \
+            -Dcuopt.native.dir="${CUOPT_JAVA_NATIVE_BUILD_DIR}"
+    fi
 fi
 
 # Build the docs (opt-in; pass 'docs' explicitly to build)

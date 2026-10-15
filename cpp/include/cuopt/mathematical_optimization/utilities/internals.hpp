@@ -55,6 +55,42 @@ class get_solution_callback_t : public base_solution_callback_t {
   }
 };
 
+struct solution_callback_data_t {
+  bool from_lns{false};
+};
+
+// Optional extension: keep the existing callback interface and its user data unchanged.
+class get_solution_callback_with_data_t : public get_solution_callback_t {
+ public:
+  void get_solution(void* data,
+                    void* objective_value,
+                    void* solution_bound,
+                    void* user_data) override
+  {
+    get_solution_with_data(data, objective_value, solution_bound, user_data, {});
+  }
+
+  virtual void get_solution_with_data(void* data,
+                                      void* objective_value,
+                                      void* solution_bound,
+                                      void* user_data,
+                                      const solution_callback_data_t& callback_data) = 0;
+};
+
+inline void invoke_get_solution_callback(get_solution_callback_t* callback,
+                                         void* data,
+                                         void* objective_value,
+                                         void* solution_bound,
+                                         const solution_callback_data_t& callback_data = {})
+{
+  if (auto* extended = dynamic_cast<get_solution_callback_with_data_t*>(callback)) {
+    extended->get_solution_with_data(
+      data, objective_value, solution_bound, callback->get_user_data(), callback_data);
+  } else {
+    callback->get_solution(data, objective_value, solution_bound, callback->get_user_data());
+  }
+}
+
 class set_solution_callback_t : public base_solution_callback_t {
  public:
   virtual void set_solution(void* data,
@@ -140,6 +176,21 @@ enum presolver_t : int {
   None    = CUOPT_PRESOLVE_OFF,
   Papilo  = CUOPT_PRESOLVE_PAPILO,
   PSLP    = CUOPT_PRESOLVE_PSLP
+};
+
+/**
+ * @brief Barrier primal-dual initial-point strategy.
+ *
+ * Automatic: use Lustig-Marsten-Shanno for LP/QP; Sturm/SeDuMi mu-based point for conic problems.
+ * LustigMarstenShanno: Mehrotra-style dual start (Lustig, Marsten, Shanno, SIAM J. Optim. 1992).
+ * DualLeastSquares: solve augmented or ADAT dual least-squares system.
+ * SedumiMu: Sturm/SeDuMi mu-based primal+dual point (no factorization).
+ */
+enum barrier_dual_initial_point_t : int {
+  Automatic           = CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC,
+  LustigMarstenShanno = CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO,
+  DualLeastSquares    = CUOPT_BARRIER_DUAL_INITIAL_POINT_LEAST_SQUARES,
+  SedumiMu            = CUOPT_BARRIER_DUAL_INITIAL_POINT_SEDUMI_MU
 };
 
 }  // namespace mathematical_optimization

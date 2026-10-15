@@ -9,6 +9,8 @@
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/routing/cpu_routing_problem.hpp>
+#include <cuopt/routing/solver_settings.hpp>
 
 #include "../cuopt_default_grpc_port.h"
 
@@ -36,6 +38,9 @@ class SubmitJobRequest;
 }  // namespace cuopt::remote
 
 namespace cuopt::mathematical_optimization {
+
+template <typename i_t, typename f_t>
+class solver_settings_t;
 
 // Forward declarations for test helper functions (implemented in grpc_client.cpp)
 void grpc_test_inject_mock_stub(class grpc_client_t& client, std::shared_ptr<void> stub);
@@ -158,6 +163,7 @@ struct cancel_result_t {
 struct incumbent_t {
   int64_t index    = 0;
   double objective = 0.0;
+  double bound     = 0.0;
   std::vector<double> assignment;
 };
 
@@ -199,6 +205,16 @@ struct remote_result_t {
   bool is_mip = false;
   std::unique_ptr<cpu_lp_solution_t<i_t, f_t>> lp_solution;
   std::unique_ptr<cpu_mip_solution_t<i_t, f_t>> mip_solution;
+};
+
+/**
+ * @brief Result of a remote VRP solve. Routing is always <int, float>, so this
+ * is not templated. The solution is a host-owned parse of RoutingSolution.
+ */
+struct remote_vrp_result_t {
+  bool success = false;
+  std::string error_message;
+  cuopt::routing::cpu_routing_solution_t solution;
 };
 
 /**
@@ -265,37 +281,26 @@ class grpc_client_t {
   bool is_connected() const;
 
   /**
-   * @brief Solve an LP problem remotely
+   * @brief Probe the server with a short CheckStatus RPC.
    *
-   * This is a blocking call that:
-   * 1. Submits the problem to the server
-   * 2. Polls for completion (with optional log streaming)
-   * 3. Retrieves and parses the result
-   *
-   * @param problem The CPU optimization problem to solve
-   * @param settings Solver settings
-   * @return Result containing success status and solution (if successful)
+   * Same check used at connect time: OK or NOT_FOUND means the process
+   * answered. Other gRPC codes (UNAVAILABLE, DEADLINE_EXCEEDED, ...) fail.
+   */
+  bool ping(int timeout_seconds = 5);
+
+  /**
+   * @brief Solve an LP remotely.
    */
   template <typename i_t, typename f_t>
   remote_lp_result_t<i_t, f_t> solve_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                                        const pdlp_solver_settings_t<i_t, f_t>& settings);
+                                        solver_settings_t<i_t, f_t>& settings);
 
   /**
-   * @brief Solve a MIP problem remotely
-   *
-   * This is a blocking call that:
-   * 1. Submits the problem to the server
-   * 2. Polls for completion (with optional log streaming)
-   * 3. Retrieves and parses the result
-   *
-   * @param problem The CPU optimization problem to solve
-   * @param settings Solver settings
-   * @param enable_incumbents Whether to enable incumbent solution streaming
-   * @return Result containing success status and solution (if successful)
+   * @brief Solve a MIP remotely.
    */
   template <typename i_t, typename f_t>
   remote_mip_result_t<i_t, f_t> solve_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                                          const mip_solver_settings_t<i_t, f_t>& settings,
+                                          solver_settings_t<i_t, f_t>& settings,
                                           bool enable_incumbents = false);
 
   // =========================================================================
@@ -303,21 +308,20 @@ class grpc_client_t {
   // =========================================================================
 
   /**
-   * @brief Submit an LP problem without waiting for result
-   * @return Result containing job_id if successful
+   * @brief Submit an LP problem from a solver_settings_t.
    */
   template <typename i_t, typename f_t>
   submit_result_t submit_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                            const pdlp_solver_settings_t<i_t, f_t>& settings);
+                            solver_settings_t<i_t, f_t>& settings);
 
   /**
-   * @brief Submit a MIP problem without waiting for result
-   * @return Result containing job_id if successful
+   * @brief Submit a MIP problem from a solver_settings_t.
    */
   template <typename i_t, typename f_t>
   submit_result_t submit_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                             const mip_solver_settings_t<i_t, f_t>& settings,
-                             bool enable_incumbents = false);
+                             solver_settings_t<i_t, f_t>& settings,
+                             bool enable_incumbents    = false,
+                             bool enable_set_incumbent = false);
 
   /**
    * @brief Check status of a submitted job
@@ -362,6 +366,18 @@ class grpc_client_t {
    */
   template <typename i_t, typename f_t>
   remote_result_t<i_t, f_t> get_result(const std::string& job_id);
+
+  /**
+   * @brief Submit a VRP problem without waiting (unary only; no chunking yet).
+   * @return Submit result with job ID
+   */
+  submit_result_t submit_vrp(const cuopt::routing::cpu_routing_problem_t& problem,
+                             const cuopt::routing::solver_settings_t<int, float>& settings);
+
+  /**
+   * @brief Get the VRP result for a completed job (parses the RoutingSolution).
+   */
+  remote_vrp_result_t get_vrp_result(const std::string& job_id);
 
   /**
    * @brief Cancel a running job

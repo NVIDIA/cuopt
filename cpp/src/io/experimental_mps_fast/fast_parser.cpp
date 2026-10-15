@@ -2745,6 +2745,7 @@ static void finalize_qcmatrix_constraints(parse_state_t<i_t, f_t>& state)
 
   // rebuild the A_ matrix. fairly ugly and brute force, could do better if we parsed the QCMATRIX
   // entries before building the CSR in COLUMNS but unclear if worth it
+  coo_canonicalization_scratch_t<i_t, f_t> qc_scratch;
   for (const auto& block : state.qcmatrix_blocks) {
     if (block.entries.empty()) { continue; }
 
@@ -2760,29 +2761,16 @@ static void finalize_qcmatrix_constraints(parse_state_t<i_t, f_t>& state)
     qc.linear_indices.assign(state.problem.A_indices_.begin() + linear_begin,
                              state.problem.A_indices_.begin() + linear_end);
 
-    std::vector<size_t> perm(block.entries.size());
-    for (size_t i = 0; i < perm.size(); ++i) {
-      perm[i] = i;
-    }
-    std::sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
-      const auto& ea = block.entries[a];
-      const auto& eb = block.entries[b];
-      if (std::get<0>(ea) != std::get<0>(eb)) { return std::get<0>(ea) < std::get<0>(eb); }
-      return std::get<1>(ea) < std::get<1>(eb);
-    });
-
-    // Match reference ingest: canonicalize MPS symmetric halves to upper-triangular COO.
     qc.rows.reserve(block.entries.size());
     qc.cols.reserve(block.entries.size());
     qc.vals.reserve(block.entries.size());
-    for (size_t idx : perm) {
-      const auto& [row, col, val] = block.entries[idx];
+    for (const auto& [row, col, val] : block.entries) {
       qc.rows.push_back(row);
       qc.cols.push_back(col);
       qc.vals.push_back(val);
     }
-    check_symmetric_offdiagonal_pairs(qc.rows, qc.cols, qc.vals);
-    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
+    check_symmetric_offdiagonal_pairs(qc.rows, qc.cols, qc.vals, qc_scratch);
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, qc_scratch);
     state.problem.quadratic_constraints_.push_back(std::move(qc));
   }
 

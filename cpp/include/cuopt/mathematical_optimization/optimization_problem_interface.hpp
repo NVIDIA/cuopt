@@ -478,22 +478,13 @@ class optimization_problem_interface_t {
   // Conversion
   // ============================================================================
 
-  /**
-   * @brief Convert to a GPU-backed optimization_problem_t.
-   *
-   * For optimization_problem_t (GPU): returns nullptr (already is one).
-   * For cpu_optimization_problem_t: creates new GPU problem, copies data, returns owned pointer.
-   *
-   * Usage pattern:
-   *   auto temp = problem_interface->to_optimization_problem(&handle);
-   *   optimization_problem_t& op = temp ? *temp : static_cast<optimization_problem_t&>(*this);
-   *
-   * @param handle_ptr RAFT handle with CUDA resources for GPU memory allocation.
-   *                   Required for CPU->GPU conversion. Ignored for GPU problems.
-   * @return unique_ptr to new GPU problem, or nullptr if already a GPU problem
-   */
-  virtual std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
-    raft::handle_t const* handle_ptr = nullptr) = 0;
+  // NOTE: CPU -> GPU conversion is deliberately NOT a virtual member here.
+  //
+  // As a virtual, it occupied a slot in cpu_optimization_problem_t's vtable, and vtable
+  // relocations are resolved eagerly at load time. That made every library containing
+  // the vtable -- including the CUDA-free cuopt_client -- unable to load without
+  // libcuopt.so present. It is now the free function to_optimization_problem() declared
+  // in optimization_problem.hpp, which lives in libcuopt where the GPU types do.
 };
 
 }  // namespace cuopt::mathematical_optimization

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
@@ -47,6 +47,9 @@ def get_objectives_as_lists(objectives):
     if objectives.vehicle_fixed_cost is not None:
         cuopt_objectives.append(routing.Objective.VEHICLE_FIXED_COST)
         objective_weights.append(objectives.vehicle_fixed_cost)
+    if objectives.distance_break_cost is not None:
+        cuopt_objectives.append(routing.Objective.DISTANCE_BREAK_COST)
+        objective_weights.append(objectives.distance_break_cost)
 
     return cuopt_objectives, objective_weights
 
@@ -58,6 +61,7 @@ objective_names = {
     routing.Objective.VARIANCE_ROUTE_SERVICE_TIME: "variance_route_service_time",  # noqa
     routing.Objective.PRIZE: "prize",
     routing.Objective.VEHICLE_FIXED_COST: "vehicle_fixed_cost",
+    routing.Objective.DISTANCE_BREAK_COST: "distance_break_cost",
 }
 
 
@@ -93,6 +97,7 @@ class OptimizationDataModel:
             "vehicle_break_durations": None,
             "vehicle_break_locations": None,
             "vehicle_breaks": None,
+            "vehicle_distance_breaks": None,
             "vehicle_types": None,
             "vehicle_order_match": None,
             "skip_first_trips": None,
@@ -210,6 +215,9 @@ class OptimizationDataModel:
             if self.fleet_data["vehicle_break_locations"] is not None
             else None,
             "vehicle_breaks": self.fleet_data["vehicle_breaks"],
+            "vehicle_distance_breaks": self.fleet_data[
+                "vehicle_distance_breaks"
+            ],
             "vehicle_order_match": self.fleet_data["vehicle_order_match"],
             "skip_first_trips": self.fleet_data["skip_first_trips"]
             .to_arrow()
@@ -484,6 +492,7 @@ class OptimizationDataModel:
         vehicle_max_costs,
         vehicle_max_times,
         vehicle_fixed_costs,
+        vehicle_distance_breaks=None,
     ):
         if not self.is_route_detail_set:
             return (
@@ -519,6 +528,9 @@ class OptimizationDataModel:
         vehicle_order_match = get_none_for_empty_list(vehicle_order_match)
         skip_first_trips = get_none_for_empty_list(skip_first_trips)
         drop_return_trips = get_none_for_empty_list(drop_return_trips)
+        vehicle_distance_breaks = get_none_for_empty_list(
+            vehicle_distance_breaks
+        )
 
         is_valid = validate_fleet_data(
             vehicle_ids,
@@ -540,6 +552,7 @@ class OptimizationDataModel:
             vehicle_fixed_costs,
             updating=False,
             comparison_locations=None,
+            vehicle_distance_breaks=vehicle_distance_breaks,
         )
 
         if is_valid[0]:
@@ -608,6 +621,17 @@ class OptimizationDataModel:
                     }
                     for data in vehicle_breaks
                 ]
+            if vehicle_distance_breaks is not None:
+                self.fleet_data["vehicle_distance_breaks"] = [
+                    {
+                        "vehicle_id": data.vehicle_id,
+                        "distance_min": data.distance_min,
+                        "distance_max": data.distance_max,
+                        "duration": data.duration,
+                        "locations": data.locations,
+                    }
+                    for data in vehicle_distance_breaks
+                ]
             if vehicle_order_match is not None:
                 self.fleet_data["vehicle_order_match"] = [
                     {
@@ -647,6 +671,7 @@ class OptimizationDataModel:
         vehicle_max_costs,
         vehicle_max_times,
         vehicle_fixed_costs,
+        vehicle_distance_breaks=None,
     ):
         if not self.is_route_detail_set:
             return (
@@ -685,6 +710,9 @@ class OptimizationDataModel:
         vehicle_order_match = get_none_for_empty_list(vehicle_order_match)
         skip_first_trips = get_none_for_empty_list(skip_first_trips)
         drop_return_trips = get_none_for_empty_list(drop_return_trips)
+        vehicle_distance_breaks = get_none_for_empty_list(
+            vehicle_distance_breaks
+        )
 
         is_valid = validate_fleet_data(
             vehicle_ids,
@@ -703,8 +731,10 @@ class OptimizationDataModel:
             min_vehicles,
             vehicle_max_costs,
             vehicle_max_times,
+            vehicle_fixed_costs,
             updating=True,
             comparison_locations=self.fleet_data["vehicle_locations"],
+            vehicle_distance_breaks=vehicle_distance_breaks,
         )
 
         if is_valid[0]:
@@ -765,6 +795,17 @@ class OptimizationDataModel:
                         "order_ids": data.order_ids,
                     }
                     for data in vehicle_order_match
+                ]
+            if vehicle_distance_breaks is not None:
+                self.fleet_data["vehicle_distance_breaks"] = [
+                    {
+                        "vehicle_id": data.vehicle_id,
+                        "distance_min": data.distance_min,
+                        "distance_max": data.distance_max,
+                        "duration": data.duration,
+                        "locations": data.locations,
+                    }
+                    for data in vehicle_distance_breaks
                 ]
             if skip_first_trips:
                 self.fleet_data["skip_first_trips"] = cudf.Series(

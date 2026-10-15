@@ -3,4 +3,4 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-add_subdirectory(linear_programming)
+add_subdirectory(client)

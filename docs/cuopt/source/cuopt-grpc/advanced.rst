@@ -6,17 +6,21 @@
 Advanced Configuration
 =======================
 
-This page lists **configuration parameters** first, then **usage** walkthroughs (TLS, Docker, private CA). Complete :doc:`quick-start` first (install, plain TCP server, and minimal example).
+This page lists **configuration parameters** for ``cuopt_grpc_server``, then **usage** walkthroughs (TLS and private CA). Complete :doc:`quick-start` first (install, plain TCP server, and minimal example).
 
-For RPC summaries and server behavior, see :doc:`api` and :doc:`grpc-server-architecture`. Example entry points with ``CUOPT_REMOTE_*``: :doc:`examples`. Contributor-only internals: ``cpp/docs/grpc-server-architecture.md`` in the repository.
+For RPC summaries, see the :doc:`gRPC API reference <api>`. Example entry
+points using ``CUOPT_REMOTE_*`` can be found under :doc:`Examples <examples>`.
+Developers can read about the server architecture in :doc:`gRPC Server
+Behavior <grpc-server-architecture>`. Implementation details are in
+``cpp/docs/grpc-server-architecture.md`` in the repository.
 
 Configuration Parameters
 ========================
 
-``cuopt_grpc_server`` (Host or Explicit Container Command)
-------------------------------------------------------------
+Command-Line Flags
+------------------
 
-Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable inside ``CUOPT_GRPC_ARGS`` when using the container entrypoint):
+Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable inside ``CUOPT_GRPC_ARGS`` when the container starts ``cuopt_grpc_server``):
 
 .. code-block:: text
 
@@ -39,10 +43,10 @@ Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable
          --tls-root PATH          Root CA certificate (for client verification)
          --require-client-cert    Require client certificate (mTLS)
 
-NVIDIA cuOpt Container (gRPC via Entrypoint)
---------------------------------------------
+gRPC Container Variables
+------------------------
 
-These variables apply when the container **entrypoint** builds a ``cuopt_grpc_server`` command (see *Docker: gRPC server in container* under Usage). If you pass an explicit command after the image name, this table does not apply.
+In Kubernetes, set ``CUOPT_SERVER_TYPE=grpc`` on the pod. When the variable is unset, the container command ``grpc`` starts ``cuopt_grpc_server`` only. Command-line start is on the :doc:`gRPC quick start <quick-start>`.
 
 .. list-table::
    :header-rows: 1
@@ -53,18 +57,36 @@ These variables apply when the container **entrypoint** builds a ``cuopt_grpc_se
      - Description
    * - ``CUOPT_SERVER_TYPE``
      - *(unset)*
-     - Set to ``grpc`` for entrypoint-built gRPC. Unset with no explicit command: **Python REST** server.
-   * - ``CUOPT_SERVER_PORT``
+     - ``grpc``: ``cuopt_grpc_server`` only. The variable overrides the container command.
+   * - ``CUOPT_GRPC_PORT``
      - ``5001``
-     - Passed as ``--port`` to ``cuopt_grpc_server``.
+     - Passed as ``--port``. When unset, ``CUOPT_SERVER_PORT`` is used, then ``5001``.
    * - ``CUOPT_GPU_COUNT``
      - *(unset)*
-     - When set, passed as ``--workers``. When unset, ``--workers`` is omitted (server default, typically 1).
+     - Passed as ``--workers``. When unset, ``--workers`` is omitted (server default, 1). Set this to the number of visible GPUs, one worker per GPU.
    * - ``CUOPT_GRPC_ARGS``
      - *(empty)*
-     - Extra flags split on **whitespace** and appended (TLS, ``--max-message-mb``, ``--log-to-console``, etc.). Paths with spaces: prefer mounts without spaces or run ``cuopt_grpc_server`` manually with proper quoting.
+     - Extra flags split on whitespace (TLS, ``--max-message-mb``, ``--log-to-console``). Paths with spaces: run ``cuopt_grpc_server`` directly.
 
-The REST server path in the same image still uses ``CUOPT_SERVER_PORT`` for HTTP in other docs; that is separate from the gRPC defaults above.
+These examples publish the gRPC port and pass extra server flags. Set ``CUOPT_SERVER_TYPE=grpc``, or pass the command ``grpc`` when that variable is unset. ``--gpus all`` requires NVIDIA GPUs on the host and Docker with the `NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_.
+
+TLS example with a cert volume:
+
+.. code-block:: bash
+
+   docker run --gpus all -p 5001:5001 \
+     -e CUOPT_GRPC_ARGS="--tls --tls-cert /certs/server.crt --tls-key /certs/server.key --log-to-console" \
+     -v ./certs:/certs:ro \
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
+     grpc
+
+Bypass the entrypoint:
+
+.. code-block:: bash
+
+   docker run --gpus all -p 5001:5001 \
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
+     cuopt_grpc_server --port 5001 --workers 2
 
 Integrated Remote Client (Python, C API, ``cuopt_cli``)
 -------------------------------------------------------
@@ -73,11 +95,12 @@ These variables apply to **remote execution**: the client integrated into the
 Python solver APIs, the C API (``cuOptSolve``), and ``cuopt_cli``. Remote mode
 is active when **both** ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are set.
 
-The :doc:`Python async gRPC client <python-async-client>` does **not** use
-``CUOPT_REMOTE_HOST`` / ``CUOPT_REMOTE_PORT``; you pass host and port to
-``Client(...)``. See *Python async gRPC client* below for variables that apply
-to that client. A **custom** gRPC client must configure the channel itself
-(see :doc:`api`).
+The :doc:`gRPC linear programming client <python-async-client>` and the
+:doc:`gRPC routing client <routing>` do not read ``CUOPT_REMOTE_HOST`` /
+``CUOPT_REMOTE_PORT``; you pass host and port to ``Client(...)`` or
+``RoutingClient(...)``. See *gRPC Python clients* below for variables that
+apply to those clients. A **custom** gRPC client must configure the channel
+itself (see :doc:`api`).
 
 .. list-table::
    :header-rows: 1
@@ -124,15 +147,18 @@ to that client. A **custom** gRPC client must configure the channel itself
      - ``0``
      - Non-zero: extra gRPC client logging
 
-Python Async gRPC Client (``cuopt.grpc``)
------------------------------------------
+gRPC Python Clients
+-------------------
 
-``Client(host, port, tls=...)`` takes the server address in code. It does
-**not** read ``CUOPT_REMOTE_HOST`` or ``CUOPT_REMOTE_PORT``.
+``Client(host, port, tls=...)`` (LP/MIP/QP, :doc:`gRPC linear programming
+client <python-async-client>`) and ``RoutingClient(host, port, tls=...)``
+(VRP, :doc:`gRPC routing client <routing>`) take the server address in code.
+Neither reads ``CUOPT_REMOTE_HOST`` or ``CUOPT_REMOTE_PORT``.
 
-When ``tls`` is omitted (``None``), the client honors the same ``CUOPT_TLS_*``
-variables as remote execution. Pass ``tls=False`` for plain TCP, or
-``tls=TlsConfig(...)`` for explicit PEM paths (see :doc:`python-async-client`).
+When ``tls`` is omitted (``None``), both clients honor the same
+``CUOPT_TLS_*`` variables as remote execution. Pass ``tls=False`` for plain
+TCP, or ``tls=TlsConfig(...)`` for explicit PEM paths. See the documentation
+for each client.
 
 .. list-table::
    :header-rows: 1
@@ -163,8 +189,11 @@ variables as remote execution. Pass ``tls=False`` for plain TCP, or
      - ``0``
      - Non-zero: extra gRPC client logging
 
-``CUOPT_CHUNK_SIZE`` and ``CUOPT_MAX_MESSAGE_BYTES`` also apply to this client
-when set (same defaults as the integrated remote client).
+``CUOPT_MAX_MESSAGE_BYTES`` also applies to both clients when set (same
+default as the integrated remote client) -- it raises the gRPC channel's
+max message size regardless of chunking support. ``CUOPT_CHUNK_SIZE`` only
+has an effect for ``Client``; ``RoutingClient`` has no chunking to size (see
+:doc:`routing`'s Limitations).
 
 Usage
 =====
@@ -267,45 +296,6 @@ Repeat for each authorized client. Keep ``ca.key`` private; distribute ``ca.crt`
 
 **Revocation:** built-in gRPC TLS does **not** implement CRL or OCSP. To revoke a client, rotate the CA, stop issuing from a compromised CA, or terminate TLS at a reverse proxy (e.g., Envoy) that supports revocation.
 
-Docker: gRPC Server in Container
----------------------------------
-
-The official NVIDIA cuOpt image includes the REST server and ``cuopt_grpc_server``. The entrypoint behaves as follows:
-
-1. **Explicit command** after the image name (e.g. ``cuopt_grpc_server …``) runs as-is; env-based gRPC wiring is skipped.
-2. **`CUOPT_SERVER_TYPE=grpc`** builds a ``cuopt_grpc_server`` command from the **NVIDIA cuOpt container** table in *Configuration parameters*.
-3. **Default** — if ``CUOPT_SERVER_TYPE`` is unset and there is no explicit command, the Python **REST** server starts.
-
-.. note::
-
-   Examples use ``--gpus all``. That requires NVIDIA GPUs on the host and Docker with the `NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_ so devices are visible inside the container.
-
-Typical run:
-
-.. code-block:: bash
-
-   docker run --gpus all -p 5001:5001 \
-     -e CUOPT_SERVER_TYPE=grpc \
-     nvcr.io/nvidia/cuopt/cuopt:latest-cu12
-
-TLS example with a cert volume:
-
-.. code-block:: bash
-
-   docker run --gpus all -p 5001:5001 \
-     -e CUOPT_SERVER_TYPE=grpc \
-     -e CUOPT_GRPC_ARGS="--tls --tls-cert /certs/server.crt --tls-key /certs/server.key --log-to-console" \
-     -v ./certs:/certs:ro \
-     nvcr.io/nvidia/cuopt/cuopt:latest-cu12
-
-Bypass the entrypoint:
-
-.. code-block:: bash
-
-   docker run --gpus all -p 5001:5001 \
-     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
-     cuopt_grpc_server --port 5001 --workers 2
-
 Client Environment (Examples)
 ------------------------------
 
@@ -316,7 +306,7 @@ Client Environment (Examples)
    export CUOPT_REMOTE_HOST=<server-hostname>
    export CUOPT_REMOTE_PORT=5001
 
-**TLS** (optional; also used by the Python async gRPC client when ``tls=None``):
+**TLS** (optional; also used by the gRPC linear programming client and the gRPC routing client when ``tls=None``):
 
 .. code-block:: bash
 
@@ -330,7 +320,7 @@ For mTLS, also:
    export CUOPT_TLS_CLIENT_CERT=client.crt
    export CUOPT_TLS_CLIENT_KEY=client.key
 
-**Python async gRPC client** — pass host and port to ``Client(...)`` (not
+**gRPC linear programming client** — pass host and port to ``Client(...)`` (not
 ``CUOPT_REMOTE_*``). With ``tls=None`` (default), the same ``CUOPT_TLS_*``
 variables above apply. For explicit PEM paths, use ``TlsConfig``:
 
@@ -364,7 +354,7 @@ See :doc:`python-async-client` for the full job API.
 Limitations and Scope
 =====================
 
-* **Problem types** — **LP**, **MIP**, and **QP** are supported on the gRPC remote path. **Routing** (VRP, TSP, PDP) is **not** supported yet; use the :doc:`REST self-hosted server <../cuopt-server/index>` for remote routing until a future release adds routing over ``CuOptRemoteService``.
+* **Problem types** — **LP**, **MIP**, and **QP** support remote execution and the :doc:`gRPC linear programming client <python-async-client>`. **Routing** (VRP, TSP, PDP) uses the :doc:`gRPC routing client <routing>` or a custom client. Routing does not read ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT``.
 * **Message size** — Large problems use chunking; very large models can still hit gRPC max message / timeout limits. Tune ``CUOPT_CHUNK_SIZE``, ``CUOPT_MAX_MESSAGE_BYTES``, server ``--max-message-mb``, and solver ``time_limit`` as needed.
 * **``CUOPT_GRPC_ARGS``** — Parsed on whitespace only; arguments containing spaces are awkward unless you invoke ``cuopt_grpc_server`` directly.
 * **CRL / OCSP** — Not handled by the integrated gRPC TLS stack; use a private CA rotation strategy or a TLS-terminating proxy if you need revocation workflows.

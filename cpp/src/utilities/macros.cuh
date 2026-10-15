@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -14,17 +14,31 @@
 // 3) heavy
 #ifdef ASSERT_MODE
 #include <cassert>
-#define cuopt_assert(val, msg) assert(val&& msg)
-#define cuopt_func_call(func)  func;
+#include <cstddef>
+
+namespace cuopt::detail {
+// handle the argument processing through the C++ parser instead of the preprocessor
+// since it chokes on colons in template arguments.
+// (e.g. cuopt_assert(std::is_same_v<T, int>, "message")).
+// constexpr because otherwise __host__ __device__ is required and it would break pure host builds
+template <typename T, size_t N>
+constexpr bool assert_msg(T&& cond, const char (&)[N])
+{
+  return (bool)cond;
+}
+}  // namespace cuopt::detail
+
+#define cuopt_assert(...)    assert(::cuopt::detail::assert_msg(__VA_ARGS__))
+#define cuopt_func_call(...) __VA_ARGS__;
 #else
-#define cuopt_assert(val, msg)
-#define cuopt_func_call(func) ;
+#define cuopt_assert(...)
+#define cuopt_func_call(...) ;
 #endif
 
 #ifdef BENCHMARK
-#define benchmark_call(func) func;
+#define benchmark_call(...) __VA_ARGS__;
 #else
-#define benchmark_call(func) ;
+#define benchmark_call(...) ;
 #endif
 
 // For CUDA Driver API

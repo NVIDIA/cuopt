@@ -1,3 +1,4 @@
+{{- include "cuopt-server.validate" . -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -7,9 +8,9 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    - port: {{ .Values.service.port }}
-      targetPort: {{ .Values.service.targetPort }}
+    - port: {{ include "cuopt-server.servicePort" . }}
+      targetPort: {{ include "cuopt-server.listenPort" . }}
       protocol: TCP
-      name: http
+      name: {{ include "cuopt-server.portName" . }}
   selector:
     {{- include "cuopt-server.selectorLabels" . | nindent 4 }}

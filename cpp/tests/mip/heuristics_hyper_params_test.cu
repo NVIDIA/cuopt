@@ -115,6 +115,7 @@ TEST_F(HeuristicsHyperParamsTest, PartialConfigKeepsDefaults)
   EXPECT_DOUBLE_EQ(hp.root_lp_time_ratio, defaults.root_lp_time_ratio);
   EXPECT_EQ(hp.n_of_minimums_for_exit, defaults.n_of_minimums_for_exit);
   EXPECT_EQ(hp.enabled_recombiners, defaults.enabled_recombiners);
+  EXPECT_DOUBLE_EQ(hp.related_vars_time_limit, defaults.related_vars_time_limit);
 }
 
 TEST_F(HeuristicsHyperParamsTest, CommentsAndBlankLinesIgnored)

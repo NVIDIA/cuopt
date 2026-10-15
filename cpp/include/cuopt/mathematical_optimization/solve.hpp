@@ -159,6 +159,10 @@ template <typename i_t, typename f_t>
 cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_mps_data_model(
   const optimization_problem_t<i_t, f_t>& op_problem);
 
+// True when method=PDLP and num_gpus is -1 or greater than 1, i.e. multi-GPU PDLP is requested.
+template <typename i_t, typename f_t>
+bool is_multigpu_pdlp_requested(pdlp_solver_settings_t<i_t, f_t> const& settings);
+
 // ============================================================================
 // CPU problem overloads (convert to GPU, solve, convert solution back)
 // ============================================================================
@@ -190,7 +194,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
  * @tparam i_t Data type of indexes
  * @tparam f_t Data type of the variables and their weights in the equations
  * @param[in] problem_interface  Interface to optimization problem (GPU or CPU backed)
- * @param[in] settings  PDLP solver settings
+ * @param[in] settings  Solver settings
  * @param[in] problem_checking  If true, the problem is checked for consistency
  * @param[in] use_pdlp_solver_mode  If true, use PDLP hyperparameters from solver mode
  * @param[in] is_batch_mode  If true, batch solve mode is enabled
@@ -199,10 +203,10 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   optimization_problem_interface_t<i_t, f_t>* problem_interface,
-  pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{},
-  bool problem_checking                            = true,
-  bool use_pdlp_solver_mode                        = true,
-  bool is_batch_mode                               = false);
+  solver_settings_t<i_t, f_t>& settings,
+  bool problem_checking     = true,
+  bool use_pdlp_solver_mode = true,
+  bool is_batch_mode        = false);
 
 /**
  * @brief Mixed integer programming solve function for interface-based problems.
@@ -214,13 +218,13 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
  * @tparam i_t Data type of indexes
  * @tparam f_t Data type of the variables and their weights in the equations
  * @param[in] problem_interface  Interface to optimization problem (GPU or CPU backed)
- * @param[in] settings  MIP solver settings
+ * @param[in] settings  Solver settings
  * @return std::unique_ptr<mip_solution_interface_t<i_t, f_t>> Polymorphic solution interface
  */
 template <typename i_t, typename f_t>
 std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   optimization_problem_interface_t<i_t, f_t>* problem_interface,
-  mip_solver_settings_t<i_t, f_t> const& settings = mip_solver_settings_t<i_t, f_t>{});
+  solver_settings_t<i_t, f_t>& settings);
 
 // Remote execution functions are declared in solve_remote.hpp (included above)
 

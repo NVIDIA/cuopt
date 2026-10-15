@@ -58,13 +58,13 @@ class GF2Presolve : public papilo::PresolveMethod<f_t> {
     size_t cstr_idx;
     std::vector<std::pair<size_t, f_t>> bin_vars;
     std::pair<size_t, f_t> key_var;
-    size_t rhs;  // 0 or 1
+    int rhs;  // integral value the row is pinned to
 
     gf2_constraint_t() = default;
     gf2_constraint_t(size_t cstr_idx,
                      std::vector<std::pair<size_t, f_t>> bin_vars,
                      std::pair<size_t, f_t> key_var,
-                     size_t rhs)
+                     int rhs)
       : cstr_idx(cstr_idx), bin_vars(std::move(bin_vars)), key_var(key_var), rhs(rhs)
     {
     }

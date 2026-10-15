@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+
 #include <raft/core/device_span.hpp>
 
 #include <thrust/functional.h>
@@ -26,16 +28,23 @@ template <typename f_t, typename f_t2>
 struct is_variable_free_t {
   f_t tol;
   raft::device_span<f_t2> bnd;
-  is_variable_free_t(f_t tol_, raft::device_span<f_t2> bnd_) : tol(tol_), bnd(bnd_) {}
+  raft::device_span<var_t> variable_types;
+  is_variable_free_t(f_t tol_,
+                     raft::device_span<f_t2> bnd_,
+                     raft::device_span<var_t> variable_types_)
+    : tol(tol_), bnd(bnd_), variable_types(variable_types_)
+  {
+  }
   template <typename tuple_t>
   __device__ bool operator()(tuple_t edge)
   {
     // eliminate zero coefficient entries
     auto coeff = thrust::get<1>(edge);
     if (coeff == 0.) { return false; }
-    auto var    = thrust::get<2>(edge);
-    auto bounds = bnd[var];
-    return abs(get_upper(bounds) - get_lower(bounds)) > tol;
+    auto var             = thrust::get<2>(edge);
+    auto bounds          = bnd[var];
+    const auto tolerance = variable_types[var] == var_t::INTEGER ? tol : f_t(1e-12);
+    return abs(get_upper(bounds) - get_lower(bounds)) > tolerance;
   }
 };
 

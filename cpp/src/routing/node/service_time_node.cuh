@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -15,18 +15,18 @@ namespace detail {
 template <typename i_t, typename f_t>
 class service_time_node_t {
  public:
-  //! Distance gathered to node
+  //! Service time gathered to node
   double service_time_forward = 0.0;
-  //! Distance gathered after node
+  //! Service time gathered after node
   double service_time_backward = 0.0;
 
-  /*! \brief { Calculate next node forward gathered distance data based on actual node} */
+  /*! \brief { Calculate next node forward gathered service time data based on actual node} */
   void HDI calculate_forward(service_time_node_t& next, f_t service_time_between) const noexcept
   {
     next.service_time_forward = service_time_forward + service_time_between;
   }
 
-  /*! \brief { Calculate prev node gathered distance backward data based on actual node} */
+  /*! \brief { Calculate prev node gathered service time backward data based on actual node} */
   void HDI calculate_backward(service_time_node_t& prev, f_t service_time_between) const noexcept
   {
     prev.service_time_backward = service_time_backward + service_time_between;
@@ -44,7 +44,8 @@ class service_time_node_t {
   }
 
   /*! \brief  { Combine information from begining and ending fragments.}
-      \return { Distance excess of route represented by nodes prev and next }*/
+      \return { Service
+   * time excess of route represented by nodes prev and next }*/
   static HDI double combine(const service_time_node_t& prev,
                             const service_time_node_t& next,
                             const VehicleInfo<f_t>& vehicle_info,

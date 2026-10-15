@@ -7,7 +7,12 @@ replicaCount: 1
 image:
   repository: nvidia/cuopt
   pullPolicy: IfNotPresent
-  tag: "26.10.0-cuda12.9-py3.12"
+  # Docker Hub floating tag for the current CUDA 13 release. Today this is
+  # rapids-pre-commit-hooks: disable-next-line[verify-hardcoded-version]
+  # 26.8; after 26.10 publishes it will move there. Leave serverType empty
+  # rapids-pre-commit-hooks: disable-next-line[verify-hardcoded-version]
+  # until the image is 26.10 or newer (see serverType).
+  tag: "latest-cu13"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -78,15 +83,34 @@ tolerations: []
 
 affinity: {}
 
-# Command to run the cuOpt service
-command:
-  - python
-  - -m
-  - cuopt_server.cuopt_service
-  - -p
-  - "5000"
+# Kubernetes command replaces the image ENTRYPOINT. Leave this empty so
+# /opt/cuopt/entrypoint.sh runs. Do not set it to ["proxy"], ["grpc"], or
+# ["legacy"]: the container would try to execute a program by that name.
+command: []
 
-# Environment variables
+# Arguments passed to the image entrypoint (Kubernetes args). This does not
+# replace the entrypoint. Do not put a mode name here.
+args: []
+
+# rapids-pre-commit-hooks: disable-next-line[verify-hardcoded-version]
+# serverType requires an image >= 26.10. Leave empty for older images (and
+# rapids-pre-commit-hooks: disable-next-line[verify-hardcoded-version]
+# for latest-cu13 until it points at 26.10): the entrypoint picks the server
+# and the chart keeps HTTP probes on port 5000.
+# "" leaves CUOPT_SERVER_TYPE unset so the image entrypoint decides.
+# proxy and legacy also use HTTP probes. grpc sets CUOPT_SERVER_TYPE and
+# CUOPT_GRPC_PORT, publishes grpc.port, and probes grpc.health.v1.Health.
+# Those probes are plaintext, so do not combine serverType grpc with TLS.
+# Do not set CUOPT_SERVER_TYPE in env; a raw grpc value would not switch the
+# probes. Ingress is HTTP-only and is rejected when serverType is grpc.
+serverType: ""
+
+grpc:
+  port: 5001
+
+# Extra environment variables. CUOPT_SERVER_TYPE, CUOPT_GRPC_PORT, and
+# CUOPT_SERVER_PORT set here are dropped; use serverType, grpc.port, and
+# service.targetPort / grpc.port for the listen port.
 env: []
 
 # Persistent storage (if needed)

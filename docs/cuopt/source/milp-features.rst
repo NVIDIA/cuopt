@@ -25,6 +25,8 @@ The MIP solver can be accessed in the following ways:
 
 - **Python SDK**: A Python package that provides direct access to cuOpt's MIP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
 
+- **Java (experimental)**: JNI bindings that provide direct access to cuOpt's MIP solver from Java applications. For more information, see :doc:`cuopt-java/quick-start`.
+
 - **As a Self-Hosted Service**: cuOpt's MIP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
 Each option provides the same mixed-integer optimization capabilities while offering flexibility in deployment and integration.

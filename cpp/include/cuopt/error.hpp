@@ -7,7 +7,7 @@
 #pragma once
 
 #include <cuopt/export.hpp>
-#include "cuopt/mathematical_optimization/constants.h"
+#include "cuopt/status_codes.h"
 
 #include <stdarg.h>
 
