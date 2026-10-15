@@ -29,7 +29,7 @@ requirements:
     - setuptools>=77.0.0
   run:
     - msgpack-python =1.2.1
-    - python
+    - python >=3.12
     - requests
 
 tests:

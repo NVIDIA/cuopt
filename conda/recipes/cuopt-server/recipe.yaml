@@ -36,7 +36,7 @@ requirements:
     - numpy >=2.0,<3.0
     - pandas>=2
     - psutil>=6.0.0
-    - python
+    - python >=3.12
     - uvicorn =0.34
 
 tests:

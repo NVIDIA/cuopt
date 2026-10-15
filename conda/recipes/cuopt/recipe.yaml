@@ -95,7 +95,7 @@ requirements:
     - numpy >=2.0,<3.0
     - pandas >=2.0
     - pylibraft =${{ minor_version }}
-    - python
+    - python >=3.12
     - rmm =${{ minor_version }}
     - scipy >=1.14.1
     # Needed by Numba for CUDA support
