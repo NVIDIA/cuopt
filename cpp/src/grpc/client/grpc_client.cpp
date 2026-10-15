@@ -279,6 +279,10 @@ bool grpc_client_t::ping(int timeout_seconds)
     GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] ping failed: " << last_error_);
     return false;
   }
+  // CheckStatus reports the server message limit on the connection probe too.
+  if (probe_resp.max_message_bytes() > 0) {
+    server_max_message_bytes_.store(probe_resp.max_message_bytes(), std::memory_order_relaxed);
+  }
   return true;
 }
 

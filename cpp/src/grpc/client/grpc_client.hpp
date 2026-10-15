@@ -369,7 +369,10 @@ class grpc_client_t {
   remote_result_t<i_t, f_t> get_result(const std::string& job_id);
 
   /**
-   * @brief Submit a VRP problem without waiting (unary only; no chunking yet).
+   * @brief Submit a VRP problem without waiting.
+   *
+   * Uses chunked upload when the request exceeds the client message limit, the
+   * server limit learned from connect(), or the configured chunk threshold.
    * @return Submit result with job ID
    */
   submit_result_t submit_vrp(const cuopt::routing::cpu_routing_problem_t& problem,

@@ -55,9 +55,18 @@ submit_result_t grpc_client_t::submit_vrp(
     matrix_bytes += static_cast<int64_t>(m.matrix.size() * sizeof(float));
   }
 
-  const bool use_chunked =
-    chunked_array_threshold_bytes_ >= 0 &&
-    static_cast<int64_t>(header.ByteSizeLong()) + matrix_bytes > chunked_array_threshold_bytes_;
+  // The unary request has to fit the configured threshold, the client channel
+  // limit, and the server limit stored by connect()'s CheckStatus probe. An
+  // unknown server limit is treated as too small for a unary upload.
+  const int64_t request_bytes = static_cast<int64_t>(header.ByteSizeLong()) + matrix_bytes;
+  int64_t message_limit       = config_.max_message_bytes;
+  if (chunked_array_threshold_bytes_ >= 0 && chunked_array_threshold_bytes_ < message_limit) {
+    message_limit = chunked_array_threshold_bytes_;
+  }
+  const int64_t srv_max           = server_max_message_bytes_.load(std::memory_order_relaxed);
+  const bool server_limit_unknown = srv_max <= 0;
+  if (!server_limit_unknown && srv_max < message_limit) { message_limit = srv_max; }
+  const bool use_chunked = server_limit_unknown || request_bytes > message_limit;
 
   if (use_chunked) {
     auto build_chunks = [&](const std::string& upload_id, int64_t chunk_data_budget) {
