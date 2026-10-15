@@ -79,12 +79,7 @@ Note: WSL2 is tested to run cuOpt, but not for building.
 
 More details on system requirements can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html)
 
-Pick one of the two channels below:
-
-* **Latest release** — the most recent stable release (26.10). Recommended for most users.
-* **Nightly** — built from the HEAD of the development branch (26.12). Includes the newest features and fixes, but may be unstable.
-
-Each channel is available via pip, conda, or container.
+For the README matching the latest stable release, see the [`release/26.10` branch](https://github.com/NVIDIA/cuopt/tree/release/26.10). The sections below cover the latest release and nightly builds (development branch, 26.12).
 
 ### Latest release
 
