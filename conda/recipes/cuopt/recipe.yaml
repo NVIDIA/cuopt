@@ -87,6 +87,10 @@ requirements:
     - rmm =${{ minor_version }}
     - scikit-build-core>=0.11.0
   run:
+    - libcuopt-client =${{ version }}
+    - libcuopt-mathopt =${{ version }}
+    - libcuopt-routing =${{ version }}
+    - librmm =${{ minor_version }}
     - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
     - cudf =${{ minor_version }}
     - cupy >=14.0.1,!=14.1.0
