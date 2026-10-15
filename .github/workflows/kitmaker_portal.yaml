@@ -19,7 +19,7 @@ on:
         description: |
           wheel_asset_pattern: extended regex (matched with jq's 'test()') selecting this
           project's wheel/sdist asset names out of the GitHub Release, e.g. '^libcuopt-'.
-          Defaults to '^<project_name with - replaced by _>-' (e.g. '^libcuopt_cu12-').
+          Defaults to the project name with '-' replaced by '_', e.g. '^libcuopt_cu12-'.
         type: string
       pic:
         description: "pic: 'person in charge' email required by the Kitmaker release API. Defaults to secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL."
@@ -66,7 +66,7 @@ on:
         description: |
           wheel_asset_pattern: extended regex (matched with jq's 'test()') selecting this
           project's wheel/sdist asset names out of the GitHub Release, e.g. '^libcuopt-'.
-          Defaults to '^<project_name with - replaced by _>-' (e.g. '^libcuopt_cu12-').
+          Defaults to the project name with '-' replaced by '_', e.g. '^libcuopt_cu12-'.
         type: string
       pic:
         description: "pic: 'person in charge' email required by the Kitmaker release API. Defaults to secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL."

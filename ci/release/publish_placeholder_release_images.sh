@@ -141,9 +141,7 @@ publish_release_variant() {
     create_release_manifest "${NGC_REPO}:${manifest_tag}" "$release_amd64" "$release_arm64"
 }
 
-# Release/latest tags use only the short cu<major> names; nightly sources keep
-# the fully-qualified cuda<X.Y>-py<X.Y> / cuda<X.Y>-ubi10 names. The short and
-# fully-qualified images are the same content, so only the short ones are published.
+# Release/latest use only the short cu<major> tags; the fully-qualified names are nightly-only.
 publish_variant_and_latest() {
     local alias=$1          # e.g. "cu13" or "cu13-ubi10"
     local nightly_tag=$2    # e.g. "${NIGHTLY_TAG}-cuda13.3-py3.14"

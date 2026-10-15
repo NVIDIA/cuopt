@@ -598,10 +598,7 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  # Calls the Kitmaker Portal release API (via Charon Ferry) once per project to publish its
-  # wheels from the GitHub Release above to pypi.org / pypi.nvidia.com. Kitmaker projects are
-  # 1:1 with wheel/component name x CUDA major version (except cuopt-sh-client, a pure package
-  # with no CUDA suffix). The wheel_asset_pattern defaults to the project name with '-' -> '_'.
+  # Publishes each project's wheels from the GitHub Release to pypi.org / pypi.nvidia.com via Kitmaker.
   kitmaker-portal-release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
