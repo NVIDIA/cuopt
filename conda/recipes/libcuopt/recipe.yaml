@@ -294,6 +294,7 @@ outputs:
         - librmm =${{ minor_version }}
         - libcublas
       run:
+        - libgomp >=9
         - rapids-logger =0.3
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
@@ -355,6 +356,7 @@ outputs:
         - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
         - cuda-version =${{ cuda_version }}
       run:
+        - rapids-logger =0.3
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
@@ -475,6 +477,10 @@ outputs:
         - libprotobuf
         - libabseil
       run:
+        - libgomp >=9
+        - librmm =${{ minor_version }}
+        - rapids-logger =0.3
+        - libcusparse
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
         - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
