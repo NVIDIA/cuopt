@@ -9,9 +9,8 @@
 
 namespace cuopt::routing {
 
-// ArrayChunk addressing for the VRP matrices: container_field_num is the field number of
-// RoutingProblem.cost_matrices / transit_time_matrices, container_index the matrix index and
-// field_id (container-relative) the `values` array. Elements are float.
+// ArrayChunk addressing for the VRP matrices: the field numbers of RoutingProblem.cost_matrices /
+// transit_time_matrices; container_index is the matrix index and field_id 0 its `values`.
 constexpr int32_t kCostMatricesContainer    = 10;
 constexpr int32_t kTransitMatricesContainer = 11;
 constexpr int32_t kMatrixValuesFieldId      = 0;

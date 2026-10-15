@@ -150,9 +150,8 @@ message ChunkedProblemHeader {
   // field on OptimizationProblem so client/server share the same tag.
   repeated QuadraticConstraint quadratic_constraints = 25;
 
-  // VRP: the RoutingProblem with the matrix `values` left empty. Each matrix's values travel
-  // as container ArrayChunks (container_field_num = 10 for cost_matrices, 11 for
-  // transit_time_matrices, container_index = matrix index, field_id = 0).
+  // VRP: matrix `values` are left empty here and sent as container ArrayChunks
+  // (container_field_num 10 = cost_matrices, 11 = transit_time_matrices).
   RoutingProblem routing_problem = 40;
 }
 

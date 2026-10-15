@@ -530,10 +530,7 @@ class grpc_client_t {
   using chunk_builder_t = std::function<std::vector<cuopt::remote::SendArrayChunkRequest>(
     const std::string& upload_id, int64_t chunk_data_budget)>;
 
-  /**
-   * @brief Chunked upload of any problem type: sends `header`, then the chunks from
-   *        `build_chunks`, then finishes the upload.
-   */
+  /// Chunked upload of any problem type: sends `header`, then the chunks from `build_chunks`.
   bool upload_chunked(const cuopt::remote::ChunkedProblemHeader& header,
                       const chunk_builder_t& build_chunks,
                       std::string& job_id_out);

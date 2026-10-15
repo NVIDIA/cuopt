@@ -14,11 +14,8 @@
 
 namespace cuopt::mathematical_optimization {
 
-// Container variant of chunk_typed_array: slices `data` and stamps each chunk
-// with (container_field_num, container_index, container-relative field_id) so
-// the server can reassemble it into a specific entry of a repeated_messages
-// field (e.g. a single QuadraticConstraint's linear_values).  `field_id` here
-// is container-relative (0..N-1), not an ArrayFieldId.
+// Like chunk_typed_array, but stamps each chunk with (container_field_num, container_index,
+// container-relative field_id) so the server can rebuild one entry of a repeated_messages field.
 template <typename T>
 void chunk_container_typed_array(std::vector<cuopt::remote::SendArrayChunkRequest>& out,
                                  int32_t container_field_num,
