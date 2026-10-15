@@ -334,6 +334,8 @@ def _array_wire_type_comment(f):
     comment used in the generated proto enums (e.g. ArrayFieldId, nested
     repeated_messages ArrayId enums).
     """
+    if f.get("wire_comment"):
+        return f["wire_comment"]
     ftype = f.get("type", "repeated double")
     size = _default_element_size(f)
     if "double" in ftype:
@@ -1322,8 +1324,11 @@ def generate_array_field_id_enum(registry):
     """
     obj = registry.get("optimization_problem", {})
     rows = []
-    for entry in obj.get("arrays", []):
-        f = parse_field(entry)
+    array_fields = [parse_field(entry) for entry in obj.get("arrays", [])]
+    import routing_codegen
+
+    array_fields.extend(routing_codegen.top_level_array_fields(registry))
+    for f in array_fields:
         afnum = f.get("array_id")
         if afnum is None:
             continue
@@ -1367,12 +1372,25 @@ def generate_array_field_element_size_inc(registry):
         for afid in cases_by_size[size]:
             lines.append(f"      case cuopt::remote::{afid}:")
         lines.append(f"        return {size};")
+    import routing_codegen
+
+    routing_cases = {}
+    for f in routing_codegen.top_level_array_fields(registry):
+        afid = _field_array_id_name(f)
+        routing_cases.setdefault(_default_element_size(f), []).append(afid)
+    for size in sorted(routing_cases.keys()):
+        for afid in routing_cases[size]:
+            lines.append(f"      case cuopt::remote::{afid}:")
+        lines.append(f"        return {size};")
     lines.append("    }")
     lines.append("    return -1;")
     lines.append("  }")
 
     rm_entries = list(_iter_repeated_messages(obj))
-    if rm_entries:
+    import routing_codegen
+
+    routing_groups = routing_codegen.routing_container_groups(registry)
+    if rm_entries or routing_groups:
         lines.append("  switch (container_field_num) {")
         for name, body in rm_entries:
             cfn = body["field_num"]
@@ -1391,6 +1409,14 @@ def generate_array_field_element_size_inc(registry):
                     lines.append(
                         f"        case {aid}: return {size};  // {fname}"
                     )
+            lines.append("      }")
+            lines.append("      return -1;")
+            lines.append("    }")
+        for cfn, label, arrays in routing_groups:
+            lines.append(f"    case {cfn}: {{  // {label}")
+            lines.append("      switch (field_id) {")
+            for aid, fname, size in arrays:
+                lines.append(f"        case {aid}: return {size};  // {fname}")
             lines.append("      }")
             lines.append("      return -1;")
             lines.append("    }")
@@ -3513,6 +3539,9 @@ def _validate_registry_uniqueness(registry):
             problem.get("arrays", []), "array_id"
         )
     ]
+    import routing_codegen
+
+    afid_pairs.extend(routing_codegen.routing_array_field_id_pairs(registry))
     _check_unique("ArrayFieldId", afid_pairs, errors)
 
     # `optional: true` is meaningful for any proto3 settings field whose C++
@@ -3563,6 +3592,10 @@ def _validate_registry_uniqueness(registry):
                     f"value {zero_desc} -- add optional: true or fix "
                     "default:"
                 )
+
+    import routing_codegen
+
+    routing_codegen.validate_routing(registry, errors)
 
     if errors:
         raise ValueError(
@@ -4271,6 +4304,10 @@ def main():
             os.path.join(outdir, "cuopt_mcp_schema.json"),
             generate_mcp_schema(registry),
         )
+
+    import routing_codegen
+
+    routing_codegen.emit_routing(registry, outdir, HEADER, write_file)
 
     print(f"\nDone! Generated {len(os.listdir(outdir))} files in: {outdir}")
 

@@ -3928,11 +3928,18 @@ TEST(SolveMipRemoteCallbacks, EmptyVariableListKeepsCallbacksEnabled)
 
 TEST(ArrayFieldElementSize, VrpMatrixContainers)
 {
-  using namespace cuopt::routing;
-  EXPECT_EQ(array_field_element_size(kCostMatricesContainer, kMatrixValuesFieldId), 4);
-  EXPECT_EQ(array_field_element_size(kTransitMatricesContainer, kMatrixValuesFieldId), 4);
-  EXPECT_EQ(array_field_element_size(kCostMatricesContainer, kMatrixValuesFieldId + 1), -1);
-  EXPECT_EQ(array_field_element_size(kTransitMatricesContainer, kMatrixValuesFieldId + 1), -1);
+  using cuopt::remote::CostMatrix;
+  using cuopt::remote::RoutingProblem;
+  EXPECT_EQ(array_field_element_size(RoutingProblem::kCostMatricesFieldNumber, CostMatrix::VALUES),
+            4);
+  EXPECT_EQ(
+    array_field_element_size(RoutingProblem::kTransitTimeMatricesFieldNumber, CostMatrix::VALUES),
+    4);
+  EXPECT_EQ(
+    array_field_element_size(RoutingProblem::kCostMatricesFieldNumber, CostMatrix::VALUES + 1), -1);
+  EXPECT_EQ(array_field_element_size(RoutingProblem::kTransitTimeMatricesFieldNumber,
+                                     CostMatrix::VALUES + 1),
+            -1);
 }
 
 TEST(ChunkedHeaderArrays, StripClearsPayloadsAndKeepsScalars)

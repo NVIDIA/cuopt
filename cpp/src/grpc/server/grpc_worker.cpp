@@ -433,58 +433,6 @@ static int claim_job_slot(int worker_id)
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
 static_assert(cuopt::routing::kMatrixValuesFieldId ==
               static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES));
-
-// Copy container chunks into cost and transit matrices. A missing chunk leaves
-// that matrix empty. A present chunk must be exactly num_locations x num_locations
-// float32 values.
-static void fill_vrp_matrices_from_chunks(
-  cuopt::routing::cpu_routing_problem_t& problem,
-  const std::map<int32_t, std::vector<uint8_t>>& arrays,
-  const std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>&
-    container_arrays)
-{
-  const int32_t n_locations = problem.num_locations;
-  int64_t expect            = 0;
-  if (n_locations > 0) {
-    const int64_t n = n_locations;
-    if (n > std::numeric_limits<int64_t>::max() / n) {
-      throw std::invalid_argument("VRP num_locations x num_locations overflows");
-    }
-    expect = n * n;
-  }
-
-  size_t consumed = 0;
-  auto fill_values =
-    [&](int32_t container, const char* which, std::vector<cuopt::routing::cpu_cost_matrix_t>& ms) {
-      for (size_t i = 0; i < ms.size(); ++i) {
-        auto it = container_arrays.find(
-          {container, static_cast<int32_t>(i), cuopt::routing::kMatrixValuesFieldId});
-        if (it == container_arrays.end()) { continue; }
-        if (n_locations <= 0) {
-          throw std::invalid_argument("Chunked VRP matrix requires num_locations > 0");
-        }
-        const auto& bytes = it->second;
-        if (bytes.size() % sizeof(float) != 0) {
-          throw std::invalid_argument("VRP matrix payload is not a multiple of sizeof(float)");
-        }
-        const int64_t got = static_cast<int64_t>(bytes.size() / sizeof(float));
-        if (got != expect) {
-          throw std::invalid_argument(std::string("Chunked VRP ") + which + " matrix " +
-                                      std::to_string(i) + " has " + std::to_string(got) +
-                                      " floats, expected " + std::to_string(expect));
-        }
-        ms[i].matrix.resize(static_cast<size_t>(got));
-        std::memcpy(ms[i].matrix.data(), bytes.data(), bytes.size());
-        ++consumed;
-      }
-    };
-  fill_values(cuopt::routing::kCostMatricesContainer, "cost", problem.cost_matrices);
-  fill_values(
-    cuopt::routing::kTransitMatricesContainer, "transit-time", problem.transit_time_matrices);
-  if (consumed != container_arrays.size() || !arrays.empty()) {
-    throw std::invalid_argument("Chunked VRP upload carries arrays that match no matrix");
-  }
-}
 #endif
 
 // Unified chunked upload: the pipe header is a SubmitJobRequest with numeric
@@ -522,8 +470,7 @@ static bool read_unified_chunked_from_pipe(int read_fd, DeserializedJob& dj)
       const auto& req = request.vrp_request();
       SERVER_LOG_INFO("[Worker] IPC path: CHUNKED VRP (%zu container arrays)",
                       container_arrays.size());
-      map_proto_to_routing_problem(req.problem(), dj.routing_problem);
-      fill_vrp_matrices_from_chunks(dj.routing_problem, arrays, container_arrays);
+      map_proto_to_routing_problem(req.problem(), dj.routing_problem, arrays, container_arrays);
       map_proto_to_routing_settings(req.settings(), dj.routing_settings);
       dj.is_vrp = true;
 #else

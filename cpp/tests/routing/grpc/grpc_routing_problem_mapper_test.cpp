@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
+#include <map>
 #include <vector>
 
 namespace {
@@ -155,4 +157,80 @@ TEST(RoutingProblemMapper, MatrixValuesSkippedKeepsMatrixEntries)
   EXPECT_EQ(back.cost_matrices[1].vehicle_type, 1);
   EXPECT_TRUE(back.cost_matrices[0].matrix.empty());
   EXPECT_TRUE(back.transit_time_matrices[0].matrix.empty());
+}
+
+TEST(RoutingProblemMapper, CastsAndServiceTimesRoundTrip)
+{
+  auto p                    = make_base_problem();
+  p.vehicle_types           = {1, 2};
+  p.drop_return_trips       = {1, 0};
+  p.order_service_times[-1] = {5, 6, 7, 8, 9};
+  p.objectives              = {1, 2};
+  p.objective_weights       = {1.5f, 2.5f};
+
+  cuopt::remote::RoutingProblem pb;
+  cuopt::routing::map_routing_problem_to_proto(p, &pb);
+  ASSERT_EQ(pb.vehicle_types_size(), 2);
+  EXPECT_EQ(pb.vehicle_types(0), 1u);
+  EXPECT_TRUE(pb.drop_return_trips(0));
+  EXPECT_FALSE(pb.drop_return_trips(1));
+  ASSERT_EQ(pb.order_service_times_size(), 1);
+  EXPECT_EQ(pb.order_service_times(0).vehicle_id(), -1);
+
+  cuopt::routing::cpu_routing_problem_t back;
+  cuopt::routing::map_proto_to_routing_problem(pb, back);
+  EXPECT_EQ(back.vehicle_types, p.vehicle_types);
+  EXPECT_EQ(back.drop_return_trips, p.drop_return_trips);
+  EXPECT_EQ(back.order_service_times, p.order_service_times);
+  EXPECT_EQ(back.objectives, p.objectives);
+  EXPECT_EQ(back.objective_weights, p.objective_weights);
+}
+
+TEST(RoutingProblemMapper, ChunkFillsStrippedArrays)
+{
+  auto p            = make_base_problem();
+  p.order_locations = {4, 3, 2};
+  p.cost_matrices.push_back({2, std::vector<float>(25, 1.5f)});
+
+  cuopt::remote::RoutingProblem pb;
+  cuopt::routing::map_routing_problem_to_proto(p, &pb, false, false);
+  EXPECT_EQ(pb.order_locations_size(), 0);
+  ASSERT_EQ(pb.cost_matrices_size(), 1);
+  EXPECT_EQ(pb.cost_matrices(0).values_size(), 0);
+  EXPECT_EQ(pb.cost_matrices(0).vehicle_type(), 2u);
+
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  std::vector<uint8_t> orders(p.order_locations.size() * sizeof(int32_t));
+  std::memcpy(orders.data(), p.order_locations.data(), orders.size());
+  arrays[static_cast<int32_t>(cuopt::remote::FIELD_ORDER_LOCATIONS)] = std::move(orders);
+
+  std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>
+    containers;
+  std::vector<uint8_t> matrix(p.cost_matrices[0].matrix.size() * sizeof(float));
+  std::memcpy(matrix.data(), p.cost_matrices[0].matrix.data(), matrix.size());
+  containers[{10, 0, static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES)}] = std::move(matrix);
+
+  cuopt::routing::cpu_routing_problem_t back;
+  cuopt::routing::map_proto_to_routing_problem(pb, back, arrays, containers);
+  EXPECT_EQ(back.order_locations, p.order_locations);
+  ASSERT_EQ(back.cost_matrices.size(), 1u);
+  EXPECT_EQ(back.cost_matrices[0].vehicle_type, 2);
+  EXPECT_EQ(back.cost_matrices[0].matrix, p.cost_matrices[0].matrix);
+}
+
+TEST(RoutingProblemMapper, ShortMatrixChunkThrows)
+{
+  cuopt::remote::RoutingProblem pb;
+  pb.set_num_locations(5);
+  pb.add_cost_matrices()->set_vehicle_type(0);
+
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>
+    containers;
+  containers[{10, 0, static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES)}] =
+    std::vector<uint8_t>(sizeof(float), 0);
+
+  cuopt::routing::cpu_routing_problem_t back;
+  EXPECT_THROW(cuopt::routing::map_proto_to_routing_problem(pb, back, arrays, containers),
+               std::invalid_argument);
 }
