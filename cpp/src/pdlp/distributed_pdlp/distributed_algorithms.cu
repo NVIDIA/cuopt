@@ -64,7 +64,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
   f_t global_obj_sq   = f_t(0);
   for_each_shard([&](auto& s) {
     const auto& scaled = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
-    const auto stream  = s.stream;
+    const cuda::stream_ref stream = s.stream;
     rmm::device_scalar<f_t> d_bound_sq(zero_v<f_t>, stream);
     rmm::device_scalar<f_t> d_obj_sq(zero_v<f_t>, stream);
 
