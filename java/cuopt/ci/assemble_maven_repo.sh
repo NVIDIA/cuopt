@@ -118,7 +118,7 @@ for kind in sources javadoc; do
     echo "WARNING: no ${kind} JAR found; Maven Central requires one before release" >&2
     continue
   fi
-  # A sources/javadoc JAR is a few MB; anything larger has native libraries packed into it.
+  # Sources/javadoc JARs are small; a large one means native libraries got packed in.
   if (($(stat -c %s "${extra}") > 50 * 1024 * 1024)); then
     echo "ERROR: ${extra} is $(stat -c %s "${extra}") bytes; expected a small ${kind} JAR" >&2
     exit 1

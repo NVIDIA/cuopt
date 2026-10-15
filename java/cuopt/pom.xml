@@ -220,8 +220,7 @@ SPDX-License-Identifier: Apache-2.0
             <artifactId>maven-source-plugin</artifactId>
             <version>3.3.1</version>
             <configuration>
-              <!-- cuopt.native.resources is a resource directory (the classifier JAR's natives); keep
-                   it out of the sources JAR. -->
+              <!-- Keep the native resource directory out of the sources JAR. -->
               <excludeResources>true</excludeResources>
             </configuration>
             <executions>
