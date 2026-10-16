@@ -21,9 +21,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <new>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -1244,6 +1246,18 @@ void compare_data_models(const mps_data_model_t<i_t, f_t>& original,
   }
 }
 
+TEST(mps_data_model, default_sense_is_minimize)
+{
+  // Construct the model in storage filled with non-zero bytes, so that a sense flag left
+  // uninitialized by the default constructor would read as maximize.
+  using model_t = mps_data_model_t<int, double>;
+  alignas(model_t) unsigned char storage[sizeof(model_t)];
+  std::memset(storage, 1, sizeof(storage));
+  auto* model = new (storage) model_t;
+  EXPECT_FALSE(model->get_sense());
+  model->~model_t();
+}
+
 TEST(mps_roundtrip, empty_constraint_matrix)
 {
   mps_data_model_t<int, double> model;
@@ -1270,6 +1284,7 @@ TEST(mps_roundtrip, empty_constraint_matrix)
   writer.write(temp_file.string());
 
   auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  EXPECT_FALSE(reloaded.get_sense());
   EXPECT_THAT(reloaded.get_constraint_matrix_offsets(), ElementsAre(0, 0));
   EXPECT_TRUE(reloaded.get_constraint_matrix_values().empty());
   EXPECT_THAT(reloaded.get_constraint_bounds(), ElementsAre(1.0));
