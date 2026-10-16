@@ -3934,3 +3934,100 @@ TEST(ArrayFieldElementSize, VrpMatrixContainers)
   EXPECT_EQ(array_field_element_size(kCostMatricesContainer, kMatrixValuesFieldId + 1), -1);
   EXPECT_EQ(array_field_element_size(kTransitMatricesContainer, kMatrixValuesFieldId + 1), -1);
 }
+
+TEST(ChunkedHeaderArrays, StripClearsPayloadsAndKeepsScalars)
+{
+  using cuopt::mathematical_optimization::inline_chunked_arrays_present;
+  using cuopt::mathematical_optimization::strip_chunked_numeric_arrays;
+
+  cuopt::remote::OptimizationProblem problem;
+  problem.set_problem_name("named");
+  problem.add_variable_names("x");
+  problem.add_c(1.0);
+  problem.set_row_types("L");
+  auto* qc = problem.add_quadratic_constraints();
+  qc->set_rhs_value(3.5);
+  qc->set_constraint_row_name("row");
+  qc->add_linear_values(1.0);
+  qc->add_vals(2.0);
+
+  EXPECT_TRUE(inline_chunked_arrays_present(problem));
+  strip_chunked_numeric_arrays(&problem);
+  EXPECT_FALSE(inline_chunked_arrays_present(problem));
+  EXPECT_EQ(problem.problem_name(), "named");
+  EXPECT_EQ(problem.variable_names_size(), 0);
+  EXPECT_EQ(problem.c_size(), 0);
+  EXPECT_TRUE(problem.row_types().empty());
+  ASSERT_EQ(problem.quadratic_constraints_size(), 1);
+  EXPECT_DOUBLE_EQ(problem.quadratic_constraints(0).rhs_value(), 3.5);
+  EXPECT_EQ(problem.quadratic_constraints(0).constraint_row_name(), "row");
+  EXPECT_EQ(problem.quadratic_constraints(0).linear_values_size(), 0);
+  EXPECT_EQ(problem.quadratic_constraints(0).vals_size(), 0);
+}
+
+TEST(ResultChunkArrays, ApplyCopiesThenFreesRawPayload)
+{
+  cuopt::remote::ResultResponse result;
+  result.mutable_lp_solution()->set_primal_objective(1.5);
+  result.mutable_lp_solution()->mutable_warm_start_data()->set_initial_primal_weight(2.0);
+
+  const double value = 4.0;
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  arrays[cuopt::remote::RESULT_PRIMAL_SOLUTION].assign(
+    reinterpret_cast<const uint8_t*>(&value),
+    reinterpret_cast<const uint8_t*>(&value) + sizeof(double));
+  arrays[cuopt::remote::RESULT_WS_CURRENT_PRIMAL_SOLUTION] =
+    arrays[cuopt::remote::RESULT_PRIMAL_SOLUTION];
+
+  cuopt::mathematical_optimization::apply_result_chunk_arrays(&result, arrays);
+
+  EXPECT_EQ(result.lp_solution().primal_solution_size(), 1);
+  EXPECT_DOUBLE_EQ(result.lp_solution().primal_solution(0), 4.0);
+  EXPECT_DOUBLE_EQ(result.lp_solution().primal_objective(), 1.5);
+  EXPECT_EQ(result.lp_solution().warm_start_data().current_primal_solution_size(), 1);
+  EXPECT_DOUBLE_EQ(result.lp_solution().warm_start_data().initial_primal_weight(), 2.0);
+  EXPECT_TRUE(arrays[cuopt::remote::RESULT_PRIMAL_SOLUTION].empty());
+  EXPECT_TRUE(arrays[cuopt::remote::RESULT_WS_CURRENT_PRIMAL_SOLUTION].empty());
+
+  arrays[cuopt::remote::RESULT_DUAL_SOLUTION] = {1, 2, 3};
+  EXPECT_THROW(cuopt::mathematical_optimization::apply_result_chunk_arrays(&result, arrays),
+               std::invalid_argument);
+}
+
+TEST(ResultChunkArrays, ClearLeavesScalars)
+{
+  cuopt::remote::LPSolution solution;
+  solution.set_primal_objective(1.0);
+  solution.add_primal_solution(2.0);
+  auto* warm = solution.mutable_warm_start_data();
+  warm->set_initial_step_size(3.0);
+  warm->add_current_dual_solution(4.0);
+
+  cuopt::mathematical_optimization::clear_lp_solution_arrays(&solution);
+
+  EXPECT_EQ(solution.primal_solution_size(), 0);
+  EXPECT_DOUBLE_EQ(solution.primal_objective(), 1.0);
+  EXPECT_DOUBLE_EQ(solution.warm_start_data().initial_step_size(), 3.0);
+  EXPECT_EQ(solution.warm_start_data().current_dual_solution_size(), 0);
+}
+
+TEST(ResultChunkArrays, CopyScalarsDoesNotCopyArrays)
+{
+  cuopt::remote::ChunkedResultHeader header;
+  header.set_primal_objective(7.0);
+  header.set_solve_time(1.25);
+  header.set_ws_initial_primal_weight(0.5);
+  auto* desc = header.add_arrays();
+  desc->set_field_id(cuopt::remote::RESULT_WS_CURRENT_PRIMAL_SOLUTION);
+  desc->set_total_elements(2);
+  desc->set_element_size_bytes(8);
+
+  cuopt::remote::LPSolution solution;
+  cuopt::mathematical_optimization::copy_lp_result_scalars(header, &solution);
+  EXPECT_DOUBLE_EQ(solution.primal_objective(), 7.0);
+  EXPECT_DOUBLE_EQ(solution.solve_time(), 1.25);
+  EXPECT_EQ(solution.primal_solution_size(), 0);
+  EXPECT_TRUE(solution.has_warm_start_data());
+  EXPECT_DOUBLE_EQ(solution.warm_start_data().initial_primal_weight(), 0.5);
+  EXPECT_EQ(solution.warm_start_data().current_primal_solution_size(), 0);
+}

@@ -498,6 +498,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     }
 
     response->mutable_header()->CopyFrom(state.result_header);
+    const auto problem_category = state.problem_category;
 
     std::string download_id = generate_job_id();
     response->set_download_id(download_id);
@@ -520,7 +521,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
         job_id.c_str(),
         download_id.c_str(),
         response->header().arrays_size(),
-        state.problem_category);
+        problem_category);
     }
 
     return Status::OK;
@@ -550,20 +551,15 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
 
     auto* result = response->mutable_result();
     result->set_status(cuopt::remote::SUCCESS);
-    if (state.problem_category == cuopt::remote::VRP || state.result_header.is_vrp()) {
+    const auto problem_category = state.problem_category;
+    if (problem_category == cuopt::remote::VRP || state.result_header.is_vrp()) {
       *result->mutable_routing_solution() = state.result_header.routing_solution();
-    } else if (state.problem_category == cuopt::remote::MIP) {
-      cuopt::remote::MIPSolution mip_solution;
-      cuopt::mathematical_optimization::build_mip_solution_proto<int, double>(
-        state.result_header, state.raw_arrays, &mip_solution);
-      cuopt::mathematical_optimization::clear_mip_solution_arrays(&mip_solution);
-      result->mutable_mip_solution()->Swap(&mip_solution);
+    } else if (problem_category == cuopt::remote::MIP) {
+      cuopt::mathematical_optimization::copy_mip_result_scalars(state.result_header,
+                                                                result->mutable_mip_solution());
     } else {
-      cuopt::remote::LPSolution lp_solution;
-      cuopt::mathematical_optimization::build_lp_solution_proto<int, double>(
-        state.result_header, state.raw_arrays, &lp_solution);
-      cuopt::mathematical_optimization::clear_lp_solution_arrays(&lp_solution);
-      result->mutable_lp_solution()->Swap(&lp_solution);
+      cuopt::mathematical_optimization::copy_lp_result_scalars(state.result_header,
+                                                               result->mutable_lp_solution());
     }
     for (const auto& desc : state.result_header.arrays()) {
       *response->add_arrays() = desc;
@@ -590,7 +586,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
         job_id.c_str(),
         download_id.c_str(),
         response->arrays_size(),
-        state.problem_category);
+        problem_category);
     }
 
     (void)context;

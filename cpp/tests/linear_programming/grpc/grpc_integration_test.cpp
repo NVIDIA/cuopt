@@ -2993,6 +2993,58 @@ TEST_F(ChunkValidationTests, AcceptsValidChunk)
   EXPECT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(ChunkValidationTests, LegacyUploadRejectsVrp)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadRequest req;
+  req.mutable_problem_header()->mutable_header()->set_problem_category(cuopt::remote::VRP);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUpload(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsMissingProblem)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsNonemptyLpArray)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_lp_request()->mutable_problem()->add_c(1.0);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsNonemptyVrpMatrix)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_vrp_request()->mutable_problem()->add_cost_matrices()->add_values(
+    1.0f);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2AcceptsEmptyLpHeader)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_lp_request()->mutable_header()->set_problem_category(
+    cuopt::remote::LP);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_TRUE(status.ok()) << status.error_message();
+  EXPECT_FALSE(resp.upload_id().empty());
+}
+
 }  // anonymous namespace
 
 // =============================================================================

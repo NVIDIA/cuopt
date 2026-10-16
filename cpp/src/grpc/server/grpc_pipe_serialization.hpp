@@ -73,7 +73,7 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
 }
 
 // =============================================================================
-// Chunked request: server → worker pipe (ChunkedProblemHeader + raw arrays)
+// Chunked request: server → worker pipe (header protobuf + raw arrays)
 //
 // Wire format (protobuf header + raw byte arrays):
 //   [uint32 hdr_size][protobuf header bytes]
@@ -84,8 +84,9 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
 //     [int32 container_field_num][int32 container_index]
 //     [int32 field_id][uint64 total_bytes][raw bytes...]
 //
-// The protobuf ChunkedProblemHeader carries all metadata (settings,
-// scalars, string arrays, and per-entry scalars for repeated_messages).
+// The header is a ChunkedProblemHeader on the legacy path and a
+// SubmitJobRequest on the unified path. Either one carries metadata
+// (settings, scalars, and per-entry scalars for repeated messages).
 // Numeric arrays — both top-level and per-container — bypass protobuf
 // serialization and flow directly through the pipe as raw bytes.
 //

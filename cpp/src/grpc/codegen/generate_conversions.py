@@ -2203,8 +2203,15 @@ def _gen_chunked_to_solution(registry, obj_name, obj, indent="  "):
 # ============================================================================
 
 
-def _gen_problem_to_proto(registry, indent="  "):
-    """Generate body of map_problem_to_proto()."""
+def _gen_problem_to_proto(registry, indent="  ", include_arrays=True):
+    """Generate body of map_problem_to_proto().
+
+    include_arrays=False is the unified chunked header. It emits the same
+    scalars and repeated-message shells, and omits top-level arrays. Those
+    arrays, including variable and row names, travel as ArrayChunks. A
+    repeated string inside a container stays inline, matching
+    strip_chunked_numeric_arrays.
+    """
     obj = registry.get("optimization_problem", {})
     ind = indent
     lines = []
@@ -2227,7 +2234,13 @@ def _gen_problem_to_proto(registry, indent="  "):
 
     lines.append("")
 
+    if not include_arrays:
+        lines.append(f"{ind}// Top-level arrays travel as ArrayChunks.")
+        lines.append("")
+
     for entry in obj.get("arrays", []):
+        if not include_arrays:
+            continue
         f = parse_field(entry)
         name = f["name"]
         pname = _proto_cpp_name(name)
@@ -2269,27 +2282,32 @@ def _gen_problem_to_proto(registry, indent="  "):
             )
             lines.append(f"{ind}}}")
 
-    # Setter groups
-    for gname, gdef in setter_groups.items():
-        fields = [
-            _find_problem_field(obj, fn) for fn in gdef.get("fields", [])
-        ]
-        for f in fields:
-            if f is None:
-                continue
-            pname = _proto_cpp_name(f["name"])
-            getter = _default_problem_getter(f, is_scalar=False)
-            ftype = f.get("type", "repeated double")
-            cast = _array_element_cast(ftype)
-            lines.append(f"{ind}{{")
-            lines.append(f"{ind}  auto _{f['name']} = cpu_problem.{getter};")
-            lines.append(
-                f"{ind}  for (const auto& v : _{f['name']}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
-            )
-            lines.append(f"{ind}}}")
+    # Setter groups. These are top-level numeric arrays, so the chunked header
+    # omits them.
+    if include_arrays:
+        for gname, gdef in setter_groups.items():
+            fields = [
+                _find_problem_field(obj, fn) for fn in gdef.get("fields", [])
+            ]
+            for f in fields:
+                if f is None:
+                    continue
+                pname = _proto_cpp_name(f["name"])
+                getter = _default_problem_getter(f, is_scalar=False)
+                ftype = f.get("type", "repeated double")
+                cast = _array_element_cast(ftype)
+                lines.append(f"{ind}{{")
+                lines.append(
+                    f"{ind}  auto _{f['name']} = cpu_problem.{getter};"
+                )
+                lines.append(
+                    f"{ind}  for (const auto& v : _{f['name']}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
+                )
+                lines.append(f"{ind}}}")
 
-    # repeated_messages — emit per-entry encode loop (unary path: scalars and
-    # arrays both go inline into the nested proto message).
+    # repeated_messages — unary path inlines scalars and arrays. The chunked
+    # header keeps scalars and any repeated strings, and sends the other
+    # per-entry arrays as container-keyed ArrayChunks.
     for name, body in _iter_repeated_messages(obj):
         presence = body.get("presence_check")
         getter = body.get("getter")
@@ -2315,9 +2333,17 @@ def _gen_problem_to_proto(registry, indent="  "):
             else:
                 lines.append(f"{ind}    pb_entry->set_{sp}(_entry.{member});")
         for f in _repeated_message_arrays(body):
+            ftype = f.get("type", "repeated double")
+            if not include_arrays and ftype != "repeated string":
+                continue
             ap = _proto_cpp_name(f["name"])
             member = f.get("member", f["name"])
-            ftype = f.get("type", "repeated double")
+            if ftype == "repeated string":
+                lines.append(
+                    f"{ind}    for (const auto& v : _entry.{member}) "
+                    f"pb_entry->add_{ap}(v);"
+                )
+                continue
             cast = _array_element_cast(ftype) or "double"
             lines.append(
                 f"{ind}    for (const auto& v : _entry.{member}) "
@@ -4194,6 +4220,12 @@ def main():
         write_file(
             os.path.join(outdir, "generated_problem_to_proto.inc"),
             HEADER + _gen_problem_to_proto(registry) + "\n",
+        )
+        write_file(
+            os.path.join(outdir, "generated_problem_scalars_to_proto.inc"),
+            HEADER
+            + _gen_problem_to_proto(registry, include_arrays=False)
+            + "\n",
         )
         write_file(
             os.path.join(outdir, "generated_problem_scalars_from_proto.inc"),

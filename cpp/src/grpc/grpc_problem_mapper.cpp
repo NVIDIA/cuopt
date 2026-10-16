@@ -100,6 +100,13 @@ void map_problem_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_proble
 }
 
 template <typename i_t, typename f_t>
+void map_problem_scalars_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+                                  cuopt::remote::OptimizationProblem* pb_problem)
+{
+#include "generated_problem_scalars_to_proto.inc"
+}
+
+template <typename i_t, typename f_t>
 void map_proto_to_problem(const cuopt::remote::OptimizationProblem& pb_problem,
                           cpu_optimization_problem_t<i_t, f_t>& cpu_problem)
 {
@@ -183,26 +190,48 @@ void map_chunked_arrays_to_problem(
 
 namespace {
 
-bool stripped_child_arrays_present(const google::protobuf::Message& child)
+// Fields strip_chunked_numeric_arrays removes. Top-level repeated messages are
+// containers (walked one level, not cleared). Inside a container, repeated
+// strings stay; bytes and numeric arrays go.
+bool is_stripped_payload(const google::protobuf::FieldDescriptor* field, bool in_container)
+{
+  if (!field->is_repeated()) {
+    return field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES;
+  }
+  if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) { return false; }
+  if (in_container && field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
+    return false;
+  }
+  return true;
+}
+
+bool payload_present(const google::protobuf::Message& msg,
+                     const google::protobuf::Reflection* refl,
+                     const google::protobuf::FieldDescriptor* field)
+{
+  if (!field->is_repeated()) { return !refl->GetString(msg, field).empty(); }
+  return refl->FieldSize(msg, field) > 0;
+}
+
+bool container_payload_present(const google::protobuf::Message& child)
 {
   const auto* child_desc = child.GetDescriptor();
   const auto* child_refl = child.GetReflection();
   for (int k = 0; k < child_desc->field_count(); ++k) {
     const auto* cf = child_desc->field(k);
-    if (!cf->is_repeated()) {
-      if (cf->type() == google::protobuf::FieldDescriptor::TYPE_BYTES &&
-          !child_refl->GetString(child, cf).empty()) {
-        return true;
-      }
-      continue;
-    }
-    if (cf->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_STRING &&
-        cf->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE &&
-        child_refl->FieldSize(child, cf) > 0) {
-      return true;
-    }
+    if (is_stripped_payload(cf, true) && payload_present(child, child_refl, cf)) { return true; }
   }
   return false;
+}
+
+void clear_container_payloads(google::protobuf::Message* child)
+{
+  const auto* child_desc = child->GetDescriptor();
+  const auto* child_refl = child->GetReflection();
+  for (int k = 0; k < child_desc->field_count(); ++k) {
+    const auto* cf = child_desc->field(k);
+    if (is_stripped_payload(cf, true)) { child_refl->ClearField(child, cf); }
+  }
 }
 
 }  // namespace
@@ -217,14 +246,9 @@ bool CUOPT_EXPORT inline_chunked_arrays_present(const cuopt::remote::Optimizatio
         field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       const int n = refl->FieldSize(problem, field);
       for (int j = 0; j < n; ++j) {
-        if (stripped_child_arrays_present(refl->GetRepeatedMessage(problem, field, j))) {
-          return true;
-        }
+        if (container_payload_present(refl->GetRepeatedMessage(problem, field, j))) { return true; }
       }
-    } else if (field->is_repeated()) {
-      if (refl->FieldSize(problem, field) > 0) return true;
-    } else if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES &&
-               !refl->GetString(problem, field).empty()) {
+    } else if (is_stripped_payload(field, false) && payload_present(problem, refl, field)) {
       return true;
     }
   }
@@ -244,26 +268,9 @@ void strip_chunked_numeric_arrays(cuopt::remote::OptimizationProblem* problem)
         field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       const int n = refl->FieldSize(*problem, field);
       for (int j = 0; j < n; ++j) {
-        auto* child            = refl->MutableRepeatedMessage(problem, field, j);
-        const auto* child_desc = child->GetDescriptor();
-        const auto* child_refl = child->GetReflection();
-        for (int k = 0; k < child_desc->field_count(); ++k) {
-          const auto* cf = child_desc->field(k);
-          if (!cf->is_repeated()) {
-            if (cf->type() == google::protobuf::FieldDescriptor::TYPE_BYTES) {
-              child_refl->ClearField(child, cf);
-            }
-            continue;
-          }
-          if (cf->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_STRING &&
-              cf->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-            child_refl->ClearField(child, cf);
-          }
-        }
+        clear_container_payloads(refl->MutableRepeatedMessage(problem, field, j));
       }
-    } else if (field->is_repeated()) {
-      refl->ClearField(problem, field);
-    } else if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES) {
+    } else if (is_stripped_payload(field, false)) {
       refl->ClearField(problem, field);
     }
   }
@@ -285,6 +292,9 @@ std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
 // Explicit template instantiations
 #if CUOPT_INSTANTIATE_FLOAT
 template CUOPT_EXPORT void map_problem_to_proto(
+  const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
+  cuopt::remote::OptimizationProblem* pb_problem);
+template CUOPT_EXPORT void map_problem_scalars_to_proto(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   cuopt::remote::OptimizationProblem* pb_problem);
 template CUOPT_EXPORT void map_proto_to_problem(
@@ -323,6 +333,9 @@ template CUOPT_EXPORT std::vector<cuopt::remote::SendArrayChunkRequest> build_ar
 
 #if CUOPT_INSTANTIATE_DOUBLE
 template CUOPT_EXPORT void map_problem_to_proto(
+  const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
+  cuopt::remote::OptimizationProblem* pb_problem);
+template CUOPT_EXPORT void map_problem_scalars_to_proto(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   cuopt::remote::OptimizationProblem* pb_problem);
 template CUOPT_EXPORT void map_proto_to_problem(

@@ -666,8 +666,7 @@ submit_result_t grpc_client_t::submit_lp(const cpu_optimization_problem_t<i_t, f
 
   try {
     if (use_chunked) {
-      auto request = build_lp_submit_request(problem, settings);
-      strip_chunked_numeric_arrays(request.mutable_lp_request()->mutable_problem());
+      auto request = build_chunked_lp_submit_request(problem, settings);
       if (!upload_chunked(
             request,
             [&](const std::string& upload_id, int64_t chunk_data_budget) {
@@ -713,9 +712,8 @@ submit_result_t grpc_client_t::submit_mip(const cpu_optimization_problem_t<i_t, 
 
   try {
     if (use_chunked) {
-      auto request =
-        build_mip_submit_request(problem, settings, enable_incumbents, enable_set_incumbent);
-      strip_chunked_numeric_arrays(request.mutable_mip_request()->mutable_problem());
+      auto request = build_chunked_mip_submit_request(
+        problem, settings, enable_incumbents, enable_set_incumbent);
       if (!upload_chunked(
             request,
             [&](const std::string& upload_id, int64_t chunk_data_budget) {
