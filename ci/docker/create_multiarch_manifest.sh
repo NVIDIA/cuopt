@@ -62,7 +62,6 @@ CUDA_MAJOR="${CUDA_VER%%.*}"
 IS_RELEASE=false
 if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then IS_RELEASE=true; fi
 
-# cu<major> manifests, built from the per-arch <tag>-<arch> images.
 create_short_manifests() {
     local short=$1 repo
     for repo in nvidia/cuopt nvcr.io/nvstaging/nvaie/cuopt; do
