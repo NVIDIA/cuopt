@@ -57,34 +57,34 @@ create_manifest() {
     echo "✓ Successfully created and pushed manifest: $manifest_name"
 }
 
-CUDA_MAJOR="${CUDA_SHORT%%.*}"
+CUDA_MAJOR="${CUDA_VER%%.*}"
 
 IS_RELEASE=false
 if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then IS_RELEASE=true; fi
 
-# Short cu<major> manifests, built from the per-arch cuda<X.Y>-... images.
+# cu<major> manifests, built from the per-arch <tag>-<arch> images.
 create_short_manifests() {
-    local short=$1 source=$2 repo
+    local short=$1 repo
     for repo in nvidia/cuopt nvcr.io/nvstaging/nvaie/cuopt; do
         echo "=== Creating ${short} manifests in ${repo} ==="
         create_manifest \
             "${repo}:${IMAGE_TAG_PREFIX}-${short}" \
-            "${repo}:${IMAGE_TAG_PREFIX}-${source}-amd64" \
-            "${repo}:${IMAGE_TAG_PREFIX}-${source}-arm64"
+            "${repo}:${IMAGE_TAG_PREFIX}-${short}-amd64" \
+            "${repo}:${IMAGE_TAG_PREFIX}-${short}-arm64"
         if [[ "${IS_RELEASE}" == "true" ]]; then
             create_manifest \
                 "${repo}:latest-${short}" \
-                "${repo}:${IMAGE_TAG_PREFIX}-${source}-amd64" \
-                "${repo}:${IMAGE_TAG_PREFIX}-${source}-arm64"
+                "${repo}:${IMAGE_TAG_PREFIX}-${short}-amd64" \
+                "${repo}:${IMAGE_TAG_PREFIX}-${short}-arm64"
         fi
     done
 }
 
-create_short_manifests "cu${CUDA_MAJOR}" "cuda${CUDA_SHORT}-py${PYTHON_SHORT}"
+create_short_manifests "cu${CUDA_MAJOR}"
 
 # UBI10 CUDA base images are only published for CUDA 13.x and later
 if [[ "${CUDA_MAJOR}" == "13" ]]; then
-    create_short_manifests "cu${CUDA_MAJOR}-ubi10" "cuda${CUDA_SHORT}-ubi10"
+    create_short_manifests "cu${CUDA_MAJOR}-ubi10"
 else
     echo "Skipping UBI10 manifests (CUDA_MAJOR='${CUDA_MAJOR}' — UBI10 base images require CUDA 13+)"
 fi
