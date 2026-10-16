@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -18,7 +18,11 @@ namespace detail {
 
 template <typename f_t, bool is_device = true>
 struct VehicleInfo {
-  constexpr bool has_time_matrix() const { return matrices.extent[1] > 1; }
+  constexpr bool has_time_matrix() const
+  {
+    if (matrices.time_matrix_index != matrices.cost_matrix_index) { return true; }
+    return matrices.extent[1] == 2 && matrices.distance_matrix_index == matrices.cost_matrix_index;
+  }
 
   bool operator==(VehicleInfo<f_t, is_device> const& rhs) const
   {
