@@ -210,6 +210,124 @@ static void check_dual_sign_consistency(const std::vector<double>& Ax,
   }
 }
 
+struct pslp_postsolve_signs_param {
+  bool maximize;
+  bool fully_presolved;
+};
+
+class pslp_postsolve_signs : public ::testing::TestWithParam<pslp_postsolve_signs_param> {};
+
+TEST_P(pslp_postsolve_signs, preserves_objective_sense)
+{
+  const auto& param          = GetParam();
+  const double sign          = param.maximize ? -1.0 : 1.0;
+  const double inf           = std::numeric_limits<double>::infinity();
+  constexpr double tolerance = 1e-5;
+
+  // Minimize x - 7, subject to x + y >= 3, x >= 0, y = 2.
+  // Negating the objective gives the equivalent maximization problem.
+  io::mps_data_model_t<int, double> mps;
+  mps.set_maximize(param.maximize);
+  mps.set_objective_offset(-7.0 * sign);
+  std::vector<double> objective{sign, 0.0};
+  std::vector<double> values{1.0, 1.0};
+  std::vector<int> indices{0, 1};
+  std::vector<int> offsets{0, 2};
+  std::vector<double> row_lb{3.0}, row_ub{inf};
+  std::vector<double> var_lb{0.0, 2.0}, var_ub{inf, 2.0};
+  std::vector<double> expected_primal{1.0, 2.0};
+  std::vector<double> expected_dual{sign};
+  std::vector<double> expected_rc{0.0, -sign};
+
+  if (!param.fully_presolved) {
+    // Keep a coupled block after presolve: minimize z + w with z >= 0.8,
+    // w >= 0, z + 2w >= 2, and 2z + w >= 2. Its optimum is (0.8, 0.6),
+    // with a nonzero row dual and reduced cost to exercise both input conversions.
+    objective.insert(objective.end(), {sign, sign});
+    values.insert(values.end(), {1.0, 2.0, 2.0, 1.0});
+    indices.insert(indices.end(), {2, 3, 2, 3});
+    offsets.insert(offsets.end(), {4, 6});
+    row_lb.insert(row_lb.end(), {2.0, 2.0});
+    row_ub.insert(row_ub.end(), {inf, inf});
+    var_lb.insert(var_lb.end(), {0.8, 0.0});
+    var_ub.insert(var_ub.end(), {inf, inf});
+    expected_primal.insert(expected_primal.end(), {0.8, 0.6});
+    expected_dual.insert(expected_dual.end(), {0.5 * sign, 0.0});
+    expected_rc.insert(expected_rc.end(), {0.5 * sign, 0.0});
+  }
+
+  mps.set_objective_coefficients(objective);
+  mps.set_csr_constraint_matrix(values, indices, offsets);
+  mps.set_constraint_lower_bounds(row_lb);
+  mps.set_constraint_upper_bounds(row_ub);
+  mps.set_variable_lower_bounds(var_lb);
+  mps.set_variable_upper_bounds(var_ub);
+
+  // Verify that the examples exercise the fully solved and reduced solve paths.
+  mip::third_party_presolve_t<int, double> presolver;
+  auto result = presolver.apply_presolve_from_mps_data(mps,
+                                                       problem_category_t::LP,
+                                                       presolver_t::PSLP,
+                                                       /*dual_postsolve=*/true,
+                                                       /*abs_tol=*/1e-8,
+                                                       /*rel_tol=*/1e-8,
+                                                       /*time_limit=*/30.0);
+  ASSERT_EQ(result.reduced_problem.get_n_variables(), param.fully_presolved ? 0 : 2);
+  ASSERT_EQ(result.reduced_problem.get_n_constraints(), param.fully_presolved ? 0 : 2);
+
+  const raft::handle_t handle{};
+  auto settings                                 = pdlp_solver_settings_t<int, double>{};
+  settings.method                               = method_t::PDLP;
+  settings.presolver                            = presolver_t::PSLP;
+  settings.dual_postsolve                       = true;
+  settings.time_limit                           = 30.0;
+  settings.tolerances.absolute_primal_tolerance = 1e-8;
+  settings.tolerances.relative_primal_tolerance = 1e-8;
+  settings.tolerances.absolute_dual_tolerance   = 1e-8;
+  settings.tolerances.relative_dual_tolerance   = 1e-8;
+  settings.tolerances.absolute_gap_tolerance    = 1e-8;
+  settings.tolerances.relative_gap_tolerance    = 1e-8;
+
+  auto solution = solve_lp(&handle, mps, settings);
+  ASSERT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  auto primal = host_copy(solution.get_primal_solution(), handle.get_stream());
+  auto dual   = host_copy(solution.get_dual_solution(), handle.get_stream());
+  auto rc     = host_copy(solution.get_reduced_cost(), handle.get_stream());
+  ASSERT_EQ(primal.size(), expected_primal.size());
+  ASSERT_EQ(dual.size(), expected_dual.size());
+  ASSERT_EQ(rc.size(), expected_rc.size());
+
+  for (size_t j = 0; j < primal.size(); ++j) {
+    EXPECT_NEAR(primal[j], expected_primal[j], tolerance) << "variable " << j;
+    EXPECT_NEAR(rc[j], expected_rc[j], tolerance) << "reduced cost " << j;
+  }
+  for (size_t i = 0; i < dual.size(); ++i) {
+    EXPECT_NEAR(dual[i], expected_dual[i], tolerance) << "row dual " << i;
+  }
+  const double expected_objective = sign * (param.fully_presolved ? -6.0 : -4.6);
+  EXPECT_NEAR(solution.get_additional_termination_information().primal_objective,
+              expected_objective,
+              tolerance);
+
+  std::vector<double> ATy;
+  compute_transpose_matvec(values, indices, offsets, dual, static_cast<int>(primal.size()), ATy);
+  for (size_t j = 0; j < primal.size(); ++j) {
+    EXPECT_NEAR(objective[j] - ATy[j], rc[j], tolerance) << "stationarity at variable " << j;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(objective_senses,
+                         pslp_postsolve_signs,
+                         ::testing::Values(pslp_postsolve_signs_param{false, true},
+                                           pslp_postsolve_signs_param{true, true},
+                                           pslp_postsolve_signs_param{false, false},
+                                           pslp_postsolve_signs_param{true, false}),
+                         [](const ::testing::TestParamInfo<pslp_postsolve_signs_param>& info) {
+                           return std::string(info.param.maximize ? "maximize_" : "minimize_") +
+                                  (info.param.fully_presolved ? "fully_presolved"
+                                                              : "partially_presolved");
+                         });
+
 // Test PSLP presolver postsolve accuracy using afiro problem
 TEST(pslp_presolve, postsolve_accuracy_afiro)
 {

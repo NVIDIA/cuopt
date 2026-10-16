@@ -1313,6 +1313,15 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(std::vector<f_t>& primal_soluti
   if (pslp_postsolve_skip_) { return; }
 
   if constexpr (std::is_same_v<f_t, double>) {
+    // PSLP postsolve expects duals and reduced costs in the minimization convention.
+    if (maximize_) {
+      for (auto& val : dual_solution) {
+        val = -val;
+      }
+      for (auto& val : reduced_costs) {
+        val = -val;
+      }
+    }
     // PSLP postsolve reads from the passed-in host buffers and writes the
     // uncrushed solution into pslp_presolver_->sol->{x, y, z}.
     postsolve(pslp_presolver_, primal_solution.data(), dual_solution.data(), reduced_costs.data());
@@ -1324,6 +1333,16 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(std::vector<f_t>& primal_soluti
     primal_solution.assign(uncrushed_sol->x, uncrushed_sol->x + n_cols);
     dual_solution.assign(uncrushed_sol->y, uncrushed_sol->y + n_rows);
     reduced_costs.assign(uncrushed_sol->z, uncrushed_sol->z + n_cols);
+
+    // Restore the original maximization convention after postsolve.
+    if (maximize_) {
+      for (auto& val : dual_solution) {
+        val = -val;
+      }
+      for (auto& val : reduced_costs) {
+        val = -val;
+      }
+    }
   } else {
     cuopt_expects(
       false, error_type_t::ValidationError, "PSLP postsolve only supports double precision");
