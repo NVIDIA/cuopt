@@ -111,7 +111,7 @@ For large problems uploaded via chunked gRPC RPCs:
 3. Worker reads the streamed messages from the pipe, reassembles arrays, runs the solver, and writes the result (and optionally incumbents) back via pipes using the same streaming format.
 4. Main process result-retrieval thread reads the streamed result messages from the pipe and stores the result for `GetResult` or chunked download.
 
-This streaming approach avoids creating a single large buffer, eliminating the 2 GiB protobuf serialization limit for pipe transfers and reducing peak memory usage. Each individual protobuf message (max 64 MiB) is serialized with standard `SerializeToArray`/`ParseFromArray`.
+This streaming approach avoids creating a single large buffer for the numeric arrays: those travel as raw bytes, not as one protobuf. A header protobuf is still serialized with `SerializeToArray`/`ParseFromArray`, so it is bounded by that API's `int` size. Problem size is limited at gRPC ingest, not by a separate pipe cap.
 
 No disk spooling: chunked data is kept in memory in the main process until forwarded to the worker.
 

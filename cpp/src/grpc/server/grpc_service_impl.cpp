@@ -79,6 +79,10 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     std::string upload_id     = generate_job_id();
     const auto& header        = request->problem_header();
     uint32_t problem_category = header.header().problem_category();
+    if (problem_category == cuopt::remote::VRP) {
+      return Status(StatusCode::INVALID_ARGUMENT,
+                    "Chunked VRP upload requires StartChunkedUploadV2");
+    }
 
     if (config.verbose) {
       SERVER_LOG_DEBUG("[gRPC] StartChunkedUpload upload_id=%s problem_category=%u",
@@ -117,10 +121,33 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     uint32_t problem_category;
     if (job.has_lp_request()) {
       problem_category = cuopt::remote::LP;
+      if (cuopt::mathematical_optimization::inline_chunked_arrays_present(
+            job.lp_request().problem())) {
+        return Status(StatusCode::INVALID_ARGUMENT,
+                      "Chunked upload header must leave numeric arrays empty");
+      }
     } else if (job.has_mip_request()) {
       problem_category = cuopt::remote::MIP;
+      if (cuopt::mathematical_optimization::inline_chunked_arrays_present(
+            job.mip_request().problem())) {
+        return Status(StatusCode::INVALID_ARGUMENT,
+                      "Chunked upload header must leave numeric arrays empty");
+      }
     } else if (job.has_vrp_request()) {
-      problem_category = cuopt::remote::VRP;
+      problem_category    = cuopt::remote::VRP;
+      const auto& problem = job.vrp_request().problem();
+      for (const auto& matrix : problem.cost_matrices()) {
+        if (!matrix.values().empty()) {
+          return Status(StatusCode::INVALID_ARGUMENT,
+                        "Chunked VRP header must leave matrix values empty");
+        }
+      }
+      for (const auto& matrix : problem.transit_time_matrices()) {
+        if (!matrix.values().empty()) {
+          return Status(StatusCode::INVALID_ARGUMENT,
+                        "Chunked VRP header must leave matrix values empty");
+        }
+      }
     } else {
       return Status(StatusCode::INVALID_ARGUMENT, "No problem data provided");
     }

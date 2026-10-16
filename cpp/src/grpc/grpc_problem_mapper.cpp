@@ -181,6 +181,56 @@ void map_chunked_arrays_to_problem(
 #include "generated_chunked_arrays_to_problem.inc"
 }
 
+namespace {
+
+bool stripped_child_arrays_present(const google::protobuf::Message& child)
+{
+  const auto* child_desc = child.GetDescriptor();
+  const auto* child_refl = child.GetReflection();
+  for (int k = 0; k < child_desc->field_count(); ++k) {
+    const auto* cf = child_desc->field(k);
+    if (!cf->is_repeated()) {
+      if (cf->type() == google::protobuf::FieldDescriptor::TYPE_BYTES &&
+          !child_refl->GetString(child, cf).empty()) {
+        return true;
+      }
+      continue;
+    }
+    if (cf->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_STRING &&
+        cf->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE &&
+        child_refl->FieldSize(child, cf) > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+bool CUOPT_EXPORT inline_chunked_arrays_present(const cuopt::remote::OptimizationProblem& problem)
+{
+  const auto* desc = problem.GetDescriptor();
+  const auto* refl = problem.GetReflection();
+  for (int i = 0; i < desc->field_count(); ++i) {
+    const auto* field = desc->field(i);
+    if (field->is_repeated() &&
+        field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      const int n = refl->FieldSize(problem, field);
+      for (int j = 0; j < n; ++j) {
+        if (stripped_child_arrays_present(refl->GetRepeatedMessage(problem, field, j))) {
+          return true;
+        }
+      }
+    } else if (field->is_repeated()) {
+      if (refl->FieldSize(problem, field) > 0) return true;
+    } else if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES &&
+               !refl->GetString(problem, field).empty()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void strip_chunked_numeric_arrays(cuopt::remote::OptimizationProblem* problem)
 {
   // One level into repeated messages (quadratic constraints): clear their

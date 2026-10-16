@@ -89,14 +89,15 @@ Chunked Upload (Large Problems)
    * - ``FinishChunkedUpload``
      - Finalize the upload and return ``job_id`` (same as ``SubmitJob``).
 
-A chunked VRP upload puts ``RoutingSolverSettings`` in ``vrp_settings`` and the
-``RoutingProblem`` in ``routing_problem``, with each matrix ``values`` field
-left empty. Those values are container ``ArrayChunk`` messages:
-``container_field_num`` is 10 for ``cost_matrices`` and 11 for
-``transit_time_matrices``, ``container_index`` is the matrix index, and
-``field_id`` is ``CostMatrix.ArrayId.VALUES``. ``VALUES`` is the
+A chunked VRP upload uses ``StartChunkedUploadV2``. The header is a
+``SubmitJobRequest``: ``vrp_request.settings`` and ``vrp_request.problem``,
+with each matrix ``values`` field left empty. Those values are container
+``ArrayChunk`` messages: ``container_field_num`` is 10 for ``cost_matrices``
+and 11 for ``transit_time_matrices``, ``container_index`` is the matrix index,
+and ``field_id`` is ``CostMatrix.ArrayId.VALUES``. ``VALUES`` is the
 container-relative array id, not the protobuf tag of ``values``. The payload
 is raw little-endian float32, row-major, ``n_locations`` by ``n_locations``.
+``StartChunkedUpload`` rejects a VRP category.
 
 Chunked Download (Large Results)
 --------------------------------

@@ -485,31 +485,6 @@ static void fill_vrp_matrices_from_chunks(
     throw std::invalid_argument("Chunked VRP upload carries arrays that match no matrix");
   }
 }
-
-// Reads a chunked VRP upload. The header holds the RoutingProblem without matrix values;
-// each matrix's values arrive as a container array keyed by (container, matrix index).
-static bool read_chunked_vrp_from_pipe(int read_fd, DeserializedJob& dj)
-{
-  cuopt::remote::ChunkedProblemHeader header;
-  std::map<int32_t, std::vector<uint8_t>> arrays;
-  std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>
-    container_arrays;
-  if (!read_chunked_request_from_pipe(read_fd, header, arrays, container_arrays)) { return false; }
-
-  SERVER_LOG_INFO("[Worker] IPC path: CHUNKED VRP (%zu container arrays)", container_arrays.size());
-
-  try {
-    map_proto_to_routing_problem(header.routing_problem(), dj.routing_problem);
-    fill_vrp_matrices_from_chunks(dj.routing_problem, arrays, container_arrays);
-  } catch (const std::exception& e) {
-    dj.error_message = e.what();
-    return false;
-  }
-
-  map_proto_to_routing_settings(header.vrp_settings(), dj.routing_settings);
-  dj.is_vrp = true;
-  return true;
-}
 #endif
 
 // Unified chunked upload: the pipe header is a SubmitJobRequest with numeric
@@ -585,12 +560,8 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
 
   if (is_chunked_job) {
     if (job.problem_category == cuopt::remote::VRP) {
-#ifdef CUOPT_ENABLE_GRPC_ROUTING
-      if (!read_chunked_vrp_from_pipe(read_fd, dj)) { return; }
-      dj.success = true;
-#else
-      SERVER_LOG_ERROR("[Worker] VRP request received but this build has no routing support");
-#endif
+      SERVER_LOG_ERROR("[Worker] Chunked VRP requires the unified header");
+      dj.error_message = "Chunked VRP requires the unified header";
       return;
     }
     // Chunked path: the server wrote a ChunkedProblemHeader followed by

@@ -23,9 +23,14 @@
 // may silently cap this to /proc/sys/fs/pipe-max-size.
 static constexpr int kPipeBufferSize = 1024 * 1024;
 
-static constexpr uint64_t kMaxPipeArrayBytes       = 4ULL * 1024 * 1024 * 1024;
-static constexpr uint32_t kMaxPipeArrayFields      = 10000;
-static constexpr uint32_t kMaxProtobufMessageBytes = 64 * 1024 * 1024;  // 64 MiB
+static constexpr uint64_t kMaxPipeArrayBytes  = 4ULL * 1024 * 1024 * 1024;
+static constexpr uint32_t kMaxPipeArrayFields = 10000;
+// Not a problem-size cap. The worker pipe is inside the server; gRPC ingest
+// (the configured max message size) is where an upload is limited. This bound
+// is only what SerializeToArray / ParseFromArray accept: their size argument
+// is an int. A header gRPC has already accepted fits.
+static constexpr uint32_t kMaxProtobufMessageBytes =
+  static_cast<uint32_t>(std::numeric_limits<int>::max());
 
 // Container arrays count every per-entry array inside every repeated nested
 // message (e.g., 5 arrays per QuadraticConstraint row), so the cap must scale
@@ -229,6 +234,13 @@ inline PipeWriteStatus write_chunked_request_to_pipe(
   int fd, const Header& header, const std::vector<cuopt::remote::ArrayChunk>& chunks)
 {
   // -------- Phase 1: bin chunks per field and validate (no pipe I/O) --------
+  // A header protobuf larger than SerializeToArray can emit cannot be framed.
+  // Reject it before any pipe I/O so the worker is not torn down. This is the
+  // int serialization limit, not a problem-size cap; gRPC ingest enforces that.
+  if (header.ByteSizeLong() > kMaxProtobufMessageBytes) {
+    return PipeWriteStatus::ValidationFailed;
+  }
+
   std::map<int32_t, detail::FieldChunks> top_fields;
   std::map<cuopt::mathematical_optimization::container_array_key_t, detail::FieldChunks>
     container_fields;

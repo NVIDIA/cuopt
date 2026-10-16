@@ -138,6 +138,10 @@ void map_chunked_arrays_to_problem(
 // quadratic-constraint scalars stay.
 void strip_chunked_numeric_arrays(cuopt::remote::OptimizationProblem* problem);
 
+// True when `problem` still holds an array that strip_chunked_numeric_arrays
+// would remove. The unified LP/MIP header must not carry those arrays.
+bool inline_chunked_arrays_present(const cuopt::remote::OptimizationProblem& problem);
+
 /**
  * @brief Build SendArrayChunkRequest messages for chunked upload of problem arrays.
  *

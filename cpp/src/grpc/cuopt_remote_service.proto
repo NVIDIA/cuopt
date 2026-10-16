@@ -148,11 +148,10 @@ message ChunkedProblemHeader {
   repeated string variable_names = 7;
   repeated string row_names = 8;
 
-  // Settings (one of LP or MIP)
+  // Settings (one of LP or MIP). VRP settings travel on SubmitJobRequest.
   oneof settings {
     PDLPSolverSettings lp_settings = 20;
     MIPSolverSettings mip_settings = 21;
-    RoutingSolverSettings vrp_settings = 22;
   }
 
   // MIP-specific
@@ -167,12 +166,6 @@ message ChunkedProblemHeader {
   // matches the corresponding `repeated QuadraticConstraint quadratic_constraints`
   // field on OptimizationProblem so client/server share the same tag.
   repeated QuadraticConstraint quadratic_constraints = 25;
-
-  // VRP: the RoutingProblem with matrix `values` left empty. Each matrix's
-  // values travel as container ArrayChunks (container_field_num 10 =
-  // cost_matrices, 11 = transit_time_matrices, container_index = matrix
-  // index, field_id = CostMatrix.ArrayId.VALUES).
-  RoutingProblem routing_problem = 40;
 }
 
 // A chunk of typed array data for large problem transfers.
@@ -231,7 +224,8 @@ message ArrayChunk {
 }
 
 // Start a chunked upload: sends problem metadata and settings.
-// Problem category (LP/MIP) is derived from problem_header.header.problem_category.
+// LP and MIP only. A VRP category is rejected; chunked VRP uses
+// StartChunkedUploadV2.
 message StartChunkedUploadRequest {
   ChunkedProblemHeader problem_header = 1;
 }
