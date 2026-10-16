@@ -41,11 +41,13 @@ submit_result_t grpc_client_t::submit_vrp(
   }
 
   // The header carries everything except the matrix values, which dominate the size.
-  cuopt::remote::ChunkedProblemHeader header;
-  header.mutable_header()->set_version(1);
-  header.mutable_header()->set_problem_category(cuopt::remote::VRP);
-  map_routing_problem_to_proto(problem, header.mutable_routing_problem(), false);
-  map_routing_settings_to_proto(settings, header.mutable_vrp_settings());
+  // Unified upload uses the same SolveVRPRequest as the unary RPC.
+  cuopt::remote::SubmitJobRequest header;
+  auto* vrp_job = header.mutable_vrp_request();
+  vrp_job->mutable_header()->set_version(1);
+  vrp_job->mutable_header()->set_problem_category(cuopt::remote::VRP);
+  map_routing_problem_to_proto(problem, vrp_job->mutable_problem(), false);
+  map_routing_settings_to_proto(settings, vrp_job->mutable_settings());
 
   int64_t matrix_bytes = 0;
   for (const auto& m : problem.cost_matrices) {

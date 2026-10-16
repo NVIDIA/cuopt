@@ -253,7 +253,9 @@ void result_retrieval_thread()
               }
               auto pipe_t0 = std::chrono::steady_clock::now();
               PipeWriteStatus chunked_status =
-                write_chunked_request_to_pipe(to_fd, chunked.header, chunked.chunks);
+                chunked.unified
+                  ? write_chunked_request_to_pipe(to_fd, chunked.job, chunked.chunks)
+                  : write_chunked_request_to_pipe(to_fd, chunked.header, chunked.chunks);
               send_ok = (chunked_status == PipeWriteStatus::Success);
               if (send_ok && config.verbose) {
                 auto pipe_us = std::chrono::duration_cast<std::chrono::microseconds>(
