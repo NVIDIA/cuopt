@@ -176,6 +176,11 @@ outputs:
             - include/cuopt/error.hpp
             - include/cuopt/export.hpp
             - lib/cmake/cuopt/cuopt-config.cmake
+            - share/cuopt/proto/cuopt_remote_service.proto
+            - share/cuopt/proto/cuopt_remote_data.proto
+            - share/cuopt/proto/cuopt_remote.proto
+            - share/cuopt/proto/cuopt_routing.proto
+            - share/cuopt/proto/cuopt_routing_solution.proto
       # Loads the library in an environment holding only this package and its declared
       # dependencies, with RTLD_NOW so every relocation has to resolve. A component that
       # quietly needs another engine fails here rather than passing because some other

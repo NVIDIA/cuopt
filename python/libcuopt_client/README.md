@@ -18,3 +18,8 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH="$ROOTS$CFGS"
 
 The client needs no CUDA Toolkit, `rmm` or `raft`, except that `cuopt/error.hpp` includes
 `raft/core/error.hpp`. The problem parsers and solver headers ship with `libcuopt-mathopt`.
+
+## gRPC protos
+
+The `.proto` files that define the cuOpt gRPC service are installed in
+`<site-packages>/libcuopt_client/share/cuopt/proto`, for writing a client in any language.

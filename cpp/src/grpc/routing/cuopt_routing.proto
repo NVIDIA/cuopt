@@ -10,6 +10,10 @@ import "cuopt_remote.proto";  // RequestHeader, ProblemCategory
 // --- Sub-messages ---
 
 message CostMatrix {
+  // Container-relative ArrayChunk id for `values`. This is not protobuf tag 2.
+  enum ArrayId {
+    VALUES = 0;  // raw IEEE-754 float32, little-endian, 4 B/elem; row-major, n_locations x n_locations
+  }
   uint32 vehicle_type = 1;
   repeated float values = 2;  // row-major, n_locations x n_locations
 }

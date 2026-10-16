@@ -11,6 +11,7 @@
 #include "grpc_server_types.hpp"
 
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
+#include "routing/grpc_routing_chunk_ids.hpp"
 #include "routing/grpc_routing_problem_mapper.hpp"
 #include "routing/grpc_routing_settings_mapper.hpp"
 #include "routing/grpc_routing_solution_mapper.hpp"
@@ -428,6 +429,67 @@ static int claim_job_slot(int worker_id)
   return -1;
 }
 
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+// Reads a chunked VRP upload. The header holds the RoutingProblem without matrix values;
+// each matrix's values arrive as a container array keyed by (container, matrix index).
+static bool read_chunked_vrp_from_pipe(int read_fd, DeserializedJob& dj)
+{
+  cuopt::remote::ChunkedProblemHeader header;
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>
+    container_arrays;
+  if (!read_chunked_request_from_pipe(read_fd, header, arrays, container_arrays)) { return false; }
+
+  SERVER_LOG_INFO("[Worker] IPC path: CHUNKED VRP (%zu container arrays)", container_arrays.size());
+
+  try {
+    map_proto_to_routing_problem(header.routing_problem(), dj.routing_problem);
+
+    static_assert(cuopt::routing::kMatrixValuesFieldId ==
+                  static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES));
+    const int32_t n_locations = dj.routing_problem.num_locations;
+    size_t consumed           = 0;
+    auto fill_values = [&](int32_t container, std::vector<cuopt::routing::cpu_cost_matrix_t>& ms) {
+      for (size_t i = 0; i < ms.size(); ++i) {
+        auto it = container_arrays.find(
+          {container, static_cast<int32_t>(i), cuopt::routing::kMatrixValuesFieldId});
+        if (it == container_arrays.end()) { continue; }
+        if (n_locations <= 0) {
+          throw std::invalid_argument("Chunked VRP matrix requires num_locations > 0");
+        }
+        const auto& bytes = it->second;
+        if (bytes.size() % sizeof(float) != 0) {
+          throw std::invalid_argument("VRP matrix payload is not a multiple of sizeof(float)");
+        }
+        const int64_t expected =
+          static_cast<int64_t>(n_locations) * static_cast<int64_t>(n_locations);
+        const int64_t count = static_cast<int64_t>(bytes.size() / sizeof(float));
+        if (count != expected) {
+          throw std::invalid_argument(
+            "VRP matrix value count is not num_locations * num_locations");
+        }
+        ms[i].matrix.resize(static_cast<size_t>(expected));
+        std::memcpy(ms[i].matrix.data(), bytes.data(), bytes.size());
+        ++consumed;
+      }
+    };
+    fill_values(cuopt::routing::kCostMatricesContainer, dj.routing_problem.cost_matrices);
+    fill_values(cuopt::routing::kTransitMatricesContainer,
+                dj.routing_problem.transit_time_matrices);
+    if (consumed != container_arrays.size() || !arrays.empty()) {
+      throw std::invalid_argument("Chunked VRP upload carries arrays that match no matrix");
+    }
+  } catch (const std::exception& e) {
+    dj.error_message = e.what();
+    return false;
+  }
+
+  map_proto_to_routing_settings(header.vrp_settings(), dj.routing_settings);
+  dj.is_vrp = true;
+  return true;
+}
+#endif
+
 // Deserialize the problem from the worker's pipe.  Handles both chunked and
 // unary IPC formats.  On error, dj.success stays false and dj.error_message
 // may explain why. solver_settings_t is not movable, so the job is filled in
@@ -440,9 +502,13 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
   auto pipe_recv_t0 = std::chrono::steady_clock::now();
 
   if (is_chunked_job) {
-    // Chunked path: LP/MIP only for now (VRP is unary-only in this POC).
     if (job.problem_category == cuopt::remote::VRP) {
-      SERVER_LOG_ERROR("[Worker] Chunked VRP upload is not supported");
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+      if (!read_chunked_vrp_from_pipe(read_fd, dj)) { return; }
+      dj.success = true;
+#else
+      SERVER_LOG_ERROR("[Worker] VRP request received but this build has no routing support");
+#endif
       return;
     }
     // Chunked path: the server wrote a ChunkedProblemHeader followed by

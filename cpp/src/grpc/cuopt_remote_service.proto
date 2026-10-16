@@ -22,7 +22,6 @@ service CuOptRemoteService {
   // Used for problems whose serialized SubmitJobRequest fits within the
   // gRPC max message size (256 MiB default, configurable per-side).
   // Larger problems use the chunked upload path below; see ArrayChunk.
-  // VRP is unary-only in this POC (no chunked VRP upload yet).
   rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
 
   // -------------------------
@@ -135,6 +134,7 @@ message ChunkedProblemHeader {
   oneof settings {
     PDLPSolverSettings lp_settings = 20;
     MIPSolverSettings mip_settings = 21;
+    RoutingSolverSettings vrp_settings = 22;
   }
 
   // MIP-specific
@@ -149,6 +149,12 @@ message ChunkedProblemHeader {
   // matches the corresponding `repeated QuadraticConstraint quadratic_constraints`
   // field on OptimizationProblem so client/server share the same tag.
   repeated QuadraticConstraint quadratic_constraints = 25;
+
+  // VRP: the RoutingProblem with matrix `values` left empty. Each matrix's
+  // values travel as container ArrayChunks (container_field_num 10 =
+  // cost_matrices, 11 = transit_time_matrices, container_index = matrix
+  // index, field_id = CostMatrix.ArrayId.VALUES).
+  RoutingProblem routing_problem = 40;
 }
 
 // A chunk of typed array data for large problem transfers.
@@ -169,7 +175,8 @@ message ChunkedProblemHeader {
 //     container-relative ids are published as a nested `ArrayId` enum on
 //     each repeated message type — e.g. QuadraticConstraint.LINEAR_VALUES —
 //     so external clients should reference the named enum value rather than
-//     the bare integer.
+//     the bare integer.  VRP cost and transit-time matrices use
+//     CostMatrix.ArrayId.VALUES.
 //
 // `data` carries native-endian raw element bytes (memcpy'd directly from the
 // client's contiguous buffer), NOT a protobuf-encoded value.  total_elements

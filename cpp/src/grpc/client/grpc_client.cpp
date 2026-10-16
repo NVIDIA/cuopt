@@ -279,6 +279,10 @@ bool grpc_client_t::ping(int timeout_seconds)
     GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] ping failed: " << last_error_);
     return false;
   }
+  // CheckStatus reports the server message limit on the connection probe too.
+  if (probe_resp.max_message_bytes() > 0) {
+    server_max_message_bytes_.store(probe_resp.max_message_bytes(), std::memory_order_relaxed);
+  }
   return true;
 }
 
@@ -1002,6 +1006,18 @@ bool grpc_client_t::upload_chunked_arrays(const cpu_optimization_problem_t<i_t, 
                                           const cuopt::remote::ChunkedProblemHeader& header,
                                           std::string& job_id_out)
 {
+  return upload_chunked(
+    header,
+    [&](const std::string& upload_id, int64_t chunk_data_budget) {
+      return build_array_chunk_requests(problem, upload_id, chunk_data_budget);
+    },
+    job_id_out);
+}
+
+bool grpc_client_t::upload_chunked(const cuopt::remote::ChunkedProblemHeader& header,
+                                   const chunk_builder_t& build_chunks,
+                                   std::string& job_id_out)
+{
   job_id_out.clear();
   auto upload_t0 = std::chrono::steady_clock::now();
 
@@ -1029,13 +1045,19 @@ bool grpc_client_t::upload_chunked_arrays(const cpu_optimization_problem_t<i_t, 
 
   GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] ChunkedUpload started, upload_id=" << upload_id);
 
-  // --- 2. Build chunk requests directly from problem arrays ---
+  // --- 2. Build chunk requests directly from the problem arrays ---
   int64_t chunk_data_budget = config_.chunk_size_bytes;
   if (chunk_data_budget <= 0) { chunk_data_budget = 1LL * 1024 * 1024; }
-  int64_t srv_max = server_max_message_bytes_.load(std::memory_order_relaxed);
-  if (srv_max > 0 && chunk_data_budget > srv_max * 9 / 10) { chunk_data_budget = srv_max * 9 / 10; }
+  int64_t message_limit = config_.max_message_bytes;
+  int64_t srv_max       = server_max_message_bytes_.load(std::memory_order_relaxed);
+  if (srv_max > 0 && srv_max < message_limit) { message_limit = srv_max; }
+  if (message_limit > 0) {
+    int64_t data_cap = message_limit * 9 / 10;
+    if (data_cap < 1) { data_cap = 1; }
+    if (chunk_data_budget > data_cap) { chunk_data_budget = data_cap; }
+  }
 
-  auto chunk_requests = build_array_chunk_requests(problem, upload_id, chunk_data_budget);
+  auto chunk_requests = build_chunks(upload_id, chunk_data_budget);
 
   // --- 3. Send each chunk request ---
   int total_chunks         = 0;

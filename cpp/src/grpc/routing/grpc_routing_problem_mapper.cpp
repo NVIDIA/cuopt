@@ -138,7 +138,8 @@ void map_proto_to_routing_problem(const cuopt::remote::RoutingProblem& pb,
 }
 
 void map_routing_problem_to_proto(const cuopt::routing::cpu_routing_problem_t& p,
-                                  cuopt::remote::RoutingProblem* pb)
+                                  cuopt::remote::RoutingProblem* pb,
+                                  bool include_matrix_values)
 {
   pb->Clear();
   pb->set_num_locations(p.num_locations);
@@ -148,12 +149,12 @@ void map_routing_problem_to_proto(const cuopt::routing::cpu_routing_problem_t& p
   for (auto const& cm : p.cost_matrices) {
     auto* out = pb->add_cost_matrices();
     out->set_vehicle_type(cm.vehicle_type);
-    copy_vector_to_repeated(cm.matrix, out->mutable_values());
+    if (include_matrix_values) { copy_vector_to_repeated(cm.matrix, out->mutable_values()); }
   }
   for (auto const& tm : p.transit_time_matrices) {
     auto* out = pb->add_transit_time_matrices();
     out->set_vehicle_type(tm.vehicle_type);
-    copy_vector_to_repeated(tm.matrix, out->mutable_values());
+    if (include_matrix_values) { copy_vector_to_repeated(tm.matrix, out->mutable_values()); }
   }
 
   copy_vector_to_repeated(p.vehicle_start_locations, pb->mutable_vehicle_start_locations());
