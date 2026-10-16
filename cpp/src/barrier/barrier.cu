@@ -4642,6 +4642,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
                            ? settings.barrier_primal_regularization
                            : (data.has_cones() ? 1e-8 : 1e-6);
 
+    // Stall detection: stop once the step length has been tiny for several iterations in a row.
+    constexpr f_t kStallStepLength    = 1e-8;
+    constexpr i_t kMaxStallIterations = 3;
+    i_t stall_iterations              = 0;
+
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");
 
@@ -4887,7 +4892,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
       }
 
       // Check if the solution is getting worse
-      if (data.Q.n > 0 &&
+      if ((data.Q.n > 0 || data.has_cones()) &&
           ((!primal_feasible &&
             relative_primal_residual > 100 * data.relative_primal_residual_save) ||
            (!dual_feasible && relative_dual_residual > 100 * data.relative_dual_residual_save) ||
@@ -4911,6 +4916,32 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
                                                relative_objective_gap,
                                                solution);
         }
+      }
+
+      stall_iterations =
+        (std::max(step_primal, step_dual) < kStallStepLength) ? stall_iterations + 1 : 0;
+      if (stall_iterations >= kMaxStallIterations &&
+          data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
+          data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
+          data.relative_complementarity_residual_save <
+            settings.barrier_relaxed_complementarity_tol) {
+        settings.log.printf("Barrier stalled: step length %.2e below %.0e for %d iterations\n",
+                            std::max(step_primal, step_dual),
+                            kStallStepLength,
+                            kMaxStallIterations);
+        return check_for_suboptimal_solution(data,
+                                             start_time,
+                                             iter,
+                                             primal_objective,
+                                             primal_residual_norm,
+                                             dual_residual_norm,
+                                             complementarity_residual_norm,
+                                             objective_gap,
+                                             relative_primal_residual,
+                                             relative_dual_residual,
+                                             relative_complementarity_residual,
+                                             relative_objective_gap,
+                                             solution);
       }
     }
     raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
