@@ -794,10 +794,9 @@ i_t remove_empty_rows(lp_problem_t<i_t, f_t>& problem,
 template <typename i_t, typename f_t>
 i_t remove_fixed_variables(f_t fixed_tolerance,
                            lp_problem_t<i_t, f_t>& problem,
+                           presolve_info_t<i_t, f_t>& presolve_info,
                            i_t& fixed_variables)
 {
-  constexpr bool verbose = false;
-  if (verbose) { printf("Removing %d fixed variables\n", fixed_variables); }
   // We have a variable with l_j = x_j = u_j
   // Constraints of the form
   //
@@ -809,45 +808,124 @@ i_t remove_fixed_variables(f_t fixed_tolerance,
   // sum_{k != j} c_k * x_k + c_j * x_j
   // becomes
   // sum_{k != j} c_k * x_k + c_j l_j
+  const i_t linear_cols = linear_variable_count(problem);
 
-  std::vector<i_t> col_marker(problem.num_cols);
-  for (i_t j = 0; j < problem.num_cols; ++j) {
-    if (std::abs(problem.upper[j] - problem.lower[j]) < fixed_tolerance) {
-      col_marker[j] = 1;
-      for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; ++p) {
-        const i_t i   = problem.A.i[p];
-        const f_t aij = problem.A.x[p];
-        problem.rhs[i] -= aij * problem.lower[j];
+  // Identify columns that participate in the quadratic objective to avoid removing them as fixed
+  // variables.
+  std::vector<bool> has_quadratic_term(problem.num_cols, false);
+  if (problem.Q.n > 0) {
+    for (i_t row = 0; row < problem.Q.m; ++row) {
+      for (i_t p = problem.Q.row_start[row]; p < problem.Q.row_start[row + 1]; ++p) {
+        has_quadratic_term[row]            = true;
+        has_quadratic_term[problem.Q.j[p]] = true;
       }
-      problem.obj_constant += problem.objective[j] * problem.lower[j];
-    } else {
-      col_marker[j] = 0;
     }
   }
 
-  problem.A.remove_columns(col_marker);
+  // Map the current column index to the original problem's column index, accounting for any
+  // previous reductions.
+  const bool previously_reduced = !presolve_info.remaining_variables.empty();
+  auto to_original              = [&](i_t j) {
+    return previously_reduced ? presolve_info.remaining_variables[j] : j;
+  };
+  // Compute the full value of a fixed variable, including any earlier lower-bound shift.
+  auto full_value = [&](i_t j) {
+    const auto& shifted = presolve_info.removed_lower_bounds;
+    return shifted.empty() ? problem.lower[j] : problem.lower[j] + shifted[to_original(j)];
+  };
 
-  // Clean up objective, lower, upper, and col_names
-  i_t new_cols = problem.A.n;
-  if (verbose) { printf("new cols %d\n", new_cols); }
+  std::vector<i_t> col_marker(problem.num_cols, 0);
+  i_t num_removed = 0;
+  std::vector<f_t> kahan_compensation(problem.num_rows, 0.0);
+  // Per row: whether it was touched by a removed fixed column, and the magnitude of the removed
+  // contribution.
+  std::vector<char> touched(problem.num_rows, 0);
+  std::vector<f_t> removed_magnitude(problem.num_rows, 0.0);
+  // Loop over all linear columns to identify and remove fixed variables.
+  for (i_t j = 0; j < linear_cols; ++j) {
+    if (has_quadratic_term[j] || problem.lower[j] == -inf || problem.upper[j] == inf) { continue; }
+    if (std::abs(problem.upper[j] - problem.lower[j]) > fixed_tolerance) { continue; }
+    col_marker[j] = 1;
+    num_removed++;
+    const f_t value = full_value(j);
+    for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; ++p) {
+      const i_t i           = problem.A.i[p];
+      const f_t aij         = problem.A.x[p];
+      const f_t val         = -aij * problem.lower[j];
+      const f_t y           = val - kahan_compensation[i];
+      const f_t t           = problem.rhs[i] + y;
+      kahan_compensation[i] = (t - problem.rhs[i]) - y;
+      problem.rhs[i]        = t;
+      touched[i]            = 1;
+      removed_magnitude[i] += std::abs(aij * value);
+    }
+    problem.obj_constant += problem.objective[j] * problem.lower[j];
+  }
+  fixed_variables = num_removed;
+  if (num_removed == 0) { return 0; }
+
+  // Cut off rounding-level residuals of empty rows to zero.
+  constexpr f_t empty_row_tolerance = 1e-12;
+  std::vector<i_t> row_nnz_left(problem.num_rows, 0);
+  for (i_t j = 0; j < problem.num_cols; ++j) {
+    if (col_marker[j]) { continue; }
+    for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; ++p) {
+      row_nnz_left[problem.A.i[p]]++;
+    }
+  }
+  for (i_t i = 0; i < problem.num_rows; ++i) {
+    if (!touched[i] || row_nnz_left[i] != 0) { continue; }
+    const f_t scale = std::max(f_t(1), std::abs(problem.rhs[i]) + removed_magnitude[i]);
+    if (std::abs(problem.rhs[i]) <= empty_row_tolerance * scale) { problem.rhs[i] = 0.0; }
+  }
+
+  const i_t new_cols = problem.num_cols - num_removed;
   std::vector<f_t> objective(new_cols);
   std::vector<f_t> lower(new_cols);
   std::vector<f_t> upper(new_cols);
+  std::vector<i_t> remaining;
+  remaining.reserve(new_cols);
+  std::vector<i_t> col_old_to_new(problem.num_cols, -1);
+
   i_t new_j = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
-    if (!col_marker[j]) {
-      objective[new_j] = problem.objective[j];
-      lower[new_j]     = problem.lower[j];
-      upper[new_j]     = problem.upper[j];
-      new_j++;
-      fixed_variables--;
+    if (col_marker[j]) {
+      // The value restored here is the current lower bound; if this variable also had its lower
+      // bound shifted to zero earlier, removed_lower_bounds adds the original offset back.
+      presolve_info.removed_variables.push_back(to_original(j));
+      presolve_info.removed_values.push_back(problem.lower[j]);
+      presolve_info.removed_reduced_costs.push_back(0.0);
+      presolve_info.fixed_variables.push_back(to_original(j));
+      continue;
     }
+    objective[new_j] = problem.objective[j];
+    lower[new_j]     = problem.lower[j];
+    upper[new_j]     = problem.upper[j];
+    remaining.push_back(to_original(j));
+    col_old_to_new[j] = new_j;
+    new_j++;
   }
-  problem.objective = objective;
-  problem.lower     = lower;
-  problem.upper     = upper;
-  problem.num_cols  = problem.A.n;
-  if (verbose) { printf("Finishing fixed columns\n"); }
+
+  problem.A.remove_columns(col_marker);
+  assert(new_cols == problem.A.n);
+
+  if (problem.Q.n > 0) {
+    // Removed columns have no Q entries, so this only compacts and reindexes Q.
+    remove_variables_from_Q(problem.Q, col_marker, col_old_to_new, new_cols);
+    problem.Q.check_matrix("After removing fixed columns");
+  }
+
+  if (!problem.second_order_cone_dims.empty()) {
+    const i_t new_cone_start = col_old_to_new[problem.cone_var_start];
+    assert(new_cone_start != -1);
+    problem.cone_var_start = new_cone_start;
+  }
+
+  presolve_info.remaining_variables = remaining;
+  problem.objective                 = objective;
+  problem.lower                     = lower;
+  problem.upper                     = upper;
+  problem.num_cols                  = new_cols;
   return 0;
 }
 
@@ -1828,7 +1906,30 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
   }
 
-  // Check for empty rows
+  // Check for empty cols
+  i_t num_empty_cols = 0;
+  {
+    for (i_t j = 0; j < linear_cols; ++j) {
+      if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) { num_empty_cols++; }
+    }
+  }
+  if (num_empty_cols > 0) {
+    settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
+    remove_empty_cols(problem, num_empty_cols, presolve_info, linear_cols);
+  }
+
+  // Check for fixed variables
+  if (settings.barrier_presolve && settings.barrier_presolve_fixed_variables != 0) {
+    i_t num_fixed_variables = 0;
+    remove_fixed_variables(static_cast<f_t>(0.0), problem, presolve_info, num_fixed_variables);
+    if (num_fixed_variables > 0) {
+      settings.log.printf("Presolve removed %d fixed variables\n", num_fixed_variables);
+      linear_cols = linear_variable_count(problem);
+    }
+  }
+
+  // Check for empty rows. This runs after the column reductions above so that rows left empty by
+  // them are removed too.
   i_t num_empty_rows = 0;
   {
     csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
@@ -1841,18 +1942,6 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     settings.log.printf("Presolve removing %d empty rows\n", num_empty_rows);
     i_t i = remove_empty_rows(problem, row_sense, num_empty_rows, presolve_info);
     if (i != 0) { return -1; }
-  }
-
-  // Check for empty cols
-  i_t num_empty_cols = 0;
-  {
-    for (i_t j = 0; j < linear_cols; ++j) {
-      if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) { num_empty_cols++; }
-    }
-  }
-  if (num_empty_cols > 0) {
-    settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
-    remove_empty_cols(problem, num_empty_cols, presolve_info, linear_cols);
   }
 
   // Check for free variables (exclude cone variables — they are naturally unbounded)
@@ -2492,6 +2581,27 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
       for (i_t p = row_start; p < row_end; ++p) {
         input_z[Arow.j[p]] -= Arow.x[p] * du;
       }
+    }
+  }
+
+  // Variables removed because their bounds were equal were dropped before y was known, so their
+  // reduced cost could not be recorded at presolve time and removed_reduced_costs holds no valid
+  // value for them. Recover it from the final duals as z_j = c_j - a_j^T y, which is what dual
+  // feasibility A^T y + z = c requires. A fixed variable's reduced cost is sign-unrestricted, so
+  // this is always dual feasible. Columns participating in the quadratic objective are never
+  // removed, so the Q x term is zero here.
+  if (!presolve_info.fixed_variables.empty()) {
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Recovering reduced costs for %d fixed variables\n",
+                          static_cast<i_t>(presolve_info.fixed_variables.size()));
+    }
+    const csc_matrix_t<i_t, f_t>& A = original_problem.A;
+    for (const i_t j : presolve_info.fixed_variables) {
+      f_t zj = original_problem.objective[j];
+      for (i_t p = A.col_start[j]; p < A.col_start[j + 1]; ++p) {
+        zj -= A.x[p] * input_y[A.i[p]];
+      }
+      input_z[j] = zj;
     }
   }
 

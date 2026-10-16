@@ -241,6 +241,10 @@ struct presolve_info_t {
   std::vector<i_t> free_elimination_remaining_constraints;
   i_t free_elimination_num_variables{0};
   i_t free_elimination_num_constraints{0};
+
+  // Original indices of variables removed because their bounds were equal. Subset of
+  // removed_variables.
+  std::vector<i_t> fixed_variables;
 };
 
 template <typename i_t, typename f_t>
