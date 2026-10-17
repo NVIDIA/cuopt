@@ -94,6 +94,12 @@ void domain_t<i_t, f_t>::compute_activities(const csr_matrix_t<i_t, f_t>& Arow,
   for (i_t i = 0; i < Arow.m; ++i) {
     compute_row_activity(i, Arow, lp.lower, lp.upper);
   }
+
+  objective_vars.clear();
+  objective_vars.reserve(lp.num_cols);
+  for (i_t j = 0; j < lp.num_cols; ++j) {
+    if (lp.objective[j] != 0) { objective_vars.push_back(j); }
+  }
   stats.compute_activities_time +=
     std::chrono::duration<double>(steady_clock::now() - start).count();
 }
@@ -206,6 +212,17 @@ void domain_t<i_t, f_t>::queue_row(i_t i, const lp_problem_t<i_t, f_t>& lp, f_t 
 }
 
 template <typename i_t, typename f_t>
+void domain_t<i_t, f_t>::clear_queues()
+{
+  while (!row_queue.empty()) {
+    row_queued[row_queue.pop_front()] = false;
+  }
+  while (!var_queue.empty()) {
+    var_queued[var_queue.pop_front()] = false;
+  }
+}
+
+template <typename i_t, typename f_t>
 void domain_t<i_t, f_t>::queue_variable(i_t j,
                                         const std::vector<variable_type_t>& var_types,
                                         const lp_problem_t<i_t, f_t>& lp,
@@ -256,12 +273,14 @@ bool domain_t<i_t, f_t>::tighten_bounds(i_t k,
   if (!tighten_lb) { new_lower = lb; }
   if (!tighten_ub) { new_upper = ub; }
 
-  const bool is_clique = origin == bound_change_origin_t::CLIQUE;
+  // An infeasible objective tightening is counted as a cutoff by propagate_objective.
+  const bool is_clique    = origin == bound_change_origin_t::CLIQUE;
+  const bool is_objective = origin == bound_change_origin_t::OBJECTIVE;
   if (new_lower > new_upper) {
     if (new_lower - new_upper > tol * std::max({1.0, std::abs(new_lower), std::abs(new_upper)})) {
       settings.log.debug(
         "Infeasible variable %d after applying an implication, %e > %e\n", k, new_lower, new_upper);
-      ++(is_clique ? stats.clique_infeasible : stats.probing_infeasible);
+      if (!is_objective) { ++(is_clique ? stats.clique_infeasible : stats.probing_infeasible); }
       return false;
     }
     if (tighten_ub) {
@@ -272,8 +291,14 @@ bool domain_t<i_t, f_t>::tighten_bounds(i_t k,
   }
 
   apply(lp, {.var = k, .new_upper = new_upper, .new_lower = new_lower, .origin = origin});
-  ++(is_clique ? stats.clique_tightenings : stats.probing_tightenings);
-  if (new_lower == new_upper) { ++(is_clique ? stats.clique_fixings : stats.probing_fixings); }
+  int64_t& num_tightenings = is_objective ? stats.objective_tightenings
+                             : is_clique  ? stats.clique_tightenings
+                                          : stats.probing_tightenings;
+  int64_t& num_fixings     = is_objective ? stats.objective_fixings
+                             : is_clique  ? stats.clique_fixings
+                                          : stats.probing_fixings;
+  ++num_tightenings;
+  if (new_lower == new_upper) { ++num_fixings; }
   queue_variable(k, var_types, lp, tol);
   return true;
 }
@@ -422,6 +447,102 @@ bool domain_t<i_t, f_t>::apply_and_propagate(const csr_matrix_t<i_t, f_t>& Arow,
 
   queue_variable(bound_change.var, var_types, lp, settings.primal_tol);
   return run_bound_propagation(Arow, var_types, settings, lp);
+}
+
+template <typename i_t, typename f_t>
+bool domain_t<i_t, f_t>::propagate_objective(const csr_matrix_t<i_t, f_t>& Arow,
+                                             const std::vector<variable_type_t>& var_types,
+                                             const simplex_solver_settings_t<i_t, f_t>& settings,
+                                             lp_problem_t<i_t, f_t>& lp,
+                                             f_t cutoff)
+{
+  if (!std::isfinite(cutoff) || objective_vars.empty()) { return true; }
+  scoped_timer_t timer{stats.objective_time};
+  ++stats.objective_calls;
+
+  // The work is added to the one of the preceding propagation, so the callers record both.
+  const size_t prior_nnz = last_nnz_processed;
+  size_t work            = 0;
+  const f_t rhs          = cutoff + settings.primal_tol * std::max<f_t>(1.0, std::abs(cutoff));
+  bool feasible          = true;
+
+  for (i_t round = 0; round < params.max_objective_rounds; ++round) {
+    ++stats.objective_rounds;
+
+    // Minimum objective over the bounds in lp, with the infinite contributions flagged as in
+    // compute_row_activity.
+    f_t min     = 0;
+    f_t min_err = 0;
+    i_t min_inf = 0;
+    for (i_t j : objective_vars) {
+      const f_t c_j       = lp.objective[j];
+      const f_t bound_min = c_j < 0 ? lp.upper[j] : lp.lower[j];
+      const f_t alpha_min = c_j * bound_min;
+      if (std::isfinite(alpha_min) && std::abs(alpha_min) < params.huge_value) {
+        dot2_add(c_j, bound_min, min, min_err);
+      } else {
+        ++min_inf;
+      }
+    }
+    work += objective_vars.size();
+
+    if (min_inf == 0 && min + min_err > rhs) {
+      feasible = false;
+      break;
+    }
+    if (min_inf > 1) { break; }
+
+    const size_t num_changes = bound_changes.size();
+    for (i_t j : objective_vars) {
+      const f_t lb = lp.lower[j];
+      const f_t ub = lp.upper[j];
+      if (lb == ub) { continue; }
+
+      const f_t c_j       = lp.objective[j];
+      const f_t bound_min = c_j < 0 ? ub : lb;
+      const f_t alpha_min = c_j * bound_min;
+      const bool alpha_min_inf =
+        !std::isfinite(alpha_min) || std::abs(alpha_min) >= params.huge_value;
+
+      // With a single infinite contribution, only its variable can be bounded.
+      if (min_inf == 1 && !alpha_min_inf) { continue; }
+
+      // c_j x_j <= rhs - (minimum objective of the other variables): an upper bound if c_j > 0, a
+      // lower bound otherwise. The slack is formed with Dot2, as in the row propagation.
+      f_t slack     = rhs;
+      f_t slack_err = -min_err;
+      dot2_add(-1.0, min, slack, slack_err);
+      if (min_inf == 0) { dot2_add(c_j, bound_min, slack, slack_err); }
+      const f_t gamma = (slack + slack_err) / c_j;
+      if (std::abs(gamma) >= params.max_derived_bound) { continue; }
+
+      const f_t new_lower = c_j > 0 ? lb : gamma;
+      const f_t new_upper = c_j > 0 ? gamma : ub;
+      if (!tighten_bounds(
+            j, new_lower, new_upper, bound_change_origin_t::OBJECTIVE, var_types, settings, lp)) {
+        feasible = false;
+        break;
+      }
+    }
+    work += objective_vars.size();
+
+    if (!feasible || bound_changes.size() == num_changes) { break; }
+
+    // Propagate the rows of the tightened variables, which may raise the minimum objective.
+    feasible = run_bound_propagation(Arow, var_types, settings, lp);
+    work += last_nnz_processed;
+    if (!feasible) { break; }
+  }
+
+  if (!feasible) {
+    clear_queues();
+    ++stats.objective_cutoffs;
+  }
+
+  work += nnz_processed;
+  nnz_processed      = 0;
+  last_nnz_processed = prior_nnz + work;
+  return feasible;
 }
 
 template <typename i_t, typename f_t>
@@ -674,12 +795,7 @@ bool domain_t<i_t, f_t>::run_bound_propagation(const csr_matrix_t<i_t, f_t>& Aro
   }
 
   // Clear the rows and variables left in the queues when infeasibility stops the propagation early.
-  while (!row_queue.empty()) {
-    row_queued[row_queue.pop_front()] = false;
-  }
-  while (!var_queue.empty()) {
-    var_queued[var_queue.pop_front()] = false;
-  }
+  clear_queues();
 
   ++stats.calls;
   if (!feasible) { ++stats.infeasible; }
