@@ -1212,7 +1212,6 @@ struct deterministic_bfs_policy_t
                          branch_direction_t dir) override
   {
     switch (status) {
-      case node_status_t::INFEASIBLE: this->worker.record_infeasible(node); break;
       case node_status_t::FATHOMED: this->worker.record_fathomed(node, node->lower_bound); break;
       case node_status_t::INTEGER_FEASIBLE:
         this->worker.record_integer_solution(node, node->lower_bound);
@@ -1384,15 +1383,14 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   worker->recompute_bounds = true;
 
   if (lp_status == dual_status_t::DUAL_UNBOUNDED) {
-    node_ptr->lower_bound = inf;
-    policy.graphviz(search_tree, node_ptr, "infeasible", 0.0);
-    search_tree.update(node_ptr, node_status_t::INFEASIBLE);
-    status = node_status_t::INFEASIBLE;
+    node_ptr->lower_bound = upper_bound;
+    policy.graphviz(search_tree, node_ptr, "infeasible", upper_bound);
+    search_tree.update(node_ptr, node_status_t::FATHOMED);
+    status = node_status_t::FATHOMED;
 
   } else if (lp_status == dual_status_t::CUTOFF) {
-    f_t leaf_obj          = compute_objective(leaf_problem, leaf_solution.x);
     node_ptr->lower_bound = upper_bound;
-    policy.graphviz(search_tree, node_ptr, "cut off", leaf_obj);
+    policy.graphviz(search_tree, node_ptr, "cut off", upper_bound);
     search_tree.update(node_ptr, node_status_t::FATHOMED);
     status = node_status_t::FATHOMED;
 
@@ -5274,13 +5272,13 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
 #endif
 
   if (!feasible) {
-    node_ptr->lower_bound = std::numeric_limits<f_t>::infinity();
-    search_tree.update(node_ptr, node_status_t::INFEASIBLE);
-    worker.record_infeasible(node_ptr);
+    node_ptr->lower_bound = worker.local_upper_bound;
+    search_tree.update(node_ptr, node_status_t::FATHOMED);
+    worker.record_fathomed(node_ptr, worker.local_upper_bound);
     --exploration_stats_.nodes_unexplored;
     ++exploration_stats_.nodes_explored;
     worker.recompute_bounds_and_basis = true;
-    return node_status_t::INFEASIBLE;
+    return node_status_t::FATHOMED;
   }
 
   // Solve LP relaxation
