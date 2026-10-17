@@ -7,7 +7,7 @@
 
 #include <dual_simplex/presolve.hpp>
 
-#include <dual_simplex/bounds_strengthening.hpp>
+#include <dual_simplex/domain.hpp>
 #include <dual_simplex/folding.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solve.hpp>
@@ -1300,19 +1300,6 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     convert_greater_to_less(user_problem, row_sense, problem, greater_rows, less_rows);
   }
 
-  constexpr bool run_bounds_strengthening = false;
-  if constexpr (run_bounds_strengthening) {
-    csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
-    problem.A.to_compressed_row(Arow);
-
-    settings.log.printf("Running bound strengthening\n");
-
-    // Empty var_types means that all variables are continuous
-    bounds_strengthening_t<i_t, f_t> strengthening(problem, Arow, row_sense, {});
-    std::vector<bool> bounds_changed(problem.num_cols, true);
-    strengthening.bounds_strengthening(settings, bounds_changed, problem.lower, problem.upper);
-  }
-
   settings.log.debug(
     "equality rows %d less rows %d columns %d\n", equal_rows, less_rows, problem.num_cols);
   if (settings.barrier && settings.dualize != 0 && user_problem.Q_values.size() == 0 &&
@@ -1466,6 +1453,18 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 
   if (less_rows > 0) {
     convert_less_than_to_equal(user_problem, row_sense, problem, less_rows, new_slacks);
+  }
+
+  constexpr bool run_bounds_strengthening = false;
+  if constexpr (run_bounds_strengthening) {
+    csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
+    problem.A.to_compressed_row(Arow);
+
+    settings.log.printf("Running bound strengthening\n");
+
+    // Bound propagation assumes that the problem is in equality form.
+    std::vector<variable_type_t> var_types(problem.num_cols, variable_type_t::CONTINUOUS);
+    full_bound_strengthening(Arow, var_types, settings, problem);
   }
 
   // Add artifical variables

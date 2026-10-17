@@ -74,7 +74,7 @@ class worker_pool_t {
   void return_worker_to_pool(WorkerType* worker)
   {
     assert(worker != nullptr);
-    worker->set_inactive();
+    worker->cleanup();
     assert(!worker->is_active.load());
 
     if (!is_initialized_) return;

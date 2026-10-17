@@ -234,6 +234,9 @@ class branch_and_bound_t {
   // Structure with the general info of the solver.
   branch_and_bound_stats_t<i_t, f_t> exploration_stats_;
 
+  // Bound propagation statistics of the full strengthening of the root bounds.
+  simplex::domain_stats_t root_domain_stats_;
+
   // Mutex for repair
   omp_mutex_t mutex_repair_;
   std::vector<std::vector<f_t>> repair_queue_;
@@ -339,6 +342,9 @@ class branch_and_bound_t {
 
   // Set the final solution.
   void set_final_solution(simplex::mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
+
+  // Sums the bound propagation statistics of the root and of every worker.
+  simplex::domain_stats_t collect_domain_stats() const;
 
   // Update the incumbent solution with the new feasible solution
   // found during branch and bound.
