@@ -258,7 +258,7 @@ void solution_t<i_t, f_t>::assign_random_within_bounds(uint64_t seed,
       }
     }
     cuopt_assert(!isnan(h_assignment[i]), "Assignment cannot be nan");
-    cuopt_assert(isfinite(h_assignment[i]), "Assignment cannot be nan");
+    cuopt_assert(isfinite(h_assignment[i]), "Assignment must be finite");
   }
   raft::copy(assignment.data(), h_assignment.data(), h_assignment.size(), handle_ptr->get_stream());
   compute_feasibility();

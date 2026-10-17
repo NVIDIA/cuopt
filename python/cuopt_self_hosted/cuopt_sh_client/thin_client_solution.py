@@ -150,7 +150,7 @@ class ThinClientSolution:
         Note: Applicable to only LP
         Returns the dual solution as numpy.array with float64 type.
         """
-        self.raise_if_milp_solution(__name__)
+        self.raise_if_milp_solution("get_dual_solution")
         return self.dual_solution
 
     def get_primal_objective(self):
@@ -164,7 +164,7 @@ class ThinClientSolution:
         Note: Applicable to only LP
         Returns the dual objective as a float64.
         """
-        self.raise_if_milp_solution(__name__)
+        self.raise_if_milp_solution("get_dual_objective")
         return self.dual_objective
 
     def get_termination_status(self):
@@ -227,7 +227,7 @@ class ThinClientSolution:
             Number of iterations the LP solver did before converging.
         """
 
-        self.raise_if_milp_solution(__name__)
+        self.raise_if_milp_solution("get_lp_stats")
 
         return self.lp_stats
 
@@ -278,7 +278,7 @@ class ThinClientSolution:
             Number of simplex iterations performed during the MIP solve
         """
 
-        self.raise_if_lp_solution(__name__)
+        self.raise_if_lp_solution("get_milp_stats")
 
         return self.milp_stats
 

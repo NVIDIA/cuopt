@@ -26,7 +26,7 @@ struct request_id_t<request_t::PDP> {
   HDI void check([[maybe_unused]] int n_orders) const
   {
     cuopt_assert(pickup >= 0, "pickup id must be strictly positive");
-    cuopt_assert(pickup < n_orders, "delivery id must be lower than number of orders");
+    cuopt_assert(pickup < n_orders, "pickup id must be lower than number of orders");
     cuopt_assert(delivery >= 0, "delivery id must be strictly positive");
     cuopt_assert(delivery < n_orders, "delivery id must be lower than number of orders");
   }
