@@ -23,6 +23,8 @@ class worker_pool_t {
             const csr_matrix_t<i_t, f_t>& Arow,
             const std::vector<simplex::variable_type_t>& var_type,
             mip_symmetry_t<i_t, f_t>* symmetry,
+            const probing_implied_bound_t<i_t, f_t>* implied_bounds,
+            const clique_table_t<i_t, f_t>* clique_table,
             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
             pseudo_costs_t<i_t, f_t>& pc,
             const std::vector<f_t>& root_solution,
@@ -50,7 +52,9 @@ class worker_pool_t {
       idle_workers_.push_back(i);
       // Propagate the (possibly null) symmetry pointer; workers lazily build
       // their orbital_fixing/lexical_reduction state via ensure_orbital_fixing().
-      workers_[i]->symmetry_ptr = symmetry;
+      workers_[i]->symmetry_ptr          = symmetry;
+      workers_[i]->domain.implied_bounds = implied_bounds;
+      workers_[i]->domain.clique_table   = clique_table;
     }
 
     is_initialized_ = true;

@@ -14,6 +14,13 @@
 #include <cstdint>
 #include <limits>
 
+namespace cuopt::mathematical_optimization::mip {
+template <typename i_t, typename f_t>
+struct probing_implied_bound_t;
+template <typename i_t, typename f_t>
+struct clique_table_t;
+}  // namespace cuopt::mathematical_optimization::mip
+
 namespace cuopt::mathematical_optimization::simplex {
 
 enum class bound_change_origin_t {
@@ -56,7 +63,9 @@ struct domain_params {
 
 // Cumulative statistics of the bound propagation performed by a domain. A round is one pass over
 // the rows queued when it starts. propagation_time includes the activity updates of its own
-// tightenings, which are also counted in update_activities_time.
+// tightenings, which are also counted in update_activities_time. The probing and clique counters
+// cover the implications of fixed integer variables, and their times are included in
+// propagation_time.
 struct domain_stats_t {
   int64_t calls               = 0;
   int64_t infeasible          = 0;
@@ -71,9 +80,21 @@ struct domain_stats_t {
   int64_t activity_recomputes = 0;
   int64_t nnz_processed       = 0;
 
+  int64_t implication_calls    = 0;
+  int64_t probing_implications = 0;
+  int64_t probing_tightenings  = 0;
+  int64_t probing_fixings      = 0;
+  int64_t probing_infeasible   = 0;
+  int64_t clique_implications  = 0;
+  int64_t clique_tightenings   = 0;
+  int64_t clique_fixings       = 0;
+  int64_t clique_infeasible    = 0;
+
   double propagation_time        = 0.0;
   double compute_activities_time = 0.0;
   double update_activities_time  = 0.0;
+  double probing_time            = 0.0;
+  double clique_time             = 0.0;
 
   domain_stats_t& operator+=(const domain_stats_t& other)
   {
@@ -89,9 +110,20 @@ struct domain_stats_t {
     activity_updates += other.activity_updates;
     activity_recomputes += other.activity_recomputes;
     nnz_processed += other.nnz_processed;
+    implication_calls += other.implication_calls;
+    probing_implications += other.probing_implications;
+    probing_tightenings += other.probing_tightenings;
+    probing_fixings += other.probing_fixings;
+    probing_infeasible += other.probing_infeasible;
+    clique_implications += other.clique_implications;
+    clique_tightenings += other.clique_tightenings;
+    clique_fixings += other.clique_fixings;
+    clique_infeasible += other.clique_infeasible;
     propagation_time += other.propagation_time;
     compute_activities_time += other.compute_activities_time;
     update_activities_time += other.update_activities_time;
+    probing_time += other.probing_time;
+    clique_time += other.clique_time;
     return *this;
   }
 };
@@ -201,6 +233,11 @@ class domain_t {
 
   size_t last_nnz_processed{0};
 
+  // Implications applied when an integer variable is fixed to 0 or 1. Either may be null, and the
+  // clique table is skipped until it is ready.
+  const mip::probing_implied_bound_t<i_t, f_t>* implied_bounds = nullptr;
+  const mip::clique_table_t<i_t, f_t>* clique_table            = nullptr;
+
   domain_stats_t stats;
 
  private:
@@ -210,6 +247,9 @@ class domain_t {
   std::vector<uint8_t> row_queued;
   circular_deque_t<i_t> row_queue;
 
+  std::vector<uint8_t> var_queued;
+  circular_deque_t<i_t> var_queue;
+
   std::vector<bound_change_t<i_t, f_t>> bound_changes;
 
   size_t nnz_processed{0};
@@ -217,6 +257,30 @@ class domain_t {
   // Queues row i unless it is already queued or neither of its sides can tighten a bound. A row
   // awaiting recomputation is always queued.
   void queue_row(i_t i, const lp_problem_t<i_t, f_t>& lp, f_t tol);
+
+  // Queues the rows containing x_j and, if x_j is an integer fixed to 0 or 1, x_j itself so its
+  // implications are applied.
+  void queue_variable(i_t j,
+                      const std::vector<variable_type_t>& var_types,
+                      const lp_problem_t<i_t, f_t>& lp,
+                      f_t tol);
+
+  // Applies the probing and clique implications of x_j at its fixed value. Returns false if an
+  // implied bound proves infeasibility.
+  bool propagate_implications(i_t j,
+                              const std::vector<variable_type_t>& var_types,
+                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              lp_problem_t<i_t, f_t>& lp);
+
+  // Intersects the bounds of x_k with [new_lower, new_upper], applying and queueing x_k if they
+  // improve. Returns false if the bounds cross.
+  bool tighten_bounds(i_t k,
+                      f_t new_lower,
+                      f_t new_upper,
+                      bound_change_origin_t origin,
+                      const std::vector<variable_type_t>& var_types,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      lp_problem_t<i_t, f_t>& lp);
 
   // Propagates the queued rows in FIFO order, applying each accepted bound immediately
   // and queueing the rows it affects. Returns false if a row or a variable proves infeasibility.
