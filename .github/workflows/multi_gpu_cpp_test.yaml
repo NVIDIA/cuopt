@@ -50,6 +50,13 @@ on:
         description: "Treat failures as non-blocking (useful while the MG suite is maturing)."
         type: boolean
         default: false
+    secrets:
+      CUOPT_S3_URI:
+        required: false
+      CUOPT_AWS_ACCESS_KEY_ID:
+        required: false
+      CUOPT_AWS_SECRET_ACCESS_KEY:
+        required: false
 
 permissions: {}
 
@@ -73,3 +80,10 @@ jobs:
       container-options: ${{ inputs.container-options }}
       script: ${{ inputs.script }}
       continue-on-error: ${{ inputs.continue-on-error }}
+    secrets:
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}

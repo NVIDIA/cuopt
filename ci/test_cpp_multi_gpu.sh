@@ -79,12 +79,10 @@ if [ "${GPU_COUNT}" -lt 2 ]; then
 fi
 
 # Multi-GPU PDLP parity tests use a small set of git-ignored MPS instances.
-# Download only those direct-MPS fixtures here: downloading the full PDLP suite
-# falls back to netlib conversion when S3 credentials are not available, and that
-# path needs gcc (not present in this test environment).
+# Download only those direct-MPS fixtures: the full PDLP suite's HTTP fallback
+# needs gcc (not present in this test environment).
 rapids-logger "Download datasets"
-python benchmarks/linear_programming/utils/get_datasets.py -datasets graph40-40
-python benchmarks/linear_programming/utils/get_datasets.py -datasets ex10
+./datasets/linear_programming/download_pdlp_test_dataset.sh graph40-40 ex10
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
