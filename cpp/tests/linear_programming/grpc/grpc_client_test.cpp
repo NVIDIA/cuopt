@@ -2332,7 +2332,6 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
 
   // Solver configuration
   orig.log_to_console  = false;
-  orig.heuristics_only = true;
   orig.num_cpu_threads = 8;
   orig.num_gpus        = 2;
   orig.presolver       = presolver_t::Default;
@@ -2405,7 +2404,6 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
 
   // Solver configuration
   EXPECT_EQ(restored.log_to_console, false);
-  EXPECT_EQ(restored.heuristics_only, true);
   EXPECT_EQ(restored.num_cpu_threads, 8);
   EXPECT_EQ(restored.num_gpus, 2);
   EXPECT_EQ(restored.presolver, presolver_t::Default);

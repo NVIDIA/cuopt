@@ -1435,6 +1435,8 @@ def _settings_field_is_parameter(f):
 
 def generate_settings_message_proto(registry, message_name, obj):
     lines = []
+    for name, num in (obj.get("reserved_fields") or {}).items():
+        lines.append((num, f'  reserved {num};\n  reserved "{name}";'))
     # A parameter map replaces per-parameter proto fields. Typed fields that
     # set_parameter() accepts stay on the wire and are deprecated. A field
     # with param_name null, and embeds such as warm start, stay normal fields.
@@ -3972,6 +3974,7 @@ def auto_assign_field_numbers(data):
         fields = section.get("fields", [])
         lo, hi = FIELD_NUM_RANGES[section_key]
         existing = _collect_settings_field_nums(fields)
+        existing.update((section.get("reserved_fields") or {}).values())
         # Reserve tags used by embedded submessages so auto-numbering won't
         # collide with them.
         existing |= _embed_field_nums(section)

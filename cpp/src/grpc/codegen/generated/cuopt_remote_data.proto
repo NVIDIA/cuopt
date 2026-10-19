@@ -223,7 +223,8 @@ message MIPSolverSettings {
   optional double relative_tolerance = 6 [deprecated = true];
   optional double presolve_absolute_tolerance = 7;
   optional bool log_to_console = 8 [deprecated = true];
-  bool heuristics_only = 9 [deprecated = true];
+  reserved 9;
+  reserved "heuristics_only";
   optional int32 num_cpu_threads = 10 [deprecated = true];
   optional int32 num_gpus = 11 [deprecated = true];
   optional int32 presolver = 12 [deprecated = true];

@@ -65,12 +65,10 @@ Changes to solver_configs
 The following fields are **Deprecated** in ``solver_configs`` for the service:
 
 - solver_mode
-- heuristics_only
 
 The following fields are **New** in ``solver_configs`` for the service and replace the deprecated fields above:
 
 - pdlp_solver_mode
-- mip_heuristics_only
 
 The following are **New** in ``solver_configs`` for the service but were available in the C API in 25.05
 

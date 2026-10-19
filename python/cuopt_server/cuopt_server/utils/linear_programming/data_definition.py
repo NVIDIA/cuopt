@@ -451,11 +451,6 @@ class SolverConfig(BaseModel):
         "<br>"
         "- 2: Row scaling only (no objective scaling), default",
     )
-    mip_heuristics_only: Optional[bool] = Field(
-        default=False,
-        description="Set True to run heuristics only, False to run "
-        "heuristics and branch and bound for MILP",
-    )
     mip_batch_pdlp_strong_branching: Optional[int] = Field(
         default=0,
         description="Strong branching mode: 0 = Dual Simplex only, "

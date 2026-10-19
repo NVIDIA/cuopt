@@ -388,6 +388,10 @@ override knob.
 
 Unique to settings:
 
+`reserved_fields: {removed_setting: 9}` reserves a deleted setting's protobuf
+name and number. The generator emits both reservations and excludes the number
+from auto-numbering; `protoc` rejects conflicting declarations.
+
 | Key | Description |
 |---|---|
 | `fields:` | List of settings fields. Supports nested sub-structs (see below). Used instead of `scalars:` because settings need to express the C++ struct's nesting hierarchy. |

@@ -142,14 +142,14 @@ Consecutive fill solves differ by one bound, so seed each with its neighbor as a
 
 ### Degrade gracefully, never silently
 
-If a subproblem hits its time limit with a feasible incumbent (`FeasibleFound`), keep the point — it is feasible, and the solve's reported gap bounds its suboptimality — but record it as approximate. The time-capped solve is the primary fallback: it returns both an incumbent and a bound. Heuristics-only mode (`mip_heuristics_only`) drops the proof work and returns feasible points with no gap bound — use it when feasible points are all you need, and tag everything it returns approximate.
+If a subproblem hits its time limit with a feasible incumbent (`FeasibleFound`), keep the point — it is feasible, and the solve's reported gap bounds its suboptimality — but record it as approximate. The time-capped solve is the primary fallback: it returns both an incumbent and a bound.
 
 ### Report with provenance
 
 Every presented point carries one of two tags:
 
 - **exact** — `Optimal` at your gap setting, i.e. optimal to that gap (Step 4);
-- **approximate** — time-limited incumbent (quote its reported gap) or heuristics-only result (no bound exists; say so).
+- **approximate** — time-limited incumbent (quote its reported gap).
 
 State the counts with the frontier ("14 points, 11 exact, 3 approximate near the low-cost end, worst gap 2.4%"). Never present a mixed frontier as uniformly optimal.
 
