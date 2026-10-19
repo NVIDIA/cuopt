@@ -48,8 +48,7 @@ void map_problem_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_proble
  * Same scalar and repeated-message shell fields as map_problem_to_proto.
  * Top-level arrays, including variable and row names, are left empty because
  * they travel as ArrayChunks. Bytes and numeric arrays inside a repeated
- * message are left empty for the same reason. Repeated strings inside a
- * repeated message stay.
+ * message are left empty for the same reason.
  */
 template <typename i_t, typename f_t>
 void map_problem_scalars_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,

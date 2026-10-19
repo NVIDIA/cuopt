@@ -2206,11 +2206,11 @@ def _gen_chunked_to_solution(registry, obj_name, obj, indent="  "):
 def _gen_problem_to_proto(registry, indent="  ", include_arrays=True):
     """Generate body of map_problem_to_proto().
 
-    include_arrays=False is the unified chunked header. It emits the same
-    scalars and repeated-message shells, and omits top-level arrays. Those
-    arrays, including variable and row names, travel as ArrayChunks. A
-    repeated string inside a container stays inline, matching
-    strip_chunked_numeric_arrays.
+    Both flag values write an OptimizationProblem. include_arrays=True
+    builds a unary message when size limits allow. include_arrays=False
+    builds the unified chunked header from the same scalars and
+    repeated-message shells, with every top-level array omitted, so
+    variable_names and row_names travel as ArrayChunks.
     """
     obj = registry.get("optimization_problem", {})
     ind = indent
@@ -2305,8 +2305,8 @@ def _gen_problem_to_proto(registry, indent="  ", include_arrays=True):
                 )
                 lines.append(f"{ind}}}")
 
-    # repeated_messages — unary path inlines scalars and arrays. The chunked
-    # header keeps scalars and any repeated strings, and sends the other
+    # repeated_messages — the unary path inlines scalars and arrays. The
+    # unified chunked header keeps the per-entry scalars and sends the
     # per-entry arrays as container-keyed ArrayChunks.
     for name, body in _iter_repeated_messages(obj):
         presence = body.get("presence_check")
