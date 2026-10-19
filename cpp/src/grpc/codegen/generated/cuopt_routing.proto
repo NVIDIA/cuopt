@@ -163,7 +163,11 @@ message RoutingProblem {
   repeated CapacityDimension capacity_dimensions = 50;
   repeated int32 break_locations = 60;
   repeated UniformBreakDimension uniform_breaks = 61;
+  // ArrayChunk.container_index counts entries across all groups,
+  // not the index of this repeated field.
   repeated PerVehicleBreaks vehicle_breaks = 62;
+  // ArrayChunk.container_index counts entries across all groups,
+  // not the index of this repeated field.
   repeated PerVehicleDistanceBreaks vehicle_distance_breaks = 63;
   repeated MatchEntry vehicle_order_match = 70;
   repeated MatchEntry order_vehicle_match = 71;

@@ -558,9 +558,9 @@ if (NOT SKIP_GRPC_BUILD)
             OUTPUT "${ROUTING_PROTO_SRCS}" "${ROUTING_PROTO_HDRS}"
             COMMAND ${_PROTOBUF_PROTOC}
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+            --proto_path ${PROTO_PATH_GEN}
             --proto_path ${PROTO_PATH_ROUTING}
             --proto_path ${PROTO_PATH_MANUAL}
-            --proto_path ${PROTO_PATH_GEN}
             ${ROUTING_PROTO_FILE}
             DEPENDS ${ROUTING_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_routing.proto"

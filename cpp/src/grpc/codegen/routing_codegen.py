@@ -354,6 +354,8 @@ def generate_routing_proto(registry):
         repeated.append(
             (
                 rec["field_num"],
+                "  // ArrayChunk.container_index counts entries across all groups,\n"
+                "  // not the index of this repeated field.\n"
                 f"  repeated {rec['message_type']} {rec['name']} = {rec['field_num']};",
             )
         )
@@ -551,7 +553,6 @@ def generate_routing_to_proto(registry):
                 lines.append("    " + stmt)
         lines.append("    }")
         lines.append("  }")
-    lines.append("")
     return "\n".join(lines)
 
 
@@ -888,10 +889,14 @@ def generate_routing_nonmatrix_chunks(registry):
         lines.append("  }")
 
     for rec in _optional_messages(section):
+        # encode_when is written for the to-proto body, which names the problem `p`.
+        cond = rec.get("encode_when", "false").replace("p.", "problem.")
+        lines.append(f"  if ({cond}) {{")
         for f in _nested_fields(rec, "arrays"):
             lines.append(
-                f"  chunk_container_typed_array(chunks, {rec['field_num']}, 0, {f['array_id']}, problem.{f['member']}, upload_id, chunk_data_budget);"
+                f"    chunk_container_typed_array(chunks, {rec['field_num']}, 0, {f['array_id']}, problem.{f['member']}, upload_id, chunk_data_budget);"
             )
+        lines.append("  }")
     return "\n".join(lines)
 
 

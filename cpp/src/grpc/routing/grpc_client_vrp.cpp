@@ -13,7 +13,6 @@
 #include "../client/grpc_client.hpp"
 
 #include "../grpc_container_chunk.hpp"
-#include "grpc_routing_chunk_ids.hpp"
 #include "grpc_routing_problem_mapper.hpp"
 #include "grpc_routing_settings_mapper.hpp"
 #include "grpc_routing_solution_mapper.hpp"
@@ -21,9 +20,6 @@
 #include <cuopt_remote_service.grpc.pb.h>
 
 namespace cuopt::mathematical_optimization {
-
-static_assert(static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES) ==
-              cuopt::routing::kMatrixValuesFieldId);
 
 using cuopt::routing::map_proto_to_routing_solution;
 using cuopt::routing::map_routing_problem_to_proto;

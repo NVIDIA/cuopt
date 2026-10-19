@@ -107,6 +107,8 @@ SIZE_ESTIMATOR_BODY_DOC = """\
 
 def write_file(path, content):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    # Exactly one trailing newline, matching pre-commit end-of-file-fixer.
+    content = content.rstrip("\n") + "\n"
     with open(path, "w") as f:
         f.write(content)
     print(f"  wrote {path}")

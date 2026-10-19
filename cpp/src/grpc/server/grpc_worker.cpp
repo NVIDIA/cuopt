@@ -11,7 +11,6 @@
 #include "grpc_server_types.hpp"
 
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
-#include "routing/grpc_routing_chunk_ids.hpp"
 #include "routing/grpc_routing_problem_mapper.hpp"
 #include "routing/grpc_routing_settings_mapper.hpp"
 #include "routing/grpc_routing_solution_mapper.hpp"
@@ -429,11 +428,6 @@ static int claim_job_slot(int worker_id)
   }
   return -1;
 }
-
-#ifdef CUOPT_ENABLE_GRPC_ROUTING
-static_assert(cuopt::routing::kMatrixValuesFieldId ==
-              static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES));
-#endif
 
 // Unified chunked upload: the pipe header is a SubmitJobRequest with numeric
 // arrays empty. Array bytes use the same framing as the legacy header.

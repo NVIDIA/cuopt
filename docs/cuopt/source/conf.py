@@ -40,7 +40,7 @@ for _proto in (
     "cuopt_remote_service.proto",
     "cuopt_remote.proto",
     "codegen/generated/cuopt_remote_data.proto",
-    "routing/cuopt_routing.proto",
+    "codegen/generated/cuopt_routing.proto",
     "routing/cuopt_routing_solution.proto",
 ):
     shutil.copy(_grpc_src / _proto, _proto_dir)

@@ -1642,6 +1642,8 @@ routing_problem:
       - earliest: {field_num: 1, array_id: 0, type: repeated int32}
       - latest: {field_num: 2, array_id: 1, type: repeated int32}
       - duration: {field_num: 3, array_id: 2, type: repeated int32}
+  # Nested array chunks use a flat container_index across every group's entries,
+  # not the index of the repeated field. The generated proto repeats this.
   keyed_records:
   - vehicle_breaks:
       field_num: 62

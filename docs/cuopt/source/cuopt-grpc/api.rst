@@ -11,7 +11,7 @@ The **CuOptRemoteService** gRPC API is defined in Protocol Buffers under the ``c
 * :download:`cuopt_remote_service.proto <protos/cuopt_remote_service.proto>` — service and job/chunk/log RPCs
 * :download:`cuopt_remote.proto <protos/cuopt_remote.proto>` — LP/MIP problem, settings, and result messages
 * :download:`cuopt_remote_data.proto <protos/cuopt_remote_data.proto>` — problem and result fields, including the array field ids used by chunked transfer. Generated from ``cpp/src/grpc/codegen/field_registry.yaml`` and committed to the repository.
-* :download:`cuopt_routing.proto <protos/cuopt_routing.proto>` — VRP request messages
+* :download:`cuopt_routing.proto <protos/cuopt_routing.proto>` — VRP request messages. Generated from ``cpp/src/grpc/codegen/field_registry.yaml`` and committed to the repository.
 * :download:`cuopt_routing_solution.proto <protos/cuopt_routing_solution.proto>` — VRP result messages
 
 Download all five as :download:`cuopt-protos.zip <cuopt-protos.zip>`. They import each other by file name, so keep them in one directory.
@@ -141,7 +141,7 @@ Messages and Constraints
   as ``lp_request`` (``SolveLPRequest``) with quadratic fields on
   ``OptimizationProblem``. **VRP** rides the same ``SubmitJob``/``GetResult``
   RPCs as LP/MIP, as a ``vrp_request`` payload typed by
-  ``cpp/src/grpc/routing/cuopt_routing.proto`` (problem) and
+  ``cpp/src/grpc/codegen/generated/cuopt_routing.proto`` (problem) and
   ``cuopt_routing_solution.proto`` (result) -- not a separate service. There
   is no ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` remote-execution path for
   routing; use the gRPC routing client (:doc:`routing`) or REST for remote

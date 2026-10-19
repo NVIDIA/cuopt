@@ -102,9 +102,13 @@
       }
     }
   }
-  chunk_container_typed_array(chunks, 90, 0, 0, problem.objectives, upload_id, chunk_data_budget);
-  chunk_container_typed_array(chunks, 90, 0, 1, problem.objective_weights, upload_id, chunk_data_budget);
-  chunk_container_typed_array(chunks, 100, 0, 0, problem.initial_solutions.vehicle_ids, upload_id, chunk_data_budget);
-  chunk_container_typed_array(chunks, 100, 0, 1, problem.initial_solutions.routes, upload_id, chunk_data_budget);
-  chunk_container_typed_array(chunks, 100, 0, 2, problem.initial_solutions.types, upload_id, chunk_data_budget);
-  chunk_container_typed_array(chunks, 100, 0, 3, problem.initial_solutions.sol_offsets, upload_id, chunk_data_budget);
+  if (!problem.objectives.empty()) {
+    chunk_container_typed_array(chunks, 90, 0, 0, problem.objectives, upload_id, chunk_data_budget);
+    chunk_container_typed_array(chunks, 90, 0, 1, problem.objective_weights, upload_id, chunk_data_budget);
+  }
+  if (!problem.initial_solutions.routes.empty()) {
+    chunk_container_typed_array(chunks, 100, 0, 0, problem.initial_solutions.vehicle_ids, upload_id, chunk_data_budget);
+    chunk_container_typed_array(chunks, 100, 0, 1, problem.initial_solutions.routes, upload_id, chunk_data_budget);
+    chunk_container_typed_array(chunks, 100, 0, 2, problem.initial_solutions.types, upload_id, chunk_data_budget);
+    chunk_container_typed_array(chunks, 100, 0, 3, problem.initial_solutions.sol_offsets, upload_id, chunk_data_budget);
+  }
