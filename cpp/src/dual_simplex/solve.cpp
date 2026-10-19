@@ -993,7 +993,21 @@ lp_status_t solve_linear_program_with_barrier(
     crossover_status_t crossover_status = crossover(
       original_lp, barrier_settings, lp_solution, start_time, crossover_solution, vstatus);
     settings.log.printf("Crossover status: %d\n", crossover_status);
-    if (crossover_status == crossover_status_t::OPTIMAL) { barrier_status = lp_status_t::OPTIMAL; }
+    if (crossover_status == crossover_status_t::OPTIMAL) {
+      barrier_status = lp_status_t::OPTIMAL;
+      // Return the crossover vertex, not the barrier point crossover started from. original_lp is
+      // the primal problem here (also when barrier solved the dual) with the artificial columns
+      // appended after the user columns, so it uncrushes like the barrier solution above.
+      uncrush_primal_solution(user_problem, original_lp, crossover_solution.x, solution.x);
+      uncrush_dual_solution(user_problem,
+                            original_lp,
+                            crossover_solution.y,
+                            crossover_solution.z,
+                            solution.y,
+                            solution.z);
+      solution.objective      = compute_objective(original_lp, crossover_solution.x);
+      solution.user_objective = compute_user_objective(original_lp, solution.objective);
+    }
   }
   return barrier_status;
 }

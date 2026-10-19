@@ -270,4 +270,71 @@ TEST(barrier, qplib_8515_ruiz_forced_off)
   EXPECT_EQ(solution.get_termination_status(), pdlp_termination_status_t::IterationLimit);
 }
 
+// minimize    x2
+// subject to  x0 +   x1 + x2 >= 1
+//             x0 + 2*x1      <= 2
+//             x0, x1, x2 >= 0
+// The optimal set {x2 = 0, x0 + x1 >= 1, x0 + 2*x1 <= 2} is two-dimensional, so barrier stops near
+// its analytic center while crossover must return a vertex: at most m = 2 of the five structural
+// and slack variables may be strictly positive. Crossover used to finish without its vertex being
+// returned to the caller.
+static void barrier_crossover_returns_vertex(int dualize)
+{
+  cuopt::init_logger_t log("", true);
+  raft::handle_t handle{};
+  init_handler(&handle);
+  simplex::user_problem_t<int, double> user_problem(&handle);
+  constexpr int m  = 2;
+  constexpr int n  = 3;
+  constexpr int nz = 5;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {0.0, 0.0, 1.0};
+  user_problem.A.m       = m;
+  user_problem.A.n       = n;
+  user_problem.A.nz_max  = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start    = {0, 2, 4, 5};
+  user_problem.A.i            = {0, 1, 0, 1, 0};
+  user_problem.A.x            = {1.0, 1.0, 1.0, 2.0, 1.0};
+  user_problem.rhs            = {1.0, 2.0};
+  user_problem.row_sense      = {'G', 'L'};
+  user_problem.lower          = {0.0, 0.0, 0.0};
+  user_problem.upper          = {inf, inf, inf};
+  user_problem.num_range_rows = 0;
+  user_problem.problem_name   = "barrier crossover vertex";
+  user_problem.row_names      = {"cover", "capacity"};
+  user_problem.col_names      = {"x0", "x1", "x2"};
+  user_problem.obj_constant   = 0.0;
+  user_problem.var_types.assign(n, simplex::variable_type_t::CONTINUOUS);
+
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.barrier   = true;  // as set by run_barrier; dualization only applies to barrier solves
+  settings.crossover = true;
+  settings.dualize   = dualize;
+  simplex::lp_solution_t<int, double> solution(m, n);
+  ASSERT_EQ((simplex::solve_linear_program_with_barrier(user_problem, settings, solution)),
+            simplex::lp_status_t::OPTIMAL);
+  ASSERT_EQ(solution.x.size(), static_cast<size_t>(n));
+
+  const double* x = solution.x.data();
+  EXPECT_NEAR(solution.user_objective, 0.0, 1e-8);
+  EXPECT_NEAR(x[2], 0.0, 1e-8);
+  const double cover_slack    = x[0] + x[1] + x[2] - 1.0;
+  const double capacity_slack = 2.0 - x[0] - 2.0 * x[1];
+  for (double v : {x[0], x[1], x[2], cover_slack, capacity_slack}) {
+    EXPECT_GE(v, -1e-8);
+  }
+  constexpr double positive   = 1e-7;
+  const int strictly_positive = (x[0] > positive) + (x[1] > positive) + (x[2] > positive) +
+                                (cover_slack > positive) + (capacity_slack > positive);
+  EXPECT_LE(strictly_positive, m) << "x = (" << x[0] << ", " << x[1] << ", " << x[2]
+                                  << ") is not a vertex";
+}
+
+TEST(barrier, crossover_returns_vertex) { barrier_crossover_returns_vertex(0); }
+
+TEST(barrier, crossover_returns_vertex_when_solving_dual) { barrier_crossover_returns_vertex(1); }
+
 }  // namespace cuopt::mathematical_optimization::simplex::test
