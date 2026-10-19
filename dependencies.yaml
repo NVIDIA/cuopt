@@ -528,7 +528,7 @@ dependencies:
           - matrix:
               dependencies: "oldest"
             packages:
-              - numba-cuda==0.22.*
+              - numba-cuda==0.30.2
               - numpy==2.0.*
           - matrix:
             packages:
