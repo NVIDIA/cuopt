@@ -79,8 +79,6 @@ if [ "${GPU_COUNT}" -lt 2 ]; then
 fi
 
 # Multi-GPU PDLP parity tests use a small set of git-ignored MPS instances.
-# Download only those direct-MPS fixtures: the full PDLP suite's HTTP fallback
-# needs gcc (not present in this test environment).
 rapids-logger "Download datasets"
 ./datasets/linear_programming/download_pdlp_test_dataset.sh graph40-40 ex10
 
