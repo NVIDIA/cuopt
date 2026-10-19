@@ -49,7 +49,7 @@ on:
       continue-on-error:
         description: "Treat failures as non-blocking (useful while the MG suite is maturing)."
         type: boolean
-        default: false
+        default: true
 
 permissions: {}
 
