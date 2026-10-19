@@ -92,11 +92,38 @@ Chunked Upload (Large Problems)
 A chunked VRP upload uses ``StartChunkedUploadV2``. The header is a
 ``SubmitJobRequest``: ``vrp_request.settings`` and ``vrp_request.problem``,
 with each matrix ``values`` field left empty. Those values are container
-``ArrayChunk`` messages: ``container_field_num`` is 10 for ``cost_matrices``
-and 11 for ``transit_time_matrices``, ``container_index`` is the matrix index,
-and ``field_id`` is ``CostMatrix.ArrayId.VALUES``. ``VALUES`` is the
-container-relative array id, not the protobuf tag of ``values``. The payload
-is raw little-endian float32, row-major, ``n_locations`` by ``n_locations``.
+``ArrayChunk`` messages: ``container_field_num`` is the field number of
+``RoutingProblem.cost_matrices`` (10) or ``transit_time_matrices`` (11),
+``container_index`` is the matrix index, and ``field_id`` is
+``CostMatrix.ArrayId.VALUES``. ``VALUES`` is the container-relative array id,
+not the protobuf tag of ``values``. The payload is raw little-endian float32,
+row-major, ``n_locations`` by ``n_locations``.
+
+If that matrix-stripped header still exceeds the send limit, the other arrays
+are omitted too and sent as ``ArrayChunk`` messages. Scalars and record keys
+stay in the header so the chunk indexes still line up. Top-level arrays leave
+``container_field_num`` and ``container_index`` unset. Their ``field_id`` is
+an ``ArrayFieldId``: ``FIELD_VEHICLE_START_LOCATIONS``,
+``FIELD_VEHICLE_RETURN_LOCATIONS``, ``FIELD_VEHICLE_TW_EARLIEST``,
+``FIELD_VEHICLE_TW_LATEST``, ``FIELD_VEHICLE_TYPES``,
+``FIELD_DROP_RETURN_TRIPS``, ``FIELD_SKIP_FIRST_TRIPS``,
+``FIELD_VEHICLE_MAX_COSTS``, ``FIELD_VEHICLE_MAX_TIMES``,
+``FIELD_VEHICLE_FIXED_COSTS``, ``FIELD_ORDER_LOCATIONS``,
+``FIELD_ORDER_TW_EARLIEST``, ``FIELD_ORDER_TW_LATEST``, ``FIELD_ORDER_PRIZES``,
+``FIELD_PICKUP_INDICES``, ``FIELD_DELIVERY_INDICES``, and
+``FIELD_BREAK_LOCATIONS``.
+
+Arrays inside repeated messages set ``container_field_num`` to the parent
+field number and ``field_id`` to that message's ``ArrayId``.
+``container_index`` is the entry index, except on ``vehicle_breaks`` (field
+62) and ``vehicle_distance_breaks`` (field 63). For those two fields it
+counts break entries across all vehicle groups, not the index of the repeated
+field. Break locations use ``VehicleBreak.ArrayId.LOCATIONS`` and
+``VehicleDistanceBreak.ArrayId.LOCATIONS``. ``objective`` chunks
+(``RoutingObjectiveFunction.ArrayId.OBJECTIVES`` and ``WEIGHTS``,
+``container_index`` 0) are sent only when ``objectives`` is non-empty.
+``initial_solutions`` chunks (``InitialSolution.ArrayId``,
+``container_index`` 0) are sent only when ``routes`` is non-empty.
 ``StartChunkedUpload`` rejects a VRP category.
 
 Chunked Download (Large Results)
