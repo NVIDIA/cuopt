@@ -210,10 +210,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-    secrets:
-      CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
-      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+    secrets: inherit # zizmor: ignore[secrets-inherit]
 
   nightly-summary:
     permissions:
