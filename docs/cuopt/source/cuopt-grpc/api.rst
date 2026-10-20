@@ -122,8 +122,10 @@ field. Break locations use ``VehicleBreak.ArrayId.LOCATIONS`` and
 ``VehicleDistanceBreak.ArrayId.LOCATIONS``. ``objective`` chunks
 (``RoutingObjectiveFunction.ArrayId.OBJECTIVES`` and ``WEIGHTS``,
 ``container_index`` 0) are sent only when ``objectives`` is non-empty.
-``initial_solutions`` chunks (``InitialSolution.ArrayId``,
-``container_index`` 0) are sent only when ``routes`` is non-empty.
+``initial_solutions`` chunks (field 100, ``container_index`` 0) use
+``InitialSolution.ArrayId``: ``VEHICLE_IDS`` (``field_id`` 0), ``ROUTES``
+(1), ``TYPES`` (2), and ``SOL_OFFSETS`` (3). They are sent only when
+``routes`` is non-empty.
 ``StartChunkedUpload`` rejects a VRP category.
 
 Chunked Download (Large Results)
