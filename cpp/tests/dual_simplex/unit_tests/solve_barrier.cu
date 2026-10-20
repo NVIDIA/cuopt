@@ -331,6 +331,9 @@ static void barrier_crossover_returns_vertex(int dualize)
                                 (cover_slack > positive) + (capacity_slack > positive);
   EXPECT_LE(strictly_positive, m) << "x = (" << x[0] << ", " << x[1] << ", " << x[2]
                                   << ") is not a vertex";
+  // The residuals describe the returned vertex (crossover leaves them NaN)
+  EXPECT_LE(solution.l2_primal_residual, 1e-8);
+  EXPECT_LE(solution.l2_dual_residual, 1e-8);
 }
 
 TEST(barrier, crossover_returns_vertex) { barrier_crossover_returns_vertex(0); }
