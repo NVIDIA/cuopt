@@ -239,6 +239,26 @@ TEST(RoutingProblemMapper, ShortMatrixChunkThrows)
                std::invalid_argument);
 }
 
+TEST(RoutingProblemMapper, UnmatchedChunkThrows)
+{
+  cuopt::remote::RoutingProblem pb;
+  pb.set_num_locations(5);
+  pb.add_cost_matrices()->set_vehicle_type(0);
+
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>
+    containers;
+  // Index 5 matches no cost matrix. The header has one matrix, at index 0.
+  containers[{cuopt::remote::RoutingProblem::kCostMatricesFieldNumber,
+              5,
+              static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES)}] =
+    std::vector<uint8_t>(25 * sizeof(float), 0);
+
+  cuopt::routing::cpu_routing_problem_t back;
+  EXPECT_THROW(cuopt::routing::map_proto_to_routing_problem(pb, back, arrays, containers),
+               std::invalid_argument);
+}
+
 TEST(RoutingProblemMapper, ChunkRestoresFlattenedVehicleBreaks)
 {
   auto p = make_base_problem();

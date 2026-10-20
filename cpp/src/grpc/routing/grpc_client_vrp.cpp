@@ -43,6 +43,30 @@ void append_routing_nonmatrix_chunks(std::vector<cuopt::remote::SendArrayChunkRe
 #include "generated_routing_nonmatrix_chunks.inc"
 }
 
+// Bytes in a protobuf varint. Matches CodedOutputStream::VarintSize for values
+// that fit in a protobuf message (under 2 GiB).
+int64_t varint_bytes(uint64_t value)
+{
+  int64_t bytes = 1;
+  while (value >= 128) {
+    value >>= 7;
+    ++bytes;
+  }
+  return bytes;
+}
+
+// StartChunkedUploadV2Request carries the job as one length-delimited message
+// field. An empty job is omitted. Otherwise the wrapper adds the field tag and
+// a varint length in front of the job payload.
+int64_t chunked_upload_v2_bytes(const cuopt::remote::SubmitJobRequest& job)
+{
+  const uint64_t payload = job.ByteSizeLong();
+  if (payload == 0) { return 0; }
+  const uint64_t tag =
+    static_cast<uint64_t>(cuopt::remote::StartChunkedUploadV2Request::kJobFieldNumber) << 3;
+  return static_cast<int64_t>(payload) + varint_bytes(tag) + varint_bytes(payload);
+}
+
 }  // namespace
 
 submit_result_t grpc_client_t::submit_vrp(
@@ -93,13 +117,10 @@ submit_result_t grpc_client_t::submit_vrp(
   if (!server_limit_unknown && srv_max < hard_limit) { hard_limit = srv_max; }
 
   if (use_chunked) {
-    cuopt::remote::StartChunkedUploadV2Request wrapped;
-    *wrapped.mutable_job()  = header;
     bool chunk_other_arrays = false;
-    if (static_cast<int64_t>(wrapped.ByteSizeLong()) > hard_limit) {
+    if (chunked_upload_v2_bytes(header) > hard_limit) {
       map_routing_problem_to_proto(problem, vrp_job->mutable_problem(), false, false);
-      *wrapped.mutable_job() = header;
-      if (static_cast<int64_t>(wrapped.ByteSizeLong()) > hard_limit) {
+      if (chunked_upload_v2_bytes(header) > hard_limit) {
         result.error_message = "VRP request header exceeds the maximum message size";
         return result;
       }
