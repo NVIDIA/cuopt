@@ -39,20 +39,11 @@ mip_solver_settings_t<i_t, f_t>::get_mip_callbacks() const
   return mip_callbacks_;
 }
 
-template <typename i_t, typename f_t>
-typename mip_solver_settings_t<i_t, f_t>::tolerances_t
-mip_solver_settings_t<i_t, f_t>::get_tolerances() const noexcept
-{
-  return tolerances;
-}
-
 #if MIP_INSTANTIATE_FLOAT
 template CUOPT_EXPORT void mip_solver_settings_t<int, float>::set_mip_callback(
   internals::base_solution_callback_t*, void*);
 template CUOPT_EXPORT const std::vector<internals::base_solution_callback_t*>
 mip_solver_settings_t<int, float>::get_mip_callbacks() const;
-template CUOPT_EXPORT mip_solver_settings_t<int, float>::tolerances_t
-mip_solver_settings_t<int, float>::get_tolerances() const noexcept;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
@@ -60,8 +51,6 @@ template CUOPT_EXPORT void mip_solver_settings_t<int, double>::set_mip_callback(
   internals::base_solution_callback_t*, void*);
 template CUOPT_EXPORT const std::vector<internals::base_solution_callback_t*>
 mip_solver_settings_t<int, double>::get_mip_callbacks() const;
-template CUOPT_EXPORT mip_solver_settings_t<int, double>::tolerances_t
-mip_solver_settings_t<int, double>::get_tolerances() const noexcept;
 #endif
 
 }  // namespace cuopt::mathematical_optimization

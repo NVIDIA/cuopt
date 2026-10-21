@@ -18,6 +18,7 @@
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_parameter_registry.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <optional>
@@ -108,10 +109,9 @@ class solver_settings_t {
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
   mip_solver_settings_t<i_t, f_t> mip_settings;
 
-  std::vector<parameter_info_t<f_t>> float_parameters;
-  std::vector<parameter_info_t<i_t>> int_parameters;
-  std::vector<parameter_info_t<bool>> bool_parameters;
-  std::vector<parameter_info_t<std::string>> string_parameters;
+  // Names, defaults and ranges live in solver_parameter_registry_t, shared with
+  // cpu_solver_settings_t. Declared after the two settings objects it points into.
+  solver_parameter_registry_t<i_t, f_t> registry_;
 };
 
 }  // namespace CUOPT_EXPORT mathematical_optimization

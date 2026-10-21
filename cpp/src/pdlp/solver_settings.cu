@@ -25,17 +25,6 @@
 namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_optimality_tolerance(f_t eps_optimal)
-{
-  tolerances.absolute_dual_tolerance   = eps_optimal;
-  tolerances.relative_dual_tolerance   = eps_optimal;
-  tolerances.absolute_primal_tolerance = eps_optimal;
-  tolerances.relative_primal_tolerance = eps_optimal;
-  tolerances.absolute_gap_tolerance    = eps_optimal;
-  tolerances.relative_gap_tolerance    = eps_optimal;
-}
-
-template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_initial_primal_solution(
   const f_t* initial_primal_solution, i_t size, cuda::stream_ref stream)
 {

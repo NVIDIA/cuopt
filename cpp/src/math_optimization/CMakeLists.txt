@@ -19,6 +19,7 @@ set(MATH_OPT_SRC_FILES ${MATH_OPT_SRC_FILES} PARENT_SCOPE)
 # in its public API, so this is required for the client library to resolve standalone.
 set(MATH_OPT_CLIENT_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_parameter_registry.cpp
   )
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES}

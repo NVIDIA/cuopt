@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/mathematical_optimization/cpu_solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
@@ -430,6 +431,64 @@ TEST(SolverSettingsWrapperTest, MipCallbackRegistrationAndTolerances)
   using tolerances_t          = mip_solver_settings_t<int, double>::tolerances_t;
   double default_absolute_tol = tolerances_t{}.absolute_tolerance;
   EXPECT_DOUBLE_EQ(tolerances.absolute_tolerance, default_absolute_tol);
+}
+
+// cpu_solver_settings_t and solver_settings_t bind the same registry, so they must list the same
+// parameters with the same defaults and accept the same values. This is what keeps the CPU-only
+// settings from drifting from the GPU ones.
+TEST(CpuSolverSettingsTest, SameParametersAndDefaultsAsSolverSettings)
+{
+  solver_settings_t<int, double> gpu_settings{};
+  cpu_solver_settings_t<int, double> cpu_settings{};
+
+  auto gpu_names = gpu_settings.get_parameter_names();
+  auto cpu_names = cpu_settings.get_parameter_names();
+  ASSERT_FALSE(gpu_names.empty());
+  EXPECT_EQ(gpu_names, cpu_names);
+
+  for (const auto& name : gpu_names) {
+    EXPECT_EQ(gpu_settings.get_parameter_as_string(name),
+              cpu_settings.get_parameter_as_string(name))
+      << "default differs for " << name;
+  }
+
+  // Every name takes its own default value back, on both.
+  for (const auto& name : gpu_names) {
+    const auto value = gpu_settings.get_parameter_as_string(name);
+    EXPECT_NO_THROW(gpu_settings.set_parameter_from_string(name, value)) << name;
+    EXPECT_NO_THROW(cpu_settings.set_parameter_from_string(name, value)) << name;
+  }
+}
+
+TEST(CpuSolverSettingsTest, SetByNameReachesTheParameterMembers)
+{
+  cpu_solver_settings_t<int, double> settings{};
+  settings.set_parameter(CUOPT_TIME_LIMIT, 4.5);
+  settings.set_parameter(CUOPT_ABSOLUTE_GAP_TOLERANCE, 1e-7);
+  settings.set_parameter(CUOPT_MIP_ABSOLUTE_TOLERANCE, 2e-7);
+
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_parameters().time_limit, 4.5);
+  EXPECT_DOUBLE_EQ(settings.get_mip_parameters().time_limit, 4.5);
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_parameters().tolerances.absolute_gap_tolerance, 1e-7);
+  EXPECT_DOUBLE_EQ(settings.get_mip_parameters().tolerances.absolute_tolerance, 2e-7);
+  EXPECT_THROW(settings.set_parameter_from_string("no_such_parameter", "1"), std::invalid_argument);
+}
+
+// The plain bases leave every member reachable under its old name on the settings classes.
+TEST(SolverSettingsTest, ParameterMembersStayReachableOnSettingsClasses)
+{
+  pdlp_solver_settings_t<int, double> pdlp{};
+  pdlp.set_optimality_tolerance(1e-6);
+  pdlp.time_limit = 3.0;
+  EXPECT_DOUBLE_EQ(pdlp.tolerances.relative_gap_tolerance, 1e-6);
+  EXPECT_DOUBLE_EQ(pdlp.get_tolerances().absolute_dual_tolerance, 1e-6);
+  const pdlp_parameters_t<int, double>& pdlp_base = pdlp;
+  EXPECT_DOUBLE_EQ(pdlp_base.time_limit, 3.0);
+
+  mip_solver_settings_t<int, double> mip{};
+  mip.tolerances.integrality_tolerance          = 1e-4;
+  const mip_parameters_t<int, double>& mip_base = mip;
+  EXPECT_DOUBLE_EQ(mip_base.get_tolerances().integrality_tolerance, 1e-4);
 }
 
 }  // namespace cuopt::mathematical_optimization
