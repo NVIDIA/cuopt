@@ -23,8 +23,8 @@ namespace CUOPT_EXPORT mathematical_optimization {
  * @brief The solver parameters by name: the one table of names, defaults and ranges.
  *
  * Binds each CUOPT_* name to a member of a pdlp_parameters_t / mip_parameters_t and implements
- * set/get by name, parameter files and listing. solver_settings_t and cpu_solver_settings_t both
- * hold one, so the two cannot disagree on which parameters exist. Needs no CUDA, rmm or raft.
+ * set/get by name, parameter files and listing. solver_settings_t holds one. Needs no CUDA, rmm or
+ * raft, so it lives in the CPU-only client library.
  *
  * The registry points into the two parameter objects it was built on, so it is neither copyable
  * nor movable and must not outlive them.

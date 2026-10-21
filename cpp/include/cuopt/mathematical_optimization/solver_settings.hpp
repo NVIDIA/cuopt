@@ -110,8 +110,8 @@ class solver_settings_t {
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
   mip_solver_settings_t<i_t, f_t> mip_settings;
 
-  // Names, defaults and ranges live in solver_parameter_registry_t, shared with
-  // cpu_solver_settings_t. Declared after the two settings objects it points into.
+  // Names, defaults and ranges live in solver_parameter_registry_t, built into the CPU-only
+  // client library. Declared after the two settings objects it points into.
   solver_parameter_registry_t<i_t, f_t> registry_;
 };
 

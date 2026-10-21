@@ -5,7 +5,6 @@
  */
 /* clang-format on */
 
-#include <cuopt/mathematical_optimization/cpu_solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/utilities/opaque_ptr.hpp>
@@ -435,44 +434,32 @@ TEST(SolverSettingsWrapperTest, MipCallbackRegistrationAndTolerances)
   EXPECT_DOUBLE_EQ(tolerances.absolute_tolerance, default_absolute_tol);
 }
 
-// cpu_solver_settings_t and solver_settings_t bind the same registry, so they must list the same
-// parameters with the same defaults and accept the same values. This is what keeps the CPU-only
-// settings from drifting from the GPU ones.
-TEST(CpuSolverSettingsTest, SameParametersAndDefaultsAsSolverSettings)
+// Every registered name must accept the value it reports as its default; a table entry whose
+// default is outside its own range, or of the wrong type, would otherwise only fail in use.
+TEST(SolverSettingsTest, EveryParameterNameAcceptsItsOwnDefault)
 {
-  solver_settings_t<int, double> gpu_settings{};
-  cpu_solver_settings_t<int, double> cpu_settings{};
+  solver_settings_t<int, double> settings{};
 
-  auto gpu_names = gpu_settings.get_parameter_names();
-  auto cpu_names = cpu_settings.get_parameter_names();
-  ASSERT_FALSE(gpu_names.empty());
-  EXPECT_EQ(gpu_names, cpu_names);
-
-  for (const auto& name : gpu_names) {
-    EXPECT_EQ(gpu_settings.get_parameter_as_string(name),
-              cpu_settings.get_parameter_as_string(name))
-      << "default differs for " << name;
-  }
-
-  // Every name takes its own default value back, on both.
-  for (const auto& name : gpu_names) {
-    const auto value = gpu_settings.get_parameter_as_string(name);
-    EXPECT_NO_THROW(gpu_settings.set_parameter_from_string(name, value)) << name;
-    EXPECT_NO_THROW(cpu_settings.set_parameter_from_string(name, value)) << name;
+  auto names = settings.get_parameter_names();
+  ASSERT_FALSE(names.empty());
+  for (const auto& name : names) {
+    const auto value = settings.get_parameter_as_string(name);
+    EXPECT_NO_THROW(settings.set_parameter_from_string(name, value)) << name;
+    EXPECT_EQ(settings.get_parameter_as_string(name), value) << name;
   }
 }
 
-TEST(CpuSolverSettingsTest, SetByNameReachesTheParameterMembers)
+TEST(SolverSettingsTest, SetByNameReachesTheParameterMembers)
 {
-  cpu_solver_settings_t<int, double> settings{};
+  solver_settings_t<int, double> settings{};
   settings.set_parameter(CUOPT_TIME_LIMIT, 4.5);
   settings.set_parameter(CUOPT_ABSOLUTE_GAP_TOLERANCE, 1e-7);
   settings.set_parameter(CUOPT_MIP_ABSOLUTE_TOLERANCE, 2e-7);
 
-  EXPECT_DOUBLE_EQ(settings.get_pdlp_parameters().time_limit, 4.5);
-  EXPECT_DOUBLE_EQ(settings.get_mip_parameters().time_limit, 4.5);
-  EXPECT_DOUBLE_EQ(settings.get_pdlp_parameters().tolerances.absolute_gap_tolerance, 1e-7);
-  EXPECT_DOUBLE_EQ(settings.get_mip_parameters().tolerances.absolute_tolerance, 2e-7);
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().time_limit, 4.5);
+  EXPECT_DOUBLE_EQ(settings.get_mip_settings().time_limit, 4.5);
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().tolerances.absolute_gap_tolerance, 1e-7);
+  EXPECT_DOUBLE_EQ(settings.get_mip_settings().tolerances.absolute_tolerance, 2e-7);
   EXPECT_THROW(settings.set_parameter_from_string("no_such_parameter", "1"), std::invalid_argument);
 }
 
