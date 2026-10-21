@@ -870,6 +870,14 @@ cdef void _fill_i32(vector[int32_t]& v, arr) except *:
         v[i] = mv[i]
 
 
+cdef void _append_i32(vector[int32_t]& v, arr) except *:
+    cdef int32_t[::1] mv = np.ascontiguousarray(_to_host(arr), dtype=np.int32).ravel()
+    cdef Py_ssize_t n = mv.shape[0]
+    cdef Py_ssize_t i
+    for i in range(n):
+        v.push_back(mv[i])
+
+
 cdef void _fill_u8(vector[uint8_t]& v, arr) except *:
     cdef uint8_t[::1] mv = np.ascontiguousarray(_to_host(arr), dtype=np.uint8).ravel()
     cdef Py_ssize_t n = mv.shape[0]
@@ -981,6 +989,17 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
             _fill_i32(ub.earliest, args[0])
             _fill_i32(ub.latest, args[1])
             _fill_i32(ub.duration, args[2])
+            if len(args) > 3 and args[3] is not None:
+                for window in args[3]:
+                    if window is None:
+                        ub.load_window_active.push_back(0)
+                        for _ in range(p.fleet_size):
+                            ub.load_window_min.push_back(0)
+                            ub.load_window_max.push_back(0)
+                    else:
+                        ub.load_window_active.push_back(1)
+                        _append_i32(ub.load_window_min, window["min"])
+                        _append_i32(ub.load_window_max, window["max"])
             p.uniform_breaks.push_back(ub)
         elif name == "add_vehicle_break":
             vid = <int32_t>int(args[0])
@@ -990,6 +1009,14 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
             vb.duration = <int32_t>int(args[3])
             if len(args) > 4 and args[4] is not None:
                 _fill_i32(vb.locations, args[4])
+            if len(args) > 5 and args[5] is not None:
+                for window in args[5]:
+                    if window is None:
+                        vb.load_window_active.push_back(0)
+                    else:
+                        vb.load_window_active.push_back(1)
+                        vb.load_window_min.push_back(<int32_t>int(window[0]))
+                        vb.load_window_max.push_back(<int32_t>int(window[1]))
             p.vehicle_breaks[vid].push_back(vb)
         elif name == "add_vehicle_distance_break":
             vid = <int32_t>int(args[0])

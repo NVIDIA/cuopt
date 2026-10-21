@@ -141,7 +141,11 @@ class data_model_view_t {
   void add_break_dimension(i_t const* break_earliest,
                            i_t const* break_latest,
                            i_t const* break_duration,
-                           bool validate_input = true);
+                           bool validate_input = true,
+                           uint8_t const* break_load_window_active = nullptr,
+                           i_t const* break_load_window_min     = nullptr,
+                           i_t const* break_load_window_max     = nullptr,
+                           i_t n_break_load_window_dims         = 0);
 
   /**
    * @brief Add vehicle specific breaks
@@ -160,7 +164,11 @@ class data_model_view_t {
                          i_t break_duration,
                          i_t const* break_locations,
                          i_t num_break_locations,
-                         bool validate_input = true);
+                         bool validate_input = true,
+                         uint8_t const* break_load_window_active = nullptr,
+                         i_t const* break_load_window_min     = nullptr,
+                         i_t const* break_load_window_max     = nullptr,
+                         i_t n_break_load_window_dims         = 0);
 
   /**
    * @brief Add a distance-windowed break for a vehicle.

@@ -79,6 +79,9 @@ void map_proto_to_routing_problem(const cuopt::remote::RoutingProblem& pb,
     copy_repeated_to_vector(ub.earliest(), out.earliest);
     copy_repeated_to_vector(ub.latest(), out.latest);
     copy_repeated_to_vector(ub.duration(), out.duration);
+    copy_u32_to_u8(ub.load_window_active(), out.load_window_active);
+    copy_repeated_to_vector(ub.load_window_min(), out.load_window_min);
+    copy_repeated_to_vector(ub.load_window_max(), out.load_window_max);
     p.uniform_breaks.push_back(std::move(out));
   }
   for (auto const& pvb : pb.vehicle_breaks()) {
@@ -89,6 +92,9 @@ void map_proto_to_routing_problem(const cuopt::remote::RoutingProblem& pb,
       out.latest   = b.latest();
       out.duration = b.duration();
       copy_repeated_to_vector(b.locations(), out.locations);
+      copy_u32_to_u8(b.load_window_active(), out.load_window_active);
+      copy_repeated_to_vector(b.load_window_min(), out.load_window_min);
+      copy_repeated_to_vector(b.load_window_max(), out.load_window_max);
       breaks.push_back(std::move(out));
     }
     p.vehicle_breaks[pvb.vehicle_id()] = std::move(breaks);
@@ -200,6 +206,11 @@ void map_routing_problem_to_proto(const cuopt::routing::cpu_routing_problem_t& p
     copy_vector_to_repeated(ub.earliest, out->mutable_earliest());
     copy_vector_to_repeated(ub.latest, out->mutable_latest());
     copy_vector_to_repeated(ub.duration, out->mutable_duration());
+    for (auto active : ub.load_window_active) {
+      out->add_load_window_active(active);
+    }
+    copy_vector_to_repeated(ub.load_window_min, out->mutable_load_window_min());
+    copy_vector_to_repeated(ub.load_window_max, out->mutable_load_window_max());
   }
   for (auto const& [vehicle_id, breaks] : p.vehicle_breaks) {
     auto* out = pb->add_vehicle_breaks();
@@ -210,6 +221,11 @@ void map_routing_problem_to_proto(const cuopt::routing::cpu_routing_problem_t& p
       brk->set_latest(b.latest);
       brk->set_duration(b.duration);
       copy_vector_to_repeated(b.locations, brk->mutable_locations());
+      for (auto active : b.load_window_active) {
+        brk->add_load_window_active(active);
+      }
+      copy_vector_to_repeated(b.load_window_min, brk->mutable_load_window_min());
+      copy_vector_to_repeated(b.load_window_max, brk->mutable_load_window_max());
     }
   }
   for (auto const& [vehicle_id, breaks] : p.vehicle_distance_breaks) {

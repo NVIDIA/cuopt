@@ -11,7 +11,9 @@
 
 #include <raft/core/device_span.hpp>
 
+#include <array>
 #include <cstdint>
+#include <limits>
 #include <set>
 #include <string>
 #include <tuple>
@@ -37,16 +39,38 @@ enum class node_type_t : uint8_t { DEPOT = 0, PICKUP, DELIVERY, BREAK };
 
 using demand_i_t = int32_t;
 using cap_i_t    = int32_t;
+constexpr int max_break_load_window_dim = 3;
 
 namespace detail {
 
 template <typename i_t, typename f_t>
 class break_dimension_t {
  public:
-  break_dimension_t(i_t const* break_earliest, i_t const* break_latest, i_t const* break_duration)
+  break_dimension_t(i_t const* break_earliest,
+                    i_t const* break_latest,
+                    i_t const* break_duration,
+                    uint8_t const* break_load_window_active = nullptr,
+                    i_t const* break_load_window_min        = nullptr,
+                    i_t const* break_load_window_max        = nullptr,
+                    uint8_t n_break_load_window_dims        = 0,
+                    i_t fleet_size                          = 0)
     : break_earliest_(break_earliest), break_latest_(break_latest), break_duration_(break_duration)
   {
+    for (uint8_t dim = 0; dim < n_break_load_window_dims; ++dim) {
+      load_window_active_[dim] = break_load_window_active[dim];
+      if (load_window_active_[dim]) {
+        load_window_min_[dim] = break_load_window_min + dim * fleet_size;
+        load_window_max_[dim] = break_load_window_max + dim * fleet_size;
+      }
+    }
+    n_load_window_dims_ = n_break_load_window_dims;
   }
+
+  bool has_load_window(uint8_t dim) const { return load_window_active_[dim]; }
+
+  i_t const* get_break_load_window_min(uint8_t dim) const { return load_window_min_[dim]; }
+
+  i_t const* get_break_load_window_max(uint8_t dim) const { return load_window_max_[dim]; }
 
   std::tuple<i_t const*, i_t const*, i_t const*> get_breaks() const
   {
@@ -57,6 +81,10 @@ class break_dimension_t {
   i_t const* break_earliest_;
   i_t const* break_latest_;
   i_t const* break_duration_;
+  std::array<bool, max_break_load_window_dim> load_window_active_{};
+  std::array<i_t const*, max_break_load_window_dim> load_window_min_{};
+  std::array<i_t const*, max_break_load_window_dim> load_window_max_{};
+  uint8_t n_load_window_dims_{0};
 };
 
 /**
@@ -68,7 +96,14 @@ template <typename i_t, typename f_t>
 class vehicle_break_t {
  public:
   /// Time-windowed break: must start within [earliest, latest].
-  vehicle_break_t(i_t earliest, i_t latest, i_t duration, raft::device_span<const i_t> locations)
+  vehicle_break_t(i_t earliest,
+                  i_t latest,
+                  i_t duration,
+                  raft::device_span<const i_t> locations,
+                  uint8_t const* break_load_window_active = nullptr,
+                  i_t const* break_load_window_min        = nullptr,
+                  i_t const* break_load_window_max        = nullptr,
+                  uint8_t n_break_load_window_dims        = 0)
     : earliest_(earliest),
       latest_(latest),
       duration_(duration),
@@ -77,6 +112,13 @@ class vehicle_break_t {
       distance_min_(0),
       distance_max_(std::numeric_limits<f_t>::max())
   {
+    for (uint8_t dim = 0; dim < n_break_load_window_dims; ++dim) {
+      load_window_active_[dim] = break_load_window_active[dim];
+      if (load_window_active_[dim]) {
+        load_window_min_[dim] = break_load_window_min[dim];
+        load_window_max_[dim] = break_load_window_max[dim];
+      }
+    }
   }
 
   /// Distance-windowed break: distance_min is soft and distance_max is hard.
@@ -101,6 +143,9 @@ class vehicle_break_t {
   bool is_distance_based_;
   f_t distance_min_;
   f_t distance_max_;
+  std::array<bool, max_break_load_window_dim> load_window_active_{};
+  std::array<i_t, max_break_load_window_dim> load_window_min_{};
+  std::array<i_t, max_break_load_window_dim> load_window_max_{};
 };
 
 template <typename i_t, typename f_t>

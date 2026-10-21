@@ -36,6 +36,9 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         vector[int32_t] earliest
         vector[int32_t] latest
         vector[int32_t] duration
+        vector[uint8_t] load_window_active
+        vector[int32_t] load_window_min
+        vector[int32_t] load_window_max
 
     cdef cppclass cpu_vehicle_break_t:
         cpu_vehicle_break_t() except +
@@ -43,6 +46,9 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         int32_t latest
         int32_t duration
         vector[int32_t] locations
+        vector[uint8_t] load_window_active
+        vector[int32_t] load_window_min
+        vector[int32_t] load_window_max
 
     cdef cppclass cpu_vehicle_distance_break_t:
         cpu_vehicle_distance_break_t() except +

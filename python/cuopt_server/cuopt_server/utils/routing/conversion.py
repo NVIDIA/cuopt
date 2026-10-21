@@ -130,6 +130,7 @@ def populate_optimization_data(
                 fleet_data.vehicle_max_times,
                 fleet_data.vehicle_fixed_costs,
                 vehicle_distance_breaks=fleet_data.vehicle_distance_breaks,
+                vehicle_break_load_windows=fleet_data.vehicle_break_load_windows,
             )
         )
 
@@ -253,10 +254,27 @@ def create_data_model(
             v_break_durations = optimization_data.fleet_data[
                 "vehicle_break_durations"
             ][index]
+            v_break_load_windows = None
+            if optimization_data.fleet_data["vehicle_break_load_windows"] is not None:
+                v_break_load_windows = []
+                for dim_window in optimization_data.fleet_data[
+                    "vehicle_break_load_windows"
+                ][index]:
+                    if dim_window is None:
+                        v_break_load_windows.append(None)
+                        continue
+                    bounds = np.asarray(dim_window, dtype=np.int32)
+                    v_break_load_windows.append(
+                        {
+                            "min": pd.Series(bounds[:, 0], dtype=np.int32),
+                            "max": pd.Series(bounds[:, 1], dtype=np.int32),
+                        }
+                    )
             data_model.add_break_dimension(
                 v_break_time_windows["earliest"],
                 v_break_time_windows["latest"],
                 v_break_durations,
+                v_break_load_windows,
             )
 
     if optimization_data.fleet_data["vehicle_break_locations"] is not None:
@@ -283,6 +301,7 @@ def create_data_model(
                 data["latest"],
                 data["duration"],
                 pd.Series(data["locations"]),
+                data.get("load_windows"),
             )
 
     if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:

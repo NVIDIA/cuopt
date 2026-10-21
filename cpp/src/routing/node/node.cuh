@@ -25,6 +25,8 @@
 
 #include <routing/arc_value.hpp>
 
+#include <limits>
+
 namespace cuopt {
 namespace routing {
 namespace detail {
@@ -70,6 +72,16 @@ class node_t {
         request.info, next_node.request.info, vehicle_info);
       get_dimension<I>().calculate_forward(next_node.get_dimension<I>(), arc_value);
     });
+    if (dimensions_info.has_dimension(dim_t::BREAK) && dimensions_info.has_dimension(dim_t::CAP)) {
+      constexpr_for<max_capacity_dim>([&](auto i) {
+        if (i < next_node.capacity_dim.n_capacity_dimensions) {
+          next_node.break_dim.load_at_node[i] = next_node.capacity_dim.gathered[i];
+        }
+      });
+      next_node.break_dim.break_window_violations_forward =
+        break_dim.break_window_violations_forward +
+        (next_node.request.info.is_break() && !next_node.break_dim.satisfies_load_window());
+    }
   }
 
   // returns the cost delta of the new route after if we combine this node and next_node
@@ -110,6 +122,26 @@ class node_t {
         get_arc_of_dimension<i_t, f_t, I>(prev_node.request.info, request.info, vehicle_info);
       get_dimension<I>().calculate_backward(prev_node.get_dimension<I>(), arc_value);
     });
+    if (dimensions_info.has_dimension(dim_t::BREAK) && dimensions_info.has_dimension(dim_t::CAP)) {
+      constexpr_for<max_capacity_dim>([&](auto i) {
+        if (i < prev_node.capacity_dim.n_capacity_dimensions) {
+          i_t next_required_min = break_dim.incoming_min[i];
+          i_t next_required_max = break_dim.incoming_max[i];
+          if (prev_node.request.info.is_break() && prev_node.break_dim.load_window_active[i]) {
+            next_required_min = max(next_required_min, prev_node.break_dim.load_window_min[i]);
+            next_required_max = min(next_required_max, prev_node.break_dim.load_window_max[i]);
+          }
+          prev_node.break_dim.incoming_min[i] =
+            next_required_min == std::numeric_limits<i_t>::lowest()
+              ? std::numeric_limits<i_t>::lowest()
+              : next_required_min - prev_node.capacity_dim.demand[i];
+          prev_node.break_dim.incoming_max[i] =
+            next_required_max == std::numeric_limits<i_t>::max()
+              ? std::numeric_limits<i_t>::max()
+              : next_required_max - prev_node.capacity_dim.demand[i];
+        }
+      });
+    }
   }
 
   // returns the cost delta of the new route after if we combine this node and next_node

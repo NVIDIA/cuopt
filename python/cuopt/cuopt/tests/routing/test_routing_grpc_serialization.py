@@ -106,10 +106,19 @@ def test_populate_breaks():
     cost = np.ones((4, 4), dtype=np.float32)
     np.fill_diagonal(cost, 0)
     dm.add_cost_matrix(cost)
+    dm.add_capacity_dimension(
+        "load", np.zeros(4, np.int32), np.full(2, 10, np.int32)
+    )
     dm.add_break_dimension(
         np.full(2, 10, np.int32),
         np.full(2, 20, np.int32),
         np.full(2, 5, np.int32),
+        break_load_windows=[
+            {
+                "min": np.array([0, 1], np.int32),
+                "max": np.array([0, 3], np.int32),
+            }
+        ],
     )
     s = problem_summary(dm)
     assert s["uniform_breaks"] == 1
@@ -120,7 +129,17 @@ def test_populate_vehicle_breaks():
     cost = np.ones((5, 5), dtype=np.float32)
     np.fill_diagonal(cost, 0)
     dm.add_cost_matrix(cost)
-    dm.add_vehicle_break(0, 10, 20, 5, np.array([1, 2], np.int32))
+    dm.add_capacity_dimension(
+        "load", np.zeros(5, np.int32), np.full(2, 10, np.int32)
+    )
+    dm.add_vehicle_break(
+        0,
+        10,
+        20,
+        5,
+        np.array([1, 2], np.int32),
+        break_load_windows=[[0, 0]],
+    )
     dm.add_vehicle_break(1, 30, 40, 4)
     s = problem_summary(dm)
     assert s["vehicle_breaks"] == 2

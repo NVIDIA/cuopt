@@ -29,6 +29,9 @@ message VehicleBreak {
   int32 latest = 2;
   int32 duration = 3;
   repeated int32 locations = 4;
+  repeated uint32 load_window_active = 5;
+  repeated int32 load_window_min = 6;
+  repeated int32 load_window_max = 7;
 }
 
 message PerVehicleBreaks {
@@ -52,6 +55,9 @@ message UniformBreakDimension {
   repeated int32 earliest = 1;
   repeated int32 latest = 2;
   repeated int32 duration = 3;
+  repeated uint32 load_window_active = 4;
+  repeated int32 load_window_min = 5;
+  repeated int32 load_window_max = 6;
 }
 
 message MatchEntry {
