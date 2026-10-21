@@ -107,21 +107,15 @@ void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
   mip_settings.add_initial_solution(solution, size, stream);
 }
 
-template <typename i_t, typename f_t>
-solver_settings_t<i_t, f_t>::solver_settings_t()
-  : pdlp_settings(), mip_settings(), registry_(pdlp_settings, mip_settings)
-{
-}
-
 #if MIP_INSTANTIATE_FLOAT
-// Emits the ctor/dtor/copy for the whole class; solver_settings.cpp deliberately does not,
-// because those need CUDA (see the note there).
+// Emits the dtor for the whole class. The ctor is inline in the header and the by-name
+// parameter functions are in solver_settings.cpp, so a CPU-only caller needs none of this.
 template class CUOPT_EXPORT solver_settings_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-// Emits the ctor/dtor/copy for the whole class; solver_settings.cpp deliberately does not,
-// because those need CUDA (see the note there).
+// Emits the dtor for the whole class. The ctor is inline in the header and the by-name
+// parameter functions are in solver_settings.cpp, so a CPU-only caller needs none of this.
 template class CUOPT_EXPORT solver_settings_t<int, double>;
 #endif
 

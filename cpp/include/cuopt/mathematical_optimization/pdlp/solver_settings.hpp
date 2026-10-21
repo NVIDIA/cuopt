@@ -15,6 +15,7 @@
 #include <cuopt/mathematical_optimization/pdlp/pdlp_parameters.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/utilities/opaque_ptr.hpp>
 #include <optional>
 #include <raft/core/device_span.hpp>
 #include <rmm/device_uvector.hpp>
@@ -192,12 +193,17 @@ class pdlp_solver_settings_t : public pdlp_parameters_t<i_t, f_t> {
   /** Initial pdlp iteration */
   // TODO batch mode: tmp
   std::optional<i_t> initial_pdlp_iteration_;
-  /** GPU-backed warm start data (device_uvector), used by C++ API and local GPU solves */
-  pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
+  /** GPU-backed warm start data (device_uvector), used by C++ API and local GPU solves. Built on
+   * first use by the GPU library, so this class needs no GPU symbol to construct, copy or destroy.
+   */
+  mutable opaque_ptr_t<pdlp_warm_start_data_t<i_t, f_t>> gpu_warm_start_;
   /** Warm start data as spans over external memory, used by Cython/Python interface */
   pdlp_warm_start_data_view_t<i_t, f_t> pdlp_warm_start_data_view_;
   /** CPU-backed warm start data (std::vector), used for remote execution on CPU-only hosts */
   cpu_pdlp_warm_start_data_t<i_t, f_t> cpu_pdlp_warm_start_data_;
+
+  /** Creates the device warm start on first use. Defined in the GPU library. */
+  pdlp_warm_start_data_t<i_t, f_t>& gpu_warm_start() const;
 
   friend class solver_settings_t<i_t, f_t>;
 };

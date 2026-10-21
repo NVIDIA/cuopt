@@ -8,6 +8,7 @@
 #include <cuopt/mathematical_optimization/cpu_solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/utilities/opaque_ptr.hpp>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -19,6 +20,7 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cuopt::mathematical_optimization {
@@ -489,6 +491,84 @@ TEST(SolverSettingsTest, ParameterMembersStayReachableOnSettingsClasses)
   mip.tolerances.integrality_tolerance          = 1e-4;
   const mip_parameters_t<int, double>& mip_base = mip;
   EXPECT_DOUBLE_EQ(mip_base.get_tolerances().integrality_tolerance, 1e-4);
+}
+
+// opaque_ptr_t is what lets the settings hold GPU data without a GPU symbol for copy or destroy.
+// Copying must clone, as a by-value member would, never share.
+namespace {
+struct counted_t {
+  static inline int alive = 0;
+  int value;
+  explicit counted_t(int v = 0) : value(v) { ++alive; }
+  counted_t(const counted_t& o) : value(o.value) { ++alive; }
+  ~counted_t() { --alive; }
+};
+}  // namespace
+
+TEST(OpaquePtrTest, EmptyCopiesAndDestroysTrivially)
+{
+  opaque_ptr_t<counted_t> empty;
+  EXPECT_FALSE(empty);
+  opaque_ptr_t<counted_t> copy(empty);
+  EXPECT_FALSE(copy);
+  copy = empty;
+  EXPECT_FALSE(copy);
+  EXPECT_EQ(counted_t::alive, 0);
+}
+
+TEST(OpaquePtrTest, CopyClonesMoveTransfersAndDestroyReleases)
+{
+  {
+    auto a = opaque_ptr_t<counted_t>::make(7);
+    ASSERT_TRUE(a);
+    EXPECT_EQ(counted_t::alive, 1);
+
+    opaque_ptr_t<counted_t> b(a);
+    ASSERT_TRUE(b);
+    EXPECT_NE(a.get(), b.get());
+    EXPECT_EQ(b.get()->value, 7);
+    EXPECT_EQ(counted_t::alive, 2);
+
+    b.get()->value = 9;
+    EXPECT_EQ(a.get()->value, 7) << "a copy must not alias the original";
+
+    opaque_ptr_t<counted_t> c(std::move(b));
+    EXPECT_FALSE(b);
+    EXPECT_EQ(c.get()->value, 9);
+    EXPECT_EQ(counted_t::alive, 2);
+
+    a = c;
+    EXPECT_EQ(a.get()->value, 9);
+    EXPECT_EQ(counted_t::alive, 2);
+  }
+  EXPECT_EQ(counted_t::alive, 0);
+}
+
+// Copying a settings object copies its device warm start; the copy owns its own buffers.
+TEST(SolverSettingsTest, CopyOwnsItsDeviceWarmStart)
+{
+  raft::handle_t handle{};
+  pdlp_solver_settings_t<int, double> original{};
+  original.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.resize(
+    3, handle.get_stream());
+  ASSERT_TRUE(original.get_pdlp_warm_start_data().is_populated());
+
+  pdlp_solver_settings_t<int, double> copy(original);
+  ASSERT_TRUE(copy.get_pdlp_warm_start_data().is_populated());
+  EXPECT_NE(copy.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.data(),
+            original.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.data());
+
+  copy.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.resize(
+    5, handle.get_stream());
+  EXPECT_EQ(original.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.size(), 3u);
+}
+
+TEST(SolverSettingsTest, CopyOfSettingsWithoutWarmStartHasNone)
+{
+  pdlp_solver_settings_t<int, double> original{};
+  pdlp_solver_settings_t<int, double> copy(original);
+  EXPECT_FALSE(copy.get_pdlp_warm_start_data().is_populated());
+  EXPECT_FALSE(std::as_const(original).get_pdlp_warm_start_data().is_populated());
 }
 
 }  // namespace cuopt::mathematical_optimization

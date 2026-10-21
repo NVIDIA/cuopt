@@ -30,7 +30,8 @@ namespace CUOPT_EXPORT mathematical_optimization {
 template <typename i_t, typename f_t>
 class solver_settings_t {
  public:
-  solver_settings_t();
+  // Inline, so a CPU-only caller builds one without linking the GPU library.
+  solver_settings_t() : registry_(pdlp_settings, mip_settings) {}
 
   // Delete copy constructor
   solver_settings_t(const solver_settings_t& settings) = delete;
