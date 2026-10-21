@@ -198,18 +198,16 @@ void data_model_view_t<i_t, f_t>::add_break_dimension(i_t const* break_earliest,
                   error_type_t::ValidationError,
                   "break_duration values must be between min int32_t and max int32_t");
   }
-  if (validate_input) {
-    for (i_t dim = 0; dim < n_break_load_window_dims; ++dim) {
-      if (!load_window_active_h[dim]) { continue; }
-      auto* min_ptr = break_load_window_min + dim * get_fleet_size();
-      auto* max_ptr = break_load_window_max + dim * get_fleet_size();
-      auto min_h = cuopt::host_copy(min_ptr, get_fleet_size(), handle_ptr_->get_stream());
-      auto max_h = cuopt::host_copy(max_ptr, get_fleet_size(), handle_ptr_->get_stream());
-      for (i_t vehicle_id = 0; vehicle_id < get_fleet_size(); ++vehicle_id) {
-        cuopt_expects(min_h[vehicle_id] <= max_h[vehicle_id],
-                      error_type_t::ValidationError,
-                      "Break load window minimum must be less than or equal to maximum");
-      }
+  for (i_t dim = 0; dim < n_break_load_window_dims; ++dim) {
+    if (!load_window_active_h[dim]) { continue; }
+    auto* min_ptr = break_load_window_min + dim * get_fleet_size();
+    auto* max_ptr = break_load_window_max + dim * get_fleet_size();
+    auto min_h = cuopt::host_copy(min_ptr, get_fleet_size(), handle_ptr_->get_stream());
+    auto max_h = cuopt::host_copy(max_ptr, get_fleet_size(), handle_ptr_->get_stream());
+    for (i_t vehicle_id = 0; vehicle_id < get_fleet_size(); ++vehicle_id) {
+      cuopt_expects(min_h[vehicle_id] <= max_h[vehicle_id],
+                    error_type_t::ValidationError,
+                    "Break load window minimum must be less than or equal to maximum");
     }
   }
   break_dimensions_.emplace_back(break_earliest,
