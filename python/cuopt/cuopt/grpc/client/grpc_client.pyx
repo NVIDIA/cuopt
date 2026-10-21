@@ -896,6 +896,22 @@ cdef void _fill_f32(vector[float]& v, arr) except *:
         v[i] = mv[i]
 
 
+cdef list _i32_to_list(const vector[int32_t]& v):
+    cdef Py_ssize_t i
+    cdef list values = []
+    for i in range(v.size()):
+        values.append(int(v[i]))
+    return values
+
+
+cdef list _u8_to_list(const vector[uint8_t]& v):
+    cdef Py_ssize_t i
+    cdef list values = []
+    for i in range(v.size()):
+        values.append(int(v[i]))
+    return values
+
+
 # --- std::vector -> numpy ---------------------------------------------------
 
 cdef _i32_to_np(const vector[int32_t]& v):
@@ -997,6 +1013,13 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
                             ub.load_window_min.push_back(0)
                             ub.load_window_max.push_back(0)
                     else:
+                        if (
+                            len(window["min"]) != p.fleet_size
+                            or len(window["max"]) != p.fleet_size
+                        ):
+                            raise ValueError(
+                                "uniform break load-window bounds must match the fleet size"
+                            )
                         ub.load_window_active.push_back(1)
                         _append_i32(ub.load_window_min, window["min"])
                         _append_i32(ub.load_window_max, window["max"])
@@ -1013,6 +1036,8 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
                 for window in args[5]:
                     if window is None:
                         vb.load_window_active.push_back(0)
+                        vb.load_window_min.push_back(0)
+                        vb.load_window_max.push_back(0)
                     else:
                         vb.load_window_active.push_back(1)
                         vb.load_window_min.push_back(<int32_t>int(window[0]))
@@ -1071,7 +1096,41 @@ def problem_summary(data_model):
     server. Intended for tests.
     """
     cdef cpu_routing_problem_t p
+    cdef cpu_uniform_break_t uniform_break
+    cdef cpu_vehicle_break_t vehicle_break
+    cdef cpp_map[int32_t, vector[cpu_vehicle_break_t]].iterator vehicle_break_it
+    cdef vector[cpu_vehicle_break_t] vehicle_breaks
+    cdef Py_ssize_t i
+    cdef list uniform_break_load_windows = []
+    cdef list vehicle_break_windows
+    cdef dict vehicle_break_load_windows = {}
     _populate(p, data_model)
+    for i in range(p.uniform_breaks.size()):
+        uniform_break = p.uniform_breaks[i]
+        uniform_break_load_windows.append(
+            {
+                "active": _u8_to_list(uniform_break.load_window_active),
+                "min": _i32_to_list(uniform_break.load_window_min),
+                "max": _i32_to_list(uniform_break.load_window_max),
+            }
+        )
+    vehicle_break_it = p.vehicle_breaks.begin()
+    while vehicle_break_it != p.vehicle_breaks.end():
+        vehicle_breaks = deref(vehicle_break_it).second
+        vehicle_break_windows = []
+        for i in range(vehicle_breaks.size()):
+            vehicle_break = vehicle_breaks[i]
+            vehicle_break_windows.append(
+                {
+                    "active": _u8_to_list(vehicle_break.load_window_active),
+                    "min": _i32_to_list(vehicle_break.load_window_min),
+                    "max": _i32_to_list(vehicle_break.load_window_max),
+                }
+            )
+        vehicle_break_load_windows[int(deref(vehicle_break_it).first)] = (
+            vehicle_break_windows
+        )
+        postinc(vehicle_break_it)
     return {
         "num_locations": int(p.num_locations),
         "fleet_size": int(p.fleet_size),
@@ -1099,7 +1158,9 @@ def problem_summary(data_model):
         "capacity_dimensions": p.capacity_dimensions.size(),
         "break_locations": p.break_locations.size(),
         "uniform_breaks": p.uniform_breaks.size(),
+        "uniform_break_load_windows": uniform_break_load_windows,
         "vehicle_breaks": p.vehicle_breaks.size(),
+        "vehicle_break_load_windows": vehicle_break_load_windows,
         "vehicle_distance_breaks": p.vehicle_distance_breaks.size(),
         "vehicle_order_match": p.vehicle_order_match.size(),
         "order_vehicle_match": p.order_vehicle_match.size(),

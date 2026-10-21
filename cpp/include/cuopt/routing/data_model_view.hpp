@@ -137,6 +137,16 @@ class data_model_view_t {
    * @param[in] break_duration device memory pointer to the time of the break,
    * internally equivalent to service time.
    * @param[in] validate_input runs expensive input checks. Defaults to true.
+   * @param[in] break_load_window_active device pointer to one optional flag per capacity
+   * dimension.
+   * @param[in] break_load_window_min device pointer to inclusive lower bounds, laid out as
+   * `n_break_load_window_dims * fleet_size` values by capacity dimension.
+   * @param[in] break_load_window_max device pointer to inclusive upper bounds, laid out as
+   * `n_break_load_window_dims * fleet_size` values by capacity dimension.
+   * @param[in] n_break_load_window_dims number of capacity dimensions represented by the
+   * optional load-window buffers. It must equal the number of capacity dimensions, be at most
+   * three, and capacity dimensions must be added before this call. The minimum and maximum
+   * buffers are retained by pointer and must remain alive for the data model lifetime.
    */
   void add_break_dimension(i_t const* break_earliest,
                            i_t const* break_latest,
@@ -150,13 +160,22 @@ class data_model_view_t {
   /**
    * @brief Add vehicle specific breaks
    *
-   * @param vehicle_id
-   * @param break_earliest
-   * @param break_latest
-   * @param break_duration
-   * @param break_locations
-   * @param num_break_locations
-   * @param validate_input
+   * @param[in] vehicle_id vehicle receiving the break.
+   * @param[in] break_earliest earliest break start time.
+   * @param[in] break_latest latest break start time.
+   * @param[in] break_duration break duration.
+   * @param[in] break_locations device pointer to allowed break locations.
+   * @param[in] num_break_locations number of allowed break locations.
+   * @param[in] validate_input runs expensive input checks. Defaults to true.
+   * @param[in] break_load_window_active device pointer to one optional flag per capacity
+   * dimension.
+   * @param[in] break_load_window_min device pointer to `n_break_load_window_dims` inclusive
+   * lower bounds, one per capacity dimension.
+   * @param[in] break_load_window_max device pointer to `n_break_load_window_dims` inclusive
+   * upper bounds, one per capacity dimension.
+   * @param[in] n_break_load_window_dims number of capacity dimensions represented by the
+   * optional load-window buffers. It must equal the number of capacity dimensions, be at most
+   * three, and capacity dimensions must be added before this call. Values are copied.
    */
   void add_vehicle_break(i_t vehicle_id,
                          i_t break_earliest,

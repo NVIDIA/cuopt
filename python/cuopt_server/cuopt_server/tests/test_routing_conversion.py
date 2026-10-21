@@ -97,6 +97,35 @@ def test_host_conversion_keeps_dense_request_off_gpu(monkeypatch):
     assert summary["cost_matrices"] == 1
 
 
+def test_conversion_adds_capacity_before_break_load_windows():
+    optimization_data = conversion.populate_optimization_data(
+        cost_matrix_data=CostMatrices(data={0: [[0, 1], [1, 0]]}),
+        fleet_data=FleetData(
+            vehicle_locations=[[0, 0]],
+            capacities=[[10]],
+            vehicle_break_time_windows=[[[0, 10]]],
+            vehicle_break_durations=[[1]],
+            vehicle_break_load_windows=[[[[0, 0]]]],
+        ),
+        task_data=TaskData(task_locations=[1], demand=[[1]]),
+        solver_config=SolverSettingsConfig(time_limit=1),
+    )
+    prepared, cost_matrix, travel_time_matrix, _ = (
+        conversion.prep_optimization_data(optimization_data)
+    )
+    _, data_model = conversion.create_data_model(
+        prepared,
+        cost_matrix=cost_matrix,
+        travel_time_matrix=travel_time_matrix,
+    )
+
+    summary = problem_summary(data_model)
+    assert summary["capacity_dimensions"] == 1
+    assert summary["uniform_break_load_windows"] == [
+        {"active": [1], "min": [0], "max": [0]}
+    ]
+
+
 def test_build_routing_datamodel_from_json_accepts_dict():
     data_model, solver_settings = build_routing_datamodel_from_json(
         {

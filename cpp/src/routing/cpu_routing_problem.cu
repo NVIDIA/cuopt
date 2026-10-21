@@ -244,6 +244,14 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
   }
 
   for (auto const& ub : uniform_breaks) {
+    auto n_dims = static_cast<int32_t>(ub.load_window_active.size());
+    if ((n_dims == 0 && (!ub.load_window_min.empty() || !ub.load_window_max.empty())) ||
+        (n_dims > 0 &&
+         (n_dims != static_cast<int32_t>(capacity_dimensions.size()) ||
+          ub.load_window_min.size() != static_cast<size_t>(n_dims) * fleet_size ||
+          ub.load_window_max.size() != static_cast<size_t>(n_dims) * fleet_size))) {
+      throw std::invalid_argument("cpu_routing_problem_t::to_device: invalid uniform break load windows");
+    }
     auto d_e = copy_vector(ub.earliest, stream);
     auto d_l = copy_vector(ub.latest, stream);
     auto d_d = copy_vector(ub.duration, stream);
@@ -253,14 +261,6 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
     auto d_active = copy_vector(ub.load_window_active, stream);
     auto d_min    = copy_vector(ub.load_window_min, stream);
     auto d_max    = copy_vector(ub.load_window_max, stream);
-    auto n_dims   = static_cast<int32_t>(ub.load_window_active.size());
-    if ((n_dims == 0 && (!ub.load_window_min.empty() || !ub.load_window_max.empty())) ||
-        (n_dims > 0 &&
-         (n_dims != static_cast<int32_t>(capacity_dimensions.size()) ||
-          ub.load_window_min.size() != static_cast<size_t>(n_dims * fleet_size) ||
-          ub.load_window_max.size() != static_cast<size_t>(n_dims * fleet_size)))) {
-      throw std::invalid_argument("cpu_routing_problem_t::to_device: invalid uniform break load windows");
-    }
     view.add_break_dimension(d_e->data(),
                              d_l->data(),
                              d_d->data(),
@@ -279,13 +279,7 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
 
   for (auto const& [vehicle_id, breaks] : vehicle_breaks) {
     for (auto const& brk : breaks) {
-      auto d_locs            = copy_vector(brk.locations, stream);
-      int32_t n_locs         = d_locs ? static_cast<int32_t>(d_locs->size()) : 0;
-      int32_t const* loc_ptr = d_locs ? d_locs->data() : nullptr;
-      auto d_active          = copy_vector(brk.load_window_active, stream);
-      auto d_min             = copy_vector(brk.load_window_min, stream);
-      auto d_max             = copy_vector(brk.load_window_max, stream);
-      auto n_dims            = static_cast<int32_t>(brk.load_window_active.size());
+      auto n_dims = static_cast<int32_t>(brk.load_window_active.size());
       if ((n_dims == 0 && (!brk.load_window_min.empty() || !brk.load_window_max.empty())) ||
           (n_dims > 0 &&
            (n_dims != static_cast<int32_t>(capacity_dimensions.size()) ||
@@ -293,6 +287,12 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
             brk.load_window_max.size() != static_cast<size_t>(n_dims)))) {
         throw std::invalid_argument("cpu_routing_problem_t::to_device: invalid vehicle break load windows");
       }
+      auto d_locs            = copy_vector(brk.locations, stream);
+      int32_t n_locs         = d_locs ? static_cast<int32_t>(d_locs->size()) : 0;
+      int32_t const* loc_ptr = d_locs ? d_locs->data() : nullptr;
+      auto d_active          = copy_vector(brk.load_window_active, stream);
+      auto d_min             = copy_vector(brk.load_window_min, stream);
+      auto d_max             = copy_vector(brk.load_window_max, stream);
       view.add_vehicle_break(
         vehicle_id,
         brk.earliest,

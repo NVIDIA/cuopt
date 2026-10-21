@@ -11,6 +11,8 @@
 
 #include <raft/core/device_span.hpp>
 
+#include <utilities/macros.cuh>
+
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -46,6 +48,15 @@ namespace detail {
 template <typename i_t, typename f_t>
 class break_dimension_t {
  public:
+  // The fixed-size node storage uses the routing capacity-dimension limit.
+  static_assert(max_break_load_window_dim == 3);
+
+  /**
+   * @brief Construct a uniform break dimension.
+   *
+   * The optional load-window minimum and maximum device buffers are retained
+   * by pointer and must outlive this object.
+   */
   break_dimension_t(i_t const* break_earliest,
                     i_t const* break_latest,
                     i_t const* break_duration,
@@ -56,6 +67,13 @@ class break_dimension_t {
                     i_t fleet_size                          = 0)
     : break_earliest_(break_earliest), break_latest_(break_latest), break_duration_(break_duration)
   {
+    if (n_break_load_window_dims > 0) {
+      cuopt_assert(n_break_load_window_dims <= max_break_load_window_dim,
+                   "Too many break load window dimensions");
+      cuopt_assert(break_load_window_active != nullptr && break_load_window_min != nullptr &&
+                     break_load_window_max != nullptr,
+                   "Break load window inputs cannot be null");
+    }
     for (uint8_t dim = 0; dim < n_break_load_window_dims; ++dim) {
       load_window_active_[dim] = break_load_window_active[dim];
       if (load_window_active_[dim]) {
@@ -95,7 +113,11 @@ class break_dimension_t {
 template <typename i_t, typename f_t>
 class vehicle_break_t {
  public:
-  /// Time-windowed break: must start within [earliest, latest].
+  /**
+   * @brief Construct a time-windowed break that must start within [earliest, latest].
+   *
+   * Scalar load-window values are copied into this object.
+   */
   vehicle_break_t(i_t earliest,
                   i_t latest,
                   i_t duration,
@@ -112,6 +134,13 @@ class vehicle_break_t {
       distance_min_(0),
       distance_max_(std::numeric_limits<f_t>::max())
   {
+    if (n_break_load_window_dims > 0) {
+      cuopt_assert(n_break_load_window_dims <= max_break_load_window_dim,
+                   "Too many break load window dimensions");
+      cuopt_assert(break_load_window_active != nullptr && break_load_window_min != nullptr &&
+                     break_load_window_max != nullptr,
+                   "Break load window inputs cannot be null");
+    }
     for (uint8_t dim = 0; dim < n_break_load_window_dims; ++dim) {
       load_window_active_[dim] = break_load_window_active[dim];
       if (load_window_active_[dim]) {

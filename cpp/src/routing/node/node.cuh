@@ -31,6 +31,18 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
+template <typename i_t>
+HDI i_t saturating_subtract(i_t value, i_t subtrahend) noexcept
+{
+  if (subtrahend > 0 && value < std::numeric_limits<i_t>::lowest() + subtrahend) {
+    return std::numeric_limits<i_t>::lowest();
+  }
+  if (subtrahend < 0 && value > std::numeric_limits<i_t>::max() + subtrahend) {
+    return std::numeric_limits<i_t>::max();
+  }
+  return value - subtrahend;
+}
+
 template <typename i_t, typename f_t, request_t REQUEST>
 class node_t {
  public:
@@ -134,11 +146,11 @@ class node_t {
           prev_node.break_dim.incoming_min[i] =
             next_required_min == std::numeric_limits<i_t>::lowest()
               ? std::numeric_limits<i_t>::lowest()
-              : next_required_min - prev_node.capacity_dim.demand[i];
+              : saturating_subtract(next_required_min, prev_node.capacity_dim.demand[i]);
           prev_node.break_dim.incoming_max[i] =
             next_required_max == std::numeric_limits<i_t>::max()
               ? std::numeric_limits<i_t>::max()
-              : next_required_max - prev_node.capacity_dim.demand[i];
+              : saturating_subtract(next_required_max, prev_node.capacity_dim.demand[i]);
         }
       });
     }

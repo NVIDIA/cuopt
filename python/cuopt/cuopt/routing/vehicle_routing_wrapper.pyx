@@ -529,6 +529,13 @@ cdef class DataModel:
             for dim, window in enumerate(break_load_windows):
                 if window is None:
                     continue
+                if (
+                    len(window["min"]) != self.get_fleet_size()
+                    or len(window["max"]) != self.get_fleet_size()
+                ):
+                    raise ValueError(
+                        "break load window min and max must match the fleet size"
+                    )
                 active[dim] = 1
                 mins[dim] = cp.asarray(type_cast(
                     window["min"], np.int32, "break_load_window_min"
