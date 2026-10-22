@@ -550,7 +550,7 @@ if (NOT SKIP_GRPC_BUILD)
     set(GRPC_SERVICE_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote_service.grpc.pb.h")
 
     # Routing proto (standalone VRP messages; imported by service proto)
-    set(ROUTING_PROTO_FILE "${PROTO_PATH_ROUTING}/cuopt_routing.proto")
+    set(ROUTING_PROTO_FILE "${PROTO_PATH_GEN}/cuopt_routing.proto")
     set(ROUTING_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing.pb.cc")
     set(ROUTING_PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing.pb.h")
 
@@ -558,9 +558,9 @@ if (NOT SKIP_GRPC_BUILD)
             OUTPUT "${ROUTING_PROTO_SRCS}" "${ROUTING_PROTO_HDRS}"
             COMMAND ${_PROTOBUF_PROTOC}
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+            --proto_path ${PROTO_PATH_GEN}
             --proto_path ${PROTO_PATH_ROUTING}
             --proto_path ${PROTO_PATH_MANUAL}
-            --proto_path ${PROTO_PATH_GEN}
             ${ROUTING_PROTO_FILE}
             DEPENDS ${ROUTING_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_routing.proto"
@@ -1403,7 +1403,7 @@ if(NOT SKIP_GRPC_BUILD)
             ${PROTO_PATH_MANUAL}/cuopt_remote_service.proto
             ${PROTO_PATH_MANUAL}/cuopt_remote.proto
             ${PROTO_PATH_GEN}/cuopt_remote_data.proto
-            ${PROTO_PATH_ROUTING}/cuopt_routing.proto
+            ${PROTO_PATH_GEN}/cuopt_routing.proto
             ${PROTO_PATH_ROUTING}/cuopt_routing_solution.proto
             DESTINATION ${CMAKE_INSTALL_DATADIR}/cuopt/proto
             COMPONENT client-dev

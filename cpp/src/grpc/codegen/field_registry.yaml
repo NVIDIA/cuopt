@@ -1534,3 +1534,202 @@ optimization_problem:
         - [linear_values, linear_indices]
         - [rows, cols]
         - [cols, vals]
+
+# RoutingProblem. Field numbers match the unary message clients already send.
+# Top-level array_id values continue the ArrayFieldId pool after the LP/MIP ids.
+# Container-relative array_id values restart at 0 inside each message.
+routing_settings:
+  proto_message: RoutingSolverSettings
+  fields:
+  - time_limit:
+      field_num: 1
+      type: optional float
+  - verbose:
+      field_num: 2
+      type: bool
+  - error_logging:
+      field_num: 3
+      type: bool
+  - dump_best_results_path:
+      field_num: 10
+      type: string
+  - dump_best_results_interval:
+      field_num: 11
+      type: int32
+
+routing_problem:
+  cpp_type: cpu_routing_problem_t
+  proto_message: RoutingProblem
+  scalars:
+  - num_locations: {field_num: 1, type: int32}
+  - fleet_size: {field_num: 2, type: int32}
+  - num_orders: {field_num: 3, type: int32}
+  - min_vehicles: {field_num: 91, type: int32}
+  arrays:
+  - vehicle_start_locations: {field_num: 20, array_id: 18, type: repeated int32}
+  - vehicle_return_locations: {field_num: 21, array_id: 19, type: repeated int32}
+  - vehicle_tw_earliest: {field_num: 22, array_id: 20, type: repeated int32}
+  - vehicle_tw_latest: {field_num: 23, array_id: 21, type: repeated int32}
+  - vehicle_types:
+      field_num: 24
+      array_id: 22
+      type: repeated uint32
+      element_size: 1
+      proto_copy: u8_to_u32
+      wire_comment: "raw uint8, 1 B/elem; the unary field is uint32"
+  - drop_return_trips:
+      field_num: 25
+      array_id: 23
+      type: repeated bool
+      element_size: 1
+      proto_copy: u8_to_bool
+      wire_comment: "raw uint8 0/1, 1 B/elem; the unary field is bool"
+  - skip_first_trips:
+      field_num: 26
+      array_id: 24
+      type: repeated bool
+      element_size: 1
+      proto_copy: u8_to_bool
+      wire_comment: "raw uint8 0/1, 1 B/elem; the unary field is bool"
+  - vehicle_max_costs: {field_num: 27, array_id: 25, type: repeated float}
+  - vehicle_max_times: {field_num: 28, array_id: 26, type: repeated float}
+  - vehicle_fixed_costs: {field_num: 29, array_id: 27, type: repeated float}
+  - order_locations: {field_num: 30, array_id: 28, type: repeated int32}
+  - order_tw_earliest: {field_num: 31, array_id: 29, type: repeated int32}
+  - order_tw_latest: {field_num: 32, array_id: 30, type: repeated int32}
+  - order_prizes: {field_num: 33, array_id: 31, type: repeated float}
+  - pickup_indices: {field_num: 40, array_id: 32, type: repeated int32}
+  - delivery_indices: {field_num: 41, array_id: 33, type: repeated int32}
+  - break_locations: {field_num: 60, array_id: 34, type: repeated int32}
+  member_records:
+  - cost_matrices:
+      field_num: 10
+      message_type: CostMatrix
+      cpp_type: cpu_cost_matrix_t
+      scalars:
+      - vehicle_type:
+          field_num: 1
+          type: uint32
+          from_proto_cast: uint8_t
+          to_proto_cast: uint32_t
+      arrays:
+      - values:
+          field_num: 2
+          array_id: 0
+          type: repeated float
+          member: matrix
+          matrix_values: true
+          wire_comment: "raw IEEE-754 float32, little-endian, 4 B/elem; row-major, n_locations x n_locations. Not protobuf tag 2."
+  - transit_time_matrices:
+      field_num: 11
+      message_type: CostMatrix
+      cpp_type: cpu_cost_matrix_t
+      define_message: false
+  - capacity_dimensions:
+      field_num: 50
+      message_type: CapacityDimension
+      cpp_type: cpu_capacity_dimension_t
+      scalars:
+      - name: {field_num: 1, type: string}
+      arrays:
+      - demand: {field_num: 2, array_id: 0, type: repeated int32}
+      - capacity: {field_num: 3, array_id: 1, type: repeated int32}
+  - uniform_breaks:
+      field_num: 61
+      message_type: UniformBreakDimension
+      cpp_type: cpu_uniform_break_t
+      arrays:
+      - earliest: {field_num: 1, array_id: 0, type: repeated int32}
+      - latest: {field_num: 2, array_id: 1, type: repeated int32}
+      - duration: {field_num: 3, array_id: 2, type: repeated int32}
+      - load_window_active:
+          {
+            field_num: 4,
+            array_id: 3,
+            type: repeated uint32,
+            element_size: 1,
+            proto_copy: u8_to_u32,
+            wire_comment: "raw uint8, 1 B/elem; the unary field is uint32",
+          }
+      - load_window_min: {field_num: 5, array_id: 4, type: repeated int32}
+      - load_window_max: {field_num: 6, array_id: 5, type: repeated int32}
+  # Nested array chunks use a flat container_index across every group's entries,
+  # not the index of the repeated field. The generated proto repeats this.
+  keyed_records:
+  - vehicle_breaks:
+      field_num: 62
+      message_type: PerVehicleBreaks
+      entry_message: VehicleBreak
+      entry_cpp_type: cpu_vehicle_break_t
+      entry_field: breaks
+      entry_field_num: 2
+      key: {name: vehicle_id, field_num: 1, type: int32}
+      scalars:
+      - earliest: {field_num: 1, type: int32}
+      - latest: {field_num: 2, type: int32}
+      - duration: {field_num: 3, type: int32}
+      arrays:
+      - locations: {field_num: 4, array_id: 0, type: repeated int32}
+      - load_window_active:
+          {
+            field_num: 5,
+            array_id: 1,
+            type: repeated uint32,
+            element_size: 1,
+            proto_copy: u8_to_u32,
+            wire_comment: "raw uint8, 1 B/elem; the unary field is uint32",
+          }
+      - load_window_min: {field_num: 6, array_id: 2, type: repeated int32}
+      - load_window_max: {field_num: 7, array_id: 3, type: repeated int32}
+  - vehicle_distance_breaks:
+      field_num: 63
+      message_type: PerVehicleDistanceBreaks
+      entry_message: VehicleDistanceBreak
+      entry_cpp_type: cpu_vehicle_distance_break_t
+      entry_field: breaks
+      entry_field_num: 2
+      key: {name: vehicle_id, field_num: 1, type: int32}
+      scalars:
+      - distance_min: {field_num: 1, type: float}
+      - distance_max: {field_num: 2, type: float}
+      - duration: {field_num: 3, type: int32}
+      arrays:
+      - locations: {field_num: 4, array_id: 0, type: repeated int32}
+  keyed_vectors:
+  - order_service_times:
+      field_num: 34
+      message_type: ServiceTimeEntry
+      key: {name: vehicle_id, field_num: 1, type: int32}
+      values: {name: service_times, field_num: 2, array_id: 0, type: repeated int32}
+  - vehicle_order_match:
+      field_num: 70
+      message_type: MatchEntry
+      key: {name: id, field_num: 1, type: int32}
+      values: {name: matches, field_num: 2, array_id: 0, type: repeated int32}
+  - order_vehicle_match:
+      field_num: 71
+      message_type: MatchEntry
+      key: {name: id, field_num: 1, type: int32}
+      values: {name: matches, field_num: 2, array_id: 0, type: repeated int32}
+  - order_precedence:
+      field_num: 80
+      message_type: PrecedenceEntry
+      key: {name: order_id, field_num: 1, type: int32}
+      values: {name: preceding_orders, field_num: 2, array_id: 0, type: repeated int32}
+  optional_messages:
+  - objective:
+      field_num: 90
+      message_type: RoutingObjectiveFunction
+      encode_when: "!p.objectives.empty()"
+      arrays:
+      - objectives: {field_num: 1, array_id: 0, type: repeated int32, member: objectives}
+      - weights: {field_num: 2, array_id: 1, type: repeated float, member: objective_weights}
+  - initial_solutions:
+      field_num: 100
+      message_type: InitialSolution
+      encode_when: "!p.initial_solutions.routes.empty()"
+      arrays:
+      - vehicle_ids: {field_num: 1, array_id: 0, type: repeated int32, member: initial_solutions.vehicle_ids}
+      - routes: {field_num: 2, array_id: 1, type: repeated int32, member: initial_solutions.routes}
+      - types: {field_num: 3, array_id: 2, type: repeated int32, member: initial_solutions.types}
+      - sol_offsets: {field_num: 4, array_id: 3, type: repeated int32, member: initial_solutions.sol_offsets}

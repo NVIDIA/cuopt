@@ -11,7 +11,7 @@ The **CuOptRemoteService** gRPC API is defined in Protocol Buffers under the ``c
 * :download:`cuopt_remote_service.proto <protos/cuopt_remote_service.proto>` — service and job/chunk/log RPCs
 * :download:`cuopt_remote.proto <protos/cuopt_remote.proto>` — LP/MIP problem, settings, and result messages
 * :download:`cuopt_remote_data.proto <protos/cuopt_remote_data.proto>` — problem and result fields, including the array field ids used by chunked transfer. Generated from ``cpp/src/grpc/codegen/field_registry.yaml`` and committed to the repository.
-* :download:`cuopt_routing.proto <protos/cuopt_routing.proto>` — VRP request messages
+* :download:`cuopt_routing.proto <protos/cuopt_routing.proto>` — VRP request messages. Generated from ``cpp/src/grpc/codegen/field_registry.yaml`` and committed to the repository.
 * :download:`cuopt_routing_solution.proto <protos/cuopt_routing_solution.proto>` — VRP result messages
 
 Download all five as :download:`cuopt-protos.zip <cuopt-protos.zip>`. They import each other by file name, so keep them in one directory.
@@ -92,11 +92,40 @@ Chunked Upload (Large Problems)
 A chunked VRP upload uses ``StartChunkedUploadV2``. The header is a
 ``SubmitJobRequest``: ``vrp_request.settings`` and ``vrp_request.problem``,
 with each matrix ``values`` field left empty. Those values are container
-``ArrayChunk`` messages: ``container_field_num`` is 10 for ``cost_matrices``
-and 11 for ``transit_time_matrices``, ``container_index`` is the matrix index,
-and ``field_id`` is ``CostMatrix.ArrayId.VALUES``. ``VALUES`` is the
-container-relative array id, not the protobuf tag of ``values``. The payload
-is raw little-endian float32, row-major, ``n_locations`` by ``n_locations``.
+``ArrayChunk`` messages: ``container_field_num`` is the field number of
+``RoutingProblem.cost_matrices`` (10) or ``transit_time_matrices`` (11),
+``container_index`` is the matrix index, and ``field_id`` is
+``CostMatrix.ArrayId.VALUES``. ``VALUES`` is the container-relative array id,
+not the protobuf tag of ``values``. The payload is raw little-endian float32,
+row-major, ``n_locations`` by ``n_locations``.
+
+If that matrix-stripped header still exceeds the send limit, the other arrays
+are omitted too and sent as ``ArrayChunk`` messages. Scalars and record keys
+stay in the header so the chunk indexes still line up. Top-level arrays leave
+``container_field_num`` and ``container_index`` unset. Their ``field_id`` is
+an ``ArrayFieldId``: ``FIELD_VEHICLE_START_LOCATIONS``,
+``FIELD_VEHICLE_RETURN_LOCATIONS``, ``FIELD_VEHICLE_TW_EARLIEST``,
+``FIELD_VEHICLE_TW_LATEST``, ``FIELD_VEHICLE_TYPES``,
+``FIELD_DROP_RETURN_TRIPS``, ``FIELD_SKIP_FIRST_TRIPS``,
+``FIELD_VEHICLE_MAX_COSTS``, ``FIELD_VEHICLE_MAX_TIMES``,
+``FIELD_VEHICLE_FIXED_COSTS``, ``FIELD_ORDER_LOCATIONS``,
+``FIELD_ORDER_TW_EARLIEST``, ``FIELD_ORDER_TW_LATEST``, ``FIELD_ORDER_PRIZES``,
+``FIELD_PICKUP_INDICES``, ``FIELD_DELIVERY_INDICES``, and
+``FIELD_BREAK_LOCATIONS``.
+
+Arrays inside repeated messages set ``container_field_num`` to the parent
+field number and ``field_id`` to that message's ``ArrayId``.
+``container_index`` is the entry index, except on ``vehicle_breaks`` (field
+62) and ``vehicle_distance_breaks`` (field 63). For those two fields it
+counts break entries across all vehicle groups, not the index of the repeated
+field. Break locations use ``VehicleBreak.ArrayId.LOCATIONS`` and
+``VehicleDistanceBreak.ArrayId.LOCATIONS``. ``objective`` chunks
+(``RoutingObjectiveFunction.ArrayId.OBJECTIVES`` and ``WEIGHTS``,
+``container_index`` 0) are sent only when ``objectives`` is non-empty.
+``initial_solutions`` chunks (field 100, ``container_index`` 0) use
+``InitialSolution.ArrayId``: ``VEHICLE_IDS`` (``field_id`` 0), ``ROUTES``
+(1), ``TYPES`` (2), and ``SOL_OFFSETS`` (3). They are sent only when
+``routes`` is non-empty.
 ``StartChunkedUpload`` rejects a VRP category.
 
 Chunked Download (Large Results)
@@ -141,7 +170,7 @@ Messages and Constraints
   as ``lp_request`` (``SolveLPRequest``) with quadratic fields on
   ``OptimizationProblem``. **VRP** rides the same ``SubmitJob``/``GetResult``
   RPCs as LP/MIP, as a ``vrp_request`` payload typed by
-  ``cpp/src/grpc/routing/cuopt_routing.proto`` (problem) and
+  ``cpp/src/grpc/codegen/generated/cuopt_routing.proto`` (problem) and
   ``cuopt_routing_solution.proto`` (result) -- not a separate service. There
   is no ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` remote-execution path for
   routing; use the gRPC routing client (:doc:`routing`) or REST for remote
