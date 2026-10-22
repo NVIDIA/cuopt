@@ -76,16 +76,10 @@ function try_download_from_s3() {
 
     # Try to sync from S3 (downloads from pdlp/ subdirectory)
     local success=true
-    local total=${#datasets[@]}
-    local count=0
-    for dataset in "${datasets[@]}"; do
-        count=$((count + 1))
-        if ! aws s3 sync "${s3_uri}${dataset}/" "$BASEDIR/${dataset}/" --exclude "*.sh" --only-show-errors; then
-            success=false
-        fi
-        printf "\rProgress: %d/%d" "$count" "$total"
-    done
-    echo ""
+    if ! printf '%s\n' "${datasets[@]}" | xargs -P 8 -I{} \
+        aws s3 sync "${s3_uri}{}/" "$BASEDIR/{}/" --exclude "*.sh" --only-show-errors; then
+        success=false
+    fi
 
     if $success; then
         echo "✓ Downloaded PDLP datasets from S3"

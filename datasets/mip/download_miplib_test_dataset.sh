@@ -116,16 +116,10 @@ function try_download_from_s3() {
 
     # Try to sync from S3 (downloads from miplib/ subdirectory)
     local success=true
-    local total=${#INSTANCES[@]}
-    local count=0
-    for instance in "${INSTANCES[@]}"; do
-        count=$((count + 1))
-        if ! aws s3 cp "${s3_uri}${instance}.mps" "$BASEDIR/${instance}.mps" --only-show-errors; then
-            success=false
-        fi
-        printf "\rProgress: %d/%d" "$count" "$total"
-    done
-    echo ""
+    if ! printf '%s\n' "${INSTANCES[@]}" | xargs -P 8 -I{} \
+        aws s3 cp "${s3_uri}{}.mps" "$BASEDIR/{}.mps" --only-show-errors; then
+        success=false
+    fi
 
     if $success; then
         echo "✓ Downloaded MIPLIB datasets from S3"
