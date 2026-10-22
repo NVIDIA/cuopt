@@ -528,7 +528,7 @@ dependencies:
           - matrix:
               dependencies: "oldest"
             packages:
-              - numba-cuda==0.22.*
+              - numba-cuda==0.30.2
               - numpy==2.0.*
           - matrix:
             packages:
@@ -1004,8 +1004,8 @@ dependencies:
           - libcusparse-dev
           - cuda-nvtx-dev
           - libnvjitlink-dev
-          # OpenMP 5.0 detached tasks (omp_fulfill_event); see ci/utils/install_modern_libgomp.sh
-          - libgomp >=9
+          # omp_fulfill_event@OMP_5.0.1, added in libgomp 11. See ci/utils/install_modern_libgomp.sh
+          - libgomp >=11
 
 
   # cublas only. libcuopt_routing's DT_NEEDED is cublas, rmm and rapids_logger --
@@ -1134,10 +1134,6 @@ dependencies:
       - output_types: conda
         matrices:
           - matrix:
-              py: "3.11"
-            packages:
-              - python=3.11
-          - matrix:
               py: "3.12"
             packages:
               - python=3.12
@@ -1151,7 +1147,7 @@ dependencies:
               - python=3.14
           - matrix:
             packages:
-              - python>=3.11,<3.15
+              - python>=3.12,<3.15
   test_cufile:
     specific:
       # The `cufile` extra was added to the `cuda-toolkit` metapackage in 12.6.3

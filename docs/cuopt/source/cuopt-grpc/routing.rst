@@ -66,13 +66,6 @@ and what ``result()`` and ``solve()`` return.
 Limitations and Roadmap
 =========================
 
-.. note::
-
-   For routing, gRPC currently supports problems of up to about 5500 locations
-   when a travel time matrix is included, or about 8000 locations when it is
-   not. For a larger problem, use a local :func:`cuopt.routing.Solve` or the
-   :doc:`legacy HTTP server <../cuopt-server/legacy-http-server>`.
-
 * **No transparent remote execution** — routing does not read
   ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT``; always pass host and port to
   ``RoutingClient`` explicitly. Tracked in `#1633
@@ -82,10 +75,6 @@ Limitations and Roadmap
   the solver would write that file on the server. ``dump_config_file`` is
   not forwarded; the local solve writes that YAML in the calling process.
   Tracked in `#1632 <https://github.com/NVIDIA/cuopt/issues/1632>`_.
-* **No chunking** — A problem or solution larger than the gRPC max message
-  size when serialized (256 MB by default) cannot be sent or received.
-  Tracked in `#1629
-  <https://github.com/NVIDIA/cuopt/issues/1629>`_.
 
 Next Steps
 ==========

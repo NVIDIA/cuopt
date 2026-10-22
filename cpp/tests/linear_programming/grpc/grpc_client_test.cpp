@@ -40,6 +40,7 @@
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.grpc.pb.h>
 #include <cuopt_remote_service.pb.h>
+#include <cuopt_routing.pb.h>
 #include <grpcpp/grpcpp.h>
 
 #include <limits>
@@ -155,6 +156,20 @@ class MockCuOptStub : public cuopt::remote::CuOptRemoteService::StubInterface {
               (grpc::ClientContext*,
                const cuopt::remote::FinishChunkedUploadRequest&,
                cuopt::remote::SubmitJobResponse*),
+              (override));
+
+  MOCK_METHOD(grpc::Status,
+              StartChunkedUploadV2,
+              (grpc::ClientContext*,
+               const cuopt::remote::StartChunkedUploadV2Request&,
+               cuopt::remote::StartChunkedUploadResponse*),
+              (override));
+
+  MOCK_METHOD(grpc::Status,
+              StartChunkedDownloadV2,
+              (grpc::ClientContext*,
+               const cuopt::remote::StartChunkedDownloadRequest&,
+               cuopt::remote::StartChunkedDownloadV2Response*),
               (override));
 
   // Required by interface - async versions (not used in our client but required for interface)
@@ -315,6 +330,36 @@ class MockCuOptStub : public cuopt::remote::CuOptRemoteService::StubInterface {
                grpc::CompletionQueue*),
               (override));
 
+  MOCK_METHOD(grpc::ClientAsyncResponseReaderInterface<cuopt::remote::StartChunkedUploadResponse>*,
+              AsyncStartChunkedUploadV2Raw,
+              (grpc::ClientContext*,
+               const cuopt::remote::StartChunkedUploadV2Request&,
+               grpc::CompletionQueue*),
+              (override));
+
+  MOCK_METHOD(grpc::ClientAsyncResponseReaderInterface<cuopt::remote::StartChunkedUploadResponse>*,
+              PrepareAsyncStartChunkedUploadV2Raw,
+              (grpc::ClientContext*,
+               const cuopt::remote::StartChunkedUploadV2Request&,
+               grpc::CompletionQueue*),
+              (override));
+
+  MOCK_METHOD(
+    grpc::ClientAsyncResponseReaderInterface<cuopt::remote::StartChunkedDownloadV2Response>*,
+    AsyncStartChunkedDownloadV2Raw,
+    (grpc::ClientContext*,
+     const cuopt::remote::StartChunkedDownloadRequest&,
+     grpc::CompletionQueue*),
+    (override));
+
+  MOCK_METHOD(
+    grpc::ClientAsyncResponseReaderInterface<cuopt::remote::StartChunkedDownloadV2Response>*,
+    PrepareAsyncStartChunkedDownloadV2Raw,
+    (grpc::ClientContext*,
+     const cuopt::remote::StartChunkedDownloadRequest&,
+     grpc::CompletionQueue*),
+    (override));
+
   MOCK_METHOD(grpc::ClientAsyncResponseReaderInterface<cuopt::remote::SendArrayChunkResponse>*,
               AsyncSendArrayChunkRaw,
               (grpc::ClientContext*,
@@ -375,6 +420,239 @@ class GrpcClientTest : public ::testing::Test {
 // =============================================================================
 // CheckStatus Tests
 // =============================================================================
+
+namespace {
+
+cuopt::routing::cpu_routing_problem_t vrp_with_matrix_bytes(size_t nbytes)
+{
+  cuopt::routing::cpu_routing_problem_t problem;
+  problem.num_locations = 1;
+  problem.fleet_size    = 1;
+  problem.num_orders    = 1;
+  if (nbytes > 0) {
+    cuopt::routing::cpu_cost_matrix_t cost;
+    cost.matrix.assign(nbytes / sizeof(float), 1.0f);
+    problem.cost_matrices.push_back(std::move(cost));
+  }
+  return problem;
+}
+
+void expect_server_limit_probe(MockCuOptStub& mock, int64_t server_max)
+{
+  EXPECT_CALL(mock, CheckStatus(_, _, _))
+    .WillOnce([server_max](grpc::ClientContext*,
+                           const cuopt::remote::StatusRequest&,
+                           cuopt::remote::StatusResponse* resp) {
+      resp->set_job_status(cuopt::remote::NOT_FOUND);
+      resp->set_max_message_bytes(server_max);
+      return grpc::Status::OK;
+    });
+}
+
+void expect_vrp_unary(MockCuOptStub& mock)
+{
+  EXPECT_CALL(mock, SubmitJob(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::SubmitJobRequest& req,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      EXPECT_TRUE(req.has_vrp_request());
+      resp->set_job_id("vrp-unary");
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(mock, StartChunkedUpload(_, _, _)).Times(0);
+  EXPECT_CALL(mock, StartChunkedUploadV2(_, _, _)).Times(0);
+}
+
+void expect_vrp_chunked(MockCuOptStub& mock)
+{
+  EXPECT_CALL(mock, StartChunkedUploadV2(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedUploadV2Request& req,
+                 cuopt::remote::StartChunkedUploadResponse* resp) {
+      EXPECT_TRUE(req.job().has_vrp_request());
+      resp->set_upload_id("vrp-upload");
+      resp->set_max_message_bytes(256LL * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(mock, SendArrayChunk(_, _, _))
+    .WillRepeatedly([](grpc::ClientContext*,
+                       const cuopt::remote::SendArrayChunkRequest&,
+                       cuopt::remote::SendArrayChunkResponse* resp) {
+      resp->set_upload_id("vrp-upload");
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(mock, FinishChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedUploadRequest&,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      resp->set_job_id("vrp-chunked");
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(mock, StartChunkedUpload(_, _, _)).Times(0);
+  EXPECT_CALL(mock, SubmitJob(_, _, _)).Times(0);
+}
+
+}  // namespace
+
+TEST(VrpUploadSelection, ChunksWhenServerLimitIsBelowTheRequest)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address = "mock://test";
+  auto client        = std::make_unique<grpc_client_t>(cfg);
+  auto mock          = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  expect_server_limit_probe(*mock, 64 * 1024);
+  ASSERT_TRUE(client->ping(5));
+  expect_vrp_chunked(*mock);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  auto result = client->submit_vrp(vrp_with_matrix_bytes(200 * 1024), settings);
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_EQ(result.job_id, "vrp-chunked");
+}
+
+TEST(VrpUploadSelection, StaysUnaryWhenRequestFitsKnownLimits)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address = "mock://test";
+  auto client        = std::make_unique<grpc_client_t>(cfg);
+  auto mock          = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  expect_server_limit_probe(*mock, 256LL * 1024 * 1024);
+  ASSERT_TRUE(client->ping(5));
+  expect_vrp_unary(*mock);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  auto result = client->submit_vrp(vrp_with_matrix_bytes(0), settings);
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_EQ(result.job_id, "vrp-unary");
+}
+
+TEST(VrpUploadSelection, ChunksWhenServerLimitIsUnknown)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address = "mock://test";
+  auto client        = std::make_unique<grpc_client_t>(cfg);
+  auto mock          = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  expect_vrp_chunked(*mock);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  auto result = client->submit_vrp(vrp_with_matrix_bytes(0), settings);
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_EQ(result.job_id, "vrp-chunked");
+}
+
+TEST(VrpUploadSelection, ChunksWhenRequestExceedsClientLimit)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address                = "mock://test";
+  cfg.max_message_bytes             = 4LL * 1024 * 1024;
+  cfg.chunked_array_threshold_bytes = 100LL * 1024 * 1024;
+  auto client                       = std::make_unique<grpc_client_t>(cfg);
+  auto mock                         = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  expect_server_limit_probe(*mock, 256LL * 1024 * 1024);
+  ASSERT_TRUE(client->ping(5));
+  expect_vrp_chunked(*mock);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  auto result = client->submit_vrp(vrp_with_matrix_bytes(5 * 1024 * 1024), settings);
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_EQ(result.job_id, "vrp-chunked");
+}
+
+TEST(VrpUploadSelection, ChunksNonMatrixArraysWhenHeaderExceedsHardLimit)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address = "mock://test";
+  // The client floors max_message_bytes at 4 MiB. The inlined order locations
+  // have to exceed that floor so the header is stripped and those arrays are chunked.
+  cfg.max_message_bytes = 4LL * 1024 * 1024;
+  auto client           = std::make_unique<grpc_client_t>(cfg);
+  auto mock             = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  expect_server_limit_probe(*mock, 256LL * 1024 * 1024);
+  ASSERT_TRUE(client->ping(5));
+
+  std::vector<cuopt::remote::SendArrayChunkRequest> sent;
+  EXPECT_CALL(*mock, StartChunkedUploadV2(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedUploadV2Request& req,
+                 cuopt::remote::StartChunkedUploadResponse* resp) {
+      const auto& problem = req.job().vrp_request().problem();
+      EXPECT_EQ(problem.order_locations_size(), 0);
+      EXPECT_EQ(problem.vehicle_breaks_size(), 2);
+      if (problem.vehicle_breaks_size() > 0 && problem.vehicle_breaks(0).breaks_size() > 0) {
+        EXPECT_EQ(problem.vehicle_breaks(0).breaks(0).locations_size(), 0);
+      }
+      resp->set_upload_id("vrp-upload");
+      resp->set_max_message_bytes(256LL * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, SendArrayChunk(_, _, _))
+    .WillRepeatedly([&sent](grpc::ClientContext*,
+                            const cuopt::remote::SendArrayChunkRequest& req,
+                            cuopt::remote::SendArrayChunkResponse* resp) {
+      sent.push_back(req);
+      resp->set_upload_id("vrp-upload");
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, FinishChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedUploadRequest&,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      resp->set_job_id("vrp-chunked");
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _)).Times(0);
+  EXPECT_CALL(*mock, SubmitJob(_, _, _)).Times(0);
+
+  auto problem            = vrp_with_matrix_bytes(0);
+  problem.order_locations = std::vector<int32_t>(5 * 1024 * 1024, 1);
+  cuopt::routing::cpu_vehicle_break_t b0;
+  b0.locations = {3, 6};
+  problem.vehicle_breaks[0].push_back(b0);
+  cuopt::routing::cpu_vehicle_break_t b1a;
+  problem.vehicle_breaks[1].push_back(b1a);
+  cuopt::routing::cpu_vehicle_break_t b1b;
+  b1b.locations = {1, 4};
+  problem.vehicle_breaks[1].push_back(b1b);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  auto result = client->submit_vrp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+
+  bool saw_orders = false;
+  bool saw_break0 = false;
+  bool saw_break2 = false;
+  for (const auto& req : sent) {
+    const auto& chunk = req.chunk();
+    if (chunk.field_id() == cuopt::remote::FIELD_ORDER_LOCATIONS &&
+        !chunk.has_container_field_num()) {
+      saw_orders = true;
+      EXPECT_EQ(chunk.total_elements(), 5 * 1024 * 1024);
+    }
+    if (chunk.container_field_num() == cuopt::remote::RoutingProblem::kVehicleBreaksFieldNumber &&
+        chunk.field_id() == static_cast<int32_t>(cuopt::remote::VehicleBreak::LOCATIONS)) {
+      if (chunk.container_index() == 0) saw_break0 = true;
+      if (chunk.container_index() == 2) saw_break2 = true;
+      EXPECT_NE(chunk.container_index(), 1);
+    }
+  }
+  EXPECT_TRUE(saw_orders);
+  EXPECT_TRUE(saw_break0);
+  EXPECT_TRUE(saw_break2);
+}
 
 TEST_F(GrpcClientTest, Ping_Success_NotFound)
 {
@@ -873,16 +1151,17 @@ TEST_F(GrpcClientTest, ChunkedDownload_FallbackOnResourceExhausted)
       return grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "Too large");
     });
 
-  EXPECT_CALL(*mock_stub_, StartChunkedDownload(_, _, _))
+  EXPECT_CALL(*mock_stub_, StartChunkedDownloadV2(_, _, _))
     .WillOnce([](grpc::ClientContext*,
                  const cuopt::remote::StartChunkedDownloadRequest& req,
-                 cuopt::remote::StartChunkedDownloadResponse* resp) {
+                 cuopt::remote::StartChunkedDownloadV2Response* resp) {
+      (void)req;
       resp->set_download_id("dl-001");
-      auto* h = resp->mutable_header();
-      h->set_problem_category(cuopt::remote::LP);
-      h->set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
-      h->set_primal_objective(-464.753);
-      auto* arr = h->add_arrays();
+      auto* sol = resp->mutable_result()->mutable_lp_solution();
+      sol->set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
+      sol->set_primal_objective(-464.753);
+      resp->mutable_result()->set_status(cuopt::remote::SUCCESS);
+      auto* arr = resp->add_arrays();
       arr->set_field_id(cuopt::remote::RESULT_PRIMAL_SOLUTION);
       arr->set_total_elements(2);
       arr->set_element_size_bytes(8);
@@ -932,10 +1211,10 @@ TEST_F(GrpcClientTest, ChunkedDownload_StartFails)
       return grpc::Status::OK;
     });
 
-  EXPECT_CALL(*mock_stub_, StartChunkedDownload(_, _, _))
+  EXPECT_CALL(*mock_stub_, StartChunkedDownloadV2(_, _, _))
     .WillOnce([](grpc::ClientContext*,
                  const cuopt::remote::StartChunkedDownloadRequest&,
-                 cuopt::remote::StartChunkedDownloadResponse*) {
+                 cuopt::remote::StartChunkedDownloadV2Response*) {
       return grpc::Status(grpc::StatusCode::NOT_FOUND, "Job not found");
     });
 
@@ -1040,16 +1319,16 @@ TEST_F(GrpcClientTest, GetResultUnified_ChunkedLP_FallbackOnResourceExhausted)
       return grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "Too large");
     });
 
-  EXPECT_CALL(*mock_stub_, StartChunkedDownload(_, _, _))
+  EXPECT_CALL(*mock_stub_, StartChunkedDownloadV2(_, _, _))
     .WillOnce([](grpc::ClientContext*,
                  const cuopt::remote::StartChunkedDownloadRequest&,
-                 cuopt::remote::StartChunkedDownloadResponse* resp) {
+                 cuopt::remote::StartChunkedDownloadV2Response* resp) {
       resp->set_download_id("dl-unified-lp");
-      auto* h = resp->mutable_header();
-      h->set_problem_category(cuopt::remote::LP);
-      h->set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
-      h->set_primal_objective(-464.753);
-      auto* arr = h->add_arrays();
+      auto* sol = resp->mutable_result()->mutable_lp_solution();
+      sol->set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
+      sol->set_primal_objective(-464.753);
+      resp->mutable_result()->set_status(cuopt::remote::SUCCESS);
+      auto* arr = resp->add_arrays();
       arr->set_field_id(cuopt::remote::RESULT_PRIMAL_SOLUTION);
       arr->set_total_elements(2);
       arr->set_element_size_bytes(8);
@@ -1108,16 +1387,16 @@ TEST_F(GrpcClientTest, GetResultUnified_ChunkedMIP_FallbackOnResourceExhausted)
       return grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "Too large");
     });
 
-  EXPECT_CALL(*mock_stub_, StartChunkedDownload(_, _, _))
+  EXPECT_CALL(*mock_stub_, StartChunkedDownloadV2(_, _, _))
     .WillOnce([](grpc::ClientContext*,
                  const cuopt::remote::StartChunkedDownloadRequest&,
-                 cuopt::remote::StartChunkedDownloadResponse* resp) {
+                 cuopt::remote::StartChunkedDownloadV2Response* resp) {
       resp->set_download_id("dl-unified-mip");
-      auto* h = resp->mutable_header();
-      h->set_problem_category(cuopt::remote::MIP);
-      h->set_mip_termination_status(cuopt::remote::MIP_OPTIMAL);
-      h->set_mip_objective(42.0);
-      auto* arr = h->add_arrays();
+      auto* sol = resp->mutable_result()->mutable_mip_solution();
+      sol->set_mip_termination_status(cuopt::remote::MIP_OPTIMAL);
+      sol->set_mip_objective(42.0);
+      resp->mutable_result()->set_status(cuopt::remote::SUCCESS);
+      auto* arr = resp->add_arrays();
       arr->set_field_id(cuopt::remote::RESULT_MIP_SOLUTION);
       arr->set_total_elements(2);
       arr->set_element_size_bytes(8);
@@ -1851,11 +2130,12 @@ TEST_F(GrpcClientTest, SubmitLP_ChunkedUploadForLargePayload)
   auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
   grpc_test_inject_mock_stub_typed(*client, mock);
 
-  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _))
+  EXPECT_CALL(*mock, StartChunkedUploadV2(_, _, _))
     .WillOnce([](grpc::ClientContext*,
-                 const cuopt::remote::StartChunkedUploadRequest& req,
+                 const cuopt::remote::StartChunkedUploadV2Request& req,
                  cuopt::remote::StartChunkedUploadResponse* resp) {
-      EXPECT_TRUE(req.has_problem_header());
+      EXPECT_TRUE(req.job().has_lp_request());
+      EXPECT_EQ(req.job().lp_request().problem().a_values_size(), 0);
       resp->set_upload_id("chunked-upload-001");
       resp->set_max_message_bytes(4 * 1024 * 1024);
       return grpc::Status::OK;
@@ -1894,6 +2174,67 @@ TEST_F(GrpcClientTest, SubmitLP_ChunkedUploadForLargePayload)
   EXPECT_GT(chunk_count, 0) << "Should have sent at least one array chunk";
 }
 
+TEST_F(GrpcClientTest, ChunkedUploadCapsDataBudgetToClientMessageLimit)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address                = "mock://test";
+  cfg.chunked_array_threshold_bytes = 0;
+  cfg.chunk_size_bytes              = 16LL * 1024 * 1024;
+  cfg.max_message_bytes             = 4LL * 1024 * 1024;
+
+  auto client = std::make_unique<grpc_client_t>(cfg);
+  auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  EXPECT_CALL(*mock, StartChunkedUploadV2(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedUploadV2Request&,
+                 cuopt::remote::StartChunkedUploadResponse* resp) {
+      resp->set_upload_id("budget-cap-001");
+      // Larger than the client limit, so the cap must come from the client.
+      resp->set_max_message_bytes(256LL * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  const int64_t data_cap = cfg.max_message_bytes * 9 / 10;
+  int chunk_count        = 0;
+  EXPECT_CALL(*mock, SendArrayChunk(_, _, _))
+    .WillRepeatedly([&](grpc::ClientContext*,
+                        const cuopt::remote::SendArrayChunkRequest& req,
+                        cuopt::remote::SendArrayChunkResponse* resp) {
+      EXPECT_LE(static_cast<int64_t>(req.chunk().data().size()), data_cap);
+      ++chunk_count;
+      resp->set_upload_id("budget-cap-001");
+      resp->set_chunks_received(chunk_count);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock, FinishChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedUploadRequest&,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      resp->set_job_id("budget-cap-job");
+      return grpc::Status::OK;
+    });
+
+  // One array is larger than the client message limit and smaller than the
+  // requested 16 MiB chunk size, so an uncapped budget would send it whole.
+  constexpr int n = 800000;
+  std::vector<double> obj(n, 1.0);
+  std::vector<double> lb(n, 0.0);
+  std::vector<double> ub(n, 1.0);
+  cpu_optimization_problem_t<int32_t, double> problem;
+  problem.set_objective_coefficients(obj.data(), n);
+  problem.set_variable_lower_bounds(lb.data(), n);
+  problem.set_variable_upper_bounds(ub.data(), n);
+
+  solver_settings_t<int32_t, double> settings;
+  auto result = client->submit_lp(problem, settings);
+
+  EXPECT_TRUE(result.success) << "Error: " << result.error_message;
+  EXPECT_GT(chunk_count, 1);
+}
+
 TEST_F(GrpcClientTest, SubmitMIP_ChunkedPreservesIncumbentSetFlag)
 {
   grpc_client_config_t cfg;
@@ -1905,13 +2246,13 @@ TEST_F(GrpcClientTest, SubmitMIP_ChunkedPreservesIncumbentSetFlag)
   auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
   grpc_test_inject_mock_stub_typed(*client, mock);
 
-  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _))
+  EXPECT_CALL(*mock, StartChunkedUploadV2(_, _, _))
     .WillOnce([](grpc::ClientContext*,
-                 const cuopt::remote::StartChunkedUploadRequest& req,
+                 const cuopt::remote::StartChunkedUploadV2Request& req,
                  cuopt::remote::StartChunkedUploadResponse* resp) {
-      EXPECT_TRUE(req.has_problem_header());
-      EXPECT_TRUE(req.problem_header().enable_incumbents());
-      EXPECT_TRUE(req.problem_header().enable_set_incumbent());
+      EXPECT_TRUE(req.job().has_mip_request());
+      EXPECT_TRUE(req.job().mip_request().enable_incumbents());
+      EXPECT_TRUE(req.job().mip_request().enable_set_incumbent());
       resp->set_upload_id("mip-incumbent-set-chunked");
       resp->set_max_message_bytes(4 * 1024 * 1024);
       return grpc::Status::OK;
@@ -1960,13 +2301,13 @@ TEST_F(GrpcClientTest, SubmitMIP_ChunkedPreservesSetIncumbentWithoutIncumbents)
   auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
   grpc_test_inject_mock_stub_typed(*client, mock);
 
-  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _))
+  EXPECT_CALL(*mock, StartChunkedUploadV2(_, _, _))
     .WillOnce([](grpc::ClientContext*,
-                 const cuopt::remote::StartChunkedUploadRequest& req,
+                 const cuopt::remote::StartChunkedUploadV2Request& req,
                  cuopt::remote::StartChunkedUploadResponse* resp) {
-      EXPECT_TRUE(req.has_problem_header());
-      EXPECT_FALSE(req.problem_header().enable_incumbents());
-      EXPECT_TRUE(req.problem_header().enable_set_incumbent());
+      EXPECT_TRUE(req.job().has_mip_request());
+      EXPECT_FALSE(req.job().mip_request().enable_incumbents());
+      EXPECT_TRUE(req.job().mip_request().enable_set_incumbent());
       resp->set_upload_id("mip-set-incumbent-only-chunked");
       resp->set_max_message_bytes(4 * 1024 * 1024);
       return grpc::Status::OK;
@@ -2041,11 +2382,11 @@ TEST_F(GrpcClientTest, SubmitLP_WarmStartPushesSmallProblemToChunkedUpload)
   auto mock   = std::make_shared<NiceMock<MockCuOptStub>>();
   grpc_test_inject_mock_stub_typed(*client, mock);
 
-  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _))
+  EXPECT_CALL(*mock, StartChunkedUploadV2(_, _, _))
     .WillOnce([](grpc::ClientContext*,
-                 const cuopt::remote::StartChunkedUploadRequest& req,
+                 const cuopt::remote::StartChunkedUploadV2Request& req,
                  cuopt::remote::StartChunkedUploadResponse* resp) {
-      EXPECT_TRUE(req.problem_header().lp_settings().has_warm_start_data());
+      EXPECT_TRUE(req.job().lp_request().settings().has_warm_start_data());
       resp->set_upload_id("warm-chunked-001");
       resp->set_max_message_bytes(4 * 1024 * 1024);
       return grpc::Status::OK;
@@ -2089,6 +2430,7 @@ TEST_F(GrpcClientTest, SubmitLP_WarmStartLargerThanMessageCapFails)
   grpc_test_inject_mock_stub_typed(*client, mock);
   EXPECT_CALL(*mock, SubmitJob(_, _, _)).Times(0);
   EXPECT_CALL(*mock, StartChunkedUpload(_, _, _)).Times(0);
+  EXPECT_CALL(*mock, StartChunkedUploadV2(_, _, _)).Times(0);
 
   auto problem = create_test_lp_problem();
   solver_settings_t<int32_t, double> settings;
@@ -3667,4 +4009,117 @@ TEST(SolveMipRemoteCallbacks, EmptyVariableListKeepsCallbacksEnabled)
   test_get_callback_t callback;
   settings.set_mip_callback(&callback, nullptr);
   EXPECT_FALSE(should_disable_unsupported(problem, settings));
+}
+
+TEST(ArrayFieldElementSize, VrpMatrixContainers)
+{
+  using cuopt::remote::CostMatrix;
+  using cuopt::remote::RoutingProblem;
+  EXPECT_EQ(array_field_element_size(RoutingProblem::kCostMatricesFieldNumber, CostMatrix::VALUES),
+            4);
+  EXPECT_EQ(
+    array_field_element_size(RoutingProblem::kTransitTimeMatricesFieldNumber, CostMatrix::VALUES),
+    4);
+  EXPECT_EQ(
+    array_field_element_size(RoutingProblem::kCostMatricesFieldNumber, CostMatrix::VALUES + 1), -1);
+  EXPECT_EQ(array_field_element_size(RoutingProblem::kTransitTimeMatricesFieldNumber,
+                                     CostMatrix::VALUES + 1),
+            -1);
+}
+
+TEST(ChunkedHeaderArrays, StripClearsPayloadsAndKeepsScalars)
+{
+  using cuopt::mathematical_optimization::inline_chunked_arrays_present;
+  using cuopt::mathematical_optimization::strip_chunked_numeric_arrays;
+
+  cuopt::remote::OptimizationProblem problem;
+  problem.set_problem_name("named");
+  problem.add_variable_names("x");
+  problem.add_c(1.0);
+  problem.set_row_types("L");
+  auto* qc = problem.add_quadratic_constraints();
+  qc->set_rhs_value(3.5);
+  qc->set_constraint_row_name("row");
+  qc->add_linear_values(1.0);
+  qc->add_vals(2.0);
+
+  EXPECT_TRUE(inline_chunked_arrays_present(problem));
+  strip_chunked_numeric_arrays(&problem);
+  EXPECT_FALSE(inline_chunked_arrays_present(problem));
+  EXPECT_EQ(problem.problem_name(), "named");
+  EXPECT_EQ(problem.variable_names_size(), 0);
+  EXPECT_EQ(problem.c_size(), 0);
+  EXPECT_TRUE(problem.row_types().empty());
+  ASSERT_EQ(problem.quadratic_constraints_size(), 1);
+  EXPECT_DOUBLE_EQ(problem.quadratic_constraints(0).rhs_value(), 3.5);
+  EXPECT_EQ(problem.quadratic_constraints(0).constraint_row_name(), "row");
+  EXPECT_EQ(problem.quadratic_constraints(0).linear_values_size(), 0);
+  EXPECT_EQ(problem.quadratic_constraints(0).vals_size(), 0);
+}
+
+TEST(ResultChunkArrays, ApplyCopiesThenFreesRawPayload)
+{
+  cuopt::remote::ResultResponse result;
+  result.mutable_lp_solution()->set_primal_objective(1.5);
+  result.mutable_lp_solution()->mutable_warm_start_data()->set_initial_primal_weight(2.0);
+
+  const double value = 4.0;
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  arrays[cuopt::remote::RESULT_PRIMAL_SOLUTION].assign(
+    reinterpret_cast<const uint8_t*>(&value),
+    reinterpret_cast<const uint8_t*>(&value) + sizeof(double));
+  arrays[cuopt::remote::RESULT_WS_CURRENT_PRIMAL_SOLUTION] =
+    arrays[cuopt::remote::RESULT_PRIMAL_SOLUTION];
+
+  cuopt::mathematical_optimization::apply_result_chunk_arrays(&result, arrays);
+
+  EXPECT_EQ(result.lp_solution().primal_solution_size(), 1);
+  EXPECT_DOUBLE_EQ(result.lp_solution().primal_solution(0), 4.0);
+  EXPECT_DOUBLE_EQ(result.lp_solution().primal_objective(), 1.5);
+  EXPECT_EQ(result.lp_solution().warm_start_data().current_primal_solution_size(), 1);
+  EXPECT_DOUBLE_EQ(result.lp_solution().warm_start_data().initial_primal_weight(), 2.0);
+  EXPECT_TRUE(arrays[cuopt::remote::RESULT_PRIMAL_SOLUTION].empty());
+  EXPECT_TRUE(arrays[cuopt::remote::RESULT_WS_CURRENT_PRIMAL_SOLUTION].empty());
+
+  arrays[cuopt::remote::RESULT_DUAL_SOLUTION] = {1, 2, 3};
+  EXPECT_THROW(cuopt::mathematical_optimization::apply_result_chunk_arrays(&result, arrays),
+               std::invalid_argument);
+}
+
+TEST(ResultChunkArrays, ClearLeavesScalars)
+{
+  cuopt::remote::LPSolution solution;
+  solution.set_primal_objective(1.0);
+  solution.add_primal_solution(2.0);
+  auto* warm = solution.mutable_warm_start_data();
+  warm->set_initial_step_size(3.0);
+  warm->add_current_dual_solution(4.0);
+
+  cuopt::mathematical_optimization::clear_lp_solution_arrays(&solution);
+
+  EXPECT_EQ(solution.primal_solution_size(), 0);
+  EXPECT_DOUBLE_EQ(solution.primal_objective(), 1.0);
+  EXPECT_DOUBLE_EQ(solution.warm_start_data().initial_step_size(), 3.0);
+  EXPECT_EQ(solution.warm_start_data().current_dual_solution_size(), 0);
+}
+
+TEST(ResultChunkArrays, CopyScalarsDoesNotCopyArrays)
+{
+  cuopt::remote::ChunkedResultHeader header;
+  header.set_primal_objective(7.0);
+  header.set_solve_time(1.25);
+  header.set_ws_initial_primal_weight(0.5);
+  auto* desc = header.add_arrays();
+  desc->set_field_id(cuopt::remote::RESULT_WS_CURRENT_PRIMAL_SOLUTION);
+  desc->set_total_elements(2);
+  desc->set_element_size_bytes(8);
+
+  cuopt::remote::LPSolution solution;
+  cuopt::mathematical_optimization::copy_lp_result_scalars(header, &solution);
+  EXPECT_DOUBLE_EQ(solution.primal_objective(), 7.0);
+  EXPECT_DOUBLE_EQ(solution.solve_time(), 1.25);
+  EXPECT_EQ(solution.primal_solution_size(), 0);
+  EXPECT_TRUE(solution.has_warm_start_data());
+  EXPECT_DOUBLE_EQ(solution.warm_start_data().initial_primal_weight(), 0.5);
+  EXPECT_EQ(solution.warm_start_data().current_primal_solution_size(), 0);
 }

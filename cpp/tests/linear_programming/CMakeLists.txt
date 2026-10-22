@@ -90,7 +90,7 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
       target_link_options(C_API_TEST PRIVATE -Wl,--enable-new-dtags)
     endif()
 
-    add_test(NAME C_API_TEST COMMAND C_API_TEST)
+    rapids_test_add(NAME C_API_TEST COMMAND C_API_TEST INSTALL_COMPONENT_SET testing)
     set_tests_properties(C_API_TEST PROPERTIES LABELS "numopt")
 
     install(

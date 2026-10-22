@@ -6,13 +6,6 @@
 gRPC
 ====
 
-.. note::
-
-   For routing, gRPC currently supports problems of up to about 5500 locations
-   when a travel time matrix is included, or about 8000 locations when it is
-   not. For a larger problem, use a local :func:`cuopt.routing.Solve` or the
-   :doc:`legacy HTTP server <../cuopt-server/legacy-http-server>`.
-
 NVIDIA cuOpt can run LP, MIP, QP, and routing (VRP, TSP, PDP) solves on a
 remote GPU host through ``cuopt_grpc_server``. There are two ways to reach
 that server:

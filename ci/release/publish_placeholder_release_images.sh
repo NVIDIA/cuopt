@@ -32,7 +32,6 @@
 #
 # Env overrides:
 #   CUDA_VERS    space-separated list of full CUDA versions (default: "12.9.0 13.3.0")
-#   PYTHON_VERS  space-separated list of full Python versions (default: "3.14.4")
 #   RELEASE_TAG  override the derived release tag (default: derived from VERSION)
 #   NIGHTLY_TAG  override the derived source nightly tag (default: "${RELEASE_TAG}a")
 #   PUSH_LATEST  set to "true" to also push "latest" manifests (default: "false")
@@ -54,7 +53,6 @@ BASE_VER=$(sed -E 's/\.0+([0-9])/\.\1/g' VERSION | tr -d '[:space:]')
 RELEASE_TAG="${RELEASE_TAG:-${BASE_VER}}"
 NIGHTLY_TAG="${NIGHTLY_TAG:-${RELEASE_TAG}a}"
 CUDA_VERS="${CUDA_VERS:-12.9.0 13.3.0}"
-PYTHON_VERS="${PYTHON_VERS:-3.14.4}"
 DRY_RUN="${DRY_RUN:-false}"
 PUSH_LATEST="${PUSH_LATEST:-false}"
 
@@ -63,7 +61,6 @@ echo "NGC repo:    ${NGC_REPO}"
 echo "Source tag:  ${NIGHTLY_TAG} (nightly)"
 echo "Target tag:  ${RELEASE_TAG} (placeholder release)"
 echo "CUDA_VERS:   ${CUDA_VERS}"
-echo "PYTHON_VERS: ${PYTHON_VERS}"
 echo "PUSH_LATEST: ${PUSH_LATEST}"
 echo "DRY_RUN:     ${DRY_RUN}"
 if [[ "${PUSH_LATEST}" == "true" ]]; then
@@ -130,7 +127,7 @@ create_release_manifest() {
 # create_multiarch_manifest.sh builds the list from them).
 publish_release_variant() {
     local manifest_tag=$1   # e.g. "${RELEASE_TAG}-cu12"
-    local nightly_tag=$2    # e.g. "${NIGHTLY_TAG}-cuda12.9-py3.14"
+    local nightly_tag=$2    # e.g. "${NIGHTLY_TAG}-cu12"
 
     local release_amd64="${NGC_REPO}:${manifest_tag}-amd64"
     local release_arm64="${NGC_REPO}:${manifest_tag}-arm64"
@@ -141,12 +138,10 @@ publish_release_variant() {
     create_release_manifest "${NGC_REPO}:${manifest_tag}" "$release_amd64" "$release_arm64"
 }
 
-# Release/latest use only the short cu<major> tags; the fully-qualified names are nightly-only.
 publish_variant_and_latest() {
     local alias=$1          # e.g. "cu13" or "cu13-ubi10"
-    local nightly_tag=$2    # e.g. "${NIGHTLY_TAG}-cuda13.3-py3.14"
 
-    publish_release_variant "${RELEASE_TAG}-${alias}" "$nightly_tag"
+    publish_release_variant "${RELEASE_TAG}-${alias}" "${NIGHTLY_TAG}-${alias}"
 
     if [[ "${PUSH_LATEST}" == "true" ]]; then
         create_release_manifest \
@@ -157,22 +152,13 @@ publish_variant_and_latest() {
 }
 
 for CUDA_VER in ${CUDA_VERS}; do
-    CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
-    CUDA_MAJOR="${CUDA_SHORT%%.*}"
+    CUDA_MAJOR="${CUDA_VER%%.*}"
 
-    for PYTHON_VER in ${PYTHON_VERS}; do
-        PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
-
-        publish_variant_and_latest \
-            "cu${CUDA_MAJOR}" \
-            "${NIGHTLY_TAG}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}"
-    done
+    publish_variant_and_latest "cu${CUDA_MAJOR}"
 
     # UBI10 base images are only published for CUDA 13.x and later
     if [[ "${CUDA_MAJOR}" == "13" ]]; then
-        publish_variant_and_latest \
-            "cu${CUDA_MAJOR}-ubi10" \
-            "${NIGHTLY_TAG}-cuda${CUDA_SHORT}-ubi10"
+        publish_variant_and_latest "cu${CUDA_MAJOR}-ubi10"
     fi
 done
 

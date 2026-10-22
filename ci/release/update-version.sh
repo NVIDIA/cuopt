@@ -124,9 +124,11 @@ for DEP in "${DEPENDENCIES[@]}"; do
   for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
     sed_runner "/${DEP}\(-cu[[:digit:]]\{2\}\)\{0,1\}==/ s/==[0-9]\+\.[0-9]\+\.\*/==${NEXT_SHORT_TAG_PEP440}.\*/g" "${FILE}"
     sed_runner "/${DEP}=/ s/=[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?[^ ]*/=${NEXT_SHORT_TAG}.*/g" "${FILE}"
-    sed_runner "/${DEP}:/ s/:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda[0-9]\+\.[0-9]\+-\)\(py[0-9]\+\)/:${DOCKER_TAG}\1\2/g" "${FILE}"
   done
 done
+
+# Update nightly Docker tags in README.md
+sed_runner 's|nvidia/cuopt:[0-9]\+\.[0-9]\+\.[0-9]\+a-|nvidia/cuopt:'${DOCKER_TAG}'a-|g' README.md
 
 # Update the Java API version. Maven has no notion of the zero-padded RAPIDS patch field, and a
 # padded patch would sort oddly against a later unpadded one, so the padding is stripped here.
@@ -141,6 +143,8 @@ for FILE in java/*/pom.xml; do
   sed_runner "/<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START-->.*<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->/s//<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START--><version>${NEXT_FULL_JAVA_TAG}<\/version><!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->/g" "${FILE}"
 done
 
+sed_runner 's|<version>[0-9.]*-SNAPSHOT</version>|<version>'${NEXT_FULL_JAVA_TAG}'</version>|' docs/cuopt/source/cuopt-java/quick-start.rst
+
 # Update README.md version badge
 sed_runner 's/badge\/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/badge\/version-'${NEXT_FULL_TAG}'-blue/g' README.md
 
@@ -148,7 +152,6 @@ sed_runner 's/badge\/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/badge\/version-'${NE
 sed_runner 's/'"cuopt_version: \"[0-9][0-9].[0-9][0-9]\""'/'"cuopt_version: \"${NEXT_SHORT_TAG}\""'/g' .github/workflows/nightly.yaml
 
 # Update Helm chart files
-sed_runner 's/\(tag: "\)[0-9][0-9]\.[0-9]\+\.[0-9]\+\(-cuda12\.9-py3\.12"\)/\1'${DOCKER_TAG}'\2/g' helmchart/cuopt-server/values.yaml
 sed_runner 's/\(appVersion: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' helmchart/cuopt-server/Chart.yaml
 sed_runner 's/\(version: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' helmchart/cuopt-server/Chart.yaml
 
