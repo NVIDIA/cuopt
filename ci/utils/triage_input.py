@@ -49,8 +49,17 @@ OUTCOME = re.compile(
 
 def normalize(line, keep_numbers):
     line = re.sub(r"0x[0-9a-fA-F]+", "<hex>", line)
-    line = re.sub(r"/\S+", "<path>", line)
+    line = re.sub(r"(?<![\w<>])/\S+", "<path>", line)
     return line if keep_numbers else re.sub(r"\d+(\.\d+)?", "<n>", line)
+
+
+def outcome_lines(message):
+    lines = [
+        line[:200]
+        for line in message.splitlines()
+        if line.strip() and not FRAME.match(line)
+    ]
+    return [line for line in lines if OUTCOME.search(line)][:3] or lines[:3]
 
 
 def signature(message, flaky):
@@ -58,15 +67,18 @@ def signature(message, flaky):
 
     Flaky failures never share a cluster with real ones.
     """
-    lines = [
-        line[:200]
-        for line in message.splitlines()
-        if line.strip() and not FRAME.match(line)
-    ]
-    key = [line for line in lines if OUTCOME.search(line)][:3] or lines[:3]
-    text = "\n".join(normalize(line, "Which is" in line) for line in key)
+    text = "\n".join(
+        normalize(line, "Which is" in line) for line in outcome_lines(message)
+    )
     text = f"{'flaky' if flaky else 'failing'}\n{text}"
     return hashlib.sha1(text.encode()).hexdigest()[:12]
+
+
+def error_text(message):
+    head = redact(message)[:MAX_ERROR_CHARS]
+    missing = [redact(line) for line in outcome_lines(message)]
+    missing = [line for line in missing if line not in head]
+    return head + ("\n...\n" + "\n".join(missing) if missing else "")
 
 
 def build_clusters(summary):
@@ -76,7 +88,7 @@ def build_clusters(summary):
         c = clusters.setdefault(
             signature(message, label == "flaky"),
             {
-                "error": redact(message)[:MAX_ERROR_CHARS],
+                "error": error_text(message),
                 "labels": set(),
                 "matrices": set(),
                 "tests": [],

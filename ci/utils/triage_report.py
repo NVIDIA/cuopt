@@ -9,6 +9,7 @@ Fails if the agent output is malformed or leaves a cluster unaccounted for.
 Usage: triage_report.py <triage_input.json> <triage.json>
 """
 
+import html
 import json
 import os
 import re
@@ -18,6 +19,7 @@ from triage_input import redact
 
 CATEGORIES = {"product-bug", "infra", "dataset", "flaky", "unknown"}
 ACTIONS = {"create", "comment", "ignore"}
+MARKDOWN_SPECIAL = re.compile(r"([\\`*_\[\]#~|])")
 LIST_FIELDS = ("merged_signatures", "suspect_files")
 TEXT_FIELDS = ("signature", "title", "summary", "hypothesis")
 
@@ -48,13 +50,17 @@ def validate(finding, known, seen):
     return errors
 
 
-def render(finding, clusters):
-    def clean(value, limit):
-        return redact(value)[:limit]
+def clean(value, limit, one_line=False):
+    text = redact(value)[:limit]
+    if one_line:
+        text = " ".join(text.split())
+    return MARKDOWN_SPECIAL.sub(r"\\\1", html.escape(text, quote=False))
 
+
+def render(finding, clusters):
     lines = [
         f"- **{finding['category']}** / {finding['action']}: "
-        f"{clean(finding['title'], 120)}",
+        f"{clean(finding['title'], 120, True)}",
         "",
         "<details><summary>Details</summary>",
         "",
@@ -68,10 +74,10 @@ def render(finding, clusters):
             max(map(len, re.findall(r"`+", c["error"])), default=2) + 1
         )
         lines += [
-            f"**Failed in:** {', '.join(c['matrices']) or '-'}",
+            f"**Failed in:** {clean(', '.join(c['matrices']), 600, True) or '-'}",
             f"{fence}\n{c['error']}\n{fence}",
         ]
-    files = [clean(str(p), 200) for p in finding["suspect_files"][:10]]
+    files = [clean(str(p), 200, True) for p in finding["suspect_files"][:10]]
     lines += [f"**Files:** {', '.join(files) or '-'}", "", "</details>"]
     return "\n".join(lines)
 
