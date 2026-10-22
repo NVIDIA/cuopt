@@ -238,3 +238,21 @@ jobs:
       CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
       CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
       CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
+
+  nightly-triage:
+    permissions:
+      contents: read
+    if: ${{ always() && inputs.build_type == 'nightly' && needs.nightly-summary.result == 'success' }}
+    needs:
+      - nightly-summary
+    uses: ./.github/workflows/nightly-triage.yaml
+    with:
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+    secrets:
+      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+      CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
+      CUOPT_INFERENCE_BASE_URL: ${{ secrets.CUOPT_INFERENCE_BASE_URL }}
+      CUOPT_INFERENCE_API_KEY: ${{ secrets.CUOPT_INFERENCE_API_KEY }}

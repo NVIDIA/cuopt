@@ -1,0 +1,129 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: nightly-triage
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch the nightly ran on"
+        required: true
+        type: string
+        default: main
+      sha:
+        description: "Full git commit SHA to check out"
+        required: true
+        type: string
+      date:
+        description: "Date (YYYY-MM-DD) of the nightly. Defaults to today."
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
+      date:
+        required: false
+        type: string
+    secrets:
+      CUOPT_AWS_ACCESS_KEY_ID:
+        required: true
+      CUOPT_AWS_SECRET_ACCESS_KEY:
+        required: true
+      CUOPT_S3_URI:
+        required: true
+      CUOPT_INFERENCE_BASE_URL:
+        required: true
+      CUOPT_INFERENCE_API_KEY:
+        required: true
+
+permissions: {}
+
+jobs:
+  nightly-triage:
+    permissions:
+      contents: read
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      TRIAGE_REDACT: |
+        ${{ secrets.CUOPT_INFERENCE_BASE_URL }}
+        ${{ secrets.CUOPT_INFERENCE_API_KEY }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - name: Fetch nightly summary
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+          CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
+          BRANCH: ${{ inputs.branch }}
+          RUN_DATE: ${{ inputs.date }}
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet awscli
+          date_str="${RUN_DATE:-$(date +%F)}"
+          slug="${BRANCH//\//-}"
+          [[ "${date_str}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && "${slug}" =~ ^[A-Za-z0-9._-]+$ ]]
+          .venv/bin/aws s3 cp "${CUOPT_S3_URI}ci_test_reports/nightly/summaries/${date_str}/${slug}/consolidated.json" consolidated_summary.json
+      - name: Build triage input
+        id: input
+        run: |
+          python3 ci/utils/triage_input.py consolidated_summary.json triage_input.json
+          rm consolidated_summary.json
+          clusters=$(python3 -c "import json; print(len(json.load(open('triage_input.json'))['clusters']))")
+          echo "has_failures=$([ "${clusters}" -gt 0 ] && echo true || echo false)" >> "${GITHUB_OUTPUT}"
+      - name: Set up Node.js
+        if: ${{ steps.input.outputs.has_failures == 'true' }}
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - name: Triage failures
+        if: ${{ steps.input.outputs.has_failures == 'true' }}
+        env:
+          ANTHROPIC_BASE_URL: ${{ secrets.CUOPT_INFERENCE_BASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.CUOPT_INFERENCE_API_KEY }}
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+        run: |
+          npm install --global @anthropic-ai/claude-code@2.1.195
+          cat > "${RUNNER_TEMP}/claude-settings.json" <<'EOF'
+          {
+            "permissions": {"deny": [
+              "Read(//proc/**)", "Read(//sys/**)", "Read(//dev/**)",
+              "Read(//home/runner/work/_actions/**)", "Read(~/.ssh/**)",
+              "Read(~/.aws/**)", "Read(~/.config/**)", "Read(~/.claude/**)",
+              "Read(~/.gitconfig)", "Read(~/.netrc)",
+              "Edit(/.git/**)", "Edit(/.github/**)", "Edit(/**/CODEOWNERS)",
+              "Edit(/ci/**)", "Edit(//home/runner/work/_actions/**)",
+              "Bash(gh *)", "Bash(curl *)", "Bash(wget *)", "Bash(git commit *)",
+              "Bash(git config *)", "Bash(git remote *)", "Bash(git push *)"
+            ]}
+          }
+          EOF
+          claude -p "Follow the instructions in ci/utils/triage_prompt.md." \
+            --model aws/anthropic/bedrock-claude-opus-4-8 \
+            --max-turns 60 \
+            --bare \
+            --permission-mode dontAsk \
+            --settings "${RUNNER_TEMP}/claude-settings.json" \
+            --allowedTools "Read,Grep,Glob,Write(/triage.json),Edit(/triage.json),Bash(git log:*),Bash(git blame:*),Bash(git show:*)" \
+            > agent.log 2>&1 || status=$?
+          git restore --source=HEAD --worktree -- .
+          git clean -fdxq -e triage.json -e triage_input.json -e agent.log
+          if [ "${status:-0}" -ne 0 ]; then
+            python3 -c "import sys; sys.path.insert(0, 'ci/utils'); from triage_input import redact; print(redact(open('agent.log').read()[-4000:]))"
+            exit 1
+          fi
+      - name: Report findings
+        if: ${{ steps.input.outputs.has_failures == 'true' }}
+        run: python3 ci/utils/triage_report.py triage_input.json triage.json
