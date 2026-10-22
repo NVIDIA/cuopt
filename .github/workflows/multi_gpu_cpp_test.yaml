@@ -73,3 +73,7 @@ jobs:
       container-options: ${{ inputs.container-options }}
       script: ${{ inputs.script }}
       continue-on-error: ${{ inputs.continue-on-error }}
+      script-env-secret-1-name: CUOPT_S3_URI
+      script-env-secret-2-name: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-3-name: CUOPT_AWS_SECRET_ACCESS_KEY
+    secrets: inherit # zizmor: ignore[secrets-inherit]
