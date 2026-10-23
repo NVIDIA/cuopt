@@ -65,8 +65,7 @@ function try_download_from_s3() {
         return 1
     fi
 
-    if [ -z "${CUOPT_S3_NO_TARBALL:-}" ] &&
-        aws s3 cp "${CUOPT_S3_URI}ci_datasets/quadratic_programming/qplib_tar/qplib.tar.gz" - --only-show-errors | tar xzf - -C "$OUTDIR"; then
+    if aws s3 cp "${CUOPT_S3_URI}ci_datasets/quadratic_programming/qplib_tar/qplib.tar.gz" - --only-show-errors | tar xzf - -C "$OUTDIR"; then
         echo "✓ Downloaded QPLIB datasets from S3"
         return 0
     fi
