@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -22,6 +23,7 @@ _TEST_PREFIXES = (
 
 _MARKER = "<!-- pr-test-summary -->"
 _HTTP_TIMEOUT_SEC = 30
+_HTTP_ATTEMPTS = 4
 _MAX_TESTS = 50
 
 # gtest prints "[  FAILED  ] Suite.Test (12 ms)" per failing test and again
@@ -56,11 +58,25 @@ def _headers(token):
     }
 
 
+def _urlopen(req):
+    """Open req, retrying transient GitHub API errors with backoff."""
+    for attempt in range(1, _HTTP_ATTEMPTS + 1):
+        try:
+            return urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC)
+        except (urllib.error.URLError, TimeoutError) as e:
+            transient = not isinstance(e, urllib.error.HTTPError) or (
+                e.code in (429, 500, 502, 503, 504)
+            )
+            if not transient or attempt == _HTTP_ATTEMPTS:
+                raise
+        time.sleep(2**attempt)
+
+
 def _paginate(path, token):
     url = f"https://api.github.com{path}?per_page=100"
     while url:
         req = urllib.request.Request(url, headers=_headers(token))
-        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
+        with _urlopen(req) as resp:
             data = json.loads(resp.read())
             yield from (data["jobs"] if isinstance(data, dict) else data)
             link = resp.headers.get("Link", "")
@@ -81,7 +97,7 @@ def _api(path, token, method, payload):
         method=method,
         headers={**_headers(token), "Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req) as resp:
+    with _urlopen(req) as resp:
         return json.loads(resp.read())
 
 
