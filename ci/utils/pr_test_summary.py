@@ -24,6 +24,7 @@ _TEST_PREFIXES = (
 _MARKER = "<!-- pr-test-summary -->"
 _HTTP_TIMEOUT_SEC = 30
 _HTTP_ATTEMPTS = 4
+_MAX_RETRY_WAIT_SEC = 120
 _MAX_TESTS = 50
 
 # gtest prints "[  FAILED  ] Suite.Test (12 ms)" per failing test and again
@@ -58,36 +59,59 @@ def _headers(token):
     }
 
 
-def _urlopen(req):
-    """Open req, retrying transient GitHub API errors with backoff."""
+def _retry_delay(attempt, headers):
+    retry_after = headers.get("Retry-After")
+    if retry_after and retry_after.isdigit():
+        return min(int(retry_after), _MAX_RETRY_WAIT_SEC)
+    reset = headers.get("x-ratelimit-reset")
+    if (
+        headers.get("x-ratelimit-remaining") == "0"
+        and reset
+        and reset.isdigit()
+    ):
+        return min(max(int(reset) - time.time(), 1), _MAX_RETRY_WAIT_SEC)
+    return 2**attempt
+
+
+def _fetch(req):
+    """Return (body, headers) of req, retrying transient GitHub API errors."""
     for attempt in range(1, _HTTP_ATTEMPTS + 1):
+        headers = {}
         try:
-            return urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC)
+            with urllib.request.urlopen(
+                req, timeout=_HTTP_TIMEOUT_SEC
+            ) as resp:
+                return resp.read(), resp.headers
         except (urllib.error.URLError, TimeoutError) as e:
             transient = not isinstance(e, urllib.error.HTTPError) or (
                 e.code in (429, 500, 502, 503, 504)
+                or (
+                    e.code == 403
+                    and e.headers.get("x-ratelimit-remaining") == "0"
+                )
             )
             if not transient or attempt == _HTTP_ATTEMPTS:
                 raise
-        time.sleep(2**attempt)
+            headers = getattr(e, "headers", None) or {}
+        time.sleep(_retry_delay(attempt, headers))
 
 
 def _paginate(path, token):
     url = f"https://api.github.com{path}?per_page=100"
     while url:
         req = urllib.request.Request(url, headers=_headers(token))
-        with _urlopen(req) as resp:
-            data = json.loads(resp.read())
-            yield from (data["jobs"] if isinstance(data, dict) else data)
-            link = resp.headers.get("Link", "")
-            url = next(
-                (
-                    p.split(";")[0].strip().strip("<>")
-                    for p in link.split(",")
-                    if 'rel="next"' in p
-                ),
-                None,
-            )
+        body, headers = _fetch(req)
+        data = json.loads(body)
+        yield from (data["jobs"] if isinstance(data, dict) else data)
+        link = headers.get("Link", "")
+        url = next(
+            (
+                p.split(";")[0].strip().strip("<>")
+                for p in link.split(",")
+                if 'rel="next"' in p
+            ),
+            None,
+        )
 
 
 def _api(path, token, method, payload):
@@ -97,8 +121,7 @@ def _api(path, token, method, payload):
         method=method,
         headers={**_headers(token), "Content-Type": "application/json"},
     )
-    with _urlopen(req) as resp:
-        return json.loads(resp.read())
+    return json.loads(_fetch(req)[0])
 
 
 def _is_test_job(name):
