@@ -2270,9 +2270,8 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   // Computing the deltas (delta = reflected - potential_next)
   // TODO batch mdoe: this only works if everyone restarts
   if (is_distributed_master()) {
-    multi_gpu_engine->for_each_shard([](auto& shard) {
-      compute_primal_dual_deltas(shard.sub_pdlp->pdhg_solver_, shard.stream.view());
-    });
+    multi_gpu_engine->for_each_shard(
+      [](auto& shard) { compute_primal_dual_deltas(shard.sub_pdlp->pdhg_solver_, shard.stream); });
   } else {
     compute_primal_dual_deltas(pdhg_solver_, stream_view_);
   }

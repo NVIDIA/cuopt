@@ -1006,7 +1006,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     engine->for_each_shard([&](auto& shard) {
       auto& sub = *shard.sub_pdlp;
       commit_potential_next_as_last_restart(
-        sub.get_restart_strategy(), sub.pdhg_solver_, shard.stream.view());
+        sub.get_restart_strategy(), sub.pdhg_solver_, shard.stream);
     });
   } else {
     commit_potential_next_as_last_restart(*this, pdhg_solver, stream_view_);

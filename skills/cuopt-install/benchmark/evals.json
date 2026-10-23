@@ -19,7 +19,7 @@
     "question": "I have CUDA 12.5 on my machine and want to install the cuOpt Python package with pip. What's the command?",
     "expected_skill": "cuopt-install",
     "expected_script": null,
-    "ground_truth": "The agent gives 'pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12==26.2.*' (or equivalent quoting) as the command and notes that the cu12 suffix matches CUDA 12.x. It mentions the --extra-index-url=https://pypi.nvidia.com flag is required because cuOpt packages are hosted on NVIDIA's index, not PyPI. The agent provides the command for the user to run themselves rather than executing it.",
+    "ground_truth": "The agent gives 'pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12' (or equivalent quoting) as the command and notes that the cu12 suffix matches CUDA 12.x. It mentions the --extra-index-url=https://pypi.nvidia.com flag is required because cuOpt packages are hosted on NVIDIA's index, not PyPI. The agent provides the command for the user to run themselves rather than executing it.",
     "expected_behavior": [
       "Names the cu12 package variant (cuopt-cu12) matched to CUDA 12.x",
       "Includes --extra-index-url=https://pypi.nvidia.com",
@@ -101,7 +101,7 @@
     "question": "I want to run the cuOpt REST server in Docker. What do I do?",
     "expected_skill": "cuopt-install",
     "expected_script": null,
-    "ground_truth": "The agent gives the two-step Docker flow: 'docker pull nvidia/cuopt:latest-cuda12.9-py3.13' to pull the image, then 'docker run --gpus all -it --rm -p 8000:8000 nvidia/cuopt:latest-cuda12.9-py3.13' to run it. It explains --gpus all is required for GPU access and -p 8000:8000 exposes the REST endpoint on localhost. It mentions verifying with 'curl -s http://localhost:8000/cuopt/health' once the container is up. The agent provides the commands for the user to run.",
+    "ground_truth": "The agent gives the two-step Docker flow: 'docker pull nvidia/cuopt:latest-cu12' to pull the image, then 'docker run --gpus all -it --rm -p 8000:8000 nvidia/cuopt:latest-cu12' to run it. It explains --gpus all is required for GPU access and -p 8000:8000 exposes the REST endpoint on localhost. It mentions verifying with 'curl -s http://localhost:8000/cuopt/health' once the container is up. The agent provides the commands for the user to run.",
     "expected_behavior": [
       "Names the nvidia/cuopt Docker image",
       "Names 'docker pull' and 'docker run' as the steps",
@@ -173,7 +173,7 @@
     "question": "I have CUDA 12 installed and ran 'pip install cuopt-cu13'. Now imports fail with CUDA errors. What happened?",
     "expected_skill": "cuopt-install",
     "expected_script": null,
-    "ground_truth": "The agent identifies the cause as a CUDA suffix mismatch: the cu13 package was built for CUDA 13.x, but the runtime has CUDA 12.x. The package CUDA suffix must match the installed CUDA. The fix is to uninstall cuopt-cu13 and install the cu12 variant: 'pip uninstall cuopt-cu13' (user runs), then 'pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12==26.2.*' (user runs). The agent provides commands for the user to execute, not runs them.",
+    "ground_truth": "The agent identifies the cause as a CUDA suffix mismatch: the cu13 package was built for CUDA 13.x, but the runtime has CUDA 12.x. The package CUDA suffix must match the installed CUDA. The fix is to uninstall cuopt-cu13 and install the cu12 variant: 'pip uninstall cuopt-cu13' (user runs), then 'pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12' (user runs). The agent provides commands for the user to execute, not runs them.",
     "expected_behavior": [
       "Identifies the cause as a CUDA suffix mismatch (cu13 package on CUDA 12 runtime)",
       "States the package CUDA suffix must match the installed CUDA major",

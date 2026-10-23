@@ -140,4 +140,22 @@ void build_mip_solution_proto(const cuopt::remote::ChunkedResultHeader& header,
                               const std::map<int32_t, std::vector<uint8_t>>& arrays,
                               cuopt::remote::MIPSolution* proto);
 
+// Clear repeated numeric solution arrays, leaving scalars (and warm-start
+// scalars) in place. Used to build the unified chunked-download header.
+void clear_lp_solution_arrays(cuopt::remote::LPSolution* solution);
+void clear_mip_solution_arrays(cuopt::remote::MIPSolution* solution);
+
+// Copy LP/MIP scalars from the stored result header onto the unary solution
+// message. Numeric arrays stay empty; the caller sends those as chunks.
+void copy_lp_result_scalars(const cuopt::remote::ChunkedResultHeader& header,
+                            cuopt::remote::LPSolution* solution);
+void copy_mip_result_scalars(const cuopt::remote::ChunkedResultHeader& header,
+                             cuopt::remote::MIPSolution* solution);
+
+// Copy raw GetResultChunk payloads into the empty repeated fields of a unary
+// result. `result` must already carry the scalar fields. Each consumed entry
+// in `arrays` is cleared so the raw buffer does not stay live beside the copy.
+void apply_result_chunk_arrays(cuopt::remote::ResultResponse* result,
+                               std::map<int32_t, std::vector<uint8_t>>& arrays);
+
 }  // namespace cuopt::mathematical_optimization

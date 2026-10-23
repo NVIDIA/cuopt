@@ -21,15 +21,17 @@ build:
   script:
     content: |
       ./build.sh cuopt_sh_client
+    env:
+      RAPIDS_CUDA_VERSION: ${{ env.get("RAPIDS_CUDA_VERSION") }}
 
 requirements:
   host:
     - pip
-    - python >=3.11
+    - python >=3.12
     - setuptools>=77.0.0
   run:
     - msgpack-python =1.2.1
-    - python
+    - python >=3.12
     - requests
 
 tests:

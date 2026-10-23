@@ -57,98 +57,33 @@ create_manifest() {
     echo "✓ Successfully created and pushed manifest: $manifest_name"
 }
 
-# Short cu<major> alias (e.g. cu12/cu13), matching the pip/conda wheel suffix.
-# Aliases point at the same per-arch images as the fully-qualified tags.
-CUDA_MAJOR="${CUDA_SHORT%%.*}"
+CUDA_MAJOR="${CUDA_VER%%.*}"
 
-# Create manifest for dockerhub and nvstaging
-echo "=== Creating Docker Hub manifests ==="
-create_manifest \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}" \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
-create_manifest \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}" \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
+IS_RELEASE=false
+if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then IS_RELEASE=true; fi
 
-echo "=== Creating NVCR staging manifests ==="
-create_manifest \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}" \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
-create_manifest \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}" \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
+create_short_manifests() {
+    local short=$1 repo
+    for repo in nvidia/cuopt nvcr.io/nvstaging/nvaie/cuopt; do
+        echo "=== Creating ${short} manifests in ${repo} ==="
+        create_manifest \
+            "${repo}:${IMAGE_TAG_PREFIX}-${short}" \
+            "${repo}:${IMAGE_TAG_PREFIX}-${short}-amd64" \
+            "${repo}:${IMAGE_TAG_PREFIX}-${short}-arm64"
+        if [[ "${IS_RELEASE}" == "true" ]]; then
+            create_manifest \
+                "${repo}:latest-${short}" \
+                "${repo}:${IMAGE_TAG_PREFIX}-${short}-amd64" \
+                "${repo}:${IMAGE_TAG_PREFIX}-${short}-arm64"
+        fi
+    done
+}
 
-# Only create latest manifests for release versions (semantic version without 'a')
-if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "${IMAGE_TAG_PREFIX}" != *"a"* ]]; then
-    echo "=== Creating latest manifests for release version: ${IMAGE_TAG_PREFIX} ==="
-
-    echo "Creating Docker Hub latest manifest..."
-    create_manifest \
-        "nvidia/cuopt:latest-cuda${CUDA_SHORT}-py${PYTHON_SHORT}" \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
-    create_manifest \
-        "nvidia/cuopt:latest-cu${CUDA_MAJOR}" \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
-
-    echo "Creating NVCR staging latest manifest..."
-    create_manifest \
-        "nvcr.io/nvstaging/nvaie/cuopt:latest-cuda${CUDA_SHORT}-py${PYTHON_SHORT}" \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
-    create_manifest \
-        "nvcr.io/nvstaging/nvaie/cuopt:latest-cu${CUDA_MAJOR}" \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
-else
-    echo "Skipping latest manifest creation (IMAGE_TAG_PREFIX='${IMAGE_TAG_PREFIX}' is not a release version)"
-fi
+create_short_manifests "cu${CUDA_MAJOR}"
 
 # UBI10 CUDA base images are only published for CUDA 13.x and later
 if [[ "${CUDA_MAJOR}" == "13" ]]; then
-    echo "=== Creating UBI10 manifests ==="
-    create_manifest \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10" \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-    create_manifest \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10" \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-
-    create_manifest \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10" \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-    create_manifest \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10" \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-
-    if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "${IMAGE_TAG_PREFIX}" != *"a"* ]]; then
-        create_manifest \
-            "nvidia/cuopt:latest-cuda${CUDA_SHORT}-ubi10" \
-            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-        create_manifest \
-            "nvidia/cuopt:latest-cu${CUDA_MAJOR}-ubi10" \
-            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-
-        create_manifest \
-            "nvcr.io/nvstaging/nvaie/cuopt:latest-cuda${CUDA_SHORT}-ubi10" \
-            "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-            "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-        create_manifest \
-            "nvcr.io/nvstaging/nvaie/cuopt:latest-cu${CUDA_MAJOR}-ubi10" \
-            "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-            "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-    fi
+    create_short_manifests "cu${CUDA_MAJOR}-ubi10"
 else
     echo "Skipping UBI10 manifests (CUDA_MAJOR='${CUDA_MAJOR}' — UBI10 base images require CUDA 13+)"
 fi

@@ -30,7 +30,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
                                      pdlp_solver_settings_t<i_t, f_t> const& settings)
   : device_id(device_id),
     stream(),
-    handle(stream.view()),
+    handle(stream),
     comm(std::move(comm)),
     rank_data(std::move(rd)),
     opt_problem(&handle),

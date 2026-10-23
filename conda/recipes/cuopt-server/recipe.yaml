@@ -20,11 +20,13 @@ build:
   script:
     content: |
       ./build.sh cuopt_server
+    env:
+      RAPIDS_CUDA_VERSION: ${{ env.get("RAPIDS_CUDA_VERSION") }}
 
 requirements:
   host:
     - pip
-    - python >=3.11
+    - python >=3.12
     - rapids-build-backend >=0.4.0,<0.5.0
     - setuptools>=77.0.0
   run:
@@ -36,7 +38,7 @@ requirements:
     - numpy >=2.0,<3.0
     - pandas>=2
     - psutil>=6.0.0
-    - python
+    - python >=3.12
     - uvicorn =0.34
 
 tests:

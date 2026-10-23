@@ -22,7 +22,6 @@ service CuOptRemoteService {
   // Used for problems whose serialized SubmitJobRequest fits within the
   // gRPC max message size (256 MiB default, configurable per-side).
   // Larger problems use the chunked upload path below; see ArrayChunk.
-  // VRP is unary-only in this POC (no chunked VRP upload yet).
   rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
 
   // -------------------------
@@ -31,7 +30,16 @@ service CuOptRemoteService {
 
   // Start a chunked upload session. Sends problem metadata (scalars, settings, string arrays)
   // in the header. Returns an upload_id for subsequent chunk calls.
+  //
+  // Deprecated for new clients: use StartChunkedUploadV2. This RPC stays for the
+  // transition window so existing chunked clients keep working.
   rpc StartChunkedUpload(StartChunkedUploadRequest) returns (StartChunkedUploadResponse);
+
+  // Unified-header chunked upload. `job` is a SubmitJobRequest with numeric arrays
+  // left empty; array bulk follows via SendArrayChunk, and FinishChunkedUpload is
+  // shared with the legacy session. VRP uses the same envelope; its matrix chunks
+  // stay hand-written (CostMatrix.ArrayId).
+  rpc StartChunkedUploadV2(StartChunkedUploadV2Request) returns (StartChunkedUploadResponse);
 
   // Send one chunk of array data. Each chunk carries a slice of one numeric array,
   // identified by ArrayFieldId. The server accumulates chunks by upload_id.
@@ -58,7 +66,15 @@ service CuOptRemoteService {
   // Start a chunked download session. Returns result metadata (scalars, enums, strings)
   // and array descriptors (field_id, total_elements, element_size) for the caller to
   // fetch array data in subsequent GetResultChunk calls.
+  //
+  // Deprecated for new clients: use StartChunkedDownloadV2. This RPC stays for the
+  // transition window.
   rpc StartChunkedDownload(StartChunkedDownloadRequest) returns (StartChunkedDownloadResponse);
+
+  // Unified-header chunked download. Returns the unary ResultResponse with numeric
+  // solution arrays empty, plus the descriptors for GetResultChunk. VRP solutions
+  // have no result chunks; the RoutingSolution in `result` is complete.
+  rpc StartChunkedDownloadV2(StartChunkedDownloadRequest) returns (StartChunkedDownloadV2Response);
 
   // Get one chunk of result array data. Each call returns a slice of one array,
   // identified by ResultFieldId. The client controls pacing.
@@ -114,6 +130,7 @@ message SubmitJobResponse {
 // Chunked Array Upload (for problems exceeding unary message limit)
 // =============================================================================
 
+// Legacy chunked-upload header. New clients send StartChunkedUploadV2Request instead.
 // Header for chunked array uploads: carries scalars, settings, and small string arrays.
 // Numeric arrays are sent separately via SendArrayChunk RPCs.
 message ChunkedProblemHeader {
@@ -131,7 +148,7 @@ message ChunkedProblemHeader {
   repeated string variable_names = 7;
   repeated string row_names = 8;
 
-  // Settings (one of LP or MIP)
+  // Settings (one of LP or MIP). VRP settings travel on SubmitJobRequest.
   oneof settings {
     PDLPSolverSettings lp_settings = 20;
     MIPSolverSettings mip_settings = 21;
@@ -169,7 +186,8 @@ message ChunkedProblemHeader {
 //     container-relative ids are published as a nested `ArrayId` enum on
 //     each repeated message type — e.g. QuadraticConstraint.LINEAR_VALUES —
 //     so external clients should reference the named enum value rather than
-//     the bare integer.
+//     the bare integer.  VRP cost and transit-time matrices use
+//     CostMatrix.ArrayId.VALUES.
 //
 // `data` carries native-endian raw element bytes (memcpy'd directly from the
 // client's contiguous buffer), NOT a protobuf-encoded value.  total_elements
@@ -206,9 +224,16 @@ message ArrayChunk {
 }
 
 // Start a chunked upload: sends problem metadata and settings.
-// Problem category (LP/MIP) is derived from problem_header.header.problem_category.
+// LP and MIP only. A VRP category is rejected; chunked VRP uses
+// StartChunkedUploadV2.
 message StartChunkedUploadRequest {
   ChunkedProblemHeader problem_header = 1;
+}
+
+// Unified upload header: the same message unary SubmitJob sends, with numeric
+// arrays empty. ArrayChunks use the existing ArrayFieldId / container ids.
+message StartChunkedUploadV2Request {
+  SubmitJobRequest job = 1;
 }
 
 message StartChunkedUploadResponse {
@@ -253,6 +278,15 @@ message StartChunkedDownloadResponse {
   string download_id = 1;
   ChunkedResultHeader header = 2;
   int64 max_message_bytes = 3;
+}
+
+// Unified download header: the unary result, with numeric solution arrays empty.
+// `arrays` names the GetResultChunk payloads. Empty for VRP.
+message StartChunkedDownloadV2Response {
+  string download_id = 1;
+  int64 max_message_bytes = 2;
+  ResultResponse result = 3;
+  repeated ResultArrayDescriptor arrays = 4;
 }
 
 message GetResultChunkRequest {

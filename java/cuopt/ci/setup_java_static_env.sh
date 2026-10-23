@@ -93,8 +93,7 @@ rapids-logger "Installing rmm and rapids_logger from prebuilt RAPIDS wheels"
 # environment providing a prebuilt raft package.
 rapids-dependency-file-generator \
   --output requirements \
-  --file-key py_build_libcuopt \
-  --file-key py_rapids_build_libcuopt \
+  --file-key java_static \
   --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION};cuda_suffixed=true" \
 | tee /tmp/requirements-java-static.txt
 rapids-pip-retry install -v --prefer-binary -r /tmp/requirements-java-static.txt

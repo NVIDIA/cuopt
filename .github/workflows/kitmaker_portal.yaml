@@ -19,6 +19,7 @@ on:
         description: |
           wheel_asset_pattern: extended regex (matched with jq's 'test()') selecting this
           project's wheel/sdist asset names out of the GitHub Release, e.g. '^libcuopt-'.
+          Defaults to the project name with '-' replaced by '_', e.g. '^libcuopt_cu12-'.
         type: string
       pic:
         description: "pic: 'person in charge' email required by the Kitmaker release API. Defaults to secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL."
@@ -65,6 +66,7 @@ on:
         description: |
           wheel_asset_pattern: extended regex (matched with jq's 'test()') selecting this
           project's wheel/sdist asset names out of the GitHub Release, e.g. '^libcuopt-'.
+          Defaults to the project name with '-' replaced by '_', e.g. '^libcuopt_cu12-'.
         type: string
       pic:
         description: "pic: 'person in charge' email required by the Kitmaker release API. Defaults to secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL."
@@ -98,7 +100,6 @@ jobs:
           [[ -n "$RELEASE_TAG" ]] || { echo "::error::'release_tag' is required"; exit 1; }
           [[ -n "$PROJECT_NAME" ]] || { echo "::error::'project_name' is required"; exit 1; }
           [[ -n "$PROJECT_ID" ]] || { echo "::error::'project_id' is required"; exit 1; }
-          [[ -n "$ASSET_PATTERN" ]] || { echo "::error::'wheel_asset_pattern' is required"; exit 1; }
           [[ -n "$PIC" ]] || { echo "::error::'pic' input or secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL must be set"; exit 1; }
 
       - name: Collect wheel asset URLs from the GitHub Release
@@ -106,12 +107,13 @@ jobs:
         env:
           UPLOAD: ${{ inputs.upload }}
         run: |
+          pattern="${ASSET_PATTERN:-^${PROJECT_NAME//-/_}-}"
           assets_json=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json assets)
-          urls_json=$(echo "$assets_json" | jq -c --arg pattern "$ASSET_PATTERN" \
+          urls_json=$(echo "$assets_json" | jq -c --arg pattern "$pattern" \
             '[.assets[] | select(.name | test($pattern)) | .url]')
 
           if [[ "$(echo "$urls_json" | jq 'length')" -eq 0 ]]; then
-            echo "::error::No assets on release '$RELEASE_TAG' matched pattern '$ASSET_PATTERN'"
+            echo "::error::No assets on release '$RELEASE_TAG' matched pattern '$pattern'"
             exit 1
           fi
 
@@ -126,12 +128,12 @@ jobs:
         uses: teleport-actions/setup@b638ff596557cc3959eb6b5287d5e58e0c8ac6a6 # v1.1.1
         with:
           version: auto
-          proxy: nv-stg-ps.teleport.sh:443
+          proxy: ext-nv-stg-apps.teleport.sh:443
 
       - name: Start staging Ferry tunnel
         uses: teleport-actions/application-tunnel@bb7a8fbfb67b85d26013554f10d71dd032c1c764 # v1.0.1
         with:
-          proxy: nv-stg-ps.teleport.sh:443
+          proxy: ext-nv-stg-apps.teleport.sh:443
           token: charon-gha-runners
           app: charon
           listen: tcp://127.0.0.1:8888

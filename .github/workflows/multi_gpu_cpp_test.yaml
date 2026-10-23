@@ -35,7 +35,7 @@ on:
         default: "amd64"
       container_image:
         type: string
-        default: "rapidsai/ci-conda:26.10-latest"
+        default: "rapidsai/ci-conda:26.12-latest"
       script:
         type: string
         default: "ci/test_cpp_multi_gpu.sh"
@@ -61,7 +61,7 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.10
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -73,3 +73,10 @@ jobs:
       container-options: ${{ inputs.container-options }}
       script: ${{ inputs.script }}
       continue-on-error: ${{ inputs.continue-on-error }}
+    secrets:
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}

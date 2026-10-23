@@ -9,11 +9,6 @@ Server
    with a HTTP proxy server which forwards requests to ``cuopt_grpc_server``.
    These pages describe the HTTP proxy server.
 
-   For routing, the proxy server currently supports problems of up to about 5500 locations
-   when a travel time matrix is included, or about 8000 locations when it is
-   not. For a larger problem, use a local :func:`cuopt.routing.Solve` or the
-   :doc:`legacy HTTP server <../cuopt-server/legacy-http-server>`.
-
 The **NVIDIA cuOpt HTTP proxy server** provides a **REST** (HTTP/JSON)
 interface which forwards requests to ``cuopt_grpc_server``. Use
 :doc:`quick-start` for deployment, :doc:`server-api/index` for the API, and
