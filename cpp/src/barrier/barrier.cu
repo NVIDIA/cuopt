@@ -1252,6 +1252,8 @@ class iteration_data_t {
     raft::common::nvtx::range fun_scope("Barrier: Form ADAT");
     float64_t start_form_adat = tic();
     const i_t m               = AD.m;
+    // QPs factor A (D + dual_perturb)^{-1} A^T with a small relative diagonal shift.
+    const bool regularize = Q.n > 0;
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: restore A");
@@ -1280,6 +1282,16 @@ class iteration_data_t {
       } else {
         d_inv_diag_prime.resize(inv_diag.size(), stream_view_);
         raft::copy(d_inv_diag_prime.data(), d_inv_diag.data(), inv_diag.size(), stream_view_);
+      }
+      if (regularize && dual_perturb > 0) {
+        thrust::transform(rmm::exec_policy_nosync(stream_view_),
+                          d_inv_diag_prime.begin(),
+                          d_inv_diag_prime.end(),
+                          d_inv_diag_prime.begin(),
+                          [dual_perturb_value = dual_perturb] __device__(f_t inv_d) {
+                            return inv_d / (f_t(1) + dual_perturb_value * inv_d);
+                          });
+        RAFT_CHECK_CUDA(stream_view_.get());
       }
     }
 
@@ -1335,6 +1347,25 @@ class iteration_data_t {
       raft::common::nvtx::range scope("Barrier: Form ADAT: ADAT multiply");
       multiply_kernels<i_t, f_t>(handle_ptr, device_ADAT, spgemm_info());
       handle_ptr->sync_stream();
+    }
+    if (regularize && settings_.barrier_adat_regularization > 0) {
+      raft::common::nvtx::range scope("Barrier: Form ADAT: regularize");
+      const f_t relative_perturb = settings_.barrier_adat_regularization;
+      thrust::for_each_n(rmm::exec_policy_nosync(stream_view_),
+                         thrust::make_counting_iterator<i_t>(0),
+                         m,
+                         [row_start = cuopt::make_span(device_ADAT.row_start),
+                          col_index = cuopt::make_span(device_ADAT.j),
+                          values    = cuopt::make_span(device_ADAT.x),
+                          relative_perturb] __device__(i_t i) {
+                           for (i_t p = row_start[i]; p < row_start[i + 1]; ++p) {
+                             if (col_index[p] == i) {
+                               values[p] += relative_perturb * values[p];
+                               break;
+                             }
+                           }
+                         });
+      RAFT_CHECK_CUDA(stream_view_.get());
     }
 
     auto adat_nnz       = device_ADAT.row_start.element(device_ADAT.m, handle_ptr->get_stream());

@@ -794,10 +794,9 @@ i_t remove_empty_rows(lp_problem_t<i_t, f_t>& problem,
 template <typename i_t, typename f_t>
 i_t remove_fixed_variables(f_t fixed_tolerance,
                            lp_problem_t<i_t, f_t>& problem,
+                           presolve_info_t<i_t, f_t>& presolve_info,
                            i_t& fixed_variables)
 {
-  constexpr bool verbose = false;
-  if (verbose) { printf("Removing %d fixed variables\n", fixed_variables); }
   // We have a variable with l_j = x_j = u_j
   // Constraints of the form
   //
@@ -809,46 +808,398 @@ i_t remove_fixed_variables(f_t fixed_tolerance,
   // sum_{k != j} c_k * x_k + c_j * x_j
   // becomes
   // sum_{k != j} c_k * x_k + c_j l_j
+  const i_t linear_cols = linear_variable_count(problem);
 
-  std::vector<i_t> col_marker(problem.num_cols);
-  for (i_t j = 0; j < problem.num_cols; ++j) {
-    if (std::abs(problem.upper[j] - problem.lower[j]) < fixed_tolerance) {
-      col_marker[j] = 1;
-      for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; ++p) {
-        const i_t i   = problem.A.i[p];
-        const f_t aij = problem.A.x[p];
-        problem.rhs[i] -= aij * problem.lower[j];
+  // Identify columns that participate in the quadratic objective to avoid removing them as fixed
+  // variables.
+  std::vector<bool> has_quadratic_term(problem.num_cols, false);
+  if (problem.Q.n > 0) {
+    for (i_t row = 0; row < problem.Q.m; ++row) {
+      for (i_t p = problem.Q.row_start[row]; p < problem.Q.row_start[row + 1]; ++p) {
+        has_quadratic_term[row]            = true;
+        has_quadratic_term[problem.Q.j[p]] = true;
       }
-      problem.obj_constant += problem.objective[j] * problem.lower[j];
-    } else {
-      col_marker[j] = 0;
     }
   }
 
-  problem.A.remove_columns(col_marker);
+  // Map the current column index to the original problem's column index, accounting for any
+  // previous reductions.
+  const bool previously_reduced = !presolve_info.remaining_variables.empty();
+  auto to_original              = [&](i_t j) {
+    return previously_reduced ? presolve_info.remaining_variables[j] : j;
+  };
+  // Compute the full value of a fixed variable, including any earlier lower-bound shift.
+  auto full_value = [&](i_t j) {
+    const auto& shifted = presolve_info.removed_lower_bounds;
+    return shifted.empty() ? problem.lower[j] : problem.lower[j] + shifted[to_original(j)];
+  };
 
-  // Clean up objective, lower, upper, and col_names
-  i_t new_cols = problem.A.n;
-  if (verbose) { printf("new cols %d\n", new_cols); }
+  std::vector<i_t> col_marker(problem.num_cols, 0);
+  i_t num_removed = 0;
+  std::vector<f_t> kahan_compensation(problem.num_rows, 0.0);
+  // Per row: whether it was touched by a removed fixed column, and the magnitude of the removed
+  // contribution.
+  std::vector<char> touched(problem.num_rows, 0);
+  std::vector<f_t> removed_magnitude(problem.num_rows, 0.0);
+  // Loop over all linear columns to identify and remove fixed variables.
+  for (i_t j = 0; j < linear_cols; ++j) {
+    if (has_quadratic_term[j] || problem.lower[j] == -inf || problem.upper[j] == inf) { continue; }
+    if (std::abs(problem.upper[j] - problem.lower[j]) > fixed_tolerance) { continue; }
+    col_marker[j] = 1;
+    num_removed++;
+    const f_t value = full_value(j);
+    for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; ++p) {
+      const i_t i           = problem.A.i[p];
+      const f_t aij         = problem.A.x[p];
+      const f_t val         = -aij * problem.lower[j];
+      const f_t y           = val - kahan_compensation[i];
+      const f_t t           = problem.rhs[i] + y;
+      kahan_compensation[i] = (t - problem.rhs[i]) - y;
+      problem.rhs[i]        = t;
+      touched[i]            = 1;
+      removed_magnitude[i] += std::abs(aij * value);
+    }
+    problem.obj_constant += problem.objective[j] * problem.lower[j];
+  }
+  fixed_variables = num_removed;
+  if (num_removed == 0) { return 0; }
+
+  // Cut off rounding-level residuals of empty rows to zero.
+  constexpr f_t empty_row_tolerance = 1e-12;
+  std::vector<i_t> row_nnz_left(problem.num_rows, 0);
+  for (i_t j = 0; j < problem.num_cols; ++j) {
+    if (col_marker[j]) { continue; }
+    for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; ++p) {
+      row_nnz_left[problem.A.i[p]]++;
+    }
+  }
+  for (i_t i = 0; i < problem.num_rows; ++i) {
+    if (!touched[i] || row_nnz_left[i] != 0) { continue; }
+    const f_t scale = std::max(f_t(1), std::abs(problem.rhs[i]) + removed_magnitude[i]);
+    if (std::abs(problem.rhs[i]) <= empty_row_tolerance * scale) { problem.rhs[i] = 0.0; }
+  }
+
+  const i_t new_cols = problem.num_cols - num_removed;
   std::vector<f_t> objective(new_cols);
   std::vector<f_t> lower(new_cols);
   std::vector<f_t> upper(new_cols);
+  std::vector<i_t> remaining;
+  remaining.reserve(new_cols);
+  std::vector<i_t> col_old_to_new(problem.num_cols, -1);
+
   i_t new_j = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
-    if (!col_marker[j]) {
-      objective[new_j] = problem.objective[j];
-      lower[new_j]     = problem.lower[j];
-      upper[new_j]     = problem.upper[j];
-      new_j++;
-      fixed_variables--;
+    if (col_marker[j]) {
+      // The value restored here is the current lower bound; if this variable also had its lower
+      // bound shifted to zero earlier, removed_lower_bounds adds the original offset back.
+      presolve_info.removed_variables.push_back(to_original(j));
+      presolve_info.removed_values.push_back(problem.lower[j]);
+      presolve_info.removed_reduced_costs.push_back(0.0);
+      presolve_info.fixed_variables.push_back(to_original(j));
+      continue;
+    }
+    objective[new_j] = problem.objective[j];
+    lower[new_j]     = problem.lower[j];
+    upper[new_j]     = problem.upper[j];
+    remaining.push_back(to_original(j));
+    col_old_to_new[j] = new_j;
+    new_j++;
+  }
+
+  problem.A.remove_columns(col_marker);
+  assert(new_cols == problem.A.n);
+
+  if (problem.Q.n > 0) {
+    // Removed columns have no Q entries, so this only compacts and reindexes Q.
+    remove_variables_from_Q(problem.Q, col_marker, col_old_to_new, new_cols);
+    problem.Q.check_matrix("After removing fixed columns");
+  }
+
+  if (!problem.second_order_cone_dims.empty()) {
+    const i_t new_cone_start = col_old_to_new[problem.cone_var_start];
+    assert(new_cone_start != -1);
+    problem.cone_var_start = new_cone_start;
+  }
+
+  presolve_info.remaining_variables = remaining;
+  problem.objective                 = objective;
+  problem.lower                     = lower;
+  problem.upper                     = upper;
+  problem.num_cols                  = new_cols;
+  return 0;
+}
+
+/**
+ * @brief Shifts every finite nonzero lower bound of a linear column to zero.
+ *
+ * The shift is accumulated in presolve_info.removed_lower_bounds, indexed by original column.
+ */
+template <typename i_t, typename f_t>
+static void shift_lower_bounds_to_zero(lp_problem_t<i_t, f_t>& problem,
+                                       i_t linear_cols,
+                                       i_t original_num_cols,
+                                       presolve_info_t<i_t, f_t>& presolve_info)
+{
+  // We can construct a new variable: x'_j = x_j - l_j or x_j = x'_j + l_j
+  // than we have 0 <= x'_j <= u_j - l_j
+  // Constraints in the form:
+  //  sum_{k != j} a_ik x_k + a_ij * x_j {=, <=} beta_i
+  //  become
+  //  sum_{k != j} a_ik x_k + a_ij * (x'_j + l_j) {=, <=} beta_i
+  //  or
+  //  sum_{k != j} a_ik x_k + a_ij * x'_j {=, <=} beta_i - a_{ij} l_j
+  //
+  // the cost function
+  // sum_{k != j} c_k x_k + c_j * x_j
+  // becomes
+  // sum_{k != j} c_k x_k + c_j (x'_j + l_j)
+  //
+  // so we get the constant term c_j * l_j
+
+  std::vector<bool> lower_bounds_removed(problem.num_cols, false);
+  bool any_removed = false;
+  for (i_t j = 0; j < linear_cols; j++) {
+    if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) {
+      lower_bounds_removed[j] = true;
+      any_removed             = true;
     }
   }
-  problem.objective = objective;
-  problem.lower     = lower;
-  problem.upper     = upper;
-  problem.num_cols  = problem.A.n;
-  if (verbose) { printf("Finishing fixed columns\n"); }
-  return 0;
+  if (!any_removed) { return; }
+
+  if (presolve_info.removed_lower_bounds.empty()) {
+    presolve_info.removed_lower_bounds.resize(original_num_cols, 0.0);
+  }
+  const bool previously_reduced = !presolve_info.remaining_variables.empty();
+  for (i_t j = 0; j < linear_cols; j++) {
+    if (!lower_bounds_removed[j]) { continue; }
+    const i_t original_j = previously_reduced ? presolve_info.remaining_variables[j] : j;
+    presolve_info.removed_lower_bounds[original_j] += problem.lower[j];
+  }
+
+  auto old_objective = problem.objective;
+  if (problem.Q.n > 0) {
+    for (i_t row = 0; row < linear_cols; row++) {
+      i_t row_start = problem.Q.row_start[row];
+      i_t row_end   = problem.Q.row_start[row + 1];
+      for (i_t p = row_start; p < row_end; p++) {
+        i_t col = problem.Q.j[p];
+        f_t qij = problem.Q.x[p];
+
+        if (lower_bounds_removed[row]) { problem.objective[col] += 0.5 * qij * problem.lower[row]; }
+        if (lower_bounds_removed[col]) { problem.objective[row] += 0.5 * qij * problem.lower[col]; }
+        if (lower_bounds_removed[row] && lower_bounds_removed[col]) {
+          problem.obj_constant += 0.5 * qij * problem.lower[row] * problem.lower[col];
+        }
+      }
+    }
+  }
+
+  std::vector<f_t> kahan_compensation(problem.num_rows, 0.0);
+  for (i_t j = 0; j < linear_cols; j++) {
+    if (lower_bounds_removed[j]) {
+      i_t col_start = problem.A.col_start[j];
+      i_t col_end   = problem.A.col_start[j + 1];
+      for (i_t p = col_start; p < col_end; p++) {
+        i_t i                 = problem.A.i[p];
+        f_t aij               = problem.A.x[p];
+        f_t val               = -aij * problem.lower[j];
+        f_t y                 = val - kahan_compensation[i];
+        f_t t                 = problem.rhs[i] + y;
+        kahan_compensation[i] = (t - problem.rhs[i]) - y;
+        problem.rhs[i]        = t;
+      }
+      problem.obj_constant += old_objective[j] * problem.lower[j];
+      problem.upper[j] -= problem.lower[j];
+      problem.lower[j] = 0.0;
+    }
+  }
+}
+
+/**
+ * @brief Turns rows that fix or bound a single variable into bounds and empties those rows.
+ *
+ * A row qualifies if it has one entry, or two entries one of which is a zero-cost column singleton
+ * with at least one finite bound (typically an inequality slack). The emptied rows are left for
+ * remove_empty_rows and their slacks are fixed for remove_fixed_variables.
+ *
+ * @return The number of rows emptied.
+ */
+template <typename i_t, typename f_t>
+static i_t remove_singleton_rows(lp_problem_t<i_t, f_t>& problem,
+                                 i_t original_num_cols,
+                                 presolve_info_t<i_t, f_t>& presolve_info)
+{
+  const i_t m           = problem.num_rows;
+  const i_t n           = problem.num_cols;
+  const i_t linear_cols = linear_variable_count(problem);
+
+  std::vector<char> has_quadratic_term(n, 0);
+  if (problem.Q.n > 0) {
+    for (i_t row = 0; row < std::min(problem.Q.m, n); ++row) {
+      for (i_t p = problem.Q.row_start[row]; p < problem.Q.row_start[row + 1]; ++p) {
+        has_quadratic_term[row]            = 1;
+        has_quadratic_term[problem.Q.j[p]] = 1;
+      }
+    }
+  }
+
+  const bool previously_reduced = !presolve_info.remaining_variables.empty();
+  auto to_original              = [&](i_t j) {
+    return previously_reduced ? presolve_info.remaining_variables[j] : j;
+  };
+  std::vector<char> negated(original_num_cols, 0);
+  for (const i_t j : presolve_info.negated_variables) {
+    negated[j] = 1;
+  }
+
+  // A bound within feas_tol of the opposite bound is snapped to it; further away the row is kept.
+  constexpr f_t feas_tol = 1e-9;
+  auto close             = [&](f_t a, f_t b) {
+    return std::abs(a - b) <= feas_tol * std::max({f_t(1), std::abs(a), std::abs(b)});
+  };
+  auto is_slack = [&](i_t j) {
+    return j < linear_cols && problem.A.col_length(j) == 1 && problem.objective[j] == 0 &&
+           !has_quadratic_term[j] && (problem.lower[j] > -inf || problem.upper[j] < inf);
+  };
+
+  csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
+  problem.A.to_compressed_row(Arow);
+  std::vector<char> remove_row(m, 0);
+  // Columns fixed by a row in this pass, which other rows must not bound again.
+  std::vector<char> fixed_here(n, 0);
+  i_t removed = 0;
+
+  for (i_t i = 0; i < m; ++i) {
+    const i_t row_start = Arow.row_start[i];
+    const i_t row_len   = Arow.row_start[i + 1] - row_start;
+    if (row_len == 0 || row_len > 2) { continue; }
+    bool touches_cone = false;
+    for (i_t p = row_start; p < row_start + row_len; ++p) {
+      if (Arow.j[p] >= linear_cols) { touches_cone = true; }
+    }
+    if (touches_cone) { continue; }
+
+    singleton_row_t<i_t> record{i, -1, -1, false, false};
+    if (row_len == 1) {
+      // a_ij x_j = b_i fixes x_j.
+      const i_t j = Arow.j[row_start];
+      if (has_quadratic_term[j] || Arow.x[row_start] == 0) { continue; }
+      f_t value = problem.rhs[i] / Arow.x[row_start];
+      if (fixed_here[j]) {
+        // A second row fixing the same value is redundant and keeps a zero dual.
+        if (!close(value, problem.lower[j])) { continue; }
+        remove_row[i] = 1;
+        ++removed;
+        continue;
+      }
+      if (value < problem.lower[j]) {
+        if (!close(value, problem.lower[j])) { continue; }
+        value = problem.lower[j];
+      }
+      if (value > problem.upper[j]) {
+        if (!close(value, problem.upper[j])) { continue; }
+        value = problem.upper[j];
+      }
+      problem.lower[j]  = value;
+      problem.upper[j]  = value;
+      fixed_here[j]     = 1;
+      record.variable   = to_original(j);
+      record.sets_lower = true;
+      record.sets_upper = true;
+    } else {
+      // a_ij x_j + a_is s = b_i with s in [l_s, u_s] bounds a_ij x_j to [b_i - a_is s] over s.
+      i_t s = -1;
+      i_t j = -1;
+      for (i_t k = 1; k >= 0; --k) {
+        const i_t cand_s = Arow.j[row_start + k];
+        const i_t cand_j = Arow.j[row_start + 1 - k];
+        if (is_slack(cand_s) && problem.lower[cand_j] > -inf && !fixed_here[cand_j] &&
+            !fixed_here[cand_s]) {
+          s = cand_s;
+          j = cand_j;
+          break;
+        }
+      }
+      if (s == -1) { continue; }
+      const f_t a_ij = s == Arow.j[row_start] ? Arow.x[row_start + 1] : Arow.x[row_start];
+      const f_t a_is = s == Arow.j[row_start] ? Arow.x[row_start] : Arow.x[row_start + 1];
+      if (a_ij == 0 || a_is == 0) { continue; }
+      const f_t b = problem.rhs[i];
+      // Range of a_is * s, then of a_ij * x_j.
+      const f_t slack_lo    = a_is > 0 ? a_is * problem.lower[s] : a_is * problem.upper[s];
+      const f_t slack_hi    = a_is > 0 ? a_is * problem.upper[s] : a_is * problem.lower[s];
+      const f_t activity_lo = b - slack_hi;
+      const f_t activity_hi = b - slack_lo;
+      f_t new_lower         = a_ij > 0 ? activity_lo / a_ij : activity_hi / a_ij;
+      f_t new_upper         = a_ij > 0 ? activity_hi / a_ij : activity_lo / a_ij;
+      if (std::isnan(new_lower)) { new_lower = -inf; }
+      if (std::isnan(new_upper)) { new_upper = inf; }
+
+      f_t lower = problem.lower[j];
+      f_t upper = problem.upper[j];
+      if (new_lower > lower) {
+        lower             = new_lower;
+        record.sets_lower = true;
+      }
+      if (new_upper < upper) {
+        upper             = new_upper;
+        record.sets_upper = true;
+      }
+      if (lower > upper) {
+        if (!close(lower, upper)) { continue; }
+        // Keep the bound that was already there, so the row only fixes the variable.
+        if (record.sets_lower) {
+          lower = upper;
+        } else {
+          upper = lower;
+        }
+      }
+      // Fixed columns with a quadratic term stay in the barrier with no interior, so leave them.
+      if (has_quadratic_term[j] && lower == upper) { continue; }
+      problem.lower[j] = lower;
+      problem.upper[j] = upper;
+      if (lower == upper) { fixed_here[j] = 1; }
+
+      // The slack's value is recovered from the row in postsolve, so fix it anywhere.
+      problem.lower[s] = 0.0;
+      problem.upper[s] = 0.0;
+      fixed_here[s]    = 1;
+      record.variable  = to_original(j);
+      record.slack     = to_original(s);
+    }
+    // Bounds are recorded in the original orientation of the variable.
+    if (negated[record.variable]) { std::swap(record.sets_lower, record.sets_upper); }
+    if (record.slack != -1 || record.sets_lower || record.sets_upper) {
+      presolve_info.singleton_rows.push_back(record);
+    }
+    remove_row[i] = 1;
+    ++removed;
+  }
+  if (removed == 0) { return 0; }
+
+  // Empty the removed rows. Their entries no longer constrain anything once the bounds are moved.
+  i_t nz = 0;
+  for (i_t j = 0; j < n; ++j) {
+    const i_t col_start    = problem.A.col_start[j];
+    const i_t col_end      = problem.A.col_start[j + 1];
+    problem.A.col_start[j] = nz;
+    for (i_t p = col_start; p < col_end; ++p) {
+      if (remove_row[problem.A.i[p]]) { continue; }
+      problem.A.i[nz] = problem.A.i[p];
+      problem.A.x[nz] = problem.A.x[p];
+      ++nz;
+    }
+  }
+  problem.A.col_start[n] = nz;
+  problem.A.i.resize(nz);
+  problem.A.x.resize(nz);
+  problem.A.nz_max = nz;
+  for (i_t i = 0; i < m; ++i) {
+    if (remove_row[i]) { problem.rhs[i] = 0.0; }
+  }
+
+  shift_lower_bounds_to_zero(problem, linear_cols, original_num_cols, presolve_info);
+  return removed;
 }
 
 // Adds one slack column s_k per entry of `rows`; slack k has a single nonzero in row i = rows[k]:
@@ -1759,88 +2110,10 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) { nonzero_lower_bounds++; }
   }
   if (settings.barrier_presolve && nonzero_lower_bounds > 0) {
+#ifdef BARRIER_PRESOLVE_LOG
     settings.log.printf("Transforming %ld nonzero lower bound\n", nonzero_lower_bounds);
-    presolve_info.removed_lower_bounds.resize(problem.num_cols);
-    // We can construct a new variable: x'_j = x_j - l_j or x_j = x'_j + l_j
-    // than we have 0 <= x'_j <= u_j - l_j
-    // Constraints in the form:
-    //  sum_{k != j} a_ik x_k + a_ij * x_j {=, <=} beta_i
-    //  become
-    //  sum_{k != j} a_ik x_k + a_ij * (x'_j + l_j) {=, <=} beta_i
-    //  or
-    //  sum_{k != j} a_ik x_k + a_ij * x'_j {=, <=} beta_i - a_{ij} l_j
-    //
-    // the cost function
-    // sum_{k != j} c_k x_k + c_j * x_j
-    // becomes
-    // sum_{k != j} c_k x_k + c_j (x'_j + l_j)
-    //
-    // so we get the constant term c_j * l_j
-
-    std::vector<bool> lower_bounds_removed(problem.num_cols, false);
-    for (i_t j = 0; j < linear_cols; j++) {
-      if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) {
-        lower_bounds_removed[j]               = true;
-        presolve_info.removed_lower_bounds[j] = problem.lower[j];
-      }
-    }
-
-    auto old_objective = problem.objective;
-    if (problem.Q.n > 0) {
-      for (i_t row = 0; row < linear_cols; row++) {
-        i_t row_start = problem.Q.row_start[row];
-        i_t row_end   = problem.Q.row_start[row + 1];
-        for (i_t p = row_start; p < row_end; p++) {
-          i_t col = problem.Q.j[p];
-          f_t qij = problem.Q.x[p];
-
-          if (lower_bounds_removed[row]) {
-            problem.objective[col] += 0.5 * qij * problem.lower[row];
-          }
-          if (lower_bounds_removed[col]) {
-            problem.objective[row] += 0.5 * qij * problem.lower[col];
-          }
-          if (lower_bounds_removed[row] && lower_bounds_removed[col]) {
-            problem.obj_constant += 0.5 * qij * problem.lower[row] * problem.lower[col];
-          }
-        }
-      }
-    }
-
-    std::vector<f_t> kahan_compensation(problem.num_rows, 0.0);
-    for (i_t j = 0; j < linear_cols; j++) {
-      if (lower_bounds_removed[j]) {
-        i_t col_start = problem.A.col_start[j];
-        i_t col_end   = problem.A.col_start[j + 1];
-        for (i_t p = col_start; p < col_end; p++) {
-          i_t i                 = problem.A.i[p];
-          f_t aij               = problem.A.x[p];
-          f_t val               = -aij * problem.lower[j];
-          f_t y                 = val - kahan_compensation[i];
-          f_t t                 = problem.rhs[i] + y;
-          kahan_compensation[i] = (t - problem.rhs[i]) - y;
-          problem.rhs[i]        = t;
-        }
-        problem.obj_constant += old_objective[j] * problem.lower[j];
-        problem.upper[j] -= problem.lower[j];
-        problem.lower[j] = 0.0;
-      }
-    }
-  }
-
-  // Check for empty rows
-  i_t num_empty_rows = 0;
-  {
-    csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
-    problem.A.to_compressed_row(Arow);
-    for (i_t i = 0; i < problem.num_rows; i++) {
-      if (Arow.row_start[i + 1] - Arow.row_start[i] == 0) { num_empty_rows++; }
-    }
-  }
-  if (num_empty_rows > 0) {
-    settings.log.printf("Presolve removing %d empty rows\n", num_empty_rows);
-    i_t i = remove_empty_rows(problem, row_sense, num_empty_rows, presolve_info);
-    if (i != 0) { return -1; }
+#endif
+    shift_lower_bounds_to_zero(problem, linear_cols, original.num_cols, presolve_info);
   }
 
   // Check for empty cols
@@ -1851,8 +2124,58 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
   }
   if (num_empty_cols > 0) {
+#ifdef BARRIER_PRESOLVE_LOG
     settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
+#endif
     remove_empty_cols(problem, num_empty_cols, presolve_info, linear_cols);
+  }
+
+  // Check for fixed variables
+  if (settings.barrier_presolve && settings.barrier_presolve_fixed_variables != 0) {
+    i_t num_fixed_variables = 0;
+    remove_fixed_variables(static_cast<f_t>(0.0), problem, presolve_info, num_fixed_variables);
+    if (num_fixed_variables > 0) {
+#ifdef BARRIER_PRESOLVE_LOG
+      settings.log.printf("Presolve removed %d fixed variables\n", num_fixed_variables);
+#endif
+      linear_cols = linear_variable_count(problem);
+    }
+
+    // Fixing a variable can leave further rows with a single variable, so repeat until none do.
+    i_t num_singleton_rows = 0;
+    i_t num_fixed_by_rows  = 0;
+    while (settings.barrier_presolve_singleton_rows != 0) {
+      const i_t rows = remove_singleton_rows(problem, original.num_cols, presolve_info);
+      if (rows == 0) { break; }
+      num_singleton_rows += rows;
+      i_t fixed = 0;
+      remove_fixed_variables(static_cast<f_t>(0.0), problem, presolve_info, fixed);
+      num_fixed_by_rows += fixed;
+    }
+    if (num_singleton_rows > 0) {
+      settings.log.printf("Presolve removed %d singleton rows and %d variables they fixed\n",
+                          num_singleton_rows,
+                          num_fixed_by_rows);
+      linear_cols = linear_variable_count(problem);
+    }
+  }
+
+  // Check for empty rows. This runs after the column reductions above so that rows left empty by
+  // them are removed too.
+  i_t num_empty_rows = 0;
+  {
+    csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
+    problem.A.to_compressed_row(Arow);
+    for (i_t i = 0; i < problem.num_rows; i++) {
+      if (Arow.row_start[i + 1] - Arow.row_start[i] == 0) { num_empty_rows++; }
+    }
+  }
+  if (num_empty_rows > 0) {
+#ifdef BARRIER_PRESOLVE_LOG
+    settings.log.printf("Presolve removing %d empty rows\n", num_empty_rows);
+#endif
+    i_t i = remove_empty_rows(problem, row_sense, num_empty_rows, presolve_info);
+    if (i != 0) { return -1; }
   }
 
   // Check for free variables (exclude cone variables — they are naturally unbounded)
@@ -1872,15 +2195,17 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     presolve_info.direct_free_variables.clear();
     // Only free linear decision variables need to be handled; cone/stack columns
     // are unbounded by construction and must not be counted here.
-    i_t direct_free_count = 0;
+    [[maybe_unused]] i_t direct_free_count = 0;
     for (i_t j = 0; j < linear_cols; j++) {
       if (problem.lower[j] == -inf && problem.upper[j] == inf) {
         presolve_info.direct_free_variables.push_back(j);
         direct_free_count++;
       }
     }
+#ifdef BARRIER_PRESOLVE_LOG
     settings.log.printf("Handling %d free variables directly in augmented system\n",
                         direct_free_count);
+#endif
   } else if (settings.barrier_presolve && !has_cones && free_variables > 0) {
     // For pure LP problems (Q is empty and there are no cones in this branch)
     // We have a variable x_j: with -inf < x_j < inf
@@ -1968,9 +2293,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   // LP already goes through PSLP; this substitution is for QP/SOCP only. A cache fill skips it.
   if (settings.barrier_presolve && settings.barrier_eliminate_free_variables &&
       (has_cones || problem.Q.n > 0)) {
-    const i_t old_free_count         = static_cast<i_t>(presolve_info.direct_free_variables.size());
-    const f_t free_elimination_start = tic();
-    const i_t pivot_rejected         = eliminate_free_variables(problem, presolve_info);
+    [[maybe_unused]] const i_t old_free_count =
+      static_cast<i_t>(presolve_info.direct_free_variables.size());
+    [[maybe_unused]] const f_t free_elimination_start = tic();
+    [[maybe_unused]] const i_t pivot_rejected = eliminate_free_variables(problem, presolve_info);
+#ifdef BARRIER_PRESOLVE_LOG
     const i_t eliminated =
       old_free_count - static_cast<i_t>(presolve_info.direct_free_variables.size());
     if (eliminated > 0 || pivot_rejected > 0) {
@@ -1981,6 +2308,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         pivot_rejected,
         toc(free_elimination_start));
     }
+#endif
   }
 
   assert(problem.num_rows == problem.A.m);
@@ -2452,6 +2780,77 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     for (const i_t j : presolve_info.negated_variables) {
       input_x[j] *= -1.0;
       input_z[j] *= -1.0;
+    }
+  }
+
+  csr_matrix_t<i_t, f_t> original_Arow(0, 0, 0);
+  if (!presolve_info.singleton_rows.empty()) {
+    original_problem.A.to_compressed_row(original_Arow);
+    // A slack dropped with its singleton row takes the value that satisfies the row.
+    for (auto it = presolve_info.singleton_rows.rbegin(); it != presolve_info.singleton_rows.rend();
+         ++it) {
+      const auto& record = *it;
+      if (record.slack == -1) { continue; }
+      f_t activity = 0;
+      f_t a_is     = 0;
+      for (i_t p = original_Arow.row_start[record.row]; p < original_Arow.row_start[record.row + 1];
+           ++p) {
+        if (original_Arow.j[p] == record.slack) {
+          a_is = original_Arow.x[p];
+        } else {
+          activity += original_Arow.x[p] * input_x[original_Arow.j[p]];
+        }
+      }
+      input_x[record.slack] = (original_problem.rhs[record.row] - activity) / a_is;
+    }
+  }
+
+  // Variables removed because their bounds were equal were dropped before y was known, so their
+  // reduced cost could not be recorded at presolve time and removed_reduced_costs holds no valid
+  // value for them. Recover it from the final duals as z_j = c_j - a_j^T y, which is what dual
+  // feasibility A^T y + z = c requires. A fixed variable's reduced cost is sign-unrestricted, so
+  // this is always dual feasible. Columns participating in the quadratic objective are never
+  // removed, so the Q x term is zero here.
+  if (!presolve_info.fixed_variables.empty()) {
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Recovering reduced costs for %d fixed variables\n",
+                          static_cast<i_t>(presolve_info.fixed_variables.size()));
+    }
+    const csc_matrix_t<i_t, f_t>& A = original_problem.A;
+    for (const i_t j : presolve_info.fixed_variables) {
+      f_t zj = original_problem.objective[j];
+      for (i_t p = A.col_start[j]; p < A.col_start[j + 1]; ++p) {
+        zj -= A.x[p] * input_y[A.i[p]];
+      }
+      input_z[j] = zj;
+    }
+  }
+
+  // A singleton row that supplied the active bound of its variable takes over that bound's
+  // multiplier: with du = z_j / a_ij, y_i += du and z -= du a_i keep A^T y + z = c + Qx and
+  // leave z_j = 0. Later rows are undone first, since they may have tightened an earlier bound.
+  if (!presolve_info.singleton_rows.empty()) {
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Recovering duals for %d singleton rows\n",
+                          static_cast<i_t>(presolve_info.singleton_rows.size()));
+    }
+    for (auto it = presolve_info.singleton_rows.rbegin(); it != presolve_info.singleton_rows.rend();
+         ++it) {
+      const auto& record = *it;
+      const f_t z_j      = input_z[record.variable];
+      if (!((z_j > 0 && record.sets_lower) || (z_j < 0 && record.sets_upper))) { continue; }
+      const i_t row_start = original_Arow.row_start[record.row];
+      const i_t row_end   = original_Arow.row_start[record.row + 1];
+      f_t a_ij            = 0;
+      for (i_t p = row_start; p < row_end; ++p) {
+        if (original_Arow.j[p] == record.variable) { a_ij = original_Arow.x[p]; }
+      }
+      if (a_ij == 0) { continue; }
+      const f_t du = z_j / a_ij;
+      input_y[record.row] += du;
+      for (i_t p = row_start; p < row_end; ++p) {
+        input_z[original_Arow.j[p]] -= original_Arow.x[p] * du;
+      }
     }
   }
 

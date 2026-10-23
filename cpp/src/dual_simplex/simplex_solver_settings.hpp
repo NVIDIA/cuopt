@@ -77,6 +77,7 @@ struct simplex_solver_settings_t {
       barrier_adaptive_regularization(-1),
       barrier_primal_regularization(-1.0),
       barrier_dual_regularization(-1.0),
+      barrier_adat_regularization(1e-14),
       barrier_step_scale(0.9),
       barrier_soc_threshold(100),
       num_gpus(1),
@@ -90,6 +91,8 @@ struct simplex_solver_settings_t {
       barrier_dual_initial_point(barrier_dual_initial_point_t::Automatic),
       postsolve_info(-1),
       barrier_presolve_bound_free_variables(-1),
+      barrier_presolve_fixed_variables(-1),
+      barrier_presolve_singleton_rows(-1),
       qcqp_ruiz_equilibration(-1),
       gpu_ruiz_nnz_threshold(500000),
       barrier_initial_point_safeguard(10.0),
@@ -195,6 +198,8 @@ struct simplex_solver_settings_t {
                                     // initial dual regularization (augmented system's (1,1) block
                                     // diagonal) for the first barrier factorization. Same adaptive
                                     // caveat as above.
+  f_t barrier_adat_regularization;  // relative diagonal shift of the QP ADAT factorization, 0
+                                    // disables
   f_t barrier_step_scale;           // step scale for barrier method
   i_t barrier_soc_threshold;        // SOC dimension above which rank-2 sparse scaling is used
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
@@ -210,6 +215,8 @@ struct simplex_solver_settings_t {
                                               // 1 dual least squares, 2 SeDuMi mu-based
   i_t postsolve_info;                         // -1 automatic (disabled), 0 disabled, 1 enabled
   i_t barrier_presolve_bound_free_variables;  // -1 automatic, 0 disabled, 1 enabled
+  i_t barrier_presolve_fixed_variables;       // -1 automatic (enabled), 0 disabled, 1 enabled
+  i_t barrier_presolve_singleton_rows;        // -1 automatic (enabled), 0 disabled, 1 enabled
   i_t qcqp_ruiz_equilibration;          // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
   i_t gpu_ruiz_nnz_threshold;           // nnz(A)+nnz(Q) at or above which barrier Ruiz runs on
                                         // GPU instead of CPU
