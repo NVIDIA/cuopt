@@ -3,6 +3,7 @@
 
 """Post or update a sticky PR comment summarizing CI test job failures."""
 
+import http.client
 import io
 import json
 import os
@@ -62,38 +63,44 @@ def _headers(token):
 def _retry_delay(attempt, headers):
     retry_after = headers.get("Retry-After")
     if retry_after and retry_after.isdigit():
-        return min(int(retry_after), _MAX_RETRY_WAIT_SEC)
+        return int(retry_after)
     reset = headers.get("x-ratelimit-reset")
     if (
         headers.get("x-ratelimit-remaining") == "0"
         and reset
         and reset.isdigit()
     ):
-        return min(max(int(reset) - time.time(), 1), _MAX_RETRY_WAIT_SEC)
+        return max(int(reset) - time.time(), 1)
     return 2**attempt
+
+
+def _is_transient(e):
+    if not isinstance(e, urllib.error.HTTPError):
+        return True
+    if e.code in (429, 500, 502, 503, 504):
+        return True
+    # Primary and secondary rate limits are reported as 403.
+    return e.code == 403 and (
+        e.headers.get("x-ratelimit-remaining") == "0"
+        or e.headers.get("Retry-After") is not None
+    )
 
 
 def _fetch(req):
     """Return (body, headers) of req, retrying transient GitHub API errors."""
     for attempt in range(1, _HTTP_ATTEMPTS + 1):
-        headers = {}
         try:
             with urllib.request.urlopen(
                 req, timeout=_HTTP_TIMEOUT_SEC
             ) as resp:
                 return resp.read(), resp.headers
-        except (urllib.error.URLError, TimeoutError) as e:
-            transient = not isinstance(e, urllib.error.HTTPError) or (
-                e.code in (429, 500, 502, 503, 504)
-                or (
-                    e.code == 403
-                    and e.headers.get("x-ratelimit-remaining") == "0"
-                )
-            )
-            if not transient or attempt == _HTTP_ATTEMPTS:
+        except (OSError, http.client.HTTPException) as e:
+            if not _is_transient(e) or attempt == _HTTP_ATTEMPTS:
                 raise
-            headers = getattr(e, "headers", None) or {}
-        time.sleep(_retry_delay(attempt, headers))
+            delay = _retry_delay(attempt, getattr(e, "headers", None) or {})
+            if delay > _MAX_RETRY_WAIT_SEC:
+                raise
+        time.sleep(delay)
 
 
 def _paginate(path, token):
