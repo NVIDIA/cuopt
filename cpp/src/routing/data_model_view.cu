@@ -77,6 +77,13 @@ data_model_view_t<i_t, f_t>::data_model_view_t(raft::handle_t* handle_ptr,
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::add_distance_matrix(f_t const* matrix, uint8_t vehicle_type)
+{
+  cuopt_expects(matrix != nullptr, error_type_t::ValidationError, "Matrix input cannot be null");
+  distance_matrices_[vehicle_type] = matrix;
+}
+
+template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::add_cost_matrix(f_t const* matrix, uint8_t vehicle_type)
 {
   cuopt_expects(matrix != nullptr, error_type_t::ValidationError, "Matrix input cannot be null");
@@ -803,6 +810,20 @@ template <typename i_t, typename f_t>
 raft::handle_t const* data_model_view_t<i_t, f_t>::get_handle_ptr() const noexcept
 {
   return handle_ptr_;
+}
+
+template <typename i_t, typename f_t>
+f_t const* data_model_view_t<i_t, f_t>::get_distance_matrix(uint8_t vehicle_type) const noexcept
+{
+  auto const matrix = distance_matrices_.find(vehicle_type);
+  return matrix == distance_matrices_.end() ? nullptr : matrix->second;
+}
+
+template <typename i_t, typename f_t>
+std::unordered_map<uint8_t, f_t const*> data_model_view_t<i_t, f_t>::get_distance_matrices()
+  const noexcept
+{
+  return distance_matrices_;
 }
 
 template class CUOPT_EXPORT data_model_view_t<int, float>;

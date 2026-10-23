@@ -15,6 +15,8 @@
 #include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <vector>
 
@@ -24,6 +26,7 @@ namespace routing {
 struct cpu_routing_problem_t::device_data_t {
   std::vector<std::unique_ptr<rmm::device_uvector<float>>> cost_matrices;
   std::vector<std::unique_ptr<rmm::device_uvector<float>>> transit_time_matrices;
+  std::vector<std::unique_ptr<rmm::device_uvector<float>>> distance_matrices;
 
   std::unique_ptr<rmm::device_uvector<int32_t>> vehicle_start_locations;
   std::unique_ptr<rmm::device_uvector<int32_t>> vehicle_return_locations;
@@ -117,8 +120,13 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
 
   int32_t orders = (num_orders < 0) ? num_locations : num_orders;
   data_model_view_t<int, float> view(handle, num_locations, fleet_size, orders);
+  const auto matrix_size = static_cast<size_t>(num_locations) * num_locations;
 
   for (auto const& cm : cost_matrices) {
+    if (cm.matrix.size() != matrix_size) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: cost matrix size must equal num_locations squared");
+    }
     auto d = copy_vector(cm.matrix, stream);
     if (!d) { throw std::invalid_argument("cpu_routing_problem_t::to_device: empty cost matrix"); }
     view.add_cost_matrix(d->data(), cm.vehicle_type);
@@ -126,12 +134,37 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
   }
 
   for (auto const& tm : transit_time_matrices) {
+    if (tm.matrix.size() != matrix_size) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: transit time matrix size must equal num_locations "
+        "squared");
+    }
     auto d = copy_vector(tm.matrix, stream);
     if (!d) {
       throw std::invalid_argument("cpu_routing_problem_t::to_device: empty transit time matrix");
     }
     view.add_transit_time_matrix(d->data(), tm.vehicle_type);
     data->transit_time_matrices.push_back(std::move(d));
+  }
+
+  for (auto const& dm : distance_matrices) {
+    if (dm.matrix.size() != matrix_size) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: distance matrix size must equal num_locations squared");
+    }
+    if (std::any_of(dm.matrix.begin(), dm.matrix.end(), [](float value) {
+          return std::isnan(value) || value < 0.f;
+        })) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: distance matrix values must be non-negative and not "
+        "NaN");
+    }
+    auto d = copy_vector(dm.matrix, stream);
+    if (!d) {
+      throw std::invalid_argument("cpu_routing_problem_t::to_device: empty distance matrix");
+    }
+    view.add_distance_matrix(d->data(), dm.vehicle_type);
+    data->distance_matrices.push_back(std::move(d));
   }
 
   if (!vehicle_start_locations.empty() && !vehicle_return_locations.empty()) {
