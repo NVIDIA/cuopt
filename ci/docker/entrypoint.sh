@@ -107,8 +107,7 @@ run_proxy_and_grpc() {
         wait "${grpc_pid}" 2>/dev/null || true
         trap - TERM INT EXIT
         case "${shutdown_signal}" in
-            TERM) exit 143 ;;
-            INT) exit 130 ;;
+            TERM|INT) exit 0 ;;
             *) exit 1 ;;
         esac
     fi
@@ -126,12 +125,10 @@ run_proxy_and_grpc() {
     trap - TERM INT EXIT
 
     if [ -n "${shutdown_signal}" ]; then
-        # Preserve the conventional signal exit status (SIGTERM=143,
-        # SIGINT=130) after both children have shut down.
-        if [ "${shutdown_signal}" = "TERM" ]; then
-            return 143
-        fi
-        return 130
+        # SIGINT and SIGTERM were handled and both children were stopped.
+        # Exit 0 matches grpc and legacy. Non-zero is reserved for a child
+        # that exits on its own, or for the gRPC shutdown watchdog.
+        return 0
     fi
     return "${child_status}"
 }

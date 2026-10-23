@@ -1,5 +1,11 @@
 # Release Notes
 
+## Release Notes xx.yy
+
+### Bug Fixes (xx.yy)
+
+- The proxy container now exits 0 after a handled SIGINT or SIGTERM, matching gRPC-only and legacy mode. A child that exits on its own, or a hung gRPC shutdown, still returns non-zero.
+
 ## Release Notes 26.10
 
 ### New Features (26.10)
