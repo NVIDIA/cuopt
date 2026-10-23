@@ -31,6 +31,9 @@ template <typename f_t>
 char linear_row_type_from_bounds(f_t cl, f_t cu)
 {
   if (cl == cu) { return 'E'; }
+  // A row with no finite bound constrains nothing: MPS spells it as an extra N row, which
+  // readers (including ours) drop. Writing it as G would turn it into a >= 0 constraint.
+  if (std::isinf(cl) && cl < 0 && std::isinf(cu) && cu > 0) { return 'N'; }
   if (std::isinf(cu)) { return 'G'; }
   return 'L';
 }
