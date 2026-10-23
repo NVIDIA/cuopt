@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: dataset-download-test
+
+on:
+  push:
+    branches:
+      - "pull-request/[0-9]+"
+
+permissions: {}
+
+jobs:
+  dataset-download-test:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
+    with:
+      build_type: pull-request
+      script: ci/test_dataset_download.sh
+      matrix_filter: map(select(.ARCH == "amd64")) | .[0:2]
+    secrets:
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}

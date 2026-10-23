@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+set -o pipefail
+
 INSTANCES=(
     "50v-10"
     "ex9"
@@ -115,6 +117,12 @@ function try_download_from_s3() {
     fi
 
     # Try to sync from S3 (downloads from miplib/ subdirectory)
+    if [ -z "${CUOPT_S3_NO_TARBALL:-}" ] &&
+        aws s3 cp "${CUOPT_S3_URI}ci_datasets/linear_programming/miplib_tar/miplib.tar.gz" - --only-show-errors | tar xzf - -C "$BASEDIR"; then
+        echo "✓ Downloaded MIPLIB datasets from S3"
+        return 0
+    fi
+
     local success=true
     if ! printf '%s\n' "${INSTANCES[@]}" | xargs -P 8 -I{} \
         aws s3 cp "${s3_uri}{}.mps" "$BASEDIR/{}.mps" --only-show-errors; then
