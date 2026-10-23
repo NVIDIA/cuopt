@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+set -o pipefail
+
 INSTANCES=(
     "QPLIB_8515"
 )
@@ -61,6 +63,12 @@ function try_download_from_s3() {
     if ! aws sts get-caller-identity &> /dev/null 2>&1; then
         echo "AWS credentials invalid, skipping S3 download..."
         return 1
+    fi
+
+    if [ -z "${CUOPT_S3_NO_TARBALL:-}" ] &&
+        aws s3 cp "${CUOPT_S3_URI}ci_datasets/quadratic_programming/qplib_tar/qplib.tar.gz" - --only-show-errors | tar xzf - -C "$OUTDIR"; then
+        echo "✓ Downloaded QPLIB datasets from S3"
+        return 0
     fi
 
     local success=true

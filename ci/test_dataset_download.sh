@@ -16,11 +16,14 @@ download() {
   ./"${dir}"/mip/download_miplib_test_dataset.sh >/dev/null
   local miplib=$((SECONDS - start))
   start=${SECONDS}
+  ./"${dir}"/quadratic_programming/download_qplib_test_dataset.sh >/dev/null
+  local qplib=$((SECONDS - start))
+  start=${SECONDS}
   pushd "${dir}" >/dev/null
   ./get_test_data.sh >/dev/null
   popd >/dev/null
   local routing=$((SECONDS - start))
-  echo "RESULT ${dir}: pdlp=${pdlp}s miplib=${miplib}s routing=${routing}s total=$((pdlp + miplib + routing))s"
+  echo "RESULT ${dir}: pdlp=${pdlp}s miplib=${miplib}s qplib=${qplib}s routing=${routing}s total=$((pdlp + miplib + qplib + routing))s"
 }
 
 rapids-logger "Prepare dataset directories"
@@ -36,7 +39,7 @@ unset CUOPT_S3_NO_TARBALL
 download datasets_tarball
 
 rapids-logger "Compare downloaded files"
-for d in linear_programming mip acvrp cvrptw pdptw solomon; do
+for d in linear_programming mip quadratic_programming acvrp cvrptw pdptw solomon; do
   [ -d "datasets_files/${d}" ] || [ -d "datasets_tarball/${d}" ] || continue
   diff -rq "datasets_files/${d}" "datasets_tarball/${d}"
 done
