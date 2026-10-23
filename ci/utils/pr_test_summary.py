@@ -98,10 +98,10 @@ def _backoff(e, attempt):
 
 
 def _fetch(req):
-    """Return (body, headers) of req, retrying transient GitHub API errors.
+    """Return (body, headers) of req, retrying transient errors for GETs.
 
-    A POST is not retried here: it may have created the comment before the
-    error, so _upsert_comment looks again first.
+    A POST may have created the comment before the error, and a PATCH is
+    already retried by _upsert_comment, which looks the comment up again first.
     """
     for attempt in range(1, _HTTP_ATTEMPTS + 1):
         try:
@@ -110,7 +110,7 @@ def _fetch(req):
             ) as resp:
                 return resp.read(), resp.headers
         except _NETWORK_ERRORS as e:
-            if req.get_method() == "POST":
+            if req.get_method() != "GET":
                 raise
             _backoff(e, attempt)
 
