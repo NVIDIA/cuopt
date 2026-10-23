@@ -26,6 +26,7 @@ _MARKER = "<!-- pr-test-summary -->"
 _HTTP_TIMEOUT_SEC = 30
 _HTTP_ATTEMPTS = 4
 _MAX_RETRY_WAIT_SEC = 120
+_NETWORK_ERRORS = (OSError, http.client.HTTPException)
 _MAX_TESTS = 50
 
 # gtest prints "[  FAILED  ] Suite.Test (12 ms)" per failing test and again
@@ -77,7 +78,7 @@ def _retry_delay(attempt, headers):
 def _is_transient(e):
     if not isinstance(e, urllib.error.HTTPError):
         return True
-    if e.code in (429, 500, 502, 503, 504):
+    if e.code == 429 or 500 <= e.code < 600:
         return True
     # Primary and secondary rate limits are reported as 403.
     return e.code == 403 and (
@@ -86,21 +87,32 @@ def _is_transient(e):
     )
 
 
+def _backoff(e, attempt):
+    """Sleep before a retry, or re-raise e if it is not worth retrying."""
+    if not _is_transient(e) or attempt == _HTTP_ATTEMPTS:
+        raise e
+    delay = _retry_delay(attempt, getattr(e, "headers", None) or {})
+    if delay > _MAX_RETRY_WAIT_SEC:
+        raise e
+    time.sleep(delay)
+
+
 def _fetch(req):
-    """Return (body, headers) of req, retrying transient GitHub API errors."""
+    """Return (body, headers) of req, retrying transient GitHub API errors.
+
+    A POST is not retried here: it may have created the comment before the
+    error, so _upsert_comment looks again first.
+    """
     for attempt in range(1, _HTTP_ATTEMPTS + 1):
         try:
             with urllib.request.urlopen(
                 req, timeout=_HTTP_TIMEOUT_SEC
             ) as resp:
                 return resp.read(), resp.headers
-        except (OSError, http.client.HTTPException) as e:
-            if not _is_transient(e) or attempt == _HTTP_ATTEMPTS:
+        except _NETWORK_ERRORS as e:
+            if req.get_method() == "POST":
                 raise
-            delay = _retry_delay(attempt, getattr(e, "headers", None) or {})
-            if delay > _MAX_RETRY_WAIT_SEC:
-                raise
-        time.sleep(delay)
+            _backoff(e, attempt)
 
 
 def _paginate(path, token):
@@ -240,6 +252,37 @@ def _build_body(failed, passed, skipped, cancelled, job_analysis):
     return "\n".join(lines)
 
 
+def _upsert_comment(repo, token, pr_number, body):
+    for attempt in range(1, _HTTP_ATTEMPTS + 1):
+        comments = _paginate(
+            f"/repos/{repo}/issues/{pr_number}/comments", token
+        )
+        existing = next(
+            (c for c in comments if c.get("body", "").startswith(_MARKER)),
+            None,
+        )
+        try:
+            if existing:
+                _api(
+                    f"/repos/{repo}/issues/comments/{existing['id']}",
+                    token,
+                    "PATCH",
+                    {"body": body},
+                )
+                print(f"Updated comment {existing['id']} on PR #{pr_number}.")
+            else:
+                result = _api(
+                    f"/repos/{repo}/issues/{pr_number}/comments",
+                    token,
+                    "POST",
+                    {"body": body},
+                )
+                print(f"Posted comment {result['id']} on PR #{pr_number}.")
+            return
+        except _NETWORK_ERRORS as e:
+            _backoff(e, attempt)
+
+
 def main():
     token = os.environ["GH_TOKEN"]
     repo = os.environ["GITHUB_REPOSITORY"]
@@ -275,29 +318,7 @@ def main():
 
     body = _build_body(failed, passed, skipped, cancelled, job_analysis)
 
-    comments = list(
-        _paginate(f"/repos/{repo}/issues/{pr_number}/comments", token)
-    )
-    existing = next(
-        (c for c in comments if c.get("body", "").startswith(_MARKER)), None
-    )
-
-    if existing:
-        _api(
-            f"/repos/{repo}/issues/comments/{existing['id']}",
-            token,
-            "PATCH",
-            {"body": body},
-        )
-        print(f"Updated comment {existing['id']} on PR #{pr_number}.")
-    else:
-        result = _api(
-            f"/repos/{repo}/issues/{pr_number}/comments",
-            token,
-            "POST",
-            {"body": body},
-        )
-        print(f"Posted comment {result['id']} on PR #{pr_number}.")
+    _upsert_comment(repo, token, pr_number, body)
 
 
 if __name__ == "__main__":
