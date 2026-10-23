@@ -4,7 +4,7 @@
 
 """Validate the triage agent's findings and write a draft report.
 
-Fails if the agent output is malformed or leaves a cluster unaccounted for.
+Fails if the agent output is invalid (see triage_validate.py).
 
 Usage: triage_report.py <triage_input.json> <triage.json>
 """
@@ -14,50 +14,22 @@ import json
 import os
 import re
 import sys
+from typing import Any
 
-from triage_input import redact
+from triage_common import redact
+from triage_validate import validate
 
-CATEGORIES = {"product-bug", "infra", "dataset", "flaky", "unknown"}
-ACTIONS = {"create", "comment", "ignore"}
 MARKDOWN_SPECIAL = re.compile(r"([\\`*_\[\]#~|])")
-LIST_FIELDS = ("merged_signatures", "suspect_files")
-TEXT_FIELDS = ("signature", "title", "summary", "hypothesis")
 
 
-def validate(finding, known, seen):
-    errors = []
-    if not isinstance(finding, dict):
-        return ["finding is not an object"]
-    for field in TEXT_FIELDS:
-        value = finding.get(field)
-        if not isinstance(value, str) or not value.strip():
-            errors.append(f"{field} missing or empty")
-    for field in LIST_FIELDS:
-        if not isinstance(finding.get(field), list):
-            errors.append(f"{field} missing or not a list")
-    if finding.get("category") not in CATEGORIES:
-        errors.append(f"bad category {finding.get('category')!r}")
-    if finding.get("action") not in ACTIONS:
-        errors.append(f"bad action {finding.get('action')!r}")
-    if errors:
-        return errors
-    for sig in [finding["signature"], *finding["merged_signatures"]]:
-        if sig not in known:
-            errors.append(f"unknown signature {sig!r}")
-        elif sig in seen:
-            errors.append(f"signature {sig!r} used twice")
-        seen.add(sig)
-    return errors
-
-
-def clean(value, limit, one_line=False):
+def clean(value: str, limit: int, one_line: bool = False) -> str:
     text = redact(value)[:limit]
     if one_line:
         text = " ".join(text.split())
     return MARKDOWN_SPECIAL.sub(r"\\\1", html.escape(text, quote=False))
 
 
-def render(finding, clusters):
+def render(finding: dict[str, Any], clusters: list[dict[str, Any]]) -> str:
     lines = [
         f"- **{finding['category']}** / {finding['action']}: "
         f"{clean(finding['title'], 120, True)}",
@@ -82,24 +54,16 @@ def render(finding, clusters):
     return "\n".join(lines)
 
 
-def main():
+def main() -> None:
     with open(sys.argv[1]) as f:
         data = json.load(f)
     clusters = {c["signature"]: c for c in data["clusters"]}
     with open(sys.argv[2]) as f:
-        findings = json.load(f)["findings"]
-
-    seen = set()
-    errors = []
-    for i, finding in enumerate(findings):
-        errors += [
-            f"finding {i}: {e}" for e in validate(finding, clusters, seen)
-        ]
-    errors += [
-        f"cluster {s} has no finding" for s in sorted(set(clusters) - seen)
-    ]
+        doc = json.load(f)
+    errors = validate(set(clusters), doc)
     if errors:
         sys.exit(redact("Invalid triage output:\n" + "\n".join(errors))[:2000])
+    findings = doc["findings"]
 
     header = ["## Nightly triage (draft, nothing filed)", ""]
     if data["omitted"]:

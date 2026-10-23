@@ -9,36 +9,15 @@ Usage: triage_input.py <consolidated_summary.json> <triage_input.json>
 
 import hashlib
 import json
-import os
 import re
 import sys
+from typing import Any
+
+from triage_common import redact
 
 MAX_CLUSTERS = 40
 MAX_TESTS = 20
 MAX_ERROR_CHARS = 600
-
-REDACTIONS = [
-    (re.compile(r"s3://\S+"), "<s3-uri>"),
-    (re.compile(r"https?://\S+", re.I), "<url>"),
-    (re.compile(r"\b(?:bearer|basic)\s+[\w.~+/=-]+", re.I), "<credential>"),
-    (
-        re.compile(r"\b(?:xox[abp]-|ghp_|gho_|ghs_|sk-|AKIA)[\w\-]{8,}"),
-        "<token>",
-    ),
-    (re.compile(r"\bsk-\.{2,3}\w*"), "<token>"),
-    (re.compile(r"\bKey=\S+"), "Key=<redacted>"),
-    (re.compile(r"/home/[^/\s]+"), "/home/<user>"),
-    (re.compile(r"\b\d{12}\b"), "<id>"),
-]
-
-
-def redact(text):
-    for secret in os.environ.get("TRIAGE_REDACT", "").split():
-        text = text.replace(secret, "<redacted>")
-    for pattern, replacement in REDACTIONS:
-        text = pattern.sub(replacement, text)
-    return text
-
 
 FRAME = re.compile(r"^\s*#\d+ in ")
 OUTCOME = re.compile(
@@ -47,13 +26,13 @@ OUTCOME = re.compile(
 )
 
 
-def normalize(line, keep_numbers):
+def normalize(line: str, keep_numbers: bool) -> str:
     line = re.sub(r"0x[0-9a-fA-F]+", "<hex>", line)
     line = re.sub(r"(?<![\w<>])/\S+", "<path>", line)
     return line if keep_numbers else re.sub(r"\d+(\.\d+)?", "<n>", line)
 
 
-def outcome_lines(message):
+def outcome_lines(message: str) -> list[str]:
     lines = [
         line[:200]
         for line in message.splitlines()
@@ -62,29 +41,34 @@ def outcome_lines(message):
     return [line for line in lines if OUTCOME.search(line)][:3] or lines[:3]
 
 
-def signature(message, flaky):
+def signature(message: str, flaky: bool) -> str:
     """Hash the lines that state the outcome, not the test-specific call text.
 
     Flaky failures never share a cluster with real ones.
     """
     text = "\n".join(
-        normalize(line, "Which is" in line) for line in outcome_lines(message)
+        normalize(
+            line, "Which is" in line or line.startswith("CI job failed:")
+        )
+        for line in outcome_lines(message)
     )
     text = f"{'flaky' if flaky else 'failing'}\n{text}"
     return hashlib.sha1(text.encode()).hexdigest()[:12]
 
 
-def error_text(message):
+def error_text(message: str) -> str:
     head = redact(message)[:MAX_ERROR_CHARS]
     missing = [redact(line) for line in outcome_lines(message)]
     missing = [line for line in missing if line not in head]
     return head + ("\n...\n" + "\n".join(missing) if missing else "")
 
 
-def build_clusters(summary):
-    clusters = {}
+def build_clusters(
+    summary: dict[str, Any],
+) -> tuple[list[dict[str, Any]], int]:
+    clusters: dict[str, dict[str, Any]] = {}
 
-    def add(message, label, matrix, test):
+    def add(message: str, label: str, matrix: str, test: str) -> None:
         c = clusters.setdefault(
             signature(message, label == "flaky"),
             {

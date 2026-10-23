@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "signature",
+          "merged_signatures",
+          "category",
+          "title",
+          "summary",
+          "hypothesis",
+          "suspect_files",
+          "action"
+        ],
+        "properties": {
+          "signature": {"type": "string", "pattern": "\\S"},
+          "merged_signatures": {"type": "array", "items": {"type": "string"}},
+          "category": {
+            "enum": ["product-bug", "infra", "dataset", "flaky", "unknown"]
+          },
+          "title": {"type": "string", "pattern": "\\S"},
+          "summary": {"type": "string", "pattern": "\\S"},
+          "hypothesis": {"type": "string", "pattern": "\\S"},
+          "suspect_files": {"type": "array", "items": {"type": "string"}},
+          "action": {"enum": ["create", "comment", "ignore"]}
+        }
+      }
+    }
+  }
+}

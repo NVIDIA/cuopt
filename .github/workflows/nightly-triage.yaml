@@ -71,7 +71,7 @@ jobs:
           RUN_DATE: ${{ inputs.date }}
         run: |
           python3 -m venv .venv
-          .venv/bin/pip install --quiet awscli
+          .venv/bin/pip install --quiet awscli jsonschema
           date_str="${RUN_DATE:-$(date +%F)}"
           slug="${BRANCH//\//-}"
           [[ "${date_str}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && "${slug}" =~ ^[A-Za-z0-9._-]+$ ]]
@@ -116,14 +116,14 @@ jobs:
             --bare \
             --permission-mode dontAsk \
             --settings "${RUNNER_TEMP}/claude-settings.json" \
-            --allowedTools "Read,Grep,Glob,Write(/triage.json),Edit(/triage.json),Bash(git log:*),Bash(git blame:*),Bash(git show:*)" \
+            --allowedTools "Read,Grep,Glob,Write(/triage.json),Edit(/triage.json),Bash(git log:*),Bash(git blame:*),Bash(git show:*),Bash(.venv/bin/python ci/utils/triage_validate.py:*)" \
             > agent.log 2>&1 || status=$?
           git restore --source=HEAD --worktree -- .
-          git clean -fdxq -e triage.json -e triage_input.json -e agent.log
+          git clean -fdxq -e .venv -e triage.json -e triage_input.json -e agent.log
           if [ "${status:-0}" -ne 0 ]; then
-            python3 -c "import sys; sys.path.insert(0, 'ci/utils'); from triage_input import redact; print(redact(open('agent.log').read()[-4000:]))"
+            python3 -c "import sys; sys.path.insert(0, 'ci/utils'); from triage_common import redact; print(redact(open('agent.log').read()[-4000:]))"
             exit 1
           fi
       - name: Report findings
         if: ${{ steps.input.outputs.has_failures == 'true' }}
-        run: python3 ci/utils/triage_report.py triage_input.json triage.json
+        run: .venv/bin/python ci/utils/triage_report.py triage_input.json triage.json

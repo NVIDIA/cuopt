@@ -12,6 +12,7 @@ Rules:
 - Merge clusters into one finding (largest cluster's `signature`, the others in `merged_signatures`) only if their errors are the same failure. Do not merge on a shared guess about the cause, and never merge a flaky cluster into another finding.
 - Every cluster must appear in exactly one finding, as `signature` or in `merged_signatures`.
 - Write a complete `triage.json` first, then refine it; do not run out of turns before it exists.
+- Before finishing, run `.venv/bin/python ci/utils/triage_validate.py triage_input.json triage.json` and fix every error it reports.
 - Be brief: titles under 100 characters, summaries under 5 sentences.
 
 Write `triage.json` and nothing else:
