@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -77,5 +77,9 @@ cdef extern from "cuopt/mathematical_optimization/io/data_model_view.hpp" namesp
 cdef extern from "cuopt/mathematical_optimization/io/writer.hpp" namespace "cuopt::mathematical_optimization::io" nogil: # noqa
 
     cdef void write_mps(
+        const data_model_view_t[int, double] data_model,
+        const string user_problem_file) except +
+
+    cdef void write_lp(
         const data_model_view_t[int, double] data_model,
         const string user_problem_file) except +

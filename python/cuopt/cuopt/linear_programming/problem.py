@@ -2421,18 +2421,77 @@ class Problem:
         problem._clear_stale()
         return problem
 
-    def writeMPS(self, mps_file):
+    def writeMPS(self, mps_file: str) -> None:
         """
         Write the problem into an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+
+        .. deprecated::
+            Use :meth:`write` instead.
+
+        Parameters
+        ----------
+        mps_file : str
+            Path to the MPS output file.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        Exception
+            Propagates validation or I/O failures from the underlying writer.
+
         Examples
         --------
         >>> problem.writeMPS("model.mps")
+        """
+        warnings.warn(
+            "Problem.writeMPS is deprecated and will be removed in a future "
+            "release. Use Problem.write instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if self.model is None or self._stale["structure"]:
+            self._to_data_model()
+        elif any(self._stale.values()):
+            self._refresh_data_model_values()
+        self.model._write_mps(mps_file)
+
+    def write(self, file_path: str) -> None:
+        """
+        Write the problem to an MPS, QPS, or LP file.
+
+        Dispatches on the file extension in Python (case-insensitive):
+        ``.mps`` / ``.qps`` use the MPS writer and ``.lp`` uses the LP writer.
+        Compressed output is not supported.
+
+        Parameters
+        ----------
+        file_path : str
+            Path to an uncompressed MPS, QPS, or LP output file.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            If the file extension is not one of the supported suffixes.
+        Exception
+            Propagates validation or I/O failures from the underlying writer.
+
+        Examples
+        --------
+        >>> problem.write("model.mps")
+        >>> problem.write("model.lp")
         """
         if self.model is None or self._stale["structure"]:
             self._to_data_model()
         elif any(self._stale.values()):
             self._refresh_data_model_values()
-        self.model.writeMPS(mps_file)
+        self.model.write(file_path)
 
     @property
     def NumVariables(self):

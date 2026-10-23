@@ -50,6 +50,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <sstream>
 #include <thread>
@@ -93,6 +94,31 @@ TEST(pdlp_class, run_double)
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
   EXPECT_FALSE(is_incorrect_objective(
     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
+}
+
+TEST(pdlp_class, user_problem_file_lp_extension)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
+
+  const auto user_problem_path = std::filesystem::temp_directory_path() / "afiro_user_problem.lp";
+  std::filesystem::remove(user_problem_path);
+
+  auto solver_settings              = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method            = cuopt::mathematical_optimization::method_t::DualSimplex;
+  solver_settings.user_problem_file = user_problem_path;
+  solve_lp(&handle_, op_problem, solver_settings);
+
+  ASSERT_TRUE(std::filesystem::exists(user_problem_path));
+  auto written = cuopt::mathematical_optimization::io::read_lp<int, double>(user_problem_path);
+  std::filesystem::remove(user_problem_path);
+
+  EXPECT_EQ(written.get_n_variables(), op_problem.get_n_variables());
+  EXPECT_EQ(written.get_n_constraints(), op_problem.get_n_constraints());
+  EXPECT_EQ(written.get_nnz(), op_problem.get_nnz());
 }
 
 TEST(pdlp_class, precision_mixed)

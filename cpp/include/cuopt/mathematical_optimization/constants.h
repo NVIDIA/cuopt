@@ -255,6 +255,7 @@
 
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0
+#define CUOPT_FILE_FORMAT_LP  1
 
 /* @brief Status codes constants -- shared with cuopt::client, defined in status_codes.h */
 #include "cuopt/status_codes.h"

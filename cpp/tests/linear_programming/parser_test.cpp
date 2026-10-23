@@ -2403,16 +2403,23 @@ End
   EXPECT_EQ(nth_qc(m, 0).constraint_row_name, "my_quad");
 }
 
-TEST(lp_parser, qc_ge_relation_throws)
+TEST(lp_parser, qc_ge_relation)
 {
-  EXPECT_THROW(read_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
- q1: [ x ^ 2 ] >= 1
+ q1: x + [ x ^ 2 ] >= 1
 End
-)LP"),
-               std::logic_error);
+)LP");
+  ASSERT_EQ(m.get_quadratic_constraints().size(), 1u);
+  const auto& qc = nth_qc(m, 0);
+  EXPECT_EQ(qc.constraint_row_type, static_cast<char>(GreaterThanOrEqual));
+  EXPECT_NEAR(qc.rhs_value, 1.0, tolerance);
+  ASSERT_EQ(qc.linear_values.size(), 1u);
+  EXPECT_NEAR(qc.linear_values[0], 1.0, tolerance);
+  ASSERT_EQ(qc.vals.size(), 1u);
+  EXPECT_NEAR(qc.vals[0], 1.0, tolerance);
 }
 
 TEST(lp_parser, qc_eq_relation_throws)
