@@ -989,6 +989,64 @@ __device__ i_t bucket_index(raft::device_span<const offset_t> offsets,
 }
 
 template <typename i_t, typename f_t>
+__global__ void __launch_bounds__(soc_block_size)
+  recover_sparse_cone_dz_kernel(raft::device_span<const f_t> dx,
+                                raft::device_span<const f_t> cone_target,
+                                raft::device_span<f_t> dz,
+                                raft::device_span<const f_t> Hs_diag,
+                                raft::device_span<const f_t> sparse_v,
+                                raft::device_span<const f_t> sparse_u,
+                                raft::device_span<const f_t> expansion_soln,
+                                raft::device_span<const i_t> sparse_cone_ids,
+                                raft::device_span<const i_t> sparse_entry_offsets,
+                                raft::device_span<const size_t> cone_offsets,
+                                i_t n_sparse_cones)
+{
+  const size_t flat = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (flat >= Hs_diag.size()) { return; }
+
+  const i_t flat_i     = static_cast<i_t>(flat);
+  const i_t sparse_idx = bucket_index(sparse_entry_offsets, flat_i, n_sparse_cones);
+  const size_t e       = cone_offsets[sparse_cone_ids[sparse_idx]] +
+                   static_cast<size_t>(flat_i - sparse_entry_offsets[sparse_idx]);
+  const f_t h_dx = Hs_diag[flat] * dx[e] - sparse_v[flat] * expansion_soln[2 * sparse_idx] -
+                   sparse_u[flat] * expansion_soln[2 * sparse_idx + 1];
+  dz[e] = cone_target[e] - h_dx;
+}
+
+/**
+ * Recover dz on sparse (rank-2 expanded) cones with the operator the augmented solve used:
+ *   dz = cone_target - (Hs_diag .* dx - v t_v - u t_u),
+ * where t_v, t_u are the solved expansion variables.
+ */
+template <typename i_t, typename f_t>
+void recover_sparse_cone_dz(raft::device_span<const f_t> dx,
+                            cone_data_t<i_t, f_t>& cones,
+                            raft::device_span<const f_t> cone_target,
+                            raft::device_span<f_t> dz,
+                            raft::device_span<const f_t> Hs_diag,
+                            raft::device_span<const f_t> expansion_soln,
+                            cuda::stream_ref stream)
+{
+  if (!cones.has_sparse_cones()) { return; }
+  cuopt_assert(Hs_diag.size() == cones.n_sparse_cone_entries, "Hs_diag size mismatch");
+  const size_t grid_dim = raft::ceildiv<size_t>(Hs_diag.size(), soc_block_size);
+  recover_sparse_cone_dz_kernel<i_t, f_t>
+    <<<grid_dim, soc_block_size, 0, stream.get()>>>(dx,
+                                                    cone_target,
+                                                    dz,
+                                                    Hs_diag,
+                                                    cuopt::make_span(cones.sparse_v),
+                                                    cuopt::make_span(cones.sparse_u),
+                                                    expansion_soln,
+                                                    cuopt::make_span(cones.sparse_cone_ids),
+                                                    cuopt::make_span(cones.sparse_entry_offsets),
+                                                    cuopt::make_span(cones.cone_offsets),
+                                                    cones.n_sparse_cones);
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+}
+
+template <typename i_t, typename f_t>
 __global__ void __launch_bounds__(soc_block_size) scatter_sparse_hessian_into_augmented_kernel(
   raft::device_span<f_t> augmented_x,
   raft::device_span<f_t> Hs_diag,
