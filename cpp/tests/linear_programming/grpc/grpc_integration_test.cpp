@@ -2220,7 +2220,7 @@ TEST_F(PathSelectionTests, ChunkedUploadAndChunkedDownloadMIP)
     << log_capture.get_client_logs();
 
   // Server should log CHUNKED response
-  EXPECT_TRUE(log_capture.wait_for_server_log("StartChunkedDownload: CHUNKED response", 5000))
+  EXPECT_TRUE(log_capture.wait_for_server_log("StartChunkedDownloadV2: CHUNKED response", 5000))
     << "Expected chunked download path in server log.\nServer log:\n"
     << log_capture.get_server_logs();
 }
@@ -2991,6 +2991,58 @@ TEST_F(ChunkValidationTests, AcceptsValidChunk)
   std::string data(80, '\x42');
   auto status = send_chunk(uid, cuopt::remote::FIELD_C, 0, 10, data);
   EXPECT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(ChunkValidationTests, LegacyUploadRejectsVrp)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadRequest req;
+  req.mutable_problem_header()->mutable_header()->set_problem_category(cuopt::remote::VRP);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUpload(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsMissingProblem)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsNonemptyLpArray)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_lp_request()->mutable_problem()->add_c(1.0);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsNonemptyVrpMatrix)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_vrp_request()->mutable_problem()->add_cost_matrices()->add_values(
+    1.0f);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2AcceptsEmptyLpHeader)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_lp_request()->mutable_header()->set_problem_category(
+    cuopt::remote::LP);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_TRUE(status.ok()) << status.error_message();
+  EXPECT_FALSE(resp.upload_id().empty());
 }
 
 }  // anonymous namespace

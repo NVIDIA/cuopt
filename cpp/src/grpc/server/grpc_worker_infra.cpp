@@ -686,13 +686,14 @@ void mark_worker_jobs_failed(pid_t dead_worker_pid)
       }
 
       // 3. Release the job queue slot and update the in-process job tracker.
-      job_queue[i].worker_pid   = 0;
-      job_queue[i].worker_index = -1;
-      job_queue[i].data_sent    = false;
-      job_queue[i].is_chunked   = false;
-      job_queue[i].ready        = false;
-      job_queue[i].claimed      = false;
-      job_queue[i].cancelled    = false;
+      job_queue[i].worker_pid     = 0;
+      job_queue[i].worker_index   = -1;
+      job_queue[i].data_sent      = false;
+      job_queue[i].is_chunked     = false;
+      job_queue[i].unified_header = false;
+      job_queue[i].ready          = false;
+      job_queue[i].claimed        = false;
+      job_queue[i].cancelled      = false;
 
       {
         std::lock_guard<std::mutex> lock(tracker_mutex);

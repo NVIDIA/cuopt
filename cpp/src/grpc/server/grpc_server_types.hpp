@@ -94,6 +94,8 @@ struct JobQueueEntry {
   std::atomic<int> worker_index;  // Index of worker that claimed this job (-1 if none)
   std::atomic<bool> data_sent;    // Server has sent data to worker's pipe
   std::atomic<bool> is_chunked;   // True when data is in pending_chunked_data (streamed to pipe)
+  std::atomic<bool>
+    unified_header;  // Chunked pipe header is SubmitJobRequest, not ChunkedProblemHeader
 };
 
 enum ResultStatus : uint32_t {
@@ -205,7 +207,9 @@ static constexpr int kSessionTimeoutSeconds = 300;
 
 struct ChunkedUploadState {
   uint32_t problem_category = cuopt::remote::LP;
+  bool unified              = false;
   cuopt::remote::ChunkedProblemHeader header;
+  cuopt::remote::SubmitJobRequest job;
   struct FieldMeta {
     int64_t total_elements = 0;
     int64_t element_size   = 0;
@@ -227,7 +231,9 @@ struct ChunkedUploadState {
 
 // Holds header + chunks for a chunked upload, ready to stream to the worker pipe.
 struct PendingChunkedUpload {
+  bool unified = false;
   cuopt::remote::ChunkedProblemHeader header;
+  cuopt::remote::SubmitJobRequest job;
   std::vector<cuopt::remote::ArrayChunk> chunks;
 };
 
