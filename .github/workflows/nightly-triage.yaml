@@ -96,27 +96,13 @@ jobs:
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
         run: |
           npm install --global @anthropic-ai/claude-code@2.1.195
-          cat > "${RUNNER_TEMP}/claude-settings.json" <<'EOF'
-          {
-            "permissions": {"deny": [
-              "Read(//proc/**)", "Read(//sys/**)", "Read(//dev/**)",
-              "Read(//home/runner/work/_actions/**)", "Read(~/.ssh/**)",
-              "Read(~/.aws/**)", "Read(~/.config/**)", "Read(~/.claude/**)",
-              "Read(~/.gitconfig)", "Read(~/.netrc)",
-              "Edit(/.git/**)", "Edit(/.github/**)", "Edit(/**/CODEOWNERS)",
-              "Edit(/ci/**)", "Edit(//home/runner/work/_actions/**)",
-              "Bash(gh *)", "Bash(curl *)", "Bash(wget *)", "Bash(git commit *)",
-              "Bash(git config *)", "Bash(git remote *)", "Bash(git push *)"
-            ]}
-          }
-          EOF
           claude -p "Follow the instructions in ci/utils/triage_prompt.md." \
             --model aws/anthropic/bedrock-claude-opus-4-8 \
             --max-turns 60 \
             --bare \
             --permission-mode dontAsk \
-            --settings "${RUNNER_TEMP}/claude-settings.json" \
-            --allowedTools "Read,Grep,Glob,Write(/triage.json),Edit(/triage.json),Bash(git log:*),Bash(git blame:*),Bash(git show:*),Bash(.venv/bin/python ci/utils/triage_validate.py:*)" \
+            --allowedTools "Read(/**),Edit(/triage.json),Bash(git log:*),Bash(git blame:*),Bash(git show:*),Bash(git ls-tree:*),Bash(.venv/bin/python ci/utils/triage_validate.py triage_input.json triage.json)" \
+            --disallowedTools "Bash(*--output*)" \
             > agent.log 2>&1 || status=$?
           git restore --source=HEAD --worktree -- .
           git clean -fdxq -e .venv -e triage.json -e triage_input.json -e agent.log
