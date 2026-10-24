@@ -174,8 +174,6 @@ struct cut_pass_heuristics_t {
                                                   root_edge_norm_,
                                                   new_slacks_));
     worker->start_node      = root_node.detach_copy();
-    worker->start_lower     = lp.lower;
-    worker->start_upper     = lp.upper;
     worker->search_strategy = strategy;
     worker->set_active();
 

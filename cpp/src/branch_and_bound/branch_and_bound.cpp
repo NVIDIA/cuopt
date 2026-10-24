@@ -22,8 +22,8 @@
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 
 #include <dual_simplex/basis_solves.hpp>
-#include <dual_simplex/bounds_strengthening.hpp>
 #include <dual_simplex/crossover.hpp>
+#include <dual_simplex/domain.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/phase2.hpp>
@@ -60,12 +60,13 @@
 namespace cuopt::mathematical_optimization::mip {
 
 using simplex::basis_update_mpf_t;
-using simplex::bounds_strengthening_t;
+using simplex::bound_change_origin_t;
 using simplex::compute_objective;
 using simplex::compute_user_objective;
 using simplex::crossover_status_t;
 using simplex::crush_primal_solution;
 using simplex::decompress_vstatus;
+using simplex::domain_t;
 using simplex::dual_phase2_with_advanced_basis;
 using simplex::dual_status_t;
 using simplex::logger_t;
@@ -1229,7 +1230,7 @@ struct deterministic_bfs_policy_t
       case node_status_t::NUMERICAL: this->worker.record_numerical(node); break;
       default: break;
     }
-    if (status != node_status_t::HAS_CHILDREN) { this->worker.recompute_bounds_and_basis = true; }
+    if (status != node_status_t::HAS_CHILDREN) { this->worker.recompute_basis = true; }
   }
 
   void on_numerical_issue(mip_node_t<i_t, f_t>* node) override
@@ -1335,9 +1336,9 @@ struct deterministic_diving_policy_t
       if (stack.size() > 1 && stack.front()->depth - stack.back()->depth > max_backtrack_depth) {
         stack.pop_back();
       }
-      this->worker.recompute_bounds_and_basis = false;
+      this->worker.recompute_basis = false;
     } else {
-      this->worker.recompute_bounds_and_basis = true;
+      this->worker.recompute_basis = true;
     }
   }
 };
@@ -1380,8 +1381,7 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   node_status_t status                   = node_status_t::PENDING;
   branch_direction_t round_dir           = branch_direction_t::NONE;
 
-  worker->recompute_basis  = true;
-  worker->recompute_bounds = true;
+  worker->recompute_basis = true;
 
   if (lp_status == dual_status_t::DUAL_UNBOUNDED) {
     node_ptr->lower_bound = inf;
@@ -1440,8 +1440,7 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
       assert(dir != branch_direction_t::NONE);
 
       policy.update_objective_estimate(node_ptr, leaf_fractional, leaf_solution.x);
-      worker->recompute_basis  = false;
-      worker->recompute_bounds = false;
+      worker->recompute_basis = false;
 
       logger_t log;
       log.log = false;
@@ -1495,6 +1494,8 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats)
 {
+  i_t start_stack_index = worker->domain.size();
+
   // Perform orbital fixing
   auto* orbital_fixing = worker->orbital_fixing.get();
   if (orbital_fixing != nullptr && !orbital_fixing->disabled()) {
@@ -1503,8 +1504,9 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
                                                    settings_,
                                                    node_ptr,
                                                    worker->leaf_problem,
-                                                   worker->start_lower,
-                                                   worker->start_upper);
+                                                   original_lp_.lower,
+                                                   original_lp_.upper,
+                                                   worker->domain);
     i_t new_fix   = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
     if (new_fix > prev_fix) {
       ++stats.orbital_fixing_nodes;
@@ -1516,8 +1518,8 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
   }
 
   if (settings_.symmetry == 2 && worker->lexical_reduction != nullptr) {
-    i_t lexical_reductions_info =
-      worker->lexical_reduction->lexical_reduce(symmetry_, node_ptr, worker->leaf_problem);
+    i_t lexical_reductions_info = worker->lexical_reduction->lexical_reduce(
+      symmetry_, node_ptr, worker->leaf_problem, worker->domain);
     if (lexical_reductions_info > 0) {
       stats.lexical_reduction_nodes++;
       stats.lexical_reduction_fixings_applied += lexical_reductions_info;
@@ -1528,7 +1530,8 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
     }
   }
 
-  return true;
+  return worker->domain.propagate_from_stack(
+    worker->Arow, worker->var_types, settings_, worker->leaf_problem, start_stack_index);
 }
 
 template <typename i_t, typename f_t>
@@ -1624,10 +1627,10 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     node_ptr->vstatus[node_ptr->branch_var]);
 #endif
 
-  bool feasible           = worker->set_lp_variable_bounds(node_ptr, settings_);
+  bool feasible           = worker->update_variable_bounds(node_ptr, lp_settings);
   dual_status_t lp_status = dual_status_t::DUAL_UNBOUNDED;
   worker->leaf_edge_norms = worker->root_edge_norm;
-  if (worker->recompute_bounds && worker->orbital_fixing &&
+  if (worker->recompute_basis && worker->orbital_fixing &&
       worker->search_strategy == search_strategy_t::BEST_FIRST) {
     worker->orbital_fixing->reset(symmetry_, node_ptr);
   }
@@ -1724,14 +1727,30 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
   assert(worker != nullptr && worker->is_active.load());
   assert(start_node != nullptr);
 
+  worker->recompute_basis = true;
+  worker->ensure_orbital_fixing();
+
+  // The branching of the start node itself is applied when its LP is solved.
+  if (start_node->parent != nullptr) {
+    start_node->parent->rebuild_variable_bounds(worker->domain);
+  } else {
+    worker->domain.clear();
+  }
+
+  bool is_start_feasible = worker->rebuild_bounds_from_stack(original_lp_, settings_);
+  if (!is_start_feasible) {
+    start_node->lower_bound = inf;
+    search_tree_.graphviz_node(settings_.log, start_node, "infeasible", inf);
+    search_tree_.update(start_node, node_status_t::INFEASIBLE);
+    ++exploration_stats_.nodes_explored;
+    --exploration_stats_.nodes_unexplored;
+    return;
+  }
+
   // Stack holds at most 2 entries: the preferred child + its sibling.
   // The sibling is evicted to the queue before a new pair of children is added.
   circular_deque_t<mip_node_t<i_t, f_t>*> stack(2);
   stack.push_front(start_node);
-
-  worker->recompute_basis  = true;
-  worker->recompute_bounds = true;
-  worker->ensure_orbital_fixing();
 
   f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;
@@ -1771,8 +1790,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     if (node_ptr->lower_bound > upper_bound_.load()) {
       search_tree_.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
       search_tree_.update(node_ptr, node_status_t::FATHOMED);
-      worker->recompute_basis  = true;
-      worker->recompute_bounds = true;
+      worker->recompute_basis = true;
       --exploration_stats_.nodes_unexplored;
       --exploration_stats_.nodes_being_solved;
       continue;
@@ -1863,8 +1881,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     auto [node_status, round_dir] =
       update_tree(node_ptr, search_tree_, worker, lp_status, settings_.log);
 
-    worker->recompute_basis  = node_status != node_status_t::HAS_CHILDREN;
-    worker->recompute_bounds = node_status != node_status_t::HAS_CHILDREN;
+    worker->recompute_basis = node_status != node_status_t::HAS_CHILDREN;
 
     if (node_status == node_status_t::HAS_CHILDREN) {
       if (can_launch_new_submip) {
@@ -1900,6 +1917,8 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
         stack.push_front(node_ptr->get_down_child());
       }
+    } else {
+      worker->backtrack_bound_changes();
     }
 
     lower_bound = get_lower_bound();
@@ -2116,7 +2135,16 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
   const i_t diving_node_limit = settings.diving_settings.node_limit;
   const i_t backtrack_limit   = settings.diving_settings.backtrack_limit;
   worker->recompute_basis     = true;
-  worker->recompute_bounds    = true;
+
+  bool is_start_feasible = worker->rebuild_bounds_from_stack(original_lp_, settings);
+  if (!is_start_feasible) {
+    if (worker->search_strategy != search_strategy_t::RINS &&
+        worker->search_strategy != search_strategy_t::RENS &&
+        worker->search_strategy != search_strategy_t::MUTATION && !settings.inside_root_node) {
+      diving_worker_pool_.return_worker_to_pool(worker);
+    }
+    return;
+  }
 
   search_tree_t<i_t, f_t> dive_tree(std::move(worker->start_node));
 
@@ -2136,15 +2164,19 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
 
   while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
          rel_gap > settings.relative_mip_gap_tol && abs_gap > settings.absolute_mip_gap_tol &&
-         !(settings.concurrent_halt && settings.concurrent_halt->load(std::memory_order_acquire))) {
+         !settings.received_halt_signal()) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
     worker->lower_bound = node_ptr->lower_bound;
 
     if (node_ptr->lower_bound > upper_bound_.load()) {
-      worker->recompute_basis  = true;
-      worker->recompute_bounds = true;
+      worker->recompute_basis = true;
+      if (stack.size() >= 1) {
+        for (i_t i = 0; i < node_ptr->depth - stack.front()->depth; ++i) {
+          worker->backtrack_bound_changes();
+        }
+      }
       continue;
     }
 
@@ -2176,10 +2208,9 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
     if (lp_status == dual_status_t::CONCURRENT_LIMIT) { break; }
     if (lp_status == dual_status_t::ITERATION_LIMIT) { break; }
 
+    const i_t depth               = node_ptr->depth;
     auto [node_status, round_dir] = update_tree(node_ptr, dive_tree, worker, lp_status, log);
-
-    worker->recompute_basis  = node_status != node_status_t::HAS_CHILDREN;
-    worker->recompute_bounds = node_status != node_status_t::HAS_CHILDREN;
+    worker->recompute_basis       = node_status != node_status_t::HAS_CHILDREN;
 
     if (node_status == node_status_t::HAS_CHILDREN) {
       if (round_dir == branch_direction_t::UP) {
@@ -2188,6 +2219,12 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
       } else {
         stack.push_front(node_ptr->get_up_child());
         stack.push_front(node_ptr->get_down_child());
+      }
+    } else {
+      if (stack.size() >= 1) {
+        for (i_t i = 0; i < depth - stack.front()->depth + 1; ++i) {
+          worker->backtrack_bound_changes();
+        }
       }
     }
 
@@ -2223,23 +2260,14 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
   diving_worker_t<i_t, f_t>* diving_worker = diving_worker_pool_.pop_idle_worker();
   if (diving_worker == nullptr) { return false; }
 
-  bool success = bfs_worker->node_queue.diving_init(original_lp_,
-                                                    diving_worker->start_node,
-                                                    diving_worker->start_lower,
-                                                    diving_worker->start_upper,
-                                                    diving_worker->bounds_changed);
+  bool success =
+    bfs_worker->node_queue.diving_init(diving_worker->start_node, diving_worker->domain);
   if (!success) {
     diving_worker_pool_.return_worker_to_pool(diving_worker);
     return false;
   }
 
   if (upper_bound_.load() < diving_worker->start_node.lower_bound) {
-    diving_worker_pool_.return_worker_to_pool(diving_worker);
-    return false;
-  }
-
-  bool is_feasible = diving_worker->presolve_start_bounds(settings_);
-  if (!is_feasible) {
     diving_worker_pool_.return_worker_to_pool(diving_worker);
     return false;
   }
@@ -2341,6 +2369,42 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 {
   double start_time = tic();
 
+  // If not enough variables was fixed (the neighbourhood is too loose) or the sub-MIP already
+  // found a solution that improved the incumbent, then do a DFS with a backtrack_limit of 5
+  // levels up to try to find a feasible solution quickly from the neighbourhood.
+  if (fixrate < submip_settings.submip_settings.min_fixrate_cap ||
+      (submip_settings.inside_submip && submip_stats.total_success != 0)) {
+    worker->start_node.packed_vstatus = simplex::compress_vstatus(worker->leaf_vstatus);
+
+    fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
+    if (settings_.submip_settings.enable_cpufj) {
+      submip_fj_cpu_worker.improvement_callback =
+        [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
+          this->set_solution_from_cpu_fj(obj, assignment, work_units);
+        };
+
+      f_t time_limit =
+        std::max<f_t>(submip_settings.time_limit - toc(exploration_stats_.start_time), 0);
+      f_t work_limit = 1.0;
+      submip_fj_cpu_worker.create_worker(worker->leaf_problem,
+                                         worker->var_types,
+                                         original_problem_.num_cols,
+                                         worker->leaf_solution.x,
+                                         submip_settings,
+                                         std::format("{} [CPU FJ]", submip_settings.log.log_prefix),
+                                         worker->rng.next_i64());
+      submip_fj_cpu_worker.run_sync(time_limit, work_limit);
+    }
+
+    DEBUG_SUBMIP("{}Running a quick DFS. fixrate={:.4g}", submip_settings.log.log_prefix, fixrate);
+
+    simplex_solver_settings_t<i_t, f_t> dfs_settings = submip_settings;
+    dfs_settings.diving_settings.backtrack_limit     = settings_.submip_settings.dfs_max_backtrack;
+    worker->domain.clear();
+    dive_with(worker, dfs_settings);
+    return;
+  }
+
   bool is_root_heuristic = submip_settings.inside_root_node;
   i_t submip_level       = settings_.submip_settings.level + 1;
   f_t user_lower         = compute_user_objective(worker->leaf_problem, get_lower_bound());
@@ -2432,10 +2496,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     return;
   }
 
-  if (submip_settings.concurrent_halt &&
-      submip_settings.concurrent_halt->load(std::memory_order_acquire)) {
-    return;
-  }
+  if (submip_settings.received_halt_signal()) { return; }
 
   submip_settings.heuristic_preemption_callback   = nullptr;
   submip_settings.dual_simplex_objective_callback = nullptr;
@@ -2624,88 +2685,18 @@ void get_unfixed_integer_variables(const std::vector<f_t>& lower,
 }
 
 template <typename i_t, typename f_t>
-void fix_variable(i_t j,
-                  std::vector<f_t>& lower,
-                  std::vector<f_t>& upper,
-                  std::vector<bool>& bounds_changed,
-                  f_t fixed_val)
+i_t calculate_fixrate(const std::vector<variable_type_t>& var_types,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      const domain_t<i_t, f_t>& domain,
+                      const size_t start)
 {
-  fixed_val         = std::clamp(fixed_val, lower[j], upper[j]);
-  lower[j]          = fixed_val;
-  upper[j]          = fixed_val;
-  bounds_changed[j] = true;
-}
+  i_t num_fixed = 0;
 
-template <typename i_t, typename f_t>
-i_t apply_mutation(const simplex_solver_settings_t<i_t, f_t>& settings,
-                   const std::vector<f_t>& incumbent,
-                   const std::vector<i_t>& integer_list,
-                   f_t target_fixrate,
-                   std::vector<f_t>& lower,
-                   std::vector<f_t>& upper,
-                   std::vector<bool>& bounds_changed)
-{
-  i_t num_fixed         = 0;
-  i_t num_bound_changed = 0;
-  i_t target_num_fixed  = target_fixrate * integer_list.size();
-
-  for (i_t j : integer_list) {
-    if (num_fixed >= target_num_fixed) break;
-    if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) continue;
-    fix_variable(j, lower, upper, bounds_changed, std::round(incumbent[j]));
-    num_bound_changed += bounds_changed[j];
-    ++num_fixed;
-  }
-
-  return num_bound_changed;
-}
-
-template <typename i_t, typename f_t>
-i_t apply_rens_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
-                       const std::vector<f_t>& node_solution,
-                       const std::vector<i_t>& integer_list,
-                       i_t target_num_fixed,
-                       std::vector<f_t>& lower,
-                       std::vector<f_t>& upper,
-                       std::vector<bool>& bounds_changed)
-{
-  i_t num_fixed         = 0;
-  i_t num_bound_changed = 0;
-
-  for (i_t j : integer_list) {
-    if (num_fixed >= target_num_fixed) break;
-    if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) continue;
-    f_t old_lower     = lower[j];
-    f_t old_upper     = upper[j];
-    lower[j]          = std::clamp(std::floor(node_solution[j]), old_lower, old_upper);
-    upper[j]          = std::clamp(std::ceil(node_solution[j]), old_lower, old_upper);
-    bounds_changed[j] = lower[j] != old_lower || upper[j] != old_upper;
-    num_bound_changed += bounds_changed[j];
-    if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) ++num_fixed;
-  }
-
-  return num_bound_changed;
-}
-
-template <typename i_t, typename f_t>
-i_t apply_rins_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
-                       const std::vector<f_t>& current_sol,
-                       const std::vector<i_t>& integer_list,
-                       const std::vector<f_t>& current_incumbent,
-                       f_t target_fixrate,
-                       std::vector<f_t>& lower,
-                       std::vector<f_t>& upper,
-                       std::vector<bool>& bounds_changed)
-{
-  i_t num_fixed        = 0;
-  i_t target_num_fixed = target_fixrate * integer_list.size();
-
-  for (i_t j : integer_list) {
-    if (num_fixed >= target_num_fixed) break;
-    if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) continue;
-    if (std::abs(current_sol[j] - current_incumbent[j]) <= settings.integer_tol) {
-      f_t fixed_val = std::round(current_sol[j]);
-      fix_variable(j, lower, upper, bounds_changed, fixed_val);
+  for (size_t k = start; k < domain.size(); ++k) {
+    const simplex::bound_change_t<i_t, f_t>& change = domain[k];
+    if (var_types[change.var] != variable_type_t::CONTINUOUS &&
+        change.old_upper - change.old_lower > settings.fixed_tol &&
+        change.new_upper - change.new_lower <= settings.fixed_tol) {
       ++num_fixed;
     }
   }
@@ -2714,19 +2705,116 @@ i_t apply_rins_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
 }
 
 template <typename i_t, typename f_t>
-i_t extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
+i_t apply_mutation(const csr_matrix_t<i_t, f_t>& Arow,
+                   const std::vector<variable_type_t>& var_types,
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                   const std::vector<f_t>& incumbent,
+                   const std::vector<i_t>& integer_list,
+                   i_t target_num_fixed,
+                   f_t start_time,
+                   lp_problem_t<i_t, f_t>& lp,
+                   domain_t<i_t, f_t>& domain)
+{
+  i_t num_fixed = 0;
+  for (i_t j : integer_list) {
+    if (num_fixed >= target_num_fixed) break;
+    if (toc(start_time) >= settings.time_limit || settings.received_halt_signal()) return -1;
+    if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) continue;
+    f_t fixed_val = std::clamp(std::round(incumbent[j]), lp.lower[j], lp.upper[j]);
+    i_t start     = domain.size();
+    simplex::bound_change_t<i_t, f_t> bound_change{.var       = j,
+                                                   .new_upper = fixed_val,
+                                                   .new_lower = fixed_val,
+                                                   .origin    = bound_change_origin_t::BRANCH};
+    if (!domain.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) { return -1; }
+    num_fixed += calculate_fixrate(var_types, settings, domain, start);
+  }
+
+  return num_fixed;
+}
+
+template <typename i_t, typename f_t>
+i_t apply_rens_fixings(const csr_matrix_t<i_t, f_t>& Arow,
+                       const std::vector<variable_type_t>& var_types,
+                       const simplex_solver_settings_t<i_t, f_t>& settings,
+                       const std::vector<f_t>& node_solution,
+                       const std::vector<i_t>& integer_list,
+                       i_t target_num_fixed,
+                       f_t start_time,
+                       lp_problem_t<i_t, f_t>& lp,
+                       domain_t<i_t, f_t>& domain)
+{
+  i_t num_fixed = 0;
+  for (i_t j : integer_list) {
+    if (num_fixed >= target_num_fixed) break;
+    if (toc(start_time) >= settings.time_limit || settings.received_halt_signal()) return -1;
+    if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) continue;
+
+    simplex::bound_change_t<i_t, f_t> bound_change{.var    = j,
+                                                   .origin = bound_change_origin_t::BRANCH};
+    bound_change.new_lower = std::clamp(std::floor(node_solution[j]), lp.lower[j], lp.upper[j]);
+    bound_change.new_upper = std::clamp(std::ceil(node_solution[j]), lp.lower[j], lp.upper[j]);
+
+    if (bound_change.new_lower != lp.lower[j] || bound_change.new_upper != lp.upper[j]) {
+      i_t start = domain.size();
+      if (!domain.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) { return -1; }
+      num_fixed += calculate_fixrate(var_types, settings, domain, start);
+    }
+  }
+
+  return num_fixed;
+}
+
+template <typename i_t, typename f_t>
+i_t apply_rins_fixings(const csr_matrix_t<i_t, f_t>& Arow,
+                       const std::vector<variable_type_t>& var_types,
+                       const simplex_solver_settings_t<i_t, f_t>& settings,
+                       const std::vector<f_t>& current_sol,
+                       const std::vector<i_t>& integer_list,
+                       const std::vector<f_t>& incumbent,
+                       i_t target_num_fixed,
+                       f_t start_time,
+                       lp_problem_t<i_t, f_t>& lp,
+                       domain_t<i_t, f_t>& domain)
+{
+  i_t num_fixed = 0;
+  for (i_t j : integer_list) {
+    if (num_fixed >= target_num_fixed) break;
+    if (toc(start_time) >= settings.time_limit || settings.received_halt_signal()) return -1;
+    if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) continue;
+    if (std::abs(current_sol[j] - incumbent[j]) <= settings.integer_tol) {
+      f_t fixed_val = std::clamp(std::round(incumbent[j]), lp.lower[j], lp.upper[j]);
+      i_t start     = domain.size();
+      simplex::bound_change_t<i_t, f_t> bound_change{.var       = j,
+                                                     .new_upper = fixed_val,
+                                                     .new_lower = fixed_val,
+                                                     .origin    = bound_change_origin_t::BRANCH};
+      if (!domain.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) { return -1; }
+      num_fixed += calculate_fixrate(var_types, settings, domain, start);
+    }
+  }
+
+  return num_fixed;
+}
+
+template <typename i_t, typename f_t>
+i_t extend_variable_fixings(const csr_matrix_t<i_t, f_t>& Arow,
+                            const std::vector<variable_type_t>& var_types,
+                            const simplex_solver_settings_t<i_t, f_t>& settings,
                             const std::vector<f_t>& obj_coeffs,
                             const std::vector<i_t>& fractional,
                             const std::vector<f_t>& current_sol,
                             const std::vector<f_t>& root_solution,
+                            const std::vector<i_t>& integer_list,
                             i_t target_num_fixed,
-                            std::vector<f_t>& lower,
-                            std::vector<f_t>& upper,
-                            std::vector<bool>& bounds_changed)
+                            f_t start_time,
+                            lp_problem_t<i_t, f_t>& lp,
+                            domain_t<i_t, f_t>& domain)
 {
   std::vector<std::tuple<f_t, i_t, f_t>> candidates;
   for (i_t j : fractional) {
-    if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) { continue; }
+    if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) { continue; }
+    if (toc(start_time) >= settings.time_limit || settings.received_halt_signal()) return -1;
 
     f_t root_change = current_sol[j] - root_solution[j];
     f_t obj_coeff   = obj_coeffs[j];
@@ -2751,35 +2839,28 @@ i_t extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
     return std::get<0>(a) < std::get<0>(b);
   });
 
-  i_t num_fixed = 0;
-  f_t change    = 0;
+  i_t num_fixed         = 0;
+  f_t accumulate_change = 0;
 
   for (auto [dist, j, fixed_val] : candidates) {
     if (num_fixed >= target_num_fixed) break;
+    if (toc(start_time) >= settings.time_limit || settings.received_halt_signal()) return -1;
 
-    fix_variable(j, lower, upper, bounds_changed, fixed_val);
-    ++num_fixed;
+    fixed_val = std::clamp(fixed_val, lp.lower[j], lp.upper[j]);
+    i_t start = domain.size();
+    simplex::bound_change_t<i_t, f_t> bound_change{.var       = j,
+                                                   .new_upper = fixed_val,
+                                                   .new_lower = fixed_val,
+                                                   .origin    = bound_change_origin_t::BRANCH};
+    if (!domain.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) { return -1; }
+    num_fixed += calculate_fixrate(var_types, settings, domain, start);
 
     // Limit the amount of fixing to the current LP.
-    change += dist;
-    if (change >= 0.5) break;
+    accumulate_change += dist;
+    if (accumulate_change >= 0.5) break;
   }
 
   return num_fixed;
-}
-
-template <typename i_t, typename f_t>
-f_t calculate_fixrate(const std::vector<i_t>& integer_list,
-                      const std::vector<f_t>& lower,
-                      const std::vector<f_t>& upper,
-                      f_t fixed_tol)
-{
-  i_t num_fixed = 0;
-  for (i_t j : integer_list) {
-    if (std::abs(lower[j] - upper[j]) <= fixed_tol) ++num_fixed;
-  }
-
-  return (f_t)num_fixed / integer_list.size();
 }
 
 template <typename i_t, typename f_t>
@@ -2799,93 +2880,51 @@ void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
   ++mutation_stats_.total_calls;
 
   branch_and_bound_stats_t<i_t, f_t> stats;
-  mip_node_t<i_t, f_t>& node        = worker->start_node;
-  std::vector<f_t>& lower           = worker->leaf_problem.lower;
-  std::vector<f_t>& upper           = worker->leaf_problem.upper;
-  std::vector<bool>& bounds_changed = worker->bounds_changed;
-
-  std::fill(bounds_changed.begin(), bounds_changed.end(), false);
+  mip_node_t<i_t, f_t>& node = worker->start_node;
+  std::vector<f_t>& lower    = worker->leaf_problem.lower;
+  std::vector<f_t>& upper    = worker->leaf_problem.upper;
 
   std::vector<i_t> integer_list;
   get_unfixed_integer_variables(
     lower, upper, worker->var_types, submip_settings.fixed_tol, integer_list);
   worker->rng.shuffle(integer_list);
+  worker->domain.compute_activities(worker->Arow, worker->leaf_problem);
 
   f_t target_fixrate =
     submip_get_max_fixrate(mutation_stats_, submip_settings.submip_settings, worker->rng);
-  f_t fixrate = 0;
-
-  apply_mutation(submip_settings,
-                 worker->current_incumbent,
-                 integer_list,
-                 target_fixrate,
-                 lower,
-                 upper,
-                 bounds_changed);
-  bool is_feasible =
-    worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
-  fixrate = calculate_fixrate(integer_list, lower, upper, settings_.fixed_tol);
+  i_t target_num_fixed = target_fixrate * integer_list.size();
+  i_t num_fixed        = apply_mutation(worker->Arow,
+                                 worker->var_types,
+                                 submip_settings,
+                                 worker->current_incumbent,
+                                 integer_list,
+                                 target_num_fixed,
+                                 exploration_stats_.start_time,
+                                 worker->leaf_problem,
+                                 worker->domain);
+  f_t fixrate          = static_cast<f_t>(num_fixed) / integer_list.size();
 
   DEBUG_SUBMIP("{} fixed variables = {:.0f} ({:.2f}), target fixrate = {} ({:.2f})",
                submip_settings.log.log_prefix,
                fixrate * integer_list.size(),
                fixrate,
-               target_fixrate,
-               target_fixrate * integer_list.size());
+               target_num_fixed,
+               target_fixrate);
 
-  if (!is_feasible) {
-    DEBUG_SUBMIP("{}bound strengthening detected infeasibility.", submip_settings.log.log_prefix)
+  if (num_fixed < 0) {
+    DEBUG_SUBMIP("{}stopped fixing (infeasible, halted or time limit reached).",
+                 submip_settings.log.log_prefix)
 
     // If the pool is uninitialized (i.e., in the root node), then this just inactivate the worker.
     if (!submip_settings.inside_root_node) {
       submip_worker_pool_.return_worker_to_pool(worker);
     } else {
-      worker->set_inactive();
+      worker->cleanup();
     }
     return;
   }
 
-  // If not enough variables was fixed (the neighbourhood is too loose) or the sub-MIP already
-  // found a solution that improved the incumbent, then do a DFS with a backtrack_limit of 5
-  // levels up to try to find a feasible solution quickly from the neighbourhood.
-  if (fixrate < settings_.submip_settings.min_fixrate_cap ||
-      (settings_.inside_submip && mutation_stats_.total_success != 0)) {
-    worker->start_node.packed_vstatus = simplex::compress_vstatus(worker->leaf_vstatus);
-    worker->start_lower               = lower;
-    worker->start_upper               = upper;
-
-    fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
-    if (settings_.submip_settings.enable_cpufj) {
-      submip_fj_cpu_worker.improvement_callback =
-        [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
-          this->set_solution_from_cpu_fj(obj, assignment, work_units);
-        };
-
-      f_t time_limit = std::max<f_t>(settings_.time_limit - toc(exploration_stats_.start_time), 0);
-      f_t work_limit = 1.0;
-      submip_fj_cpu_worker.create_worker(worker->leaf_problem,
-                                         worker->var_types,
-                                         original_problem_.num_cols,
-                                         worker->leaf_solution.x,
-                                         settings_,
-                                         std::format("{} [CPU FJ]", submip_settings.log.log_prefix),
-                                         worker->rng.next_i64());
-      submip_fj_cpu_worker.run_sync(time_limit, work_limit);
-    }
-
-    DEBUG_SUBMIP("{}Running a quick DFS. fixrate={:.4g} ({}/{})",
-                 submip_settings.log.log_prefix,
-                 fixrate,
-                 fixrate * integer_list.size(),
-                 integer_list.size());
-
-    simplex_solver_settings_t<i_t, f_t> dfs_settings = submip_settings;
-    dfs_settings.diving_settings.backtrack_limit     = settings_.submip_settings.dfs_max_backtrack;
-    dive_with(worker, dfs_settings);
-
-  } else {
-    solve_submip(worker, mutation_stats_, fixrate, stats.total_simplex_iters, submip_settings);
-  }
+  solve_submip(worker, mutation_stats_, fixrate, stats.total_simplex_iters, submip_settings);
 
   DEBUG_SUBMIP(
     "{}success={}, infeasible={}, calls={}, fixrate={:.4g} ({:.0f}/{}), max_fixrate={:.4g}\n",
@@ -2902,7 +2941,7 @@ void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
   if (!submip_settings.inside_root_node) {
     submip_worker_pool_.return_worker_to_pool(worker);
   } else {
-    worker->set_inactive();
+    worker->cleanup();
   }
 }
 
@@ -2913,7 +2952,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
   raft::common::nvtx::range scope("BB::submip_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
 
-  i_t submip_level = settings_.submip_settings.level + 1;
+  i_t submip_level = submip_settings.submip_settings.level + 1;
   submip_settings.log.log_prefix =
     std::format("[{} {}] ", search_strategy_to_string(worker->search_strategy), submip_level);
 
@@ -2926,121 +2965,143 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
 
   ++submip_stats.total_calls;
 
-  bool has_submip          = false;
-  worker->recompute_bounds = false;
-  worker->recompute_basis  = true;
+  bool has_submip         = false;
+  worker->recompute_basis = true;
 
   branch_and_bound_stats_t<i_t, f_t> stats;
-  mip_node_t<i_t, f_t>& node        = worker->start_node;
-  std::vector<f_t>& lower           = worker->leaf_problem.lower;
-  std::vector<f_t>& upper           = worker->leaf_problem.upper;
-  std::vector<bool>& bounds_changed = worker->bounds_changed;
-  std::vector<f_t>& current_sol     = worker->leaf_solution.x;
-
-  std::fill(bounds_changed.begin(), bounds_changed.end(), false);
+  mip_node_t<i_t, f_t>& node    = worker->start_node;
+  std::vector<f_t>& lower       = worker->leaf_problem.lower;
+  std::vector<f_t>& upper       = worker->leaf_problem.upper;
+  std::vector<f_t>& current_sol = worker->leaf_solution.x;
+  worker->domain.compute_activities(worker->Arow, worker->leaf_problem);
 
   std::vector<i_t> fractional;
-  i_t num_frac = fractional_variables(settings_, current_sol, worker->var_types, fractional);
+  i_t num_frac = fractional_variables(submip_settings, current_sol, worker->var_types, fractional);
 
   std::vector<i_t> integer_list;
-  get_unfixed_integer_variables(lower, upper, worker->var_types, settings_.fixed_tol, integer_list);
+  get_unfixed_integer_variables(
+    lower, upper, worker->var_types, submip_settings.fixed_tol, integer_list);
 
   i_t num_integers = integer_list.size();
-  f_t max_fixrate  = submip_get_max_fixrate(submip_stats, settings_.submip_settings, worker->rng);
-  f_t min_fixrate  = settings_.submip_settings.min_fixrate;
-  f_t fixrate      = 0;
-  f_t close_ratio  = settings_.submip_settings.round_close_ratio;
+  f_t max_fixrate =
+    submip_get_max_fixrate(submip_stats, submip_settings.submip_settings, worker->rng);
+  f_t min_fixrate = submip_settings.submip_settings.min_fixrate;
+  f_t fixrate     = 0;
+  i_t num_fixed   = 0;
+  f_t close_ratio = submip_settings.submip_settings.round_close_ratio;
 
   i_t round = 0;
 
   while (solver_status_ == mip_status_t::UNSET && is_running_ &&
-         !(submip_settings.concurrent_halt &&
-           submip_settings.concurrent_halt->load(std::memory_order::acquire))) {
-    f_t prev_fixrate         = fixrate;
-    f_t distance             = 1.0 - (1.0 - prev_fixrate) * close_ratio;
-    f_t round_target_fixrate = std::min(distance, max_fixrate) - prev_fixrate;
-    i_t round_target         = round_target_fixrate * num_integers;
-    i_t num_bound_changed    = 0;
+         !submip_settings.received_halt_signal()) {
+    f_t prev_stack_size = worker->domain.size();
+    f_t prev_fixrate    = fixrate;
+    f_t target_fixrate  = worker->search_strategy == search_strategy_t::RINS
+                            ? max_fixrate
+                            : std::min(1.0 - (1.0 - fixrate) * close_ratio, max_fixrate);
+    i_t new_fixings     = 0;
+
+    i_t round_num_fixed = (target_fixrate - prev_fixrate) * num_integers;
+    if (round_num_fixed == 0) {
+      target_fixrate  = max_fixrate;
+      round_num_fixed = (target_fixrate - prev_fixrate) * num_integers;
+      if (round_num_fixed == 0) {
+        has_submip = fixrate > 0;
+        break;
+      }
+    }
+
     // Shuffle the fractional and integer list, so every variable has the same chance to the picked
     // (we iterate the list in order).
     worker->rng.shuffle(integer_list);
     worker->rng.shuffle(fractional);
+
     if (worker->search_strategy == search_strategy_t::RINS) {
       // RINS neighbourhood: Fix all the integer variables where the current solution matches the
       // incumbent. We are using the `max_fixrate` here to allow RINS to fix all integer variables
       // that it can within our budget.
-      num_bound_changed = apply_rins_fixings(settings_,
-                                             current_sol,
-                                             integer_list,
-                                             worker->current_incumbent,
-                                             max_fixrate - prev_fixrate,
-                                             lower,
-                                             upper,
-                                             bounds_changed);
+      new_fixings = apply_rins_fixings(worker->Arow,
+                                       worker->var_types,
+                                       submip_settings,
+                                       current_sol,
+                                       integer_list,
+                                       worker->current_incumbent,
+                                       round_num_fixed,
+                                       exploration_stats_.start_time,
+                                       worker->leaf_problem,
+                                       worker->domain);
+      if (new_fixings < 0) {
+        DEBUG_SUBMIP("{}Round {}: stopped fixing (infeasible, halted or time limit reached).",
+                     submip_settings.log.log_prefix,
+                     round)
+        break;
+      }
+
+      num_fixed += new_fixings;
+      fixrate = static_cast<f_t>(num_fixed) / integer_list.size();
 
       // The RINS neighbourhood ran dry. If it is already tight enough, take it rather than
       // diluting it with fixings that do not agree with the incumbent.
-      if (num_bound_changed == 0 && fixrate >= min_fixrate) {
+      if (prev_fixrate == fixrate && fixrate >= min_fixrate) {
         has_submip = true;
         break;
       }
 
     } else if (worker->search_strategy == search_strategy_t::RENS) {
-      if (round_target == 0) {
-        round_target_fixrate = max_fixrate - prev_fixrate;
-        round_target         = round_target_fixrate * num_integers;
-        if (round_target == 0) {
-          has_submip = fixrate > 0;
-          break;
-        }
+      new_fixings = apply_rens_fixings(worker->Arow,
+                                       worker->var_types,
+                                       submip_settings,
+                                       current_sol,
+                                       integer_list,
+                                       round_num_fixed,
+                                       exploration_stats_.start_time,
+                                       worker->leaf_problem,
+                                       worker->domain);
+      if (new_fixings < 0) {
+        DEBUG_SUBMIP("{}Round {}: stopped fixing (infeasible, halted or time limit reached).",
+                     submip_settings.log.log_prefix,
+                     round)
+        break;
       }
 
-      num_bound_changed = apply_rens_fixings(
-        settings_, current_sol, integer_list, round_target, lower, upper, bounds_changed);
+      num_fixed += new_fixings;
+      fixrate = static_cast<f_t>(num_fixed) / integer_list.size();
     }
 
     // Even considering the entire integer list, we were unable to fix a single variable in this
     // iteration. Iterate over the fractional variables again and fixing those that closest to
     // an integer solution first in order to reach the fixing threshold.
-    if (num_bound_changed == 0) {
-      if (round_target == 0) {
-        round_target_fixrate = max_fixrate - prev_fixrate;
-        round_target         = round_target_fixrate * num_integers;
-        if (round_target == 0) {
-          has_submip = fixrate > 0;
-          break;
-        }
+    if (fixrate == prev_fixrate && prev_stack_size == worker->domain.size()) {
+      new_fixings = extend_variable_fixings(worker->Arow,
+                                            worker->var_types,
+                                            submip_settings,
+                                            worker->leaf_problem.objective,
+                                            fractional,
+                                            current_sol,
+                                            worker->root_solution,
+                                            integer_list,
+                                            round_num_fixed,
+                                            exploration_stats_.start_time,
+                                            worker->leaf_problem,
+                                            worker->domain);
+      if (new_fixings < 0) {
+        DEBUG_SUBMIP("{}Round {}: stopped fixing (infeasible, halted or time limit reached).",
+                     submip_settings.log.log_prefix,
+                     round)
+        break;
       }
 
-      num_bound_changed = extend_variable_fixings(settings_,
-                                                  worker->leaf_problem.objective,
-                                                  fractional,
-                                                  current_sol,
-                                                  worker->root_solution,
-                                                  round_target,
-                                                  lower,
-                                                  upper,
-                                                  bounds_changed);
+      num_fixed += new_fixings;
+      fixrate = static_cast<f_t>(num_fixed) / integer_list.size();
 
-      // Even sweep over all integer variables, we exhausted all variables that can be fixed.
-      // If this is the case, then tries to solve the sub-mip anyway.
-      if (num_bound_changed == 0) {
+      if (fixrate >= min_fixrate) {
         has_submip = true;
         break;
       }
     }
 
-    if (toc(exploration_stats_.start_time) > settings_.time_limit) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
-      break;
-    }
-
-    bool is_feasible =
-      worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
-    fixrate = calculate_fixrate(integer_list, lower, upper, settings_.fixed_tol);
-
     DEBUG_SUBMIP(
-      "{}Round {}: fixed {:.0f} ({:.2f}) -> {:.0f} ({:.2f}) variables. target round fixrate = {} "
+      "{}Round {}: fixed {:.0f} ({:.2f}) -> {:.0f} ({:.2f}) variables ({:+}). round target = {} "
       "({:.2f}). "
       "max fixrate = {:.4g}",
       submip_settings.log.log_prefix,
@@ -3049,19 +3110,18 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
       prev_fixrate,
       fixrate * num_integers,
       fixrate,
-      round_target,
-      round_target_fixrate,
+      new_fixings,
+      round_num_fixed,
+      target_fixrate,
       max_fixrate);
-
-    if (!is_feasible) {
-      DEBUG_SUBMIP("{}Round {}: bound strengthening detected infeasibility.",
-                   submip_settings.log.log_prefix,
-                   round)
-      break;
-    }
 
     if (fixrate >= max_fixrate) {
       has_submip = true;
+      break;
+    }
+
+    if (toc(exploration_stats_.start_time) >= submip_settings.time_limit) {
+      solver_status_ = mip_status_t::TIME_LIMIT;
       break;
     }
 
@@ -3072,9 +3132,9 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
     log.log = false;
 
     int64_t iter_offset =
-      settings_.inside_submip ? 0 : settings_.submip_settings.iteration_limit_offset;
+      submip_settings.inside_submip ? 0 : submip_settings.submip_settings.iteration_limit_offset;
     int64_t simplex_iter       = exploration_stats_.total_simplex_iters;
-    f_t iter_ratio             = settings_.submip_settings.iteration_limit_ratio;
+    f_t iter_ratio             = submip_settings.submip_settings.iteration_limit_ratio;
     int64_t simplex_iter_limit = iter_offset + simplex_iter * iter_ratio;
     int64_t max_iter           = simplex_iter_limit - stats.total_simplex_iters;
     if (max_iter <= 0) {
@@ -3096,7 +3156,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
     }
 
     fractional.clear();
-    num_frac = fractional_variables(settings_, current_sol, worker->var_types, fractional);
+    num_frac = fractional_variables(submip_settings, current_sol, worker->var_types, fractional);
 
     f_t leaf_obj     = compute_objective(worker->leaf_problem, current_sol);
     node.lower_bound = leaf_obj;
@@ -3128,58 +3188,12 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
   }
 
   // Accumulate the iterations for sub-MIP so it stops when it reaches the allocated budget.
-  if (settings_.inside_submip) {
+  if (submip_settings.inside_submip) {
     exploration_stats_.total_simplex_iters += stats.total_simplex_iters;
   }
 
   if (has_submip) {
-    // If not enough variables was fixed (the neighbourhood is too loose) or the sub-MIP already
-    // found a solution that improved the incumbent, then do a DFS with a backtrack_limit of 5
-    // levels up to try to find a feasible solution quickly from the neighbourhood.
-    if (fixrate < settings_.submip_settings.min_fixrate_cap ||
-        (settings_.inside_submip && submip_stats.total_success != 0)) {
-      worker->start_node.packed_vstatus = simplex::compress_vstatus(worker->leaf_vstatus);
-      worker->start_lower               = lower;
-      worker->start_upper               = upper;
-
-      bool is_feasible = worker->presolve_start_bounds(settings_);
-      if (is_feasible) {
-        fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
-
-        if (settings_.submip_settings.enable_cpufj) {
-          submip_fj_cpu_worker.improvement_callback =
-            [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
-              this->set_solution_from_cpu_fj(obj, assignment, work_units);
-            };
-
-          f_t time_limit =
-            std::max<f_t>(settings_.time_limit - toc(exploration_stats_.start_time), 0);
-          f_t work_limit = 1.0;
-          submip_fj_cpu_worker.create_worker(
-            worker->leaf_problem,
-            worker->var_types,
-            original_problem_.num_cols,
-            worker->leaf_solution.x,
-            settings_,
-            std::format("{} [CPU FJ]", submip_settings.log.log_prefix),
-            worker->rng.next_i64());
-          submip_fj_cpu_worker.run_sync(time_limit, work_limit);
-        }
-
-        DEBUG_SUBMIP("{}Running a quick DFS. fixrate={:.4g} ({}/{})",
-                     submip_settings.log.log_prefix,
-                     fixrate,
-                     fixrate * num_integers,
-                     num_integers);
-
-        simplex_solver_settings_t<i_t, f_t> dfs_settings = submip_settings;
-        dfs_settings.diving_settings.backtrack_limit = settings_.submip_settings.dfs_max_backtrack;
-        dive_with(worker, dfs_settings);
-      }
-
-    } else {
-      solve_submip(worker, submip_stats, fixrate, stats.total_simplex_iters, submip_settings);
-    }
+    solve_submip(worker, submip_stats, fixrate, stats.total_simplex_iters, submip_settings);
   }
 
   DEBUG_SUBMIP(
@@ -3199,7 +3213,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
   if (!submip_settings.inside_root_node) {
     submip_worker_pool_.return_worker_to_pool(worker);
   } else {
-    worker->set_inactive();
+    worker->cleanup();
   }
 }
 
@@ -3781,8 +3795,6 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   }
 
   // Try to do bound strengthening
-  std::vector<bool> bounds_changed(original_lp_.num_cols, true);
-  std::vector<char> row_sense;
 #ifdef CHECK_MATRICES
   settings_.log.printf("Before A check\n");
   original_lp_.A.check_matrix();
@@ -3790,14 +3802,8 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   original_lp_.A.to_compressed_row(Arow_);
 
   f_t node_presolve_start_time = tic();
-  bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
-  std::vector<f_t> new_lower = original_lp_.lower;
-  std::vector<f_t> new_upper = original_lp_.upper;
-  bool feasible =
-    node_presolve.bounds_strengthening(settings_, bounds_changed, new_lower, new_upper);
   mutex_original_lp_.lock();
-  original_lp_.lower = new_lower;
-  original_lp_.upper = new_upper;
+  bool feasible = simplex::full_bound_strengthening(Arow_, var_types_, settings_, original_lp_);
   mutex_original_lp_.unlock();
   f_t node_presolve_time = toc(node_presolve_start_time);
   if (node_presolve_time > 1.0) {
@@ -4014,6 +4020,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   root_lp_current_lower_bound_        = -inf;
   exploration_stats_.nodes_unexplored = 0;
   exploration_stats_.nodes_explored   = 0;
+  lower_bound_numerical_              = inf;
   original_lp_.A.to_compressed_row(Arow_);
 
   active_submip_solvers_mutex_.lock();
@@ -4247,9 +4254,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return mip_status_t::OPTIMAL;
   }
 
-  is_running_            = true;
-  lower_bound_numerical_ = inf;
-
+  is_running_ = true;
   lp_settings.concurrent_halt =
     settings_.concurrent_halt ? settings_.concurrent_halt : &node_concurrent_halt_;
   reduced_cost_bounds_t<i_t, f_t> reduced_cost_bounds(original_lp_.num_cols);
@@ -4562,16 +4567,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     original_lp_.upper = upper_bounds;
     mutex_original_lp_.unlock();
     if (num_changed > 0) {
-      std::vector<bool> bounds_changed(original_lp_.num_cols, true);
-      std::vector<char> row_sense;
-
-      bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
-
       mutex_original_lp_.lock();
       original_lp_.lower = lower_bounds;
       original_lp_.upper = upper_bounds;
-      bool feasible      = node_presolve.bounds_strengthening(
-        settings_, bounds_changed, original_lp_.lower, original_lp_.upper);
+      bool feasible = simplex::full_bound_strengthening(Arow_, var_types_, settings_, original_lp_);
       mutex_original_lp_.unlock();
       if (!feasible) {
         settings_.log.printf("Bound strengthening failed\n");
@@ -5051,17 +5050,22 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
         continue;
       }
 
-      bool is_child                     = (node->parent == worker.last_solved_node);
-      worker.recompute_bounds_and_basis = !is_child;
+      bool is_child             = (node->parent == worker.last_solved_node);
+      worker.recompute_basis    = !is_child;
+      const size_t domain_start = worker.domain.size();
 
       node_status_t status = solve_node_deterministic(worker, node, search_tree);
 
       if (status == node_status_t::PENDING) {
+        // Undo the branching of this node, so the retry applies it again on the parent's domain.
+        if (is_child && worker.domain.size() > domain_start) { worker.backtrack_bound_changes(); }
         deterministic_scheduler_->wait_for_next_sync(worker.work_context);
         continue;
       }
 
-      worker.last_solved_node = node;
+      // A node without children is freed by the search tree, so it cannot be the parent of the next
+      // node.
+      worker.last_solved_node = status == node_status_t::HAS_CHILDREN ? node : nullptr;
 
       worker.current_node = nullptr;
       continue;
@@ -5238,18 +5242,6 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
 
   double work_units_at_start = worker.work_context.global_work_units_elapsed;
 
-  std::fill(worker.bounds_changed.begin(), worker.bounds_changed.end(), false);
-
-  if (worker.recompute_bounds_and_basis) {
-    worker.leaf_problem.lower = original_lp_.lower;
-    worker.leaf_problem.upper = original_lp_.upper;
-    node_ptr->get_variable_bounds(
-      worker.leaf_problem.lower, worker.leaf_problem.upper, worker.bounds_changed);
-  } else {
-    node_ptr->update_branched_variable_bounds(
-      worker.leaf_problem.lower, worker.leaf_problem.upper, worker.bounds_changed);
-  }
-
   double remaining_time = settings_.time_limit - toc(exploration_stats_.start_time);
 
   // Bounds strengthening
@@ -5261,17 +5253,20 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   lp_settings.time_limit    = remaining_time;
   lp_settings.scale_columns = false;
 
+  // A child of the last solved node only adds its own branching; any other node rebuilds the
+  // domain from its path, like the start of a plunge.
   bool feasible = true;
-#ifndef DETERMINISM_DISABLE_BOUNDS_STRENGTHENING
-  raft::common::nvtx::range scope_bs("BB::bound_strengthening");
-  feasible = worker.node_presolver.bounds_strengthening(
-    lp_settings, worker.bounds_changed, worker.leaf_problem.lower, worker.leaf_problem.upper);
+  if (node_ptr->parent == worker.last_solved_node) {
+    feasible = worker.update_variable_bounds(node_ptr, settings_);
+  } else {
+    node_ptr->rebuild_variable_bounds(worker.domain);
+    feasible = worker.rebuild_bounds_from_stack(original_lp_, settings_);
+  }
 
   if (settings_.deterministic) {
     // TEMP APPROXIMATION;
-    worker.work_context.record_work_sync_on_horizon(worker.node_presolver.last_nnz_processed / 1e8);
+    worker.work_context.record_work_sync_on_horizon(worker.domain.last_nnz_processed / 1e8);
   }
-#endif
 
   if (!feasible) {
     node_ptr->lower_bound = std::numeric_limits<f_t>::infinity();
@@ -5279,7 +5274,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
     worker.record_infeasible(node_ptr);
     --exploration_stats_.nodes_unexplored;
     ++exploration_stats_.nodes_explored;
-    worker.recompute_bounds_and_basis = true;
+    worker.recompute_basis = true;
     return node_status_t::INFEASIBLE;
   }
 
@@ -5294,7 +5289,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   f_t dual_work_estimate           = 0.0;
   dual_status_t lp_status          = dual_phase2_with_advanced_basis(2,
                                                             0,
-                                                            worker.recompute_bounds_and_basis,
+                                                            worker.recompute_basis,
                                                             lp_start_time,
                                                             worker.leaf_problem,
                                                             lp_settings,
@@ -5831,14 +5826,24 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 {
   raft::common::nvtx::range scope("BB::deterministic_dive");
 
-  worker.dive_lower = std::move(entry.resolved_lower);
-  worker.dive_upper = std::move(entry.resolved_upper);
+  // The dive starts from the resolved bounds of its start node; the domain only records the changes
+  // made during the dive.
+  worker.leaf_problem.lower = std::move(entry.resolved_lower);
+  worker.leaf_problem.upper = std::move(entry.resolved_upper);
+  worker.domain.clear();
+  bool feasible =
+    worker.domain.propagate_full(worker.Arow, worker.var_types, settings_, worker.leaf_problem);
 
-  const i_t max_nodes_per_dive      = settings_.diving_settings.node_limit;
-  const i_t max_backtrack_depth     = settings_.diving_settings.backtrack_limit;
-  i_t nodes_this_dive               = 0;
-  worker.lp_iters_this_dive         = 0;
-  worker.recompute_bounds_and_basis = true;
+  if (settings_.deterministic) {
+    worker.work_context.record_work_sync_on_horizon(worker.domain.last_nnz_processed / 1e8);
+  }
+  if (!feasible) { return; }
+
+  const i_t max_nodes_per_dive  = settings_.diving_settings.node_limit;
+  const i_t max_backtrack_depth = settings_.diving_settings.backtrack_limit;
+  i_t nodes_this_dive           = 0;
+  worker.lp_iters_this_dive     = 0;
+  worker.recompute_basis        = true;
 
   // Create local search tree for the dive
   search_tree_t<i_t, f_t> dive_tree(std::move(entry.node));
@@ -5850,23 +5855,16 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
-    // Prune check using snapshot upper bound
+    // Prune check using snapshot upper bound. The node was never applied, so backtrack to the
+    // parent of the next node.
     if (node_ptr->lower_bound > worker.local_upper_bound) {
-      worker.recompute_bounds_and_basis = true;
+      worker.recompute_basis = true;
+      if (!stack.empty()) {
+        for (i_t i = 0; i < node_ptr->depth - stack.front()->depth; ++i) {
+          worker.backtrack_bound_changes();
+        }
+      }
       continue;
-    }
-
-    // Setup bounds for this node
-    std::fill(worker.bounds_changed.begin(), worker.bounds_changed.end(), false);
-
-    if (worker.recompute_bounds_and_basis) {
-      worker.leaf_problem.lower = worker.dive_lower;
-      worker.leaf_problem.upper = worker.dive_upper;
-      node_ptr->get_variable_bounds(
-        worker.leaf_problem.lower, worker.leaf_problem.upper, worker.bounds_changed);
-    } else {
-      node_ptr->update_branched_variable_bounds(
-        worker.leaf_problem.lower, worker.leaf_problem.upper, worker.bounds_changed);
     }
 
     double remaining_time = settings_.time_limit - toc(exploration_stats_.start_time);
@@ -5880,28 +5878,27 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     lp_settings.time_limit    = remaining_time;
     lp_settings.scale_columns = false;
 
-#ifndef DETERMINISM_DISABLE_BOUNDS_STRENGTHENING
-    bool feasible = worker.node_presolver.bounds_strengthening(
-      lp_settings, worker.bounds_changed, worker.leaf_problem.lower, worker.leaf_problem.upper);
+    feasible = worker.update_variable_bounds(node_ptr, settings_);
 
     if (settings_.deterministic) {
       // TEMP APPROXIMATION;
-      worker.work_context.record_work_sync_on_horizon(worker.node_presolver.last_nnz_processed /
-                                                      1e8);
+      worker.work_context.record_work_sync_on_horizon(worker.domain.last_nnz_processed / 1e8);
     }
 
     if (!feasible) {
-      worker.recompute_bounds_and_basis = true;
+      worker.recompute_basis = true;
+      if (!stack.empty()) {
+        for (i_t i = 0; i < node_ptr->depth - stack.front()->depth + 1; ++i) {
+          worker.backtrack_bound_changes();
+        }
+      }
       continue;
     }
-#endif
 
-    {
-      f_t factor                  = settings_.diving_settings.iteration_limit_factor;
-      i_t max_iter                = (i_t)(factor * worker.total_lp_iters_snapshot);
-      lp_settings.iteration_limit = max_iter - worker.lp_iters_this_dive;
-      if (lp_settings.iteration_limit <= 0) { break; }
-    }
+    f_t factor                  = settings_.diving_settings.iteration_limit_factor;
+    i_t max_iter                = (i_t)(factor * worker.total_lp_iters_snapshot);
+    lp_settings.iteration_limit = max_iter - worker.lp_iters_this_dive;
+    if (lp_settings.iteration_limit <= 0) { break; }
 
     // Solve LP relaxation
     worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
@@ -5915,7 +5912,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols, worker.leaf_vstatus);
     dual_status_t lp_status = dual_phase2_with_advanced_basis(2,
                                                               0,
-                                                              worker.recompute_bounds_and_basis,
+                                                              worker.recompute_basis,
                                                               lp_start_time,
                                                               worker.leaf_problem,
                                                               lp_settings,
@@ -5956,7 +5953,16 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     }
 
     deterministic_diving_policy_t<i_t, f_t> policy{*this, worker, stack, max_backtrack_depth};
-    update_tree_impl(node_ptr, dive_tree, &worker, lp_status, policy);
+    const i_t depth = node_ptr->depth;
+    auto [node_status, round_dir] =
+      update_tree_impl(node_ptr, dive_tree, &worker, lp_status, policy);
+
+    // Backtrack to the parent of the next node, including the changes of this node.
+    if (node_status != node_status_t::HAS_CHILDREN && !stack.empty()) {
+      for (i_t i = 0; i < depth - stack.front()->depth + 1; ++i) {
+        worker.backtrack_bound_changes();
+      }
+    }
   }
 }
 

@@ -14,7 +14,7 @@
 #include <branch_and_bound/symmetry.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
-#include <dual_simplex/bounds_strengthening.hpp>
+#include <dual_simplex/domain.hpp>
 
 #include <utilities/pcgenerator.hpp>
 
@@ -64,16 +64,13 @@ class branch_and_bound_worker_t {
   simplex::lp_solution_t<i_t, f_t> leaf_solution;
   std::vector<simplex::variable_status_t> leaf_vstatus;
   std::vector<f_t> leaf_edge_norms;
+  const csr_matrix_t<i_t, f_t>& Arow;
 
   simplex::basis_update_mpf_t<i_t, f_t> basis_factors;
   std::vector<i_t> basic_list;
   std::vector<i_t> nonbasic_list;
 
-  simplex::bounds_strengthening_t<i_t, f_t> node_presolver;
-  std::vector<bool> bounds_changed;
-
-  std::vector<f_t> start_lower;
-  std::vector<f_t> start_upper;
+  simplex::domain_t<i_t, f_t> domain;
 
   // The incumbent may change while we are still constructing RINS
   // sub-MIP or doing guided diving. Save it here so we always use
@@ -92,8 +89,7 @@ class branch_and_bound_worker_t {
   std::unique_ptr<lexical_reduction_t<i_t, f_t>> lexical_reduction;
   mip_symmetry_t<i_t, f_t>* symmetry_ptr = nullptr;
 
-  bool recompute_basis  = true;
-  bool recompute_bounds = true;
+  bool recompute_basis = true;
 
   // During the cut passes, this values can change. So we save a copy on root_heuristics
   // and point these attributes to it. During normal exploration, this is set
@@ -133,11 +129,9 @@ class branch_and_bound_worker_t {
       leaf_problem(original_lp),
       leaf_solution(original_lp.num_rows, original_lp.num_cols),
       leaf_vstatus(original_lp.num_cols),
+      Arow(Arow),
       basis_factors(original_lp.num_rows, settings.refactor_frequency),
       basic_list(original_lp.num_rows),
-      nonbasic_list(),
-      node_presolver(leaf_problem, Arow, {}, var_type),
-      bounds_changed(original_lp.num_cols, false),
       rng(settings.random_seed + pcgenerator_t::default_seed + rng_offset + worker_id,
           pcgenerator_t::default_stream ^ (worker_id + rng_offset)),
       root_solution(root_solution),
@@ -149,26 +143,35 @@ class branch_and_bound_worker_t {
   }
 
   // Set the variables bounds for the LP relaxation in the current node.
-  bool set_lp_variable_bounds(mip_node_t<i_t, f_t>* node_ptr,
+  bool update_variable_bounds(const mip_node_t<i_t, f_t>* node_ptr,
                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    // Reset the bound_changed markers
-    std::fill(bounds_changed.begin(), bounds_changed.end(), false);
+    // A root re-solved in place (e.g., the RINS/RENS rounds) already holds its bounds.
+    if (node_ptr->parent == nullptr) {
+      domain.last_nnz_processed = 0;
+      return true;
+    }
+    return domain.apply_and_propagate(
+      Arow, var_types, settings, node_ptr->update_variable_bounds(), leaf_problem);
+  }
 
-    // Set the correct bounds for the leaf problem
-    if (recompute_bounds) {
-      leaf_problem.lower = start_lower;
-      leaf_problem.upper = start_upper;
-      node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
-
-    } else {
-      node_ptr->update_branched_variable_bounds(
-        leaf_problem.lower, leaf_problem.upper, bounds_changed);
+  // Set variable bounds based on the bound changes stack.
+  bool rebuild_bounds_from_stack(const simplex::lp_problem_t<i_t, f_t>& original_lp,
+                                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+  {
+    if (!settings.inside_root_node && search_strategy != search_strategy_t::RENS &&
+        search_strategy != search_strategy_t::RINS &&
+        search_strategy != search_strategy_t::MUTATION) {
+      leaf_problem.lower = original_lp.lower;
+      leaf_problem.upper = original_lp.upper;
+      domain.apply_stack(leaf_problem.lower, leaf_problem.upper);
     }
 
-    return node_presolver.bounds_strengthening(
-      settings, bounds_changed, leaf_problem.lower, leaf_problem.upper);
+    domain.compute_activities(Arow, leaf_problem);
+    return domain.propagate_from_stack(Arow, var_types, settings, leaf_problem);
   }
+
+  void backtrack_bound_changes() { domain.backtrack_to_parent(leaf_problem); }
 
   void set_active() { is_active = true; }
 };
@@ -198,15 +201,17 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
            new_slacks,
            rng_offset)
   {
-    this->start_lower     = original_lp.lower;
-    this->start_upper     = original_lp.upper;
     this->search_strategy = search_strategy_t::BEST_FIRST;
     max_diving_workers    = 0;
     active_diving_workers = 0;
     next_heuristic        = worker_id;
   }
 
-  void set_inactive() { this->is_active = false; }
+  void cleanup()
+  {
+    this->domain.clear();
+    this->is_active = false;
+  }
 
   // Steal nodes from another worker
   bool steal_from(bfs_worker_t* victim, i_t nodes_to_steal)
@@ -286,23 +291,15 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
            new_slacks,
            rng_offset)
   {
-    this->start_lower     = original_lp.lower;
-    this->start_upper     = original_lp.upper;
     this->search_strategy = search_strategy_t::COEFFICIENT_DIVING;
   }
 
-  // Apply bound strengthening to the starting variable bounds
-  bool presolve_start_bounds(const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
-  {
-    return this->node_presolver.bounds_strengthening(
-      settings, this->bounds_changed, this->start_lower, this->start_upper);
-  }
-
   // Set this node inactive
-  void set_inactive()
+  void cleanup()
   {
     if (!this->is_active.load()) { return; }
     this->is_active = false;
+    this->domain.clear();
 
     if (bfs_worker) {
       assert(bfs_worker->active_diving_workers.load() > 0);
