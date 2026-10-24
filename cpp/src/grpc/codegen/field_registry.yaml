@@ -1637,6 +1637,17 @@ routing_problem:
       - earliest: {field_num: 1, array_id: 0, type: repeated int32}
       - latest: {field_num: 2, array_id: 1, type: repeated int32}
       - duration: {field_num: 3, array_id: 2, type: repeated int32}
+      - load_window_active:
+          {
+            field_num: 4,
+            array_id: 3,
+            type: repeated uint32,
+            element_size: 1,
+            proto_copy: u8_to_u32,
+            wire_comment: "raw uint8, 1 B/elem; the unary field is uint32",
+          }
+      - load_window_min: {field_num: 5, array_id: 4, type: repeated int32}
+      - load_window_max: {field_num: 6, array_id: 5, type: repeated int32}
   # Nested array chunks use a flat container_index across every group's entries,
   # not the index of the repeated field. The generated proto repeats this.
   keyed_records:
@@ -1654,6 +1665,17 @@ routing_problem:
       - duration: {field_num: 3, type: int32}
       arrays:
       - locations: {field_num: 4, array_id: 0, type: repeated int32}
+      - load_window_active:
+          {
+            field_num: 5,
+            array_id: 1,
+            type: repeated uint32,
+            element_size: 1,
+            proto_copy: u8_to_u32,
+            wire_comment: "raw uint8, 1 B/elem; the unary field is uint32",
+          }
+      - load_window_min: {field_num: 6, array_id: 2, type: repeated int32}
+      - load_window_max: {field_num: 7, array_id: 3, type: repeated int32}
   - vehicle_distance_breaks:
       field_num: 63
       message_type: PerVehicleDistanceBreaks

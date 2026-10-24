@@ -129,6 +129,13 @@ class VehicleBreak(StrictModel):
             "Location ids where this break can be taken."
         ),
     )
+    load_windows: Optional[List[Optional[List[int]]]] = Field(
+        default=None,
+        description=(
+            "Optional inclusive [min, max] load window per capacity dimension."
+            " Use null for unconstrained dimensions."
+        ),
+    )
 
 
 class VehicleDistanceBreak(StrictModel):
@@ -383,6 +390,14 @@ class FleetData(StrictModel):
             " \n\n "
             "Break location where vehicles can take breaks. "
             "If not set, any location can be used for the break."
+        ),
+    )
+    vehicle_break_load_windows: Optional[List[List[Optional[List[List[int]]]]]] = Field(
+        default=None,
+        description=(
+            "Optional homogeneous break load windows. Outer list indexes break dimensions,"
+            " inner list indexes capacity dimensions, and each non-null entry provides"
+            " per-vehicle inclusive [min, max] pairs."
         ),
     )
     vehicle_breaks: Optional[List[VehicleBreak]] = Field(

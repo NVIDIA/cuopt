@@ -299,6 +299,12 @@ DI node_t<i_t, f_t, REQUEST> create_break_node(
 
   node.time_dim.window_start = special_nodes.earliest_time[index];
   node.time_dim.window_end   = special_nodes.latest_time[index];
+  for (int dim = 0; dim < max_break_load_window_dim; ++dim) {
+    auto offset = index * max_break_load_window_dim + dim;
+    node.break_dim.load_window_active[dim] = special_nodes.load_window_active[offset];
+    node.break_dim.load_window_min[dim]    = special_nodes.load_window_min[offset];
+    node.break_dim.load_window_max[dim]    = special_nodes.load_window_max[offset];
+  }
 
   if (!special_nodes.distance_min.empty()) {
     node.cost_dim.window_start = static_cast<double>(special_nodes.distance_min[index]);

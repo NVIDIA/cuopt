@@ -56,6 +56,18 @@
     chunk_container_typed_array(chunks, 61, static_cast<int32_t>(_i), 2,
                                  problem.uniform_breaks[_i].duration, upload_id, chunk_data_budget);
   }
+  for (size_t _i = 0; _i < problem.uniform_breaks.size(); ++_i) {
+    chunk_container_typed_array(chunks, 61, static_cast<int32_t>(_i), 3,
+                                 problem.uniform_breaks[_i].load_window_active, upload_id, chunk_data_budget);
+  }
+  for (size_t _i = 0; _i < problem.uniform_breaks.size(); ++_i) {
+    chunk_container_typed_array(chunks, 61, static_cast<int32_t>(_i), 4,
+                                 problem.uniform_breaks[_i].load_window_min, upload_id, chunk_data_budget);
+  }
+  for (size_t _i = 0; _i < problem.uniform_breaks.size(); ++_i) {
+    chunk_container_typed_array(chunks, 61, static_cast<int32_t>(_i), 5,
+                                 problem.uniform_breaks[_i].load_window_max, upload_id, chunk_data_budget);
+  }
   {
     int32_t _i = 0;
     for (auto const& [_key, _values] : problem.order_service_times) {
@@ -89,6 +101,9 @@
     for (auto const& [_key, _breaks] : problem.vehicle_breaks) {
       for (auto const& _entry : _breaks) {
         chunk_container_typed_array(chunks, 62, _flat, 0, _entry.locations, upload_id, chunk_data_budget);
+        chunk_container_typed_array(chunks, 62, _flat, 1, _entry.load_window_active, upload_id, chunk_data_budget);
+        chunk_container_typed_array(chunks, 62, _flat, 2, _entry.load_window_min, upload_id, chunk_data_budget);
+        chunk_container_typed_array(chunks, 62, _flat, 3, _entry.load_window_max, upload_id, chunk_data_budget);
         ++_flat;
       }
     }

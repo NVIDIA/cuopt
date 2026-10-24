@@ -562,9 +562,15 @@ void problem_t<i_t, f_t>::populate_special_nodes()
   std::vector<i_t> node_earliest_h, node_latest_h;
   std::vector<float> node_distance_min_h, node_distance_max_h;
   std::vector<i_t> break_loc_to_idx_h;
+  std::vector<uint8_t> load_window_active_h;
+  std::vector<i_t> load_window_min_h, load_window_max_h;
 
   if (!uniform_breaks.empty()) {
     int n_break_dims = n_max_break_dims = uniform_breaks.size();
+    std::vector<std::array<std::vector<i_t>, max_break_load_window_dim>> uniform_break_load_min_h(
+      n_break_dims);
+    std::vector<std::array<std::vector<i_t>, max_break_load_window_dim>> uniform_break_load_max_h(
+      n_break_dims);
     for (i_t dim = 0; dim < n_break_dims; ++dim) {
       auto [break_earliest, break_latest, break_duration] = uniform_breaks[dim].get_breaks();
       // Check if break values are uniform across all vehicles
@@ -581,6 +587,18 @@ void problem_t<i_t, f_t>::populate_special_nodes()
         cuopt::host_copy(break_latest, n_vehicles, handle_ptr->get_stream());
       auto this_dim_break_duration =
         cuopt::host_copy(break_duration, n_vehicles, handle_ptr->get_stream());
+
+      for (int cap_dim = 0; cap_dim < max_break_load_window_dim; ++cap_dim) {
+        if (!uniform_breaks[dim].has_load_window(cap_dim)) { continue; }
+        uniform_break_load_min_h[dim][cap_dim] =
+          cuopt::host_copy(uniform_breaks[dim].get_break_load_window_min(cap_dim),
+                           n_vehicles,
+                           handle_ptr->get_stream());
+        uniform_break_load_max_h[dim][cap_dim] =
+          cuopt::host_copy(uniform_breaks[dim].get_break_load_window_max(cap_dim),
+                           n_vehicles,
+                           handle_ptr->get_stream());
+      }
 
       for (int v = 0; v < n_vehicles; ++v) {
         break_earliest_h[v].push_back(this_dim_break_earliest[v]);
@@ -621,6 +639,9 @@ void problem_t<i_t, f_t>::populate_special_nodes()
     node_infos_h.resize(n_break_nodes);
     node_earliest_h.resize(n_break_nodes);
     node_latest_h.resize(n_break_nodes);
+    load_window_active_h.resize(n_break_nodes * max_break_load_window_dim, 0);
+    load_window_min_h.resize(n_break_nodes * max_break_load_window_dim, 0);
+    load_window_max_h.resize(n_break_nodes * max_break_load_window_dim, 0);
 
     for (i_t v = 0; v < n_vehicles; ++v) {
       break_offset_h[v + 1] = break_offset_h[v] + n_break_dims;
@@ -635,6 +656,13 @@ void problem_t<i_t, f_t>::populate_special_nodes()
             NodeInfo<>{node_id, break_locations_h[l], node_type_t::BREAK};
           node_earliest_h[special_node_id] = break_earliest_h[v][dim];
           node_latest_h[special_node_id]   = break_latest_h[v][dim];
+          for (int cap_dim = 0; cap_dim < max_break_load_window_dim; ++cap_dim) {
+            if (!uniform_breaks[dim].has_load_window(cap_dim)) { continue; }
+            auto offset = special_node_id * max_break_load_window_dim + cap_dim;
+            load_window_active_h[offset] = 1;
+            load_window_min_h[offset]    = uniform_break_load_min_h[dim][cap_dim][v];
+            load_window_max_h[offset]    = uniform_break_load_max_h[dim][cap_dim][v];
+          }
         }
       }
     }
@@ -659,6 +687,9 @@ void problem_t<i_t, f_t>::populate_special_nodes()
     node_latest_h.reserve(2 * n_vehicles);
     node_distance_min_h.reserve(2 * n_vehicles);
     node_distance_max_h.reserve(2 * n_vehicles);
+    load_window_active_h.reserve(2 * n_vehicles * max_break_load_window_dim);
+    load_window_min_h.reserve(2 * n_vehicles * max_break_load_window_dim);
+    load_window_max_h.reserve(2 * n_vehicles * max_break_load_window_dim);
 
     break_nodes_offset_h.push_back(0);
 
@@ -720,6 +751,11 @@ void problem_t<i_t, f_t>::populate_special_nodes()
             node_latest_h.push_back(break_latest_h[v][dim]);
             node_distance_min_h.push_back(vehicle_break.distance_min_);
             node_distance_max_h.push_back(vehicle_break.distance_max_);
+            for (int cap_dim = 0; cap_dim < max_break_load_window_dim; ++cap_dim) {
+              load_window_active_h.push_back(vehicle_break.load_window_active_[cap_dim]);
+              load_window_min_h.push_back(vehicle_break.load_window_min_[cap_dim]);
+              load_window_max_h.push_back(vehicle_break.load_window_max_[cap_dim]);
+            }
           }
 
           break_nodes_offset_h.push_back(offset);
@@ -767,6 +803,10 @@ void problem_t<i_t, f_t>::populate_special_nodes()
     special_nodes.distance_max = cuopt::device_copy(node_distance_max_h, handle_ptr->get_stream());
   }
   special_nodes.break_loc_to_idx = cuopt::device_copy(break_loc_to_idx_h, handle_ptr->get_stream());
+  special_nodes.load_window_active =
+    cuopt::device_copy(load_window_active_h, handle_ptr->get_stream());
+  special_nodes.load_window_min = cuopt::device_copy(load_window_min_h, handle_ptr->get_stream());
+  special_nodes.load_window_max = cuopt::device_copy(load_window_max_h, handle_ptr->get_stream());
   RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 }
 

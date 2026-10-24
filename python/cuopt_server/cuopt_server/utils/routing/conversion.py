@@ -130,6 +130,7 @@ def populate_optimization_data(
                 fleet_data.vehicle_max_times,
                 fleet_data.vehicle_fixed_costs,
                 vehicle_distance_breaks=fleet_data.vehicle_distance_breaks,
+                vehicle_break_load_windows=fleet_data.vehicle_break_load_windows,
             )
         )
 
@@ -240,6 +241,30 @@ def create_data_model(
             optimization_data.fleet_data["skip_first_trips"]
         )
 
+    # Break load-window validation depends on the capacity dimensions already
+    # being recorded by the routing data model.
+    if (
+        optimization_data.task_data["demand"] is not None
+        and optimization_data.fleet_data["capacities"] is not None
+    ):
+        if (
+            optimization_data.task_data["demand"].shape[1]
+            != optimization_data.fleet_data["capacities"].shape[1]
+        ):
+            demand_dim = optimization_data.task_data["demand"].shape[1]
+            cap_dim = optimization_data.fleet_data["capacities"].shape[1]
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Mismatch in Capacity and Demand dimension, (capacity_dim) {cap_dim} != (demand_dim) {demand_dim}"  # noqa
+                ),
+            )
+        for col in optimization_data.task_data["demand"].columns:
+            demand_name = "demand_" + str(col)
+            demand = optimization_data.task_data["demand"][col]
+            capacities = optimization_data.fleet_data["capacities"][col]
+            data_model.add_capacity_dimension(demand_name, demand, capacities)
+
     if (
         optimization_data.fleet_data["vehicle_break_time_windows"] is not None
         and optimization_data.fleet_data["vehicle_break_durations"] is not None
@@ -253,10 +278,27 @@ def create_data_model(
             v_break_durations = optimization_data.fleet_data[
                 "vehicle_break_durations"
             ][index]
+            v_break_load_windows = None
+            if optimization_data.fleet_data["vehicle_break_load_windows"] is not None:
+                v_break_load_windows = []
+                for dim_window in optimization_data.fleet_data[
+                    "vehicle_break_load_windows"
+                ][index]:
+                    if dim_window is None:
+                        v_break_load_windows.append(None)
+                        continue
+                    bounds = np.asarray(dim_window, dtype=np.int32)
+                    v_break_load_windows.append(
+                        {
+                            "min": pd.Series(bounds[:, 0], dtype=np.int32),
+                            "max": pd.Series(bounds[:, 1], dtype=np.int32),
+                        }
+                    )
             data_model.add_break_dimension(
                 v_break_time_windows["earliest"],
                 v_break_time_windows["latest"],
                 v_break_durations,
+                v_break_load_windows,
             )
 
     if optimization_data.fleet_data["vehicle_break_locations"] is not None:
@@ -283,6 +325,7 @@ def create_data_model(
                 data["latest"],
                 data["duration"],
                 pd.Series(data["locations"]),
+                data.get("load_windows"),
             )
 
     if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
@@ -355,28 +398,6 @@ def create_data_model(
         data_model.set_pickup_delivery_pairs(
             pickup_delivery["pickup_ind"], pickup_delivery["delivery_ind"]
         )
-
-    if (
-        optimization_data.task_data["demand"] is not None
-        and optimization_data.fleet_data["capacities"] is not None
-    ):
-        if (
-            optimization_data.task_data["demand"].shape[1]
-            != optimization_data.fleet_data["capacities"].shape[1]
-        ):
-            demand_dim = optimization_data.task_data["demand"].shape[1]
-            cap_dim = optimization_data.fleet_data["capacities"].shape[1]
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Mismatch in Capacity and Demand dimension, (capacity_dim) {cap_dim} != (demand_dim) {demand_dim}"  # noqa
-                ),
-            )
-        for col in optimization_data.task_data["demand"].columns:
-            demand_name = "demand_" + str(col)
-            demand = optimization_data.task_data["demand"][col]
-            capacities = optimization_data.fleet_data["capacities"][col]
-            data_model.add_capacity_dimension(demand_name, demand, capacities)
 
     if optimization_data.task_data["task_time_windows"] is not None:
         t_time_windows = optimization_data.task_data["task_time_windows"]

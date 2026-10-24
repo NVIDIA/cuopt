@@ -48,6 +48,7 @@ def validate_fleet_data(
     updating=False,
     comparison_locations=None,
     vehicle_distance_breaks=None,
+    vehicle_break_load_windows=None,
 ):
     if vehicle_locations is not None:
         for loc in vehicle_locations:
@@ -142,12 +143,34 @@ def validate_fleet_data(
         if (
             vehicle_break_durations is not None
             or vehicle_break_time_windows is not None
+            or vehicle_break_load_windows is not None
             or vehicle_break_locations is not None
         ):
             return (
                 False,
-                'vehicle_breaks should not be used together with homogenous break, which is set by "vehicle_break_time_windows", "vehicle_break_durations" and "vehicle_break_locations"',  # noqa
+                'vehicle_breaks should not be used together with homogenous break, which is set by "vehicle_break_time_windows", "vehicle_break_durations", "vehicle_break_load_windows" and "vehicle_break_locations"',  # noqa
             )
+        for entry in vehicle_breaks:
+            if entry.load_windows is None:
+                continue
+            if capacities is None:
+                return (
+                    False,
+                    "vehicle break load_windows require capacities to be set",
+                )
+            if len(entry.load_windows) != len(capacities):
+                return (
+                    False,
+                    "vehicle break load_windows must include one entry per capacity dimension",
+                )
+            for bounds in entry.load_windows:
+                if bounds is None:
+                    continue
+                if len(bounds) != 2 or bounds[0] > bounds[1]:
+                    return (
+                        False,
+                        "vehicle break load_windows entries must be [min, max] pairs with min <= max",
+                    )
 
     if (
         vehicle_break_durations is not None
@@ -167,6 +190,42 @@ def validate_fleet_data(
             res = test_time_window(time_windows, "vehicle_break_time_windows")
             if not res[0]:
                 return res
+
+    if vehicle_break_load_windows is not None:
+        if capacities is None:
+            return (
+                False,
+                "vehicle_break_load_windows require capacities to be set",
+            )
+        if (
+            vehicle_break_time_windows is None
+            or vehicle_break_durations is None
+            or len(vehicle_break_load_windows) != len(vehicle_break_time_windows)
+        ):
+            return (
+                False,
+                "vehicle_break_load_windows must be provided once per homogeneous break dimension",
+            )
+        for break_dim_windows in vehicle_break_load_windows:
+            if len(break_dim_windows) != len(capacities):
+                return (
+                    False,
+                    "vehicle_break_load_windows must include one entry per capacity dimension",
+                )
+            for dim_window in break_dim_windows:
+                if dim_window is None:
+                    continue
+                if len(dim_window) != n_vehicles:
+                    return (
+                        False,
+                        "vehicle_break_load_windows entries must match the number of vehicles",
+                    )
+                for bounds in dim_window:
+                    if len(bounds) != 2 or bounds[0] > bounds[1]:
+                        return (
+                            False,
+                            "vehicle_break_load_windows entries must be [min, max] pairs with min <= max",
+                        )
 
     if vehicle_break_durations is not None:
         if min(min(vehicle_break_durations)) < 0:

@@ -95,6 +95,7 @@ class OptimizationDataModel:
             "vehicle_time_windows": None,
             "vehicle_break_time_windows": None,
             "vehicle_break_durations": None,
+            "vehicle_break_load_windows": None,
             "vehicle_break_locations": None,
             "vehicle_breaks": None,
             "vehicle_distance_breaks": None,
@@ -207,6 +208,9 @@ class OptimizationDataModel:
             ]
             if self.fleet_data["vehicle_break_durations"] is not None
             else None,
+            "vehicle_break_load_windows": self.fleet_data[
+                "vehicle_break_load_windows"
+            ],
             "vehicle_break_locations": self.fleet_data[
                 "vehicle_break_locations"
             ]  # noqa
