@@ -321,5 +321,7 @@ def test_socp_time_limit_does_not_return_expanded_primal():
     primal = solution.get_primal_solution()
     assert len(primal) == problem.NumVariables
     assert np.all(np.isnan(primal))
-    assert len(solution.get_reduced_cost()) == problem.NumVariables
+    reduced_cost = solution.get_reduced_cost()
+    assert len(reduced_cost) == problem.NumVariables
+    assert np.all(np.isnan(reduced_cost))
     assert all(np.isnan(var.Value) for var in problem.getVariables())
