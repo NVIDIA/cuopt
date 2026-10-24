@@ -5,7 +5,7 @@
 # file is GPG-signed. The destination is chosen inside this workflow with
 # `rapids-is-release-build`:
 #   - release build (vYY.MM.PP tag) -> Maven Central via the Sonatype Central
-#     Publisher Portal (OSSRH staging + validation, human-gated publish).
+#     Publisher Portal API (validation, human-gated publish).
 #   - non-release build (nightly, branch push) -> Sonatype snapshot repository
 #     (direct HTTP PUT, immediately available, no staging or portal step).
 #
@@ -37,15 +37,6 @@ on:
       source-git-sha:
         description: |
           Git SHA to include in the retained bundle name for provenance.
-        required: false
-        type: string
-        default: ''
-      profile-id:
-        description: |
-          Sonatype staging profile to search, if different from the Maven groupId read from
-          the POM (e.g. a verified parent namespace like com.nvidia for a com.nvidia.cuopt
-          groupId). Defaults to the groupId when not set. Only applies to the Maven Central
-          path (release builds); ignored on the snapshot path.
         required: false
         type: string
         default: ''
@@ -125,13 +116,9 @@ jobs:
             --output-bundle central-bundle.zip
             --auto-drop "${AUTO_DROP}"
           )
-          if [[ -n ${PROFILE_ID} ]]; then
-            args+=(--profile-id "${PROFILE_ID}")
-          fi
           java/cuopt/ci/maven-publish/maven_central_publish.sh "${args[@]}"
         env:
           GROUP_ID: ${{ steps.prepare.outputs.GROUP_ID }}
-          PROFILE_ID: ${{ inputs.profile-id }}
           ARTIFACT_ID: ${{ steps.prepare.outputs.ARTIFACT_ID }}
           VERSION: ${{ steps.prepare.outputs.VERSION }}
           # Invert: stage-for-...=true means don't auto-drop.

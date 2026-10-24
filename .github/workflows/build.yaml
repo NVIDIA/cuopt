@@ -164,8 +164,6 @@ jobs:
       # 'inputs' context at all, so fall back to github.sha or the retained bundle name ends
       # in a trailing "-" with nothing after it.
       source-git-sha: ${{ inputs.sha || github.sha }}
-      # com.nvidia.cuopt isn't its own verified Sonatype namespace; com.nvidia is.
-      profile-id: com.nvidia
       # false = validate + drop (safe). true = stage PENDING for manual publish.
       stage-for-maven-central-publish: true
 

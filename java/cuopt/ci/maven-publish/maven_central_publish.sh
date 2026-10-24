@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Creates a deployment bundle from a signed Maven repository tree, uploads its
-# files through Sonatype's OSSRH staging compatibility API, and polls the
-# Publisher Portal until the deployment passes validation.
-# Never calls the /publish endpoint: publication always requires a human click.
+# Creates a deployment bundle from a signed Maven repository tree, uploads it to
+# the Central Publisher Portal with the Publisher API, and polls until the
+# deployment passes validation.
+# Never calls the publish endpoint: publication always requires a human click.
 
 set -euo pipefail
 
@@ -19,7 +19,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/maven_central_publish_steps.sh"
 
 CENTRAL_PORTAL_URL="https://central.sonatype.com"
-OSSRH_STAGING_API_URL="https://ossrh-staging-api.central.sonatype.com"
 # Used by wait_for_validated in the sourced step library.
 # shellcheck disable=SC2034
 POLL_INTERVAL_SEC=15
@@ -28,7 +27,6 @@ POLL_TIMEOUT_SEC=900
 
 INPUT_DIR=""
 GROUP_ID=""
-PROFILE_ID=""
 ARTIFACT_ID=""
 VERSION=""
 OUTPUT_BUNDLE=""
@@ -42,9 +40,9 @@ Usage: maven_central_publish.sh --input <path> --group-id <g> \\
                                 --output-bundle <path> [OPTIONS]
 
 Copies a signed Maven repository tree into scratch space, generates .md5 and
-.sha1 sidecars, and creates a retained ZIP. It uploads the repository files
-individually through Sonatype's OSSRH staging compatibility API, then hands the
-repository to the Central Publisher Portal without publishing it.
+.sha1 sidecars, and creates a retained ZIP. It uploads the ZIP to the Central
+Publisher Portal with the Publisher API as a USER_MANAGED deployment, so it is
+never published without a human click.
 
 REQUIRED:
     -i, --input                    Signed Maven repository directory.
@@ -54,18 +52,13 @@ REQUIRED:
     -o, --output-bundle            Path for the retained deployment ZIP.
 
 OPTIONS:
-    --profile-id <p>                Sonatype staging profile to search, if different from
-                                    --group-id (e.g. a verified parent namespace like
-                                    com.nvidia for a com.nvidia.cuopt groupId). Defaults to
-                                    --group-id.
     --auto-drop <true|false>       Drop after VALIDATED (default: true).
     -h, --help                     Show this help message.
 
 ENVIRONMENT VARIABLES:
     MAVEN_DEPLOY_USERNAME          Publisher Portal user token username.
     MAVEN_DEPLOY_TOKEN             Publisher Portal user token password.
-    GITHUB_OUTPUT                  If set, receives STAGING_REPOSITORY_KEY and
-                                   DEPLOYMENT_ID.
+    GITHUB_OUTPUT                  If set, receives DEPLOYMENT_ID.
 
 EOF
 }
@@ -85,11 +78,6 @@ parse_args() {
       -g|--group-id)
         require_value "$1" "${2:-}"
         GROUP_ID=$2
-        shift 2
-        ;;
-      --profile-id)
-        require_value "$1" "${2:-}"
-        PROFILE_ID=$2
         shift 2
         ;;
       -a|--artifact-id)
@@ -134,11 +122,6 @@ if [[ ${AUTO_DROP} != "true" && ${AUTO_DROP} != "false" ]]; then
 fi
 require_maven_coordinates "${GROUP_ID}" "${ARTIFACT_ID}" "${VERSION}"
 require_release_version "${VERSION}"
-# A groupId nested under a verified parent namespace (e.g. com.nvidia.cuopt under the
-# verified com.nvidia) still searches/creates its OSSRH staging repo under the parent's
-# Sonatype profile, not the full groupId string -- so default to GROUP_ID, but let callers
-# override it.
-PROFILE_ID="${PROFILE_ID:-${GROUP_ID}}"
 if [[ ! -d ${INPUT_DIR} ]]; then
   fatal "--input '${INPUT_DIR}' does not exist or is not a directory"
 fi
@@ -157,44 +140,18 @@ if [[ -e ${OUTPUT_BUNDLE} ]]; then
 fi
 echo "Maven Central upload"
 echo "  coordinates:   ${GROUP_ID}:${ARTIFACT_ID}:${VERSION}"
-echo "  profile:       ${PROFILE_ID}"
 echo "  auto-drop:     ${AUTO_DROP}"
 echo "  input dir:     ${INPUT_DIR}"
 echo "  output bundle: ${OUTPUT_BUNDLE}"
-echo "  staging API:   ${OSSRH_STAGING_API_URL}"
-echo "  target portal: ${CENTRAL_PORTAL_URL}"
+echo "  portal:        ${CENTRAL_PORTAL_URL}"
 
 WORK_DIR="$(mktemp -d)"
-STAGING_REPOSITORY_KEY=""
-STAGING_FILE_UPLOADED="false"
-STAGING_HANDED_OFF="false"
-
-cleanup() {
-  local status=$?
-  if (( status != 0 )) \
-    && [[ ${STAGING_FILE_UPLOADED} == "true" ]] \
-    && [[ ${STAGING_HANDED_OFF} != "true" ]]; then
-    if [[ -z ${STAGING_REPOSITORY_KEY} ]]; then
-      STAGING_REPOSITORY_KEY=$(staging_search_repositories open 2>/dev/null \
-        | jq -r 'if (.repositories | length) == 1 then .repositories[0].key else empty end' \
-        2>/dev/null) || true
-    fi
-    if [[ -n ${STAGING_REPOSITORY_KEY} ]]; then
-      echo "Cleaning up open OSSRH staging repository ${STAGING_REPOSITORY_KEY}" >&2
-      staging_drop_repository "${STAGING_REPOSITORY_KEY}" \
-        || echo "Warning: could not drop staging repository ${STAGING_REPOSITORY_KEY}; remove it before retrying" >&2
-    fi
-  fi
-  rm -rf "${WORK_DIR}"
-  return "${status}"
-}
-trap cleanup EXIT
+trap 'rm -rf "${WORK_DIR}"' EXIT
 
 BUNDLE_DIR="${WORK_DIR}/bundle"
 BUNDLE_ARTIFACT_DIR="${BUNDLE_DIR}/$(maven_group_path "${GROUP_ID}")/${ARTIFACT_ID}/${VERSION}"
 mkdir -p "${BUNDLE_DIR}"
 
-require_no_open_staging_repository
 copy_bundle "${INPUT_DIR}" "${BUNDLE_DIR}"
 require_bundle_contents "${BUNDLE_ARTIFACT_DIR}"
 generate_bundle_checksums "${BUNDLE_ARTIFACT_DIR}"
@@ -203,15 +160,14 @@ BUNDLE_ZIP="${WORK_DIR}/${ARTIFACT_ID}-${VERSION}.zip"
 create_bundle_zip "${BUNDLE_ZIP}" "${BUNDLE_DIR}"
 mv "${BUNDLE_ZIP}" "${OUTPUT_BUNDLE}"
 
-DEPLOYMENT_ID=""
-upload_tree_to_staging "${BUNDLE_DIR}"
-find_open_staging_repository
-echo "Handing staging repository to the Publisher Portal"
-staging_handoff_repository "${STAGING_REPOSITORY_KEY}"
-wait_for_portal_handoff "${STAGING_REPOSITORY_KEY}"
-STAGING_HANDED_OFF="true"
+PUBLISHING_TYPE="USER_MANAGED"
+echo "Uploading bundle to the Publisher Portal"
+DEPLOYMENT_ID=$(portal_upload_bundle "${OUTPUT_BUNDLE}" "${GROUP_ID}:${ARTIFACT_ID}:${VERSION}" "${PUBLISHING_TYPE}")
+if [[ ! ${DEPLOYMENT_ID} =~ ^[A-Za-z0-9-]+$ ]]; then
+  fatal "Publisher Portal returned an invalid deployment id"
+fi
+echo "  Portal deployment id: ${DEPLOYMENT_ID}"
 if [[ -n ${GITHUB_OUTPUT:-} ]]; then
-  echo "STAGING_REPOSITORY_KEY=${STAGING_REPOSITORY_KEY}" >> "${GITHUB_OUTPUT}"
   echo "DEPLOYMENT_ID=${DEPLOYMENT_ID}" >> "${GITHUB_OUTPUT}"
 fi
 
