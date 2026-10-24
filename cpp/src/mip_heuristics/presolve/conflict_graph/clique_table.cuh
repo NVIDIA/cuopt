@@ -167,7 +167,8 @@ struct clique_table_t {
       n_variables(other.n_variables),
       min_clique_size(other.min_clique_size),
       max_clique_size_for_extension(other.max_clique_size_for_extension),
-      tolerances(other.tolerances)
+      tolerances(other.tolerances),
+      ready(other.ready.load())
   {
   }
 
@@ -199,6 +200,9 @@ struct clique_table_t {
   const i_t min_clique_size;
   const i_t max_clique_size_for_extension;
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
+
+  // Set once the builder stops mutating the table
+  omp_atomic_t<bool> ready{false};
 };
 
 // Builds the conflict-graph clique table for `problem`. Consumers MUST set

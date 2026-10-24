@@ -624,7 +624,10 @@ void build_clique_table(const user_problem_t<i_t, f_t>& problem,
   if (timer.check_time_limit()) { return; }
   if (remove_small_cliques_flag) { remove_small_cliques(clique_table, timer); }
   if (timer.check_time_limit()) { return; }
-  if (fill_var_clique_maps_flag) { fill_var_clique_maps(clique_table); }
+  if (fill_var_clique_maps_flag) {
+    fill_var_clique_maps(clique_table);
+    clique_table.ready.store(true, std::memory_order_release);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -735,6 +738,7 @@ void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
                                           clique_config.max_extend_work,
                                           signal_extend);
   if (n_extended_cliques > 0) { fill_var_clique_maps(clique_table); }
+  clique_table.ready.store(true, std::memory_order_release);
 #ifdef DEBUG_CLIQUE_TABLE
   t_extend = stage_timer.elapsed_time();
   CUOPT_LOG_DEBUG(

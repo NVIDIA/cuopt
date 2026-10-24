@@ -12,6 +12,7 @@
 #include <dual_simplex/user_problem.hpp>
 #include <linear_algebra/sparse_vector.hpp>
 #include <math_optimization/types.hpp>
+#include <mip_heuristics/presolve/probing_implied_bound.hpp>
 
 #include <algorithm>
 #include <array>
@@ -69,47 +70,6 @@ cut_gap_closure_t<f_t> compute_cut_gap_closure(f_t objective_reference,
   const f_t gap_closed_ratio = initial_gap > eps ? gap_closed / initial_gap : static_cast<f_t>(0.0);
   return {initial_gap, final_gap, gap_closed, gap_closed_ratio};
 }
-
-template <typename i_t, typename f_t>
-struct probing_implied_bound_t {
-  // Probing implications stored in CSR format, indexed by binary variable x_j.
-  //
-  // "zero" = implications discovered when probing x_j = 0.
-  // "one"  = implications discovered when probing x_j = 1.
-  //
-  // For a binary variable x_j, the range
-  //   zero_offsets[j] .. zero_offsets[j+1]
-  // indexes into the flat arrays zero_variables, zero_lower_bound, zero_upper_bound.
-  //
-  // For each position p in that range:
-  //   zero_variables[p]    = i if variable y_i bounds were tightened
-  //                          when x_j was fixed to 0 and constraints were propagated.
-  //   zero_lower_bound[p]  = tightened lower bound on y_i (i.e., x_j = 0  =>  y_i >=
-  //   zero_lower_bound[p]). zero_upper_bound[p]  = tightened upper bound on y_i (i.e., x_j = 0  =>
-  //   y_i <= zero_upper_bound[p]).
-  //
-  // The one arrays are analogous for probing x_j = 1.
-  //
-  // Non-binary variables have empty ranges (zero_offsets[j] == zero_offsets[j+1]).
-  // Offsets vectors have size num_cols + 1.
-
-  probing_implied_bound_t() = default;
-
-  probing_implied_bound_t(i_t num_cols)
-    : zero_offsets(num_cols + 1, 0), one_offsets(num_cols + 1, 0)
-  {
-  }
-
-  std::vector<i_t> zero_offsets;
-  std::vector<i_t> zero_variables;
-  std::vector<f_t> zero_lower_bound;
-  std::vector<f_t> zero_upper_bound;
-
-  std::vector<i_t> one_offsets;
-  std::vector<i_t> one_variables;
-  std::vector<f_t> one_lower_bound;
-  std::vector<f_t> one_upper_bound;
-};
 
 template <typename i_t, typename f_t>
 struct inequality_t {
