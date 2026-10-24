@@ -27,16 +27,15 @@ namespace cuopt::mathematical_optimization::mip {
 enum class node_status_t : int {
   PENDING          = 0,  // Node is still in the tree, waiting to be solved
   INTEGER_FEASIBLE = 1,  // Node has an integer feasible solution
-  INFEASIBLE       = 2,  // Node is infeasible
-  FATHOMED         = 3,  // Node objective is greater than the upper bound
-  HAS_CHILDREN     = 4,  // Node has children to explore
-  NUMERICAL        = 5   // Encountered numerical issue when solving the LP relaxation
+  FATHOMED         = 2,  // Node is infeasible or has objective is greater than the upper bound
+  HAS_CHILDREN     = 3,  // Node has children to explore
+  NUMERICAL        = 4   // Encountered numerical issue when solving the LP relaxation
 };
 
 inline bool inactive_status(node_status_t status)
 {
   return (status == node_status_t::FATHOMED || status == node_status_t::INTEGER_FEASIBLE ||
-          status == node_status_t::INFEASIBLE || status == node_status_t::NUMERICAL);
+          status == node_status_t::NUMERICAL);
 }
 
 template <typename i_t, typename f_t>

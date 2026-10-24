@@ -1213,7 +1213,6 @@ struct deterministic_bfs_policy_t
                          branch_direction_t dir) override
   {
     switch (status) {
-      case node_status_t::INFEASIBLE: this->worker.record_infeasible(node); break;
       case node_status_t::FATHOMED: this->worker.record_fathomed(node, node->lower_bound); break;
       case node_status_t::INTEGER_FEASIBLE:
         this->worker.record_integer_solution(node, node->lower_bound);
@@ -1366,6 +1365,23 @@ void branch_and_bound_t<i_t, f_t>::snap_to_lattice(const lp_problem_t<i_t, f_t>&
 }
 
 template <typename i_t, typename f_t>
+f_t branch_and_bound_t<i_t, f_t>::compute_node_cutoff(const lp_problem_t<i_t, f_t>& lp,
+                                                      f_t upper_bound) const
+{
+  if (lp.objective_step.has_step()) {
+    f_t step = lp.objective_step.step_size;
+    f_t bias = lp.objective_step.bias;
+    // Any improving feasible solution lies on the lattice strictly below upper_bound.
+    f_t k = std::ceil((upper_bound - bias) / step - settings_.integer_tol);
+    return (k - 1) * step + bias;
+  } else if (lp.objective_is_integral) {
+    // Any improving feasible solution has an integer objective strictly below upper_bound.
+    return std::ceil(upper_bound - settings_.integer_tol) - 1;
+  }
+  return upper_bound;
+}
+
+template <typename i_t, typename f_t>
 template <typename WorkerT, typename Policy>
 std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::update_tree_impl(
   mip_node_t<i_t, f_t>* node_ptr,
@@ -1384,15 +1400,14 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   worker->recompute_basis = true;
 
   if (lp_status == dual_status_t::DUAL_UNBOUNDED) {
-    node_ptr->lower_bound = inf;
-    policy.graphviz(search_tree, node_ptr, "infeasible", 0.0);
-    search_tree.update(node_ptr, node_status_t::INFEASIBLE);
-    status = node_status_t::INFEASIBLE;
+    node_ptr->lower_bound = upper_bound;
+    policy.graphviz(search_tree, node_ptr, "infeasible", upper_bound);
+    search_tree.update(node_ptr, node_status_t::FATHOMED);
+    status = node_status_t::FATHOMED;
 
   } else if (lp_status == dual_status_t::CUTOFF) {
-    f_t leaf_obj          = compute_objective(leaf_problem, leaf_solution.x);
     node_ptr->lower_bound = upper_bound;
-    policy.graphviz(search_tree, node_ptr, "cut off", leaf_obj);
+    policy.graphviz(search_tree, node_ptr, "cut off", upper_bound);
     search_tree.update(node_ptr, node_status_t::FATHOMED);
     status = node_status_t::FATHOMED;
 
@@ -1584,21 +1599,8 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     lp_settings.concurrent_halt = &node_concurrent_halt_;
   }
   lp_settings.set_log(false);
-  f_t cutoff = upper_bound_.load();
-  if (worker->leaf_problem.objective_step.has_step()) {
-    f_t step = worker->leaf_problem.objective_step.step_size;
-    f_t bias = worker->leaf_problem.objective_step.bias;
-    // Any improving feasible solution must have objective <= cutoff - step.
-    f_t k               = std::floor((cutoff - bias) / step + settings_.integer_tol);
-    lp_settings.cut_off = (k - 1) * step + bias + settings_.dual_tol;
-  } else if (worker->leaf_problem.objective_is_integral) {
-    // If the objective is integral, any feasible solution should produce an upper bound that is
-    // (approximately) integral. We add a small tolerance and floor this value to get an integer,
-    // we then subtract 1, to stop simplex on problems that cannot improve the primal objective.
-    lp_settings.cut_off = std::floor(cutoff + settings_.integer_tol) - 1 + settings_.dual_tol;
-  } else {
-    lp_settings.cut_off = cutoff + settings_.dual_tol;
-  }
+  const f_t cutoff       = compute_node_cutoff(worker->leaf_problem, upper_bound_.load());
+  lp_settings.cut_off    = cutoff + settings_.dual_tol;
   lp_settings.inside_mip = 2;
   lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
   if (lp_settings.time_limit <= 0.0) { return dual_status_t::TIME_LIMIT; }
@@ -1641,6 +1643,13 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     if (feasible) {
       lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
       if (lp_settings.time_limit <= 0.0) { return dual_status_t::TIME_LIMIT; }
+
+      if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
+        if (!worker->domain.propagate_objective(
+              worker->Arow, worker->var_types, settings_, worker->leaf_problem, cutoff)) {
+          return dual_status_t::CUTOFF;
+        }
+      }
 
       i_t node_iter          = 0;
       f_t lp_start_time      = tic();
@@ -1729,7 +1738,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   worker->recompute_basis = true;
   worker->ensure_orbital_fixing();
-
   // The branching of the start node itself is applied when its LP is solved.
   if (start_node->parent != nullptr) {
     start_node->parent->rebuild_variable_bounds(worker->domain);
@@ -4260,7 +4268,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return mip_status_t::OPTIMAL;
   }
 
-  is_running_ = true;
   lp_settings.concurrent_halt =
     settings_.concurrent_halt ? settings_.concurrent_halt : &node_concurrent_halt_;
   reduced_cost_bounds_t<i_t, f_t> reduced_cost_bounds(original_lp_.num_cols);
@@ -4355,6 +4362,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (num_fractional != 0 && settings_.max_cut_passes > 0) { print_table_header(); }
+  is_running_ = true;
 
   cut_pool_t<i_t, f_t> cut_pool(original_lp_.num_cols, settings_);
   cut_generation_t<i_t, f_t> cut_generation(cut_pool,
@@ -5269,7 +5277,8 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   simplex_solver_settings_t<i_t, f_t> lp_settings = settings_;
   lp_settings.set_log(false);
 
-  lp_settings.cut_off       = worker.local_upper_bound + settings_.dual_tol;
+  const f_t cutoff          = compute_node_cutoff(worker.leaf_problem, worker.local_upper_bound);
+  lp_settings.cut_off       = cutoff + settings_.dual_tol;
   lp_settings.inside_mip    = 2;
   lp_settings.time_limit    = remaining_time;
   lp_settings.scale_columns = false;
@@ -5284,19 +5293,32 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
     feasible = worker.rebuild_bounds_from_stack(original_lp_, settings_);
   }
 
+  const bool is_cutoff =
+    feasible && !worker.domain.propagate_objective(
+                  worker.Arow, worker.var_types, settings_, worker.leaf_problem, cutoff);
+
   if (settings_.deterministic) {
     // TEMP APPROXIMATION;
     worker.work_context.record_work_sync_on_horizon(worker.domain.last_nnz_processed / 1e8);
   }
 
   if (!feasible) {
-    node_ptr->lower_bound = std::numeric_limits<f_t>::infinity();
-    search_tree.update(node_ptr, node_status_t::INFEASIBLE);
-    worker.record_infeasible(node_ptr);
+    node_ptr->lower_bound = worker.local_upper_bound;
+    search_tree.update(node_ptr, node_status_t::FATHOMED);
+    worker.record_fathomed(node_ptr, worker.local_upper_bound);
     --exploration_stats_.nodes_unexplored;
     ++exploration_stats_.nodes_explored;
     worker.recompute_basis = true;
-    return node_status_t::INFEASIBLE;
+    return node_status_t::FATHOMED;
+  }
+
+  if (is_cutoff) {
+    ++exploration_stats_.nodes_explored;
+    --exploration_stats_.nodes_unexplored;
+    deterministic_bfs_policy_t<i_t, f_t> policy{*this, worker};
+    auto [status, round_dir] =
+      update_tree_impl(node_ptr, search_tree, &worker, dual_status_t::CUTOFF, policy);
+    return status;
   }
 
   // Solve LP relaxation
@@ -5894,12 +5916,15 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     // Setup LP settings
     simplex_solver_settings_t<i_t, f_t> lp_settings = settings_;
     lp_settings.set_log(false);
-    lp_settings.cut_off       = worker.local_upper_bound + settings_.dual_tol;
+    const f_t cutoff          = compute_node_cutoff(worker.leaf_problem, worker.local_upper_bound);
+    lp_settings.cut_off       = cutoff + settings_.dual_tol;
     lp_settings.inside_mip    = 2;
     lp_settings.time_limit    = remaining_time;
     lp_settings.scale_columns = false;
 
-    feasible = worker.update_variable_bounds(node_ptr, settings_);
+    feasible = worker.update_variable_bounds(node_ptr, settings_) &&
+               worker.domain.propagate_objective(
+                 worker.Arow, worker.var_types, settings_, worker.leaf_problem, cutoff);
 
     if (settings_.deterministic) {
       // TEMP APPROXIMATION;
