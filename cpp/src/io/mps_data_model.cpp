@@ -12,6 +12,7 @@
 #include <mps_parser_internal.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <utility>
 
@@ -475,6 +476,11 @@ void canonicalize_quadratic_constraints(
 template class CUOPT_EXPORT mps_data_model_t<int, float>;
 
 template class CUOPT_EXPORT mps_data_model_t<int, double>;
+
+// 64-bit index model, for problems whose nnz exceeds INT_MAX. Those are only
+// solvable through multi-GPU PDLP, which partitions the matrix into 32-bit
+// sub-problems, so double is the only float type that needs a 64-bit model.
+template class CUOPT_EXPORT mps_data_model_t<int64_t, double>;
 
 template CUOPT_EXPORT void canonicalize_quadratic_constraints<int, float>(
   std::vector<mps_data_model_t<int, float>::quadratic_constraint_t>&);
