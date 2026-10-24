@@ -14,6 +14,7 @@ import cuopt.linear_programming.data_model as data_model
 from cuopt.linear_programming import ParseMps, Read
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
+from cuopt.linear_programming.solver.solver_wrapper import ErrorStatus
 import warnings
 
 
@@ -2623,6 +2624,12 @@ class Problem:
             self._refresh_data_model_values()
         # Call Solver
         solution = solver.Solve(self.model, settings)
+        if solution.get_error_status() != ErrorStatus.Success:
+            warnings.warn(
+                f"Solve failed: {solution.get_error_message()}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         # Post Solve
         self.populate_solution(solution)
         return solution
