@@ -412,7 +412,7 @@ class solution_t {
       routes_view(0, sol.sol_handle->get_stream()),  // Empty construction
       route_node_map(sol.route_node_map, sol.sol_handle->get_stream()),
       routes_to_copy(sol.routes_to_copy, sol.sol_handle->get_stream()),
-      routes_to_search(sol.routes_to_copy, sol.sol_handle->get_stream()),
+      routes_to_search(sol.routes_to_search, sol.sol_handle->get_stream()),
       runtime_check_histo(sol.runtime_check_histo, sol.sol_handle->get_stream()),
       objective_cost(sol.objective_cost, sol.sol_handle->get_stream()),
       infeasibility_cost(sol.infeasibility_cost, sol.sol_handle->get_stream()),
