@@ -299,3 +299,29 @@ def test_read_then_rebuild_keeps_quadratic_constraints(tmp_path):
     _solve(reread)
     _assert_feasible(reread)
     assert reread.ObjValue == pytest.approx(-2.0, abs=OBJ_TOL)
+
+def test_socp_time_limit_does_not_return_expanded_primal():
+    problem = Problem("socp_time_limit_repro")
+    x = problem.addVariable(lb=0, ub=1)
+    absolute = problem.addVariable(lb=0)
+    root = problem.addVariable(lb=0)
+    impact = problem.addVariable(lb=0)
+    problem.addConstraint(absolute >= x - 0.5)
+    problem.addConstraint(absolute >= 0.5 - x)
+    problem.addConstraint(root * root <= absolute)
+    problem.addConstraint(absolute * absolute <= impact * root)
+    problem.setObjective(x * x - x + impact)
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings.set_parameter("num_cpu_threads", 1)
+    settings.set_parameter("time_limit", 0.0)
+    settings.set_parameter("log_to_console", False)
+    solution = problem.solve(settings)
+    assert solution.get_termination_status().name == "TimeLimit"
+    primal = solution.get_primal_solution()
+    assert len(primal) == problem.NumVariables
+    assert np.all(np.isnan(primal))
+    reduced_cost = solution.get_reduced_cost()
+    assert len(reduced_cost) == problem.NumVariables
+    assert np.all(np.isnan(reduced_cost))
+    assert all(np.isnan(var.Value) for var in problem.getVariables())
