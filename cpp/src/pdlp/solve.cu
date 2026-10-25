@@ -620,7 +620,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
     solution.x.assign(n_model, 0);
     solution.z.assign(n_model, 0);
   }
-  
+
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());
 
