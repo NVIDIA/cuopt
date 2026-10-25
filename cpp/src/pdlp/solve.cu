@@ -617,9 +617,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   } else if (user_problem.original_num_cols > 0 &&
              static_cast<i_t>(solution.x.size()) != user_problem.original_num_cols) {
     const i_t n_model = user_problem.original_num_cols;
-    const f_t nan     = std::numeric_limits<f_t>::quiet_NaN();
-    solution.x.assign(n_model, nan);
-    solution.z.assign(n_model, nan);
+    solution.x.assign(n_model, 0);
+    solution.z.assign(n_model, 0);
   }
   
   CUOPT_LOG_CONDITIONAL_INFO(
