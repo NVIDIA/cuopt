@@ -128,7 +128,8 @@ int run_single_file(const std::string& file_path,
                     const std::string& initial_solution_file,
                     bool solve_relaxation,
                     cuopt::mathematical_optimization::io::mps_reader_type_t mps_reader,
-                    cuopt::mathematical_optimization::solver_settings_t<int, double>& settings)
+                    cuopt::mathematical_optimization::solver_settings_t<int, double>& settings,
+                    bool index_64bit = false)
 {
   // The CLI and the solver library have separate loggers that both write this file.
   // Configure the solver's first so its own initializer reuses that configuration rather
@@ -143,7 +144,6 @@ int run_single_file(const std::string& file_path,
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
 
   problem_variant_t problem;
-  bool index_64bit    = settings.get_parameter<bool>(CUOPT_MPS_INDEX_64BIT);
   bool parsing_failed = false;
   auto timer          = cuopt::timer_t(settings.get_parameter<double>(CUOPT_TIME_LIMIT));
   {
@@ -414,6 +414,13 @@ int main(int argc, char* argv[])
     .default_value(std::string("default"))
     .choices("default", "experimental-fast");
 
+  program.add_argument("--mps-index-64bit")
+    .help(
+      "parse the input MPS/LP file into a 64-bit index model (required when the nonzero "
+      "count exceeds INT_MAX; only usable with --method 1 and --num-gpus >1 or -1)")
+    .default_value(false)
+    .implicit_value(true);
+
   program.add_argument("--dump-hyper-params")
     .help("print hyper-parameters only in config file format and exit")
     .default_value(false)
@@ -515,6 +522,7 @@ int main(int argc, char* argv[])
   const auto solve_relaxation      = program.get<bool>("--relaxation");
   const auto params_file           = program.get<std::string>("--params-file");
   const auto mps_reader_arg        = program.get<std::string>("--mps-reader");
+  const auto index_64bit           = program.get<bool>("--mps-index-64bit");
 
   auto mps_reader = cuopt::mathematical_optimization::io::mps_reader_type_t::default_reader;
   if (mps_reader_arg == "experimental-fast") {
@@ -578,5 +586,6 @@ int main(int argc, char* argv[])
     }
   }
 
-  return run_single_file(file_name, initial_solution_file, solve_relaxation, mps_reader, settings);
+  return run_single_file(
+    file_name, initial_solution_file, solve_relaxation, mps_reader, settings, index_64bit);
 }
