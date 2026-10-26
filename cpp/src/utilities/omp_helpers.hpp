@@ -103,42 +103,42 @@ class omp_atomic_t {
   T operator--(int) { return fetch_sub(T(1)); }
 
   // Possible values for memory order: relaxed, acquire, seq_cst
-  T load(std::memory_order memory_order = std::memory_order::seq_cst) const
+  T load(std::memory_order memory_order = std::memory_order::relaxed) const
   {
     T res;
-    if (memory_order == std::memory_order::relaxed) {
-#pragma omp atomic read relaxed
+    if (memory_order == std::memory_order::seq_cst) {
+#pragma omp atomic read seq_cst
       res = val;
     } else if (memory_order == std::memory_order::acquire) {
 #pragma omp atomic read acquire
       res = val;
     } else {
-#pragma omp atomic read
+#pragma omp atomic read relaxed
       res = val;
     }
     return res;
   }
 
   // Possible values for memory order: relaxed, release, seq_cst
-  void store(T new_val, std::memory_order memory_order = std::memory_order::seq_cst)
+  void store(T new_val, std::memory_order memory_order = std::memory_order::relaxed)
   {
-    if (memory_order == std::memory_order::relaxed) {
-#pragma omp atomic write relaxed
+    if (memory_order == std::memory_order::seq_cst) {
+#pragma omp atomic write seq_cst
       val = new_val;
     } else if (memory_order == std::memory_order::release) {
 #pragma omp atomic write release
       val = new_val;
     } else {
-#pragma omp atomic write
+#pragma omp atomic write relaxed
       val = new_val;
     }
   }
 
-  T exchange(T other, std::memory_order memory_order = std::memory_order::seq_cst)
+  T exchange(T other, std::memory_order memory_order = std::memory_order::relaxed)
   {
     T old;
-    if (memory_order == std::memory_order::relaxed) {
-#pragma omp atomic capture relaxed
+    if (memory_order == std::memory_order::seq_cst) {
+#pragma omp atomic capture seq_cst
       {
         old = val;
         val = other;
@@ -162,7 +162,7 @@ class omp_atomic_t {
         val = other;
       }
     } else {
-#pragma omp atomic capture
+#pragma omp atomic capture relaxed
       {
         old = val;
         val = other;
@@ -171,11 +171,11 @@ class omp_atomic_t {
     return old;
   }
 
-  T fetch_add(T inc, std::memory_order memory_order = std::memory_order::seq_cst)
+  T fetch_add(T inc, std::memory_order memory_order = std::memory_order::relaxed)
   {
     T old;
-    if (memory_order == std::memory_order::relaxed) {
-#pragma omp atomic capture relaxed
+    if (memory_order == std::memory_order::seq_cst) {
+#pragma omp atomic capture seq_cst
       {
         old = val;
         val += inc;
@@ -199,7 +199,7 @@ class omp_atomic_t {
         val += inc;
       }
     } else {
-#pragma omp atomic capture
+#pragma omp atomic capture relaxed
       {
         old = val;
         val += inc;
@@ -208,9 +208,31 @@ class omp_atomic_t {
     return old;
   }
 
-  T fetch_sub(T inc, std::memory_order memory_order = std::memory_order::seq_cst)
+  T fetch_sub(T inc, std::memory_order memory_order = std::memory_order::relaxed)
   {
     return fetch_add(-inc, memory_order);
+  }
+
+  T fetch_min(T other)
+  {
+    T old;
+#pragma omp atomic compare capture relaxed
+    {
+      old = val;
+      if (other < val) { val = other; }
+    }
+    return old;
+  }
+
+  T fetch_max(T other)
+  {
+    T old;
+#pragma omp atomic compare capture relaxed
+    {
+      old = val;
+      if (other > val) { val = other; }
+    }
+    return old;
   }
 
   // Get the underlying value without atomics
@@ -219,35 +241,7 @@ class omp_atomic_t {
 
  private:
   T val;
-
-  friend double fetch_min(omp_atomic_t<double>& atomic_var, double other);
-  friend double fetch_max(omp_atomic_t<double>& atomic_var, double other);
 };
-
-// Free non-template functions are necessary because of a clang 20 bug
-// when omp atomic compare is used within a templated context.
-// see https://github.com/llvm/llvm-project/issues/127466
-inline double fetch_min(omp_atomic_t<double>& atomic_var, double other)
-{
-  double old;
-#pragma omp atomic compare capture
-  {
-    old = atomic_var.val;
-    if (other < atomic_var.val) { atomic_var.val = other; }
-  }
-  return old;
-}
-
-inline double fetch_max(omp_atomic_t<double>& atomic_var, double other)
-{
-  double old;
-#pragma omp atomic compare capture
-  {
-    old = atomic_var.val;
-    if (other > atomic_var.val) { atomic_var.val = other; }
-  }
-  return old;
-}
 
 }  // namespace cuopt
 

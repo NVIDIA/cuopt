@@ -771,13 +771,13 @@ void branch_and_bound_t<i_t, f_t>::set_solution_at_root(mip_solution_t<i_t, f_t>
   mutex_upper_.lock();
   incumbent_.set_incumbent_solution(root_objective_, root_relax_soln_.x);
   upper_bound_ = root_objective_;
+  uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
+  solution.objective = incumbent_.objective;
   mutex_upper_.unlock();
 
   print_cut_info(settings_, cut_info);
 
   // We should be done here
-  uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
-  solution.objective          = incumbent_.objective;
   solution.lower_bound        = root_objective_;
   solution.nodes_explored     = 0;
   solution.simplex_iterations = root_relax_soln_.iterations;
@@ -885,11 +885,14 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
     }
   }
 
+  mutex_upper_.lock();
   if (has_solver_space_incumbent()) {
     uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
     solution.objective     = incumbent_.objective;
     solution.has_incumbent = true;
   }
+  mutex_upper_.unlock();
+
   solution.lower_bound        = lower_bound;
   solution.nodes_explored     = exploration_stats_.nodes_explored;
   solution.simplex_iterations = exploration_stats_.total_simplex_iters;
@@ -922,7 +925,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
   mutex_upper_.lock();
   if (!incumbent_.has_incumbent || leaf_objective < incumbent_.objective) {
     incumbent_.set_incumbent_solution(leaf_objective, sol.empty() ? leaf_solution : sol);
-    fetch_min(upper_bound_, leaf_objective);
+    upper_bound_.fetch_min(leaf_objective);
 
     char symbol = feasible_solution_symbol(thread_type, settings_.diving_settings.show_type);
     report(lp, symbol, leaf_objective, get_lower_bound(), leaf_depth, 0);
@@ -1122,7 +1125,7 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
   void on_numerical_issue(mip_node_t<i_t, f_t>* node) override
   {
     if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
-      fetch_min(bnb.lower_bound_numerical_, node->lower_bound);
+      bnb.lower_bound_numerical_.fetch_min(node->lower_bound);
       log.printf("LP returned numerical issue on node %d. Best bound set to %+10.6e.\n",
                  node->node_id,
                  compute_user_objective(bnb.original_lp_, bnb.lower_bound_numerical_.load()));
@@ -3966,8 +3969,8 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
 
   if (num_fractional == 0) {
-    upper_bound_ = root_objective_;
     mutex_upper_.lock();
+    upper_bound_ = root_objective_;
     incumbent_.set_incumbent_solution(root_objective_, root_relax_soln_.x);
     mutex_upper_.unlock();
   }
@@ -5570,7 +5573,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
   deterministic_merge_pseudo_cost_updates(*deterministic_workers_);
 
   for (const auto& worker : *deterministic_workers_) {
-    fetch_min(lower_bound_numerical_, worker.local_lower_bound_ceiling);
+    lower_bound_numerical_.fetch_min(worker.local_lower_bound_ceiling);
   }
 }
 

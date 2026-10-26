@@ -190,7 +190,7 @@ class mip_node_t {
 
     mip_node_t* parent_ptr = parent;
     while (parent_ptr != nullptr) {
-      i_t old = parent_ptr->num_children.fetch_sub(1);
+      i_t old = parent_ptr->num_children.fetch_sub(1, std::memory_order::acq_rel);
       if (old != 1) { return; }  // The sibling is still active.
       parent_ptr->status = node_status_t::FATHOMED;
       parent_ptr->lower_bound =

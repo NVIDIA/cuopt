@@ -53,7 +53,7 @@ class worker_pool_t {
       workers_[i]->symmetry_ptr = symmetry;
     }
 
-    is_initialized_ = true;
+    is_initialized_.store(true, std::memory_order::release);
   }
 
   WorkerType* pop_idle_worker()
@@ -77,7 +77,7 @@ class worker_pool_t {
     worker->set_inactive();
     assert(!worker->is_active.load());
 
-    if (!is_initialized_) return;
+    if (!is_initialized()) return;
 
     std::lock_guard lock(mutex_);
     assert(workers_[worker->worker_id].get() == worker);
@@ -101,14 +101,14 @@ class worker_pool_t {
     return workers_[id].get();
   }
 
-  bool is_initialized() const { return is_initialized_; }
+  bool is_initialized() const { return is_initialized_.load(std::memory_order::acquire); }
 
   i_t num_idle() const { return num_idle_workers_; }
   i_t size() const { return workers_.size(); }
 
  private:
   std::vector<std::unique_ptr<WorkerType>> workers_;
-  bool is_initialized_ = false;
+  omp_atomic_t<bool> is_initialized_{false};
 
   omp_mutex_t mutex_;
   circular_deque_t<i_t> idle_workers_;
