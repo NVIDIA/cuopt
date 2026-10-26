@@ -125,9 +125,7 @@ run_proxy_and_grpc() {
     trap - TERM INT EXIT
 
     if [ -n "${shutdown_signal}" ]; then
-        # SIGINT and SIGTERM were handled and both children were stopped.
-        # Exit 0 matches grpc and legacy. Non-zero is reserved for a child
-        # that exits on its own, or for the gRPC shutdown watchdog.
+        # Handled signal: exit 0, like grpc and legacy.
         return 0
     fi
     return "${child_status}"
