@@ -40,6 +40,7 @@
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.grpc.pb.h>
 #include <cuopt_remote_service.pb.h>
+#include <cuopt_routing.pb.h>
 #include <grpcpp/grpcpp.h>
 
 #include <limits>
@@ -567,6 +568,90 @@ TEST(VrpUploadSelection, ChunksWhenRequestExceedsClientLimit)
 
   EXPECT_TRUE(result.success) << result.error_message;
   EXPECT_EQ(result.job_id, "vrp-chunked");
+}
+
+TEST(VrpUploadSelection, ChunksNonMatrixArraysWhenHeaderExceedsHardLimit)
+{
+  grpc_client_config_t cfg;
+  cfg.server_address = "mock://test";
+  // The client floors max_message_bytes at 4 MiB. The inlined order locations
+  // have to exceed that floor so the header is stripped and those arrays are chunked.
+  cfg.max_message_bytes = 4LL * 1024 * 1024;
+  auto client           = std::make_unique<grpc_client_t>(cfg);
+  auto mock             = std::make_shared<NiceMock<MockCuOptStub>>();
+  grpc_test_inject_mock_stub_typed(*client, mock);
+
+  expect_server_limit_probe(*mock, 256LL * 1024 * 1024);
+  ASSERT_TRUE(client->ping(5));
+
+  std::vector<cuopt::remote::SendArrayChunkRequest> sent;
+  EXPECT_CALL(*mock, StartChunkedUploadV2(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedUploadV2Request& req,
+                 cuopt::remote::StartChunkedUploadResponse* resp) {
+      const auto& problem = req.job().vrp_request().problem();
+      EXPECT_EQ(problem.order_locations_size(), 0);
+      EXPECT_EQ(problem.vehicle_breaks_size(), 2);
+      if (problem.vehicle_breaks_size() > 0 && problem.vehicle_breaks(0).breaks_size() > 0) {
+        EXPECT_EQ(problem.vehicle_breaks(0).breaks(0).locations_size(), 0);
+      }
+      resp->set_upload_id("vrp-upload");
+      resp->set_max_message_bytes(256LL * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, SendArrayChunk(_, _, _))
+    .WillRepeatedly([&sent](grpc::ClientContext*,
+                            const cuopt::remote::SendArrayChunkRequest& req,
+                            cuopt::remote::SendArrayChunkResponse* resp) {
+      sent.push_back(req);
+      resp->set_upload_id("vrp-upload");
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, FinishChunkedUpload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedUploadRequest&,
+                 cuopt::remote::SubmitJobResponse* resp) {
+      resp->set_job_id("vrp-chunked");
+      return grpc::Status::OK;
+    });
+  EXPECT_CALL(*mock, StartChunkedUpload(_, _, _)).Times(0);
+  EXPECT_CALL(*mock, SubmitJob(_, _, _)).Times(0);
+
+  auto problem            = vrp_with_matrix_bytes(0);
+  problem.order_locations = std::vector<int32_t>(5 * 1024 * 1024, 1);
+  cuopt::routing::cpu_vehicle_break_t b0;
+  b0.locations = {3, 6};
+  problem.vehicle_breaks[0].push_back(b0);
+  cuopt::routing::cpu_vehicle_break_t b1a;
+  problem.vehicle_breaks[1].push_back(b1a);
+  cuopt::routing::cpu_vehicle_break_t b1b;
+  b1b.locations = {1, 4};
+  problem.vehicle_breaks[1].push_back(b1b);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  auto result = client->submit_vrp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+
+  bool saw_orders = false;
+  bool saw_break0 = false;
+  bool saw_break2 = false;
+  for (const auto& req : sent) {
+    const auto& chunk = req.chunk();
+    if (chunk.field_id() == cuopt::remote::FIELD_ORDER_LOCATIONS &&
+        !chunk.has_container_field_num()) {
+      saw_orders = true;
+      EXPECT_EQ(chunk.total_elements(), 5 * 1024 * 1024);
+    }
+    if (chunk.container_field_num() == cuopt::remote::RoutingProblem::kVehicleBreaksFieldNumber &&
+        chunk.field_id() == static_cast<int32_t>(cuopt::remote::VehicleBreak::LOCATIONS)) {
+      if (chunk.container_index() == 0) saw_break0 = true;
+      if (chunk.container_index() == 2) saw_break2 = true;
+      EXPECT_NE(chunk.container_index(), 1);
+    }
+  }
+  EXPECT_TRUE(saw_orders);
+  EXPECT_TRUE(saw_break0);
+  EXPECT_TRUE(saw_break2);
 }
 
 TEST_F(GrpcClientTest, Ping_Success_NotFound)
@@ -2382,7 +2467,6 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
 
   // Solver configuration
   orig.log_to_console  = false;
-  orig.heuristics_only = true;
   orig.num_cpu_threads = 8;
   orig.num_gpus        = 2;
   orig.presolver       = presolver_t::Default;
@@ -2455,7 +2539,6 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
 
   // Solver configuration
   EXPECT_EQ(restored.log_to_console, false);
-  EXPECT_EQ(restored.heuristics_only, true);
   EXPECT_EQ(restored.num_cpu_threads, 8);
   EXPECT_EQ(restored.num_gpus, 2);
   EXPECT_EQ(restored.presolver, presolver_t::Default);
@@ -3928,11 +4011,18 @@ TEST(SolveMipRemoteCallbacks, EmptyVariableListKeepsCallbacksEnabled)
 
 TEST(ArrayFieldElementSize, VrpMatrixContainers)
 {
-  using namespace cuopt::routing;
-  EXPECT_EQ(array_field_element_size(kCostMatricesContainer, kMatrixValuesFieldId), 4);
-  EXPECT_EQ(array_field_element_size(kTransitMatricesContainer, kMatrixValuesFieldId), 4);
-  EXPECT_EQ(array_field_element_size(kCostMatricesContainer, kMatrixValuesFieldId + 1), -1);
-  EXPECT_EQ(array_field_element_size(kTransitMatricesContainer, kMatrixValuesFieldId + 1), -1);
+  using cuopt::remote::CostMatrix;
+  using cuopt::remote::RoutingProblem;
+  EXPECT_EQ(array_field_element_size(RoutingProblem::kCostMatricesFieldNumber, CostMatrix::VALUES),
+            4);
+  EXPECT_EQ(
+    array_field_element_size(RoutingProblem::kTransitTimeMatricesFieldNumber, CostMatrix::VALUES),
+    4);
+  EXPECT_EQ(
+    array_field_element_size(RoutingProblem::kCostMatricesFieldNumber, CostMatrix::VALUES + 1), -1);
+  EXPECT_EQ(array_field_element_size(RoutingProblem::kTransitTimeMatricesFieldNumber,
+                                     CostMatrix::VALUES + 1),
+            -1);
 }
 
 TEST(ChunkedHeaderArrays, StripClearsPayloadsAndKeepsScalars)
