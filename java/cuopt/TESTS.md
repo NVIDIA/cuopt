@@ -5,12 +5,17 @@ SPDX-License-Identifier: Apache-2.0
 
 # cuOpt Java Binding Tests
 
-The Java module has three test classes under
+The Java module has these test classes under
 `src/test/java/com/nvidia/cuopt/mathematicaloptimization`:
 
-- `ProblemModelingTest`: five pure Java modeling tests.
-- `NativeIntegrationTest`: seven JNI/native cuOpt smoke tests.
-- `ProblemIntegrationTest`: ten standalone Java problem and solve tests.
+- `ProblemModelingTest` and `ModelEdgeCaseTest`: pure Java modeling tests and corner cases.
+- `NativeIntegrationTest`: JNI/native cuOpt smoke tests.
+- `NativeEdgeCaseTest`: native corner cases (handle lifecycle, settings, degenerate and extreme
+  models, MPS files, MIP callbacks, concurrent solves).
+- `ProblemIntegrationTest`: standalone Java problem and solve tests.
+- `NativeLibraryLoaderTest` and `NativeLogSinkTest`: loader and log-sink tests.
+
+Tests marked `@Disabled` record known defects and state the defect in their reason.
 
 The suite has no dependency on the cuOpt Python interface.
 
