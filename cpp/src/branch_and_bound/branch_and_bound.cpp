@@ -1389,14 +1389,12 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   if (lp_status == dual_status_t::DUAL_UNBOUNDED) {
     node_ptr->lower_bound = inf;
     policy.graphviz(search_tree, node_ptr, "infeasible", 0.0);
-    node_ptr->set_status(node_status_t::INFEASIBLE);
     status = node_status_t::INFEASIBLE;
 
   } else if (lp_status == dual_status_t::CUTOFF) {
     f_t leaf_obj          = compute_objective(leaf_problem, leaf_solution.x);
     node_ptr->lower_bound = upper_bound;
     policy.graphviz(search_tree, node_ptr, "cut off", leaf_obj);
-    node_ptr->set_status(node_status_t::FATHOMED);
     status = node_status_t::FATHOMED;
 
   } else if (lp_status == dual_status_t::OPTIMAL) {
@@ -1430,7 +1428,6 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
     if (num_frac == 0) {
       policy.handle_integer_solution(node_ptr, leaf_obj, leaf_solution.x);
       policy.graphviz(search_tree, node_ptr, "integer feasible", leaf_obj);
-      node_ptr->set_status(node_status_t::INTEGER_FEASIBLE);
       status = node_status_t::INTEGER_FEASIBLE;
 
     } else if (node_ptr->lower_bound <= upper_bound + abs_fathom_tol) {
@@ -1460,7 +1457,6 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
 
     } else {
       policy.graphviz(search_tree, node_ptr, "fathomed", node_ptr->lower_bound);
-      node_ptr->set_status(node_status_t::FATHOMED);
       status = node_status_t::FATHOMED;
     }
   } else if (lp_status == dual_status_t::TIME_LIMIT) {
@@ -1472,11 +1468,13 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   } else {
     policy.on_numerical_issue(node_ptr);
     policy.graphviz(search_tree, node_ptr, "numerical", 0.0);
-    node_ptr->set_status(node_status_t::NUMERICAL);
     status = node_status_t::NUMERICAL;
   }
 
   policy.on_node_completed(node_ptr, status, round_dir);
+
+  // `set_status` may free `node_ptr` for an inactive status, so it must be the last access.
+  if (inactive_status(status)) { node_ptr->set_status(status); }
   return {status, round_dir};
 }
 
@@ -5278,8 +5276,8 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
 
   if (!feasible) {
     node_ptr->lower_bound = std::numeric_limits<f_t>::infinity();
-    node_ptr->set_status(node_status_t::INFEASIBLE);
     worker.record_infeasible(node_ptr);
+    node_ptr->set_status(node_status_t::INFEASIBLE);
     --exploration_stats_.nodes_unexplored;
     ++exploration_stats_.nodes_explored;
     worker.recompute_bounds_and_basis = true;
