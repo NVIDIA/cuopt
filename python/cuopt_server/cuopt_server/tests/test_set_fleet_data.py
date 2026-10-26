@@ -224,6 +224,28 @@ def test_optimization_data_model_keeps_break_load_windows(monkeypatch):
     assert is_valid[0]
     assert model.fleet_data["vehicle_break_load_windows"] == [[[[0, 0]]]]
 
+    is_valid = model.set_fleet_data(
+        vehicle_ids=None,
+        vehicle_locations=[[0, 0]],
+        capacities=[[10]],
+        vehicle_time_windows=None,
+        vehicle_breaks=None,
+        vehicle_break_time_windows=[[[0, 10]]],
+        vehicle_break_durations=[[1]],
+        vehicle_break_locations=None,
+        vehicle_types=None,
+        vehicle_order_match=None,
+        skip_first_trips=None,
+        drop_return_trips=None,
+        min_vehicles=None,
+        vehicle_max_costs=None,
+        vehicle_max_times=None,
+        vehicle_fixed_costs=None,
+    )
+
+    assert is_valid[0]
+    assert model.fleet_data["vehicle_break_load_windows"] is None
+
 
 # Test validate_fleet_data with vehicle_ids=None passes (no server required)
 def test_validate_fleet_data_vehicle_ids_none():

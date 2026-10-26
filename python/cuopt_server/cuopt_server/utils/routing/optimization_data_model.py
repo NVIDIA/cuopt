@@ -619,10 +619,9 @@ class OptimizationDataModel:
                     cudf.Series(val, dtype=np.int32)
                     for val in vehicle_break_durations
                 ]
-            if vehicle_break_load_windows is not None:
-                self.fleet_data["vehicle_break_load_windows"] = (
-                    vehicle_break_load_windows
-                )
+            self.fleet_data["vehicle_break_load_windows"] = (
+                vehicle_break_load_windows
+            )
             if vehicle_breaks is not None:
                 self.fleet_data["vehicle_breaks"] = [
                     {
