@@ -126,6 +126,37 @@ def test_conversion_adds_capacity_before_break_load_windows():
     ]
 
 
+def test_deprecated_conversion_forwards_break_load_windows(monkeypatch):
+    from cuopt_server.utils.deprecated.routing import conversion as deprecated
+
+    class CapturingOptimizationDataModel:
+        def set_cost_matrix(self, _):
+            return True, ""
+
+        def set_fleet_data(self, *_, **kwargs):
+            self.vehicle_break_load_windows = kwargs[
+                "vehicle_break_load_windows"
+            ]
+            return True, ""
+
+    monkeypatch.setattr(
+        deprecated, "OptimizationDataModel", CapturingOptimizationDataModel
+    )
+
+    optimization_data = deprecated.populate_optimization_data(
+        cost_matrix_data=CostMatrices(data={0: [[0, 1], [1, 0]]}),
+        fleet_data=FleetData(
+            vehicle_locations=[[0, 0]],
+            capacities=[[10]],
+            vehicle_break_time_windows=[[[0, 10]]],
+            vehicle_break_durations=[[1]],
+            vehicle_break_load_windows=[[[[0, 0]]]],
+        ),
+    )
+
+    assert optimization_data.vehicle_break_load_windows == [[[[0, 0]]]]
+
+
 def test_build_routing_datamodel_from_json_accepts_dict():
     data_model, solver_settings = build_routing_datamodel_from_json(
         {
