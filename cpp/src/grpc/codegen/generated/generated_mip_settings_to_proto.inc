@@ -10,7 +10,6 @@
   pb_settings->set_relative_tolerance(settings.tolerances.relative_tolerance);
   pb_settings->set_presolve_absolute_tolerance(settings.tolerances.presolve_absolute_tolerance);
   pb_settings->set_log_to_console(settings.log_to_console);
-  pb_settings->set_heuristics_only(settings.heuristics_only);
   pb_settings->set_num_cpu_threads(settings.num_cpu_threads);
   pb_settings->set_num_gpus(settings.num_gpus);
   pb_settings->set_presolver(static_cast<int32_t>(settings.presolver));
