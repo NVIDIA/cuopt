@@ -33,6 +33,22 @@ struct JobQueueEntry {
   std::atomic<uint64_t> enqueue_seq;
 };
 
+// Reset every field in a job slot so it can be reused by the next submission.
+// Clear ready before enqueue_seq so a concurrent claim cannot observe a
+// recycled slot as still dispatchable under the old sequence.
+inline void reset_job_slot(JobQueueEntry& job)
+{
+  job.ready.store(false, std::memory_order_release);
+  job.enqueue_seq.store(0, std::memory_order_relaxed);
+  job.worker_pid     = 0;
+  job.worker_index   = -1;
+  job.data_sent      = false;
+  job.is_chunked     = false;
+  job.unified_header = false;
+  job.claimed        = false;
+  job.cancelled      = false;
+}
+
 // Claim the ready, unclaimed job with the lowest enqueue_seq.
 // Retries when a concurrent claim or slot recycle invalidates the selection.
 // Returns the slot index, or -1 when no dispatchable job is present.

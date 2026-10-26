@@ -318,22 +318,6 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
 // Small utility helpers
 // ---------------------------------------------------------------------------
 
-// Reset every field in a job slot so it can be reused by the next submission.
-static void reset_job_slot(JobQueueEntry& job)
-{
-  // Clear ready before enqueue_seq so a concurrent claim cannot observe a
-  // recycled slot as still dispatchable under the old sequence.
-  job.ready.store(false, std::memory_order_release);
-  job.enqueue_seq.store(0, std::memory_order_relaxed);
-  job.worker_pid     = 0;
-  job.worker_index   = -1;
-  job.data_sent      = false;
-  job.is_chunked     = false;
-  job.unified_header = false;
-  job.claimed        = false;
-  job.cancelled      = false;
-}
-
 // Log pipe throughput when config.verbose is enabled.
 static void log_pipe_throughput(const char* phase,
                                 int64_t total_bytes,
