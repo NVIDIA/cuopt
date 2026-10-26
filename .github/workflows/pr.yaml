@@ -21,7 +21,6 @@ jobs:
       - compute-matrix-filters
       - changed-files
       - checks
-      - entrypoint-signals
       - conda-cpp-build
       - conda-cpp-tests
       - java-build
@@ -380,16 +379,6 @@ jobs:
     with:
       enable_check_generated_files: false
       ignored_pr_jobs: "pr-test-summary"
-  entrypoint-signals:
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Proxy entrypoint signal status
-        run: bash ci/docker/test_entrypoint_signals.sh
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
     # Consumed by C++, Java, Python, and docs jobs.
