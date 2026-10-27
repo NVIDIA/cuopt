@@ -14,6 +14,25 @@ COMPONENTS=(client mathopt routing)
 source rapids-init-pip
 bash "${REPO_ROOT}/ci/utils/install_openssl3_runtime.sh"
 
+# find_package(cuopt) needs CMake's FindCUDAToolkit, which wants nvcc and the CUDA dev files
+# that the test image does not ship.
+CUDA_PKG_SUFFIX="$(echo "${RAPIDS_CUDA_VERSION}" | cut -d. -f1,2 | tr . -)"
+CUDA_DEV_PACKAGES=(
+  "cuda-nvcc-${CUDA_PKG_SUFFIX}"
+  "cuda-cudart-dev-${CUDA_PKG_SUFFIX}"
+  "libcublas-dev-${CUDA_PKG_SUFFIX}"
+  "libcusparse-dev-${CUDA_PKG_SUFFIX}"
+  "libcusolver-dev-${CUDA_PKG_SUFFIX}"
+  "libcurand-dev-${CUDA_PKG_SUFFIX}"
+)
+if command -v apt-get &> /dev/null; then
+  apt-get update
+  apt-get install -y "${CUDA_DEV_PACKAGES[@]}"
+else
+  dnf install -y "${CUDA_DEV_PACKAGES[@]}"
+fi
+export PATH="/usr/local/cuda/bin:${PATH}"
+
 SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
 CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_client cuopt)")
 MATHOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_mathopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
