@@ -15,14 +15,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** Model-building corner cases that need no native library. */
 final class ModelEdgeCaseTest {
+  private Problem problem;
+
+  @BeforeEach
+  void newProblem() {
+    problem = new Problem();
+  }
 
   @Test
   void anEmptyProblemHasNoStructure() {
-    Problem problem = new Problem();
     assertEquals("", problem.getName());
     assertEquals(0, problem.getNumVariables());
     assertEquals(0, problem.getNumConstraints());
@@ -41,7 +47,6 @@ final class ModelEdgeCaseTest {
   @Test
   void aNullNameBecomesTheEmptyString() {
     assertEquals("", new Problem(null).getName());
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, null);
     assertEquals("", x.getVariableName());
     assertEquals("", x.setVariableName(null).getVariableName());
@@ -51,7 +56,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void lookupByNameReturnsNullWhenMissingAndByIndexThrows() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Constraint c = problem.addConstraint(LinearExpression.of(x).le(1), "c");
     assertSame(x, problem.getVariable("x"));
@@ -65,7 +69,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void theVariableAndConstraintListsAreSnapshots() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     List<Variable> before = problem.getVariables();
     problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "y");
@@ -77,7 +80,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void variableIndicesFollowCreationOrder() {
-    Problem problem = new Problem();
     for (int i = 0; i < 5; i++) {
       assertEquals(i, problem.addVariable().getIndex());
     }
@@ -91,7 +93,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aMIPIsAnyProblemWithADiscreteVariable() {
-    Problem problem = new Problem();
     problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "c");
     assertFalse(problem.isMIP());
     Variable integer = problem.addVariable(0, 1, 0, VariableType.INTEGER, "i");
@@ -119,7 +120,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aRejectedConstraintLeavesTheProblemUnchanged() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Variable foreign = new Problem().addVariable(0, 1, 0, VariableType.CONTINUOUS, "f");
     problem.addConstraint(LinearExpression.of(x).le(1));
@@ -133,7 +133,6 @@ final class ModelEdgeCaseTest {
   @Test
   @Disabled("setObjective validates the linear part only, so a foreign variable in a quadratic term is accepted")
   void aVariableWithAnInRangeIndexButNoOwnerIsRejectedInAQuadraticObjective() {
-    Problem problem = new Problem();
     problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Variable foreign = new Problem().addVariable(0, 1, 0, VariableType.CONTINUOUS, "f");
     assertThrows(
@@ -145,7 +144,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void settingTheObjectiveReplacesVariableCoefficients() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 7.0, VariableType.CONTINUOUS, "x");
     Variable y = problem.addVariable(0, 1, 9.0, VariableType.CONTINUOUS, "y");
     problem.setObjective(LinearExpression.of(y, 2.0), ObjectiveSense.MAXIMIZE);
@@ -156,7 +154,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aConstantObjectiveHasNoCoefficients() {
-    Problem problem = new Problem();
     problem.addVariable(0, 1, 5.0, VariableType.CONTINUOUS, "x");
     problem.setObjective(3.5, ObjectiveSense.MINIMIZE);
     assertEquals(3.5, problem.getObjectiveConstant(), 0.0);
@@ -165,7 +162,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aQuadraticObjectiveReplacesALinearOneAndBack() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     problem.setObjective(QuadraticExpression.of(x, x, 2.0), ObjectiveSense.MINIMIZE);
     assertEquals(1, problem.getQuadraticObjectiveMatrix().getValues().length);
@@ -175,7 +171,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void duplicateQuadraticObjectiveTermsAreSummedIntoOneCSREntry() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Variable y = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "y");
     QuadraticExpression objective =
@@ -190,7 +185,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aConstraintMovesItsConstantToTheRightHandSide() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 10, 0, VariableType.CONTINUOUS, "x");
     Constraint le = LinearExpression.of(x).plus(3.0).le(10.0);
     Constraint ge = LinearExpression.of(x).minus(2.0).ge(1.0);
@@ -205,7 +199,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void comparingTwoExpressionsMovesEverythingToTheLeft() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 10, 0, VariableType.CONTINUOUS, "x");
     Variable y = problem.addVariable(0, 10, 0, VariableType.CONTINUOUS, "y");
     Constraint c = LinearExpression.of(x, 2.0).plus(1.0).le(LinearExpression.of(y, 3.0).plus(4.0));
@@ -220,7 +213,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aVariableAbsentFromAConstraintHasCoefficientZero() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Variable y = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "y");
     Constraint c = LinearExpression.of(x).le(1);
@@ -230,7 +222,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void expressionsAreImmutable() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     LinearExpression base = LinearExpression.of(x, 2.0);
     LinearExpression grown = base.plus(x, 3.0).plus(1.0).times(2.0);
@@ -252,7 +243,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void mergingTermsForOneVariableSumsTheirCoefficientsAndKeepsZeros() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     LinearExpression cancelled = LinearExpression.of(x, 2.0).plus(x, -2.0);
     assertEquals(0.0, cancelled.getCoefficient(x), 0.0);
@@ -268,7 +258,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void expressionAccessorsByPositionFollowInsertionOrder() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Variable y = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "y");
     LinearExpression e = LinearExpression.of(y, 5.0).plus(x, 7.0);
@@ -283,7 +272,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void anExpressionEvaluatesToNaNUntilTheVariablesHaveValues() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     assertTrue(Double.isNaN(LinearExpression.of(x).getValue()));
     assertEquals(4.0, LinearExpression.ofConstant(4.0).getValue(), 0.0);
@@ -292,7 +280,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void dividingByZeroIsRejectedAndNegativeDivisorsFlipTheSign() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     assertThrows(IllegalArgumentException.class, () -> LinearExpression.of(x).dividedBy(0.0));
     assertThrows(IllegalArgumentException.class, () -> LinearExpression.of(x).dividedBy(-0.0));
@@ -303,7 +290,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void nonFiniteCoefficientsAreCarriedThroughTheModel() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     LinearExpression nan = LinearExpression.of(x, Double.NaN);
     LinearExpression inf = LinearExpression.of(x, Double.POSITIVE_INFINITY);
@@ -314,7 +300,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aConstraintCanBeAddedOnlyOnceBeforeItsIndexIsOverwritten() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Constraint shared = LinearExpression.of(x).le(1);
     problem.addConstraint(shared, "first");
@@ -329,7 +314,6 @@ final class ModelEdgeCaseTest {
   @Test
   @Disabled("addConstraint accepts the same Constraint twice and overwrites its index")
   void addingTheSameConstraintTwiceToOneProblemIsRejected() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Constraint shared = LinearExpression.of(x).le(1);
     problem.addConstraint(shared);
@@ -338,22 +322,7 @@ final class ModelEdgeCaseTest {
   }
 
   @Test
-  void structuralChangesAlsoClearStatusAndObjectiveValue() {
-    Problem problem = new Problem();
-    Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
-    problem.resetSolvedValues();
-    assertEquals(TerminationStatus.NO_TERMINATION, problem.getStatus());
-    problem.addConstraint(LinearExpression.of(x).le(1));
-    assertTrue(Double.isNaN(problem.getObjectiveValue()));
-    assertTrue(Double.isNaN(problem.getSolveTime()));
-    assertTrue(Double.isNaN(x.getReducedCost()));
-    assertTrue(Double.isNaN(problem.getConstraint(0).getDualValue()));
-    assertTrue(Double.isNaN(problem.getConstraint(0).getSlack()));
-  }
-
-  @Test
   void aQuadraticConstraintIsKeptOutOfTheLinearMatrix() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 5, 0, VariableType.CONTINUOUS, "x");
     Variable y = problem.addVariable(0, 5, 0, VariableType.CONTINUOUS, "y");
     problem.addConstraint(LinearExpression.of(x).plus(y).le(4.0), "linear");
@@ -368,7 +337,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aQuadraticExpressionWithoutQuadraticTermsBuildsALinearConstraint() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 5, 0, VariableType.CONTINUOUS, "x");
     Constraint c = problem.addConstraint(new QuadraticExpression().plus(x, 2.0).le(4.0));
     assertFalse(c.isQuadratic());
@@ -378,7 +346,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void quadraticComparisonsMoveBothSidesToTheLeft() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 5, 0, VariableType.CONTINUOUS, "x");
     Variable y = problem.addVariable(0, 5, 0, VariableType.CONTINUOUS, "y");
     QuadraticExpression left = QuadraticExpression.of(x, x, 1.0).plus(1.0);
@@ -393,7 +360,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aLinearExpressionComparedWithAQuadraticOneBecomesAQuadraticConstraint() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 5, 0, VariableType.CONTINUOUS, "x");
     Constraint c = LinearExpression.of(x).le(QuadraticExpression.of(x, x, 1.0));
     assertTrue(c.isQuadratic());
@@ -482,7 +448,6 @@ final class ModelEdgeCaseTest {
 
   @Test
   void fromIncumbentHandlesAnEmptyRequestAndRepeatedVariables() {
-    Problem problem = new Problem();
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Variable y = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "y");
     double[] incumbent = {10.0, 20.0};

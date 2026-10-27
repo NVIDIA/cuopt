@@ -54,8 +54,18 @@ category mapping, expression construction, CSR generation, duplicate-term
 merging, problem updates, relaxation, and quadratic inspection without loading
 the native library.
 
+`ModelEdgeCaseTest` covers the pure Java model: null names, lookups, foreign
+variables, rejected constraints, objective replacement, expression
+immutability, quadratic terms and constraints, CSR copies, callback-solution
+copies, and enum code mappings.
+
 `NativeIntegrationTest` covers settings, setting-file round trips, LP/MILP/QP
 solves, solution statistics, error propagation, and MPS read/write paths.
+
+`NativeEdgeCaseTest` covers handle lifecycle, settings and typed getters,
+unbounded, infeasible and degenerate models, MPS read and write, MIP callbacks,
+concurrent solves, and repeated solve cycles. It skips without the native
+library and a GPU.
 
 `ProblemIntegrationTest` constructs ten LP, MILP, and QP cases entirely in
 Java. Each dynamic test verifies the public `Problem` model built from the

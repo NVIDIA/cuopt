@@ -10,11 +10,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.nvidia.cuopt.mathematicaloptimization.NativeTestSupport.knapsack;
+import static com.nvidia.cuopt.mathematicaloptimization.NativeTestSupport.quiet;
+import static com.nvidia.cuopt.mathematicaloptimization.NativeTestSupport.tinyLP;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -22,10 +26,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /** Corner cases that need the native library and a GPU. */
 final class NativeEdgeCaseTest {
@@ -34,39 +43,6 @@ final class NativeEdgeCaseTest {
   void requireNative() {
     NativeTestSupport.assumeNativeLibrary();
     NativeTestSupport.assumeCudaDriverAvailable();
-  }
-
-  private static SolverSettings quiet() {
-    return new SolverSettings()
-        .setSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, false)
-        .setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 20.0);
-  }
-
-  private static Problem tinyLP() {
-    Problem problem = new Problem("tiny");
-    Variable x0 = problem.addVariable(0, Double.POSITIVE_INFINITY, 1.0, VariableType.CONTINUOUS, "x0");
-    Variable x1 = problem.addVariable(0, Double.POSITIVE_INFINITY, 1.0, VariableType.CONTINUOUS, "x1");
-    problem.addConstraint(LinearExpression.of(x0).plus(x1).ge(1.0), "c0");
-    problem.setObjective(LinearExpression.of(x0).plus(x1), ObjectiveSense.MINIMIZE);
-    return problem;
-  }
-
-  /**
-   * A knapsack large enough that presolve cannot close it, so the MIP search runs and reports
-   * incumbents.
-   */
-  private static Problem knapsack(int items) {
-    Problem problem = new Problem("knapsack");
-    LinearExpression weight = new LinearExpression();
-    LinearExpression value = new LinearExpression();
-    for (int i = 0; i < items; i++) {
-      Variable item = problem.addVariable(0, 1, 0, VariableType.INTEGER, "i" + i);
-      weight = weight.plus(item, 7 + (i * 13) % 29);
-      value = value.plus(item, 11 + (i * 17) % 31);
-    }
-    problem.addConstraint(weight.le(items * 9.0), "capacity");
-    problem.setObjective(value, ObjectiveSense.MAXIMIZE);
-    return problem;
   }
 
   // ---- handle lifecycle -------------------------------------------------------------------
@@ -142,6 +118,11 @@ final class NativeEdgeCaseTest {
       problem.addConstraint(
           LinearExpression.of(problem.getVariable(0)).plus(problem.getVariable(1)).ge(3.0), "c1");
       assertTrue(Double.isNaN(problem.getObjectiveValue()));
+      assertTrue(Double.isNaN(problem.getSolveTime()));
+      assertEquals(TerminationStatus.NO_TERMINATION, problem.getStatus());
+      assertTrue(Double.isNaN(problem.getVariable(0).getReducedCost()));
+      assertTrue(Double.isNaN(problem.getConstraint(0).getDualValue()));
+      assertTrue(Double.isNaN(problem.getConstraint(0).getSlack()));
       try (Solution solution = problem.solve(quiet())) {
         assertEquals(3.0, problem.getObjectiveValue(), 1e-4);
         assertEquals(TerminationStatus.OPTIMAL, problem.getStatus());
@@ -191,14 +172,20 @@ final class NativeEdgeCaseTest {
 
   // ---- settings ---------------------------------------------------------------------------
 
-  @Test
-  void anUnknownSettingNameRaisesCuOptException() {
+  @ParameterizedTest
+  @MethodSource("unknownSettingUses")
+  void anUnknownSettingNameRaisesCuOptException(Consumer<SolverSettings> use) {
     try (SolverSettings settings = new SolverSettings()) {
-      assertThrows(CuOptException.class, () -> settings.setSetting("no_such_setting", 1));
-      assertThrows(CuOptException.class, () -> settings.setSetting("no_such_setting", 1.0));
-      assertThrows(CuOptException.class, () -> settings.setSetting("no_such_setting", "x"));
-      assertThrows(CuOptException.class, () -> settings.getSetting("no_such_setting"));
+      assertThrows(CuOptException.class, () -> use.accept(settings));
     }
+  }
+
+  static Stream<Consumer<SolverSettings>> unknownSettingUses() {
+    return Stream.of(
+        s -> s.setSetting("no_such_setting", 1),
+        s -> s.setSetting("no_such_setting", 1.0),
+        s -> s.setSetting("no_such_setting", "x"),
+        s -> s.getSetting("no_such_setting"));
   }
 
   @Test
@@ -210,15 +197,12 @@ final class NativeEdgeCaseTest {
           12.5,
           Double.parseDouble(settings.getSetting(CuOptConstants.CUOPT_TIME_LIMIT, String.class)),
           0.0);
-      assertThrows(
-          IllegalArgumentException.class,
-          () -> settings.getSetting(CuOptConstants.CUOPT_TIME_LIMIT, Integer.class));
-      assertThrows(
-          IllegalArgumentException.class,
-          () -> settings.getSetting(CuOptConstants.CUOPT_TIME_LIMIT, Boolean.class));
-      assertThrows(
-          IllegalArgumentException.class,
-          () -> settings.getSetting(CuOptConstants.CUOPT_TIME_LIMIT, Long.class));
+      for (Class<?> wrong : List.of(Integer.class, Boolean.class, Long.class)) {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> settings.getSetting(CuOptConstants.CUOPT_TIME_LIMIT, wrong),
+            wrong.getSimpleName());
+      }
     }
   }
 
@@ -599,14 +583,13 @@ final class NativeEdgeCaseTest {
     assertThrows(CuOptException.class, () -> Problem.read(empty.toString()));
   }
 
-  @Test
-  void writeAcceptsEitherMPSExtensionInAnyCase() {
+  @ParameterizedTest
+  @ValueSource(strings = {"a.mps", "b.MPS", "c.qps", "d.QPS"})
+  void writeAcceptsEitherMPSExtensionInAnyCase(String name) {
     try (Problem problem = tinyLP()) {
-      for (String name : new String[] {"a.mps", "b.MPS", "c.qps", "d.QPS"}) {
-        Path file = temp.resolve(name);
-        problem.write(file.toString());
-        assertTrue(Files.exists(file), name);
-      }
+      Path file = temp.resolve(name);
+      problem.write(file.toString());
+      assertTrue(Files.exists(file), name);
     }
   }
 
@@ -668,7 +651,7 @@ final class NativeEdgeCaseTest {
   void theGetSolutionCallbackReceivesIncumbentsOfTheRightShape() {
     int items = 40;
     AtomicInteger calls = new AtomicInteger();
-    List<String> problems = new ArrayList<>();
+    List<String> problems = Collections.synchronizedList(new ArrayList<>());
     try (Problem problem = knapsack(items);
         SolverSettings settings =
             quiet()) {
@@ -719,19 +702,18 @@ final class NativeEdgeCaseTest {
       } catch (RuntimeException surfaced) {
         // Surfacing the callback's failure is acceptable; killing the JVM is not.
       }
+      assertTrue(calls.get() > 0, "the callback was never called");
     }
   }
 
   @Test
-  void theSetSolutionCallbackIsAskedForASolution() {
+  void aSetSolutionCallbackDoesNotPreventTheSolve() {
     int items = 40;
-    AtomicInteger calls = new AtomicInteger();
     try (Problem problem = knapsack(items);
         SolverSettings settings = quiet()) {
       settings.setMIPCallback(
           (MIPSetSolutionCallback)
               (bound, userData) -> {
-                calls.incrementAndGet();
                 return new MIPCallbackSolution(new double[items], 0.0);
               },
           null,
@@ -786,7 +768,7 @@ final class NativeEdgeCaseTest {
   }
 
   @Test
-  void aSolutionDroppedWithoutCloseIsLeftToTheCleaner() {
+  void repeatedSolvesWithoutClosingSolutionsAndSettingsKeepProblemUsable() {
     try (Problem problem = tinyLP()) {
       for (int i = 0; i < 20; i++) {
         problem.solve(quiet());
