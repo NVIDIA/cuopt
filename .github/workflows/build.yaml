@@ -148,7 +148,8 @@ jobs:
   # (TODO: drop java/cuopt/ci/maven-publish/ and this file once
   # rapidsai/shared-workflows#652 merges and ships in a branch cuOpt tracks).
   java-maven-publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Nightlies publish the SNAPSHOT (overwritten each night); release tags publish to Central.
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.build_type == 'nightly'
     needs: [java-static-gather]
     permissions:
       actions: read
