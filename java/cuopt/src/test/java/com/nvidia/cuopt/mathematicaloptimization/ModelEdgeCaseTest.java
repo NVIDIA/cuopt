@@ -131,7 +131,6 @@ final class ModelEdgeCaseTest {
   }
 
   @Test
-  @Disabled("setObjective validates the linear part only, so a foreign variable in a quadratic term is accepted")
   void aVariableWithAnInRangeIndexButNoOwnerIsRejectedInAQuadraticObjective() {
     problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Variable foreign = new Problem().addVariable(0, 1, 0, VariableType.CONTINUOUS, "f");
@@ -140,6 +139,25 @@ final class ModelEdgeCaseTest {
         () ->
             problem.setObjective(
                 QuadraticExpression.of(foreign, foreign, 1.0), ObjectiveSense.MINIMIZE));
+  }
+
+  @Test
+  void aRejectedObjectiveLeavesTheCurrentObjectiveUntouched() {
+    Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
+    Variable foreign = new Problem().addVariable(0, 1, 0, VariableType.CONTINUOUS, "f");
+    problem.setObjective(LinearExpression.of(x, 3.0), ObjectiveSense.MAXIMIZE);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> problem.setObjective(LinearExpression.of(foreign, 5.0), ObjectiveSense.MINIMIZE));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            problem.setObjective(
+                QuadraticExpression.of(foreign, foreign, 1.0).plus(x, 2.0),
+                ObjectiveSense.MINIMIZE));
+    assertEquals(3.0, x.getObjectiveCoefficient(), 0.0);
+    assertEquals(ObjectiveSense.MAXIMIZE, problem.getObjectiveSense());
+    assertNull(problem.getQuadraticObjectiveMatrix());
   }
 
   @Test
