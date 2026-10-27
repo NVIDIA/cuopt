@@ -2876,7 +2876,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
       n_cstr,
       n_vars,
       0,
-      static_cast<long long>(nnz));
+      static_cast<std::int64_t>(nnz));
 
     auto lp_timer = cuopt::timer_t(settings_resolved.time_limit);
 
