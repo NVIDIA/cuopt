@@ -301,11 +301,11 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // Set this node inactive
   void set_inactive()
   {
-    if (!this->is_active.load()) { return; }
+    if (!this->is_active.load(std::memory_order::relaxed)) { return; }
     this->is_active = false;
 
     if (bfs_worker) {
-      assert(bfs_worker->active_diving_workers.load() > 0);
+      assert(bfs_worker->active_diving_workers.load(std::memory_order::relaxed) > 0);
       --bfs_worker->active_diving_workers;
     }
   }

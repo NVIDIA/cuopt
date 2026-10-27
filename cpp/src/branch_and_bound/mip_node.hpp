@@ -333,7 +333,7 @@ class search_tree_t {
               const simplex::lp_problem_t<i_t, f_t>& original_lp,
               simplex::logger_t& log)
   {
-    i_t id = num_nodes.fetch_add(2);
+    i_t id = num_nodes.fetch_add(2, std::memory_order::relaxed);
 
     auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
                                                              parent_node,

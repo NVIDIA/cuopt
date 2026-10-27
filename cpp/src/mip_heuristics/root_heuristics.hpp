@@ -305,8 +305,8 @@ struct root_heuristics_t {
     // On the first pass we use a thread to generate the clique table
     const i_t cut_generation     = cut_pass == 0 ? 2 : 1;
     const i_t persistent_workers = persistent_lanes_.size();
-    return std::max(i_t{0},
-                    max_workers_ - worker_count_->load() - persistent_workers - cut_generation);
+    const i_t worker_count       = worker_count_->load(std::memory_order::relaxed);
+    return std::max(i_t{0}, max_workers_ - worker_count - persistent_workers - cut_generation);
   }
 
   std::shared_ptr<cut_pass_heuristics_t<i_t, f_t>> create_new_cut_pass_heuristic(

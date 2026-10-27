@@ -157,7 +157,7 @@ class branch_and_bound_t {
   void set_initial_pseudocost(const pseudo_costs_t<i_t, f_t>& parent_pc,
                               const std::vector<i_t>& reduced_to_original);
 
-  f_t get_upper_bound() const { return upper_bound_.load(); }
+  f_t get_upper_bound() const { return upper_bound_.load(std::memory_order::relaxed); }
   bool has_solver_space_incumbent() const { return incumbent_.has_incumbent; }
 
   // Repair a low-quality solution from the heuristics.

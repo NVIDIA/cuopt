@@ -65,7 +65,8 @@ class worker_pool_t {
       i_t idx = idle_workers_.front();
       idle_workers_.pop_front();
       num_idle_workers_--;
-      assert(idle_workers_.size() == static_cast<size_t>(num_idle_workers_.load()));
+      assert(idle_workers_.size() ==
+             static_cast<size_t>(num_idle_workers_.load(std::memory_order::relaxed)));
       assert(idx >= 0 && static_cast<size_t>(idx) < workers_.size());
       return workers_[idx].get();
     }
@@ -75,13 +76,14 @@ class worker_pool_t {
   {
     assert(worker != nullptr);
     worker->set_inactive();
-    assert(!worker->is_active.load());
+    assert(!worker->is_active.load(std::memory_order::relaxed));
 
     if (!is_initialized()) return;
 
     std::lock_guard lock(mutex_);
     assert(workers_[worker->worker_id].get() == worker);
-    assert(static_cast<size_t>(num_idle_workers_.load()) == idle_workers_.size());
+    assert(static_cast<size_t>(num_idle_workers_.load(std::memory_order::relaxed)) ==
+           idle_workers_.size());
     assert(idle_workers_.size() <= workers_.size());
 
     idle_workers_.push_back(worker->worker_id);

@@ -308,12 +308,13 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
 template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 {
-  f_t lower_bound = lower_bound_numerical_.load();
+  f_t lower_bound = lower_bound_numerical_.load(std::memory_order::relaxed);
 
   if (bfs_worker_pool_.is_initialized()) {
     for (i_t i = 0; i < bfs_worker_pool_.size(); ++i) {
       if (bfs_worker_pool_[i]->is_active) {
-        lower_bound = std::min(lower_bound, bfs_worker_pool_[i]->lower_bound.load());
+        lower_bound =
+          std::min(lower_bound, bfs_worker_pool_[i]->lower_bound.load(std::memory_order::relaxed));
         lower_bound = std::min(lower_bound, bfs_worker_pool_[i]->node_queue.get_lower_bound());
       }
     }
@@ -398,10 +399,11 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, heuristics_origin_t
     log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
     settings_.log.printf("%s\n", log_line.c_str());
   } else {
-    if (solving_root_relaxation_.load()) {
+    if (solving_root_relaxation_.load(std::memory_order::relaxed)) {
       f_t user_obj   = compute_user_objective(original_lp_, obj);
-      f_t user_lower = compute_user_objective(original_lp_, root_lp_current_lower_bound_.load());
-      f_t user_gap   = user_relative_gap(user_obj, user_lower);
+      f_t user_lower = compute_user_objective(
+        original_lp_, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
+      f_t user_gap              = user_relative_gap(user_obj, user_lower);
       std::string user_gap_text = to_percentage(user_gap);
       settings_.log.print_format(
         "New solution from primal heuristics. Objective {:+.6e}. Gap {}. Time {:.2f}\n",
@@ -499,10 +501,10 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
     mutex_original_lp_.unlock();
     mutex_upper_.lock();
     if (is_feasible && (!incumbent_.has_incumbent || obj < incumbent_.objective)) {
-      f_t current_upper_bound = upper_bound_.load();
+      f_t current_upper_bound = upper_bound_.load(std::memory_order::relaxed);
       upper_bound_            = std::min(current_upper_bound, obj);
       incumbent_.set_incumbent_solution(obj, crushed_solution);
-      if (current_upper_bound > upper_bound_.load()) {
+      if (current_upper_bound > upper_bound_.load(std::memory_order::relaxed)) {
         report_heuristic(obj, origin);
         success = true;
       }
@@ -747,7 +749,7 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
         mutex_upper_.lock();
 
         if (!incumbent_.has_incumbent || repaired_obj < incumbent_.objective) {
-          upper_bound_ = std::min(upper_bound_.load(), repaired_obj);
+          upper_bound_ = std::min(upper_bound_.load(std::memory_order::relaxed), repaired_obj);
           incumbent_.set_incumbent_solution(repaired_obj, repaired_solution);
           report_heuristic(repaired_obj, heuristics_origin_t::HEURISTICS);
 
@@ -823,35 +825,38 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
     settings_.heuristic_preemption_callback();
   }
 
-  f_t user_obj         = compute_user_objective(original_lp_, upper_bound_.load());
+  f_t user_obj =
+    compute_user_objective(original_lp_, upper_bound_.load(std::memory_order::relaxed));
   f_t user_bound       = compute_user_objective(original_lp_, lower_bound);
   f_t gap              = std::abs(user_obj - user_bound);
   f_t gap_rel          = user_relative_gap(user_obj, user_bound);
   bool is_maximization = original_lp_.obj_scale < 0.0;
 
-  settings_.log.print_format("Explored {} nodes ({} simplex iterations) in {:.2f}s.",
-                             exploration_stats_.nodes_explored.load(),
-                             exploration_stats_.total_simplex_iters.load(),
-                             toc(exploration_stats_.start_time));
+  settings_.log.print_format(
+    "Explored {} nodes ({} simplex iterations) in {:.2f}s.",
+    exploration_stats_.nodes_explored.load(std::memory_order::relaxed),
+    exploration_stats_.total_simplex_iters.load(std::memory_order::relaxed),
+    toc(exploration_stats_.start_time));
 
-  if (exploration_stats_.orbital_fixing_nodes.load() > 0 ||
-      exploration_stats_.orbital_conflict_nodes.load() > 0) {
+  if (exploration_stats_.orbital_fixing_nodes.load(std::memory_order::relaxed) > 0 ||
+      exploration_stats_.orbital_conflict_nodes.load(std::memory_order::relaxed) > 0) {
     settings_.log.print_format(
       "Orbital fixing applied at {} nodes, {} total variable fixings, "
       "{} nodes with conflicting orbits\n",
-      exploration_stats_.orbital_fixing_nodes.load(),
-      exploration_stats_.orbital_fixings_applied.load(),
-      exploration_stats_.orbital_conflict_nodes.load());
+      exploration_stats_.orbital_fixing_nodes.load(std::memory_order::relaxed),
+      exploration_stats_.orbital_fixings_applied.load(std::memory_order::relaxed),
+      exploration_stats_.orbital_conflict_nodes.load(std::memory_order::relaxed));
   }
-  if (exploration_stats_.lexical_reduction_nodes.load() > 0) {
+  if (exploration_stats_.lexical_reduction_nodes.load(std::memory_order::relaxed) > 0) {
     settings_.log.print_format(
       "Lexical reduction applied at {} nodes, {} total variable fixings, {} nodes pruned\n",
-      exploration_stats_.lexical_reduction_nodes.load(),
-      exploration_stats_.lexical_reduction_fixings_applied.load(),
-      exploration_stats_.lexical_reduction_pruned_nodes.load());
+      exploration_stats_.lexical_reduction_nodes.load(std::memory_order::relaxed),
+      exploration_stats_.lexical_reduction_fixings_applied.load(std::memory_order::relaxed),
+      exploration_stats_.lexical_reduction_pruned_nodes.load(std::memory_order::relaxed));
   }
-  if (integer_pivots_.load() > 0) {
-    settings_.log.print_format("Number of integer pivots: {}\n", integer_pivots_.load());
+  if (integer_pivots_.load(std::memory_order::relaxed) > 0) {
+    settings_.log.print_format("Number of integer pivots: {}\n",
+                               integer_pivots_.load(std::memory_order::relaxed));
   }
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
@@ -925,7 +930,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
   mutex_upper_.lock();
   if (!incumbent_.has_incumbent || leaf_objective < incumbent_.objective) {
     incumbent_.set_incumbent_solution(leaf_objective, sol.empty() ? leaf_solution : sol);
-    upper_bound_.fetch_min(leaf_objective);
+    upper_bound_.fetch_min(leaf_objective, std::memory_order::relaxed);
 
     char symbol = feasible_solution_symbol(thread_type, settings_.diving_settings.show_type);
     report(lp, symbol, leaf_objective, get_lower_bound(), leaf_depth, 0);
@@ -1125,10 +1130,11 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
   void on_numerical_issue(mip_node_t<i_t, f_t>* node) override
   {
     if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
-      bnb.lower_bound_numerical_.fetch_min(node->lower_bound);
+      bnb.lower_bound_numerical_.fetch_min(node->lower_bound, std::memory_order::relaxed);
       log.printf("LP returned numerical issue on node %d. Best bound set to %+10.6e.\n",
                  node->node_id,
-                 compute_user_objective(bnb.original_lp_, bnb.lower_bound_numerical_.load()));
+                 compute_user_objective(
+                   bnb.original_lp_, bnb.lower_bound_numerical_.load(std::memory_order::relaxed)));
     }
   }
 
@@ -1582,7 +1588,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     lp_settings.concurrent_halt = &node_concurrent_halt_;
   }
   lp_settings.set_log(false);
-  f_t cutoff = upper_bound_.load();
+  f_t cutoff = upper_bound_.load(std::memory_order::relaxed);
   if (worker->leaf_problem.objective_step.has_step()) {
     f_t step = worker->leaf_problem.objective_step.step_size;
     f_t bias = worker->leaf_problem.objective_step.bias;
@@ -1704,7 +1710,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                         fractional,
                                         integer_pivot_work);
           if (num_integer_increased > 0) {
-            integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
+            integer_pivots_.fetch_add(num_integer_increased, std::memory_order::relaxed);
           }
         }
       }
@@ -1722,7 +1728,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
                                                mip_node_t<i_t, f_t>* start_node)
 {
-  assert(worker != nullptr && worker->is_active.load());
+  assert(worker != nullptr && worker->is_active.load(std::memory_order::relaxed));
   assert(start_node != nullptr);
 
   // Stack holds at most 2 entries: the preferred child + its sibling.
@@ -1769,7 +1775,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     // - The lower bound of the parent is lower or equal to its children
     worker->lower_bound = node_ptr->lower_bound;
 
-    if (node_ptr->lower_bound > upper_bound_.load()) {
+    if (node_ptr->lower_bound > upper_bound_.load(std::memory_order::relaxed)) {
       search_tree_.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
       node_ptr->set_status(node_status_t::FATHOMED);
       worker->recompute_basis  = true;
@@ -1788,7 +1794,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
          time_since_last_log >= 1) ||
         (time_since_last_log > 30) || now > settings_.time_limit) {
-      if (exploration_stats_.report_solver_progress.exchange(false)) {
+      if (exploration_stats_.report_solver_progress.exchange(false, std::memory_order::relaxed)) {
         report(worker->leaf_problem,
                ' ',
                upper_bound_,
@@ -1938,7 +1944,7 @@ void branch_and_bound_t<i_t, f_t>::launch_bfs_worker(bfs_worker_t<i_t, f_t>* wor
   bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
   if (!idle_worker) return;
 
-  assert(idle_worker->is_active.load() == false);
+  assert(idle_worker->is_active.load(std::memory_order::relaxed) == false);
   assert(idle_worker->node_queue.best_first_queue_size() == 0);
 
   // Pre-emptively set the lower bound of the idle worker for the top of the heap
@@ -1983,10 +1989,12 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
   f_t lower_bound = get_lower_bound();
-  f_t user_obj    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
-  f_t user_lower  = compute_user_objective(worker->leaf_problem, lower_bound);
-  f_t abs_gap     = compute_user_abs_gap(worker->leaf_problem, upper_bound_.load(), lower_bound);
-  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
+  f_t user_obj =
+    compute_user_objective(worker->leaf_problem, upper_bound_.load(std::memory_order::relaxed));
+  f_t user_lower = compute_user_objective(worker->leaf_problem, lower_bound);
+  f_t abs_gap    = compute_user_abs_gap(
+    worker->leaf_problem, upper_bound_.load(std::memory_order::relaxed), lower_bound);
+  f_t rel_gap = user_relative_gap(user_obj, user_lower);
   f_t steal_chance =
     settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : MIP_DEFAULT_STEAL_CHANCE;
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
@@ -2060,7 +2068,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     if (!start_node) continue;
     worker->lower_bound = start_node->lower_bound;
 
-    if (upper_bound_.load() < start_node->lower_bound) {
+    if (upper_bound_.load(std::memory_order::relaxed) < start_node->lower_bound) {
       // This node was put on the heap earlier but its lower bound is now greater than the
       // current upper bound
       search_tree_.graphviz_node(settings_.log, start_node, "cutoff", start_node->lower_bound);
@@ -2072,10 +2080,12 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     plunge_with(worker, start_node);
 
     lower_bound = get_lower_bound();
-    user_obj    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
-    user_lower  = compute_user_objective(worker->leaf_problem, lower_bound);
-    abs_gap     = compute_user_abs_gap(worker->leaf_problem, upper_bound_.load(), lower_bound);
-    rel_gap     = user_relative_gap(user_obj, user_lower);
+    user_obj =
+      compute_user_objective(worker->leaf_problem, upper_bound_.load(std::memory_order::relaxed));
+    user_lower = compute_user_objective(worker->leaf_problem, lower_bound);
+    abs_gap    = compute_user_abs_gap(
+      worker->leaf_problem, upper_bound_.load(std::memory_order::relaxed), lower_bound);
+    rel_gap = user_relative_gap(user_obj, user_lower);
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
       solver_status_ = mip_status_t::OPTIMAL;
@@ -2143,7 +2153,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
 
     worker->lower_bound = node_ptr->lower_bound;
 
-    if (node_ptr->lower_bound > upper_bound_.load()) {
+    if (node_ptr->lower_bound > upper_bound_.load(std::memory_order::relaxed)) {
       worker->recompute_basis  = true;
       worker->recompute_bounds = true;
       continue;
@@ -2234,7 +2244,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
     return false;
   }
 
-  if (upper_bound_.load() < diving_worker->start_node.lower_bound) {
+  if (upper_bound_.load(std::memory_order::relaxed) < diving_worker->start_node.lower_bound) {
     diving_worker_pool_.return_worker_to_pool(diving_worker);
     return false;
   }
@@ -2264,7 +2274,8 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
   diving_worker->set_active();
   ++bfs_worker->active_diving_workers;
 
-  assert(bfs_worker->active_diving_workers.load() <= bfs_worker->max_diving_workers);
+  assert(bfs_worker->active_diving_workers.load(std::memory_order::relaxed) <=
+         bfs_worker->max_diving_workers);
 
 #pragma omp task affinity(*diving_worker) priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) \
   firstprivate(diving_worker)
@@ -2345,9 +2356,10 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   bool is_root_heuristic = submip_settings.inside_root_node;
   i_t submip_level       = settings_.submip_settings.level + 1;
   f_t user_lower         = compute_user_objective(worker->leaf_problem, get_lower_bound());
-  f_t user_obj           = compute_user_objective(worker->leaf_problem, upper_bound_.load());
-  f_t rel_gap            = user_relative_gap(user_obj, user_lower);
-  i_t explored           = exploration_stats_.nodes_explored;
+  f_t user_obj =
+    compute_user_objective(worker->leaf_problem, upper_bound_.load(std::memory_order::relaxed));
+  f_t rel_gap  = user_relative_gap(user_obj, user_lower);
+  i_t explored = exploration_stats_.nodes_explored;
 
   submip_settings.print_presolve_stats                     = false;
   submip_settings.num_threads                              = 1;
@@ -2393,7 +2405,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     submip_settings.time_limit,
     submip_settings.node_limit,
     submip_settings.branch_and_bound_simplex_iteration_limit,
-    exploration_stats_.total_simplex_iters.load(),
+    exploration_stats_.total_simplex_iters.load(std::memory_order::relaxed),
     submip_settings.relative_mip_gap_tol);
 
   // The `worker->leaf_problem` is directly converted to an `user_problem_t`, meaning that
@@ -2477,8 +2489,9 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 
   // Even if we do not have a valid incumbent now, the upper bound can still be set by the early
   // heuristics.
-  if (std::isfinite(upper_bound_.load())) {
-    const f_t user_upper    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
+  if (std::isfinite(upper_bound_.load(std::memory_order::relaxed))) {
+    const f_t user_upper =
+      compute_user_objective(worker->leaf_problem, upper_bound_.load(std::memory_order::relaxed));
     const f_t submip_cutoff = compute_presolved_objective(submip_bnb.original_lp_, user_upper);
     submip_bnb.set_initial_upper_bound(submip_cutoff);
   }
@@ -2492,7 +2505,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   } else {
     // This should only be called by the main solver.
     submip_bnb.set_submip_halt_callback([this](f_t, f_t submip_lower_bound) {
-      f_t user_upper = compute_user_objective(this->original_lp_, this->upper_bound_.load());
+      f_t user_upper = compute_user_objective(this->original_lp_,
+                                              this->upper_bound_.load(std::memory_order::relaxed));
       bool is_cutoff = original_lp_.obj_scale > 0 ? submip_lower_bound > user_upper
                                                   : user_upper > submip_lower_bound;
       bool is_solver_running =
@@ -2560,7 +2574,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     log_prefix,
     mip_status_to_string(submip_status),
     submip_solution.simplex_iterations,
-    exploration_stats_.total_simplex_iters.load(),
+    exploration_stats_.total_simplex_iters.load(std::memory_order::relaxed),
     presolve_time,
     submip_time);
 
@@ -2891,9 +2905,9 @@ void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
   DEBUG_SUBMIP(
     "{}success={}, infeasible={}, calls={}, fixrate={:.4g} ({:.0f}/{}), max_fixrate={:.4g}\n",
     submip_settings.log.log_prefix,
-    mutation_stats_.total_success.load(),
-    mutation_stats_.total_infeasible.load(),
-    mutation_stats_.total_calls.load(),
+    mutation_stats_.total_success.load(std::memory_order::relaxed),
+    mutation_stats_.total_infeasible.load(std::memory_order::relaxed),
+    mutation_stats_.total_calls.load(std::memory_order::relaxed),
     fixrate,
     fixrate * integer_list.size(),
     integer_list.size(),
@@ -3082,7 +3096,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
       DEBUG_SUBMIP("{}Round {}: max iteration reached! {}/{}",
                    submip_settings.log.log_prefix,
                    round,
-                   stats.total_simplex_iters.load(),
+                   stats.total_simplex_iters.load(std::memory_order::relaxed),
                    simplex_iter_limit)
       break;
     }
@@ -3103,12 +3117,12 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
     node.lower_bound = leaf_obj;
 
     snap_to_lattice(worker->leaf_problem, &node, leaf_obj);
-    if (leaf_obj > upper_bound_.load()) {
+    if (leaf_obj > upper_bound_.load(std::memory_order::relaxed)) {
       DEBUG_SUBMIP("{}Round {}: reached cutoff point. obj={:.4g}. upper_bound={:.4g}",
                    submip_settings.log.log_prefix,
                    round,
                    leaf_obj,
-                   upper_bound_.load())
+                   upper_bound_.load(std::memory_order::relaxed))
       break;
     }
 
@@ -3120,7 +3134,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
                    submip_settings.log.log_prefix,
                    round,
                    leaf_obj,
-                   upper_bound_.load())
+                   upper_bound_.load(std::memory_order::relaxed))
       break;
     }
 
@@ -3187,9 +3201,9 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
     "{}success={}, infeasible={}, calls={}, fixrate={:.4g} ({:.0f}/{}), max_fixrate={:.4g}, "
     "min_fixrate={:.4g}\n",
     submip_settings.log.log_prefix,
-    submip_stats.total_success.load(),
-    submip_stats.total_infeasible.load(),
-    submip_stats.total_calls.load(),
+    submip_stats.total_success.load(std::memory_order::relaxed),
+    submip_stats.total_infeasible.load(std::memory_order::relaxed),
+    submip_stats.total_calls.load(std::memory_order::relaxed),
     fixrate,
     fixrate * num_integers,
     num_integers,
@@ -3652,7 +3666,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                   integer_pivot_work);
     root_integer_pivot_work_ += integer_pivot_work;
     if (num_integer_increased > 0) {
-      integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
+      integer_pivots_.fetch_add(num_integer_increased, std::memory_order::relaxed);
     }
   }
   if (num_integer_increased > 0) {
@@ -3756,20 +3770,21 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   }
 
   if (settings_.reduced_cost_strengthening >= 1 &&
-      (upper_bound_.load() < last_upper_bound ||
-       upper_bound_.load() <= reduced_cost_bounds.get_max_objective())) {
+      (upper_bound_.load(std::memory_order::relaxed) < last_upper_bound ||
+       upper_bound_.load(std::memory_order::relaxed) <= reduced_cost_bounds.get_max_objective())) {
     mutex_upper_.lock();
-    last_upper_bound              = upper_bound_.load();
+    last_upper_bound              = upper_bound_.load(std::memory_order::relaxed);
     std::vector<f_t> lower_bounds = original_lp_.lower;
     std::vector<f_t> upper_bounds = original_lp_.upper;
-    i_t new_bounds = reduced_cost_bounds.update_bounds_from_new_incumbent(original_lp_,
-                                                                          settings_,
-                                                                          root_relax_soln_,
-                                                                          root_objective_,
-                                                                          upper_bound_.load(),
-                                                                          var_types_,
-                                                                          lower_bounds,
-                                                                          upper_bounds);
+    i_t new_bounds                = reduced_cost_bounds.update_bounds_from_new_incumbent(
+      original_lp_,
+      settings_,
+      root_relax_soln_,
+      root_objective_,
+      upper_bound_.load(std::memory_order::relaxed),
+      var_types_,
+      lower_bounds,
+      upper_bounds);
     mutex_upper_.unlock();
     mutex_original_lp_.lock();
     original_lp_.lower = lower_bounds;
@@ -3894,7 +3909,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
       original_lp_, settings_, var_types_, root_objective_, root_relax_soln_.z, root_vstatus_);
     settings_.log.debug("New reduced cost objective %e (current %e)\n",
                         reduced_cost_bounds.get_max_objective(),
-                        upper_bound_.load());
+                        upper_bound_.load(std::memory_order::relaxed));
     if (settings_.primal_degenerate_pivots != 0) {
       pivot_to_improve_reduced_cost_strengthening(original_lp_,
                                                   lp_settings,
@@ -3912,7 +3927,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
     }
     settings_.log.debug("After pivoting: new reduced cost objective %e (current %e)\n",
                         reduced_cost_bounds.get_max_objective(),
-                        upper_bound_.load());
+                        upper_bound_.load(std::memory_order::relaxed));
   }
 
   // Refresh fractional info after re-solving with cuts; the pre-cut count is stale.
@@ -3972,13 +3987,15 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
     incumbent_.set_incumbent_solution(root_objective_, root_relax_soln_.x);
     mutex_upper_.unlock();
   }
-  f_t obj = upper_bound_.load();
+  f_t obj = upper_bound_.load(std::memory_order::relaxed);
   report(original_lp_, ' ', obj, root_objective_, 0, num_fractional);
 
-  f_t user_obj   = compute_user_objective(original_lp_, upper_bound_.load());
+  f_t user_obj =
+    compute_user_objective(original_lp_, upper_bound_.load(std::memory_order::relaxed));
   f_t user_lower = compute_user_objective(original_lp_, root_objective_);
   f_t rel_gap    = user_relative_gap(user_obj, user_lower);
-  f_t abs_gap    = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
+  f_t abs_gap    = compute_user_abs_gap(
+    original_lp_, upper_bound_.load(std::memory_order::relaxed), root_objective_);
   if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
     if (num_fractional == 0) { set_solution_at_root(solution, cut_info); }
     set_final_solution(solution, root_objective_);
@@ -4087,7 +4104,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_settings.inside_root_node                = true;
   lp_settings.concurrent_halt                 = get_root_concurrent_halt();
   lp_settings.dual_simplex_objective_callback = [this](f_t user_obj) {
-    root_lp_current_lower_bound_.store(user_obj);
+    root_lp_current_lower_bound_.store(user_obj, std::memory_order::relaxed);
   };
   std::vector<i_t> basic_list(original_lp_.num_rows);
   std::vector<i_t> nonbasic_list;
@@ -4258,7 +4275,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     original_lp_, settings_, var_types_, root_objective_, root_relax_soln_.z, root_vstatus_);
   settings_.log.debug("New reduced cost objective %e (current %e)\n",
                       reduced_cost_bounds.get_max_objective(),
-                      upper_bound_.load());
+                      upper_bound_.load(std::memory_order::relaxed));
   if (settings_.primal_degenerate_pivots != 0) {
     pivot_to_improve_reduced_cost_strengthening(original_lp_,
                                                 lp_settings,
@@ -4276,7 +4293,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
   settings_.log.debug("After pivoting: new reduced cost objective %e (current %e)\n",
                       reduced_cost_bounds.get_max_objective(),
-                      upper_bound_.load());
+                      upper_bound_.load(std::memory_order::relaxed));
 
   f_t pivot_out_integer_variables_start_time = tic();
   i_t num_integer_increased                  = 0;
@@ -4305,7 +4322,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                   integer_pivot_work);
     root_integer_pivot_work_ += integer_pivot_work;
     if (num_integer_increased > 0) {
-      integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
+      integer_pivots_.fetch_add(num_integer_increased, std::memory_order::relaxed);
     }
   }
   if (num_integer_increased > 0) {
@@ -4404,10 +4421,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       return mip_status_t::OPTIMAL;
     }
 
-    f_t user_obj   = compute_user_objective(original_lp_, upper_bound_.load());
+    f_t user_obj =
+      compute_user_objective(original_lp_, upper_bound_.load(std::memory_order::relaxed));
     f_t user_lower = compute_user_objective(original_lp_, root_objective_);
-    f_t abs_gap    = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
-    f_t rel_gap    = user_relative_gap(user_obj, user_lower);
+    f_t abs_gap    = compute_user_abs_gap(
+      original_lp_, upper_bound_.load(std::memory_order::relaxed), root_objective_);
+    f_t rel_gap = user_relative_gap(user_obj, user_lower);
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
       if (settings_.benchmark_info_ptr != nullptr) {
@@ -4542,18 +4561,19 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (settings_.reduced_cost_strengthening >= 2 &&
-      (upper_bound_.load() < last_upper_bound ||
-       upper_bound_.load() <= reduced_cost_bounds.get_max_objective())) {
+      (upper_bound_.load(std::memory_order::relaxed) < last_upper_bound ||
+       upper_bound_.load(std::memory_order::relaxed) <= reduced_cost_bounds.get_max_objective())) {
     std::vector<f_t> lower_bounds = original_lp_.lower;
     std::vector<f_t> upper_bounds = original_lp_.upper;
-    i_t num_changed = reduced_cost_bounds.update_bounds_from_new_incumbent(original_lp_,
-                                                                           settings_,
-                                                                           root_relax_soln_,
-                                                                           root_objective_,
-                                                                           upper_bound_.load(),
-                                                                           var_types_,
-                                                                           lower_bounds,
-                                                                           upper_bounds);
+    i_t num_changed               = reduced_cost_bounds.update_bounds_from_new_incumbent(
+      original_lp_,
+      settings_,
+      root_relax_soln_,
+      root_objective_,
+      upper_bound_.load(std::memory_order::relaxed),
+      var_types_,
+      lower_bounds,
+      upper_bounds);
     if (num_changed > 0) {
       settings_.log.printf("Updated %d integer bounds using reduced cost strengthening\n",
                            num_changed);
@@ -4712,7 +4732,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
       // We need to clear the queue and use the info in the search tree for the lower bound
       while (worker->node_queue.best_first_queue_size() > 0 &&
-             worker->node_queue.get_lower_bound() > upper_bound_.load()) {
+             worker->node_queue.get_lower_bound() > upper_bound_.load(std::memory_order::relaxed)) {
         mip_node_t<i_t, f_t>* start_node = worker->node_queue.pop();
         // This node was put on the heap earlier but its lower bound is now greater than the
         // current upper bound
@@ -4728,16 +4748,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   DEBUG_SUBMIP("RINS: success={}, infeasible={}, empty={}, calls={}",
-               rins_stats_.total_success.load(),
-               rins_stats_.total_infeasible.load(),
-               rins_stats_.total_empty.load(),
-               rins_stats_.total_calls.load());
+               rins_stats_.total_success.load(std::memory_order::relaxed),
+               rins_stats_.total_infeasible.load(std::memory_order::relaxed),
+               rins_stats_.total_empty.load(std::memory_order::relaxed),
+               rins_stats_.total_calls.load(std::memory_order::relaxed));
 
   DEBUG_SUBMIP("RENS: success={}, infeasible={}, empty={}, calls={}",
-               rens_stats_.total_success.load(),
-               rens_stats_.total_infeasible.load(),
-               rens_stats_.total_empty.load(),
-               rens_stats_.total_calls.load());
+               rens_stats_.total_success.load(std::memory_order::relaxed),
+               rens_stats_.total_infeasible.load(std::memory_order::relaxed),
+               rens_stats_.total_empty.load(std::memory_order::relaxed),
+               rens_stats_.total_calls.load(std::memory_order::relaxed));
 
   set_final_solution(solution, lower_bound);
   return solver_status_;
@@ -5120,7 +5140,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
     std::vector<uint64_t> state_data;
     state_data.push_back(static_cast<uint64_t>(exploration_stats_.nodes_explored));
     state_data.push_back(static_cast<uint64_t>(exploration_stats_.nodes_unexplored));
-    f_t ub = upper_bound_.load();
+    f_t ub = upper_bound_.load(std::memory_order::relaxed);
     f_t lb = deterministic_compute_lower_bound();
     state_data.push_back(std::bit_cast<uint64_t>(ub));
     state_data.push_back(std::bit_cast<uint64_t>(lb));
@@ -5160,7 +5180,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
   }
 
   f_t lower_bound = deterministic_compute_lower_bound();
-  f_t upper_bound = upper_bound_.load();
+  f_t upper_bound = upper_bound_.load(std::memory_order::relaxed);
   f_t user_obj    = compute_user_objective(original_lp_, upper_bound);
   f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
@@ -5360,14 +5380,14 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
                const queued_integer_solution_t<i_t, f_t>* b) { return *a < *b; });
 
   f_t deterministic_lower = deterministic_compute_lower_bound();
-  f_t current_upper       = upper_bound_.load();
+  f_t current_upper       = upper_bound_.load(std::memory_order::relaxed);
 
   for (const auto* sol : all_solutions) {
     if (sol->objective < current_upper) {
       f_t user_obj         = compute_user_objective(original_lp_, sol->objective);
       f_t user_lower       = compute_user_objective(original_lp_, deterministic_lower);
-      i_t nodes_explored   = exploration_stats_.nodes_explored.load();
-      i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
+      i_t nodes_explored   = exploration_stats_.nodes_explored.load(std::memory_order::relaxed);
+      i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load(std::memory_order::relaxed);
 
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
       report(original_lp_,
@@ -5380,7 +5400,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
 
       bool improved = false;
       if (!incumbent_.has_incumbent || sol->objective < incumbent_.objective) {
-        upper_bound_ = std::min(upper_bound_.load(), sol->objective);
+        upper_bound_ = std::min(upper_bound_.load(std::memory_order::relaxed), sol->objective);
         incumbent_.set_incumbent_solution(sol->objective, sol->solution);
         current_upper = sol->objective;
         improved      = true;
@@ -5544,7 +5564,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
       f_t new_upper = std::numeric_limits<f_t>::infinity();
 
       if (!incumbent_.has_incumbent || hsol.objective < incumbent_.objective) {
-        upper_bound_ = std::min(upper_bound_.load(), hsol.objective);
+        upper_bound_ = std::min(upper_bound_.load(std::memory_order::relaxed), hsol.objective);
         incumbent_.set_incumbent_solution(hsol.objective, hsol.solution);
         new_upper = hsol.objective;
       }
@@ -5571,14 +5591,14 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
   deterministic_merge_pseudo_cost_updates(*deterministic_workers_);
 
   for (const auto& worker : *deterministic_workers_) {
-    lower_bound_numerical_.fetch_min(worker.local_lower_bound_ceiling);
+    lower_bound_numerical_.fetch_min(worker.local_lower_bound_ceiling, std::memory_order::relaxed);
   }
 }
 
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::deterministic_prune_worker_nodes_vs_incumbent()
 {
-  f_t upper_bound = upper_bound_.load();
+  f_t upper_bound = upper_bound_.load(std::memory_order::relaxed);
 
   for (auto& worker : *deterministic_workers_) {
     // Check nodes in plunge stack - filter in place
@@ -5675,7 +5695,7 @@ template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::deterministic_compute_lower_bound()
 {
   // Compute lower bound from BFS worker local structures only
-  f_t lower_bound = lower_bound_numerical_.load();
+  f_t lower_bound = lower_bound_numerical_.load(std::memory_order::relaxed);
 
   // Check all BFS worker queues
   for (const auto& worker : *deterministic_workers_) {
@@ -5697,7 +5717,7 @@ f_t branch_and_bound_t<i_t, f_t>::deterministic_compute_lower_bound()
 
   // Tree is exhausted
   if (lower_bound == std::numeric_limits<f_t>::infinity() && incumbent_.has_incumbent) {
-    lower_bound = upper_bound_.load();
+    lower_bound = upper_bound_.load(std::memory_order::relaxed);
   }
 
   return lower_bound;
@@ -5714,7 +5734,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_populate_diving_heap()
   const int num_diving                  = deterministic_diving_workers_->size();
   constexpr int target_nodes_per_worker = 10;
   const int target_total                = num_diving * target_nodes_per_worker;
-  f_t cutoff                            = upper_bound_.load();
+  f_t cutoff                            = upper_bound_.load(std::memory_order::relaxed);
 
   // Collect candidate nodes from BFS worker backlog heaps
   std::vector<std::pair<mip_node_t<i_t, f_t>*, f_t>> candidates;
