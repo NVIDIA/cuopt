@@ -144,9 +144,9 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
-  # Release path only (vYY.MM.PP tags).
+  # Release tags (vYY.MM.PP) publish to Maven Central; nightlies overwrite the SNAPSHOT in the
+  # Sonatype snapshot repository.
   java-maven-publish:
-    # Nightlies publish the SNAPSHOT (overwritten each night); release tags publish to Central.
     if: startsWith(github.ref, 'refs/tags/v') || inputs.build_type == 'nightly'
     needs: [java-static-gather]
     permissions:
