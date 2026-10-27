@@ -22,9 +22,9 @@
 #include <cuts/objective_step.hpp>
 #include <cuts/rational.hpp>
 #include <math_optimization/tic_toc.hpp>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <presolve/third_party_presolve.hpp>
+#include <presolve/trivial_presolve.cuh>
 #include <utilities/hashing.hpp>
 
 #include <cub/device/device_segmented_reduce.cuh>

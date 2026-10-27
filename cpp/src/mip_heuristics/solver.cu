@@ -25,8 +25,8 @@
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/structural/early_structural.cuh>
+#include <presolve/conflict_graph/clique_table.cuh>
 #include <raft/core/cusparse_macros.hpp>
 
 #include <cmath>

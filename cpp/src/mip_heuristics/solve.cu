@@ -15,13 +15,13 @@
 #include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
-#include <mip_heuristics/presolve/presolve_budget_policy.hpp>
-#include <mip_heuristics/presolve/semi_continuous.cuh>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/structural/early_structural.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <presolve/presolve_budget_policy.hpp>
+#include <presolve/semi_continuous.cuh>
+#include <presolve/third_party_presolve.hpp>
+#include <presolve/trivial_presolve.cuh>
 
 #include <pdlp/pdlp.cuh>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>

@@ -18,8 +18,8 @@
 #include <cuts/cuts.hpp>
 #include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <presolve/conflict_graph/clique_table.cuh>
+#include <presolve/third_party_presolve.hpp>
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/bounds_strengthening.hpp>
