@@ -417,7 +417,7 @@ int main(int argc, char* argv[])
   program.add_argument("--mps-index-64bit")
     .help(
       "parse the input MPS/LP file into a 64-bit index model (required when the nonzero "
-      "count exceeds INT_MAX; only usable with --method 1 and --num-gpus >1 or -1)")
+      "count exceeds INT_MAX; only usable with --presolve 0, --method 1 and --num-gpus >1 or -1)")
     .default_value(false)
     .implicit_value(true);
 
