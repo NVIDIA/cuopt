@@ -132,13 +132,23 @@ final class ModelEdgeCaseTest {
 
   @Test
   void aVariableWithAnInRangeIndexButNoOwnerIsRejectedInAQuadraticObjective() {
-    problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
+    Variable owned = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Variable foreign = new Problem().addVariable(0, 1, 0, VariableType.CONTINUOUS, "f");
     assertThrows(
         IllegalArgumentException.class,
         () ->
             problem.setObjective(
                 QuadraticExpression.of(foreign, foreign, 1.0), ObjectiveSense.MINIMIZE));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            problem.setObjective(
+                QuadraticExpression.of(foreign, owned, 1.0), ObjectiveSense.MINIMIZE));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            problem.setObjective(
+                QuadraticExpression.of(owned, foreign, 1.0), ObjectiveSense.MINIMIZE));
   }
 
   @Test
