@@ -10,10 +10,10 @@
 
 #include <thrust/for_each.h>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/semi_continuous.cuh>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/utils.cuh>
 #include <pdlp/utils.cuh>
+#include <presolve/semi_continuous.cuh>
+#include <presolve/third_party_presolve.hpp>
 #include <utilities/copy_helpers.hpp>
 
 #include <algorithm>

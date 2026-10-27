@@ -12,7 +12,7 @@
 
 #include <mip_heuristics/utils.cuh>
 
-#include <mip_heuristics/presolve/presolve_budget_policy.hpp>
+#include <presolve/presolve_budget_policy.hpp>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>

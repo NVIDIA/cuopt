@@ -11,13 +11,7 @@ set(MIP_LP_NECESSARY_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/simple_rounding.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/third_party_presolve.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/single_lock_dual_aggregation.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/gf2_presolve.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/bhw_coeff_reduce.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/indicator_strengthening.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/conflict_graph/clique_table.cu
 )
 
 # Files that are MIP-specific and not needed for pure LP
@@ -36,14 +30,6 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/simple_rounding.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/feasibility_pump/feasibility_pump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/line_segment_search/line_segment_search.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/block_bve.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/bounds_presolve.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/bounds_update_data.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/semi_continuous.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/conditional_bound_strengthening.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/multi_probe.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/probing_cache.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/trivial_presolve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/audit.cpp

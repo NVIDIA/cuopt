@@ -11,9 +11,9 @@
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
-#include <mip_heuristics/presolve/bounds_presolve.cuh>
-#include <mip_heuristics/presolve/multi_probe.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
+#include <presolve/bounds_presolve.cuh>
+#include <presolve/multi_probe.cuh>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <utilities/common_utils.hpp>
