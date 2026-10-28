@@ -59,6 +59,9 @@ public final class Problem implements AutoCloseable {
   }
 
   public Constraint addConstraint(Constraint constraint, String name) {
+    if (constraints.contains(constraint)) {
+        throw new IllegalArgumentException("Constraint already added to this problem");
+    }
     requireOwnedVariables(constraint);
     constraint.setConstraintName(name);
     constraint.setIndex(constraints.size());
