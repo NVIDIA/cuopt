@@ -420,6 +420,24 @@ TEST_F(SolutionInterfaceTest, cpu_problem_multi_gpu_pdlp_matches_single_gpu)
     multi_solution->get_objective_value(0), single_solution->get_objective_value(0), 1e-3);
 }
 
+TEST_F(SolutionInterfaceTest, cpu_problem_solve_keeps_the_error_status)
+{
+  auto problem = std::make_unique<cpu_optimization_problem_t<int, double>>();
+  populate_tiny_problem(problem.get());
+  const char row_types[] = {'L', 'L'};
+  problem->set_row_types(row_types, kNCons);
+
+  // An initial primal solution with the wrong number of variables is rejected by the solver.
+  const double warm_start[] = {1.0, 2.0};
+  solver_settings_t<int, double> settings;
+  settings.get_pdlp_settings().method = method_t::PDLP;
+  settings.set_initial_pdlp_primal_solution(warm_start, 2);
+  auto solution = solve_lp<int, double>(problem.get(), settings);
+
+  ASSERT_NE(solution, nullptr);
+  EXPECT_NE(solution->get_error_status().get_error_type(), cuopt::error_type_t::Success);
+}
+
 TEST_F(SolutionInterfaceTest, cpu_problem_solves_qp_locally)
 {
   // min x^2 + 2 y^2 + x  s.t.  x + y >= 2,  0 <= x, y <= 5  (optimum 47 / 12 at x = 7/6, y = 5/6)
