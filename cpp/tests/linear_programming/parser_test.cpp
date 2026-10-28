@@ -1339,13 +1339,16 @@ TEST(mps_roundtrip, unnamed_quadratic_constraints_avoid_existing_row_names)
 
   const std::vector<double> qc_linear_values{1.0, 1.0};
   const std::vector<int> qc_linear_indices{0, 1};
-  const std::vector<double> qc_values{1.0, 1.0};
-  const std::vector<int> qc_rows{0, 1};
-  const std::vector<int> qc_cols{0, 1};
+  const std::vector<double> qc0_values{1.0, 1.0};
+  const std::vector<int> qc0_rows{0, 1};
+  const std::vector<int> qc0_cols{0, 1};
+  const std::vector<double> qc1_values{3.0, 2.0, 5.0};
+  const std::vector<int> qc1_rows{0, 0, 1};
+  const std::vector<int> qc1_cols{0, 1, 1};
   model.append_quadratic_constraint(
-    1, "", 'L', qc_linear_values, qc_linear_indices, 4.0, qc_values, qc_rows, qc_cols);
+    1, "", 'L', qc_linear_values, qc_linear_indices, 4.0, qc0_values, qc0_rows, qc0_cols);
   model.append_quadratic_constraint(
-    2, "", 'L', qc_linear_values, qc_linear_indices, 6.0, qc_values, qc_rows, qc_cols);
+    2, "", 'L', qc_linear_values, qc_linear_indices, 6.0, qc1_values, qc1_rows, qc1_cols);
 
   temp_file_t temp_file(".mps");
   mps_writer_t<int, double> writer(model);
@@ -1357,11 +1360,18 @@ TEST(mps_roundtrip, unnamed_quadratic_constraints_avoid_existing_row_names)
   EXPECT_THAT(reloaded.get_objective_coefficients(), ElementsAre(2.0, 3.0));
   EXPECT_EQ(0.0, reloaded.get_objective_offset());
   ASSERT_EQ(2u, reloaded.get_quadratic_constraints().size());
-  for (size_t q = 0; q < 2; ++q) {
-    const auto& qc = reloaded.get_quadratic_constraints()[q];
-    EXPECT_THAT(qc.linear_values, ElementsAre(1.0, 1.0));
-    EXPECT_EQ(q == 0 ? 4.0 : 6.0, qc.rhs_value);
-  }
+  const auto& qc0 = reloaded.get_quadratic_constraints()[0];
+  const auto& qc1 = reloaded.get_quadratic_constraints()[1];
+  EXPECT_THAT(qc0.linear_values, ElementsAre(1.0, 1.0));
+  EXPECT_THAT(qc1.linear_values, ElementsAre(1.0, 1.0));
+  EXPECT_EQ(4.0, qc0.rhs_value);
+  EXPECT_EQ(6.0, qc1.rhs_value);
+  EXPECT_THAT(qc0.vals, ElementsAre(1.0, 1.0));
+  EXPECT_THAT(qc0.rows, ElementsAre(0, 1));
+  EXPECT_THAT(qc0.cols, ElementsAre(0, 1));
+  EXPECT_THAT(qc1.vals, ElementsAre(3.0, 2.0, 5.0));
+  EXPECT_THAT(qc1.rows, ElementsAre(0, 0, 1));
+  EXPECT_THAT(qc1.cols, ElementsAre(0, 1, 1));
   EXPECT_NE(reloaded.get_quadratic_constraints()[0].constraint_row_name,
             reloaded.get_quadratic_constraints()[1].constraint_row_name);
 }
