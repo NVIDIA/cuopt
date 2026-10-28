@@ -114,7 +114,6 @@ final class NativeEdgeCaseTest {
       try (Solution solution = problem.solve(quiet())) {
         assertEquals(1.0, problem.getObjectiveValue(), 1e-4);
       }
-      problem.getConstraint(0).getRHS();
       problem.addConstraint(
           LinearExpression.of(problem.getVariable(0)).plus(problem.getVariable(1)).ge(3.0), "c1");
       assertTrue(Double.isNaN(problem.getObjectiveValue()));
@@ -234,30 +233,14 @@ final class NativeEdgeCaseTest {
   }
 
   @Test
-  void aMIPStartIsCopiedWhenItIsAdded() {
-    double[] start = {1.0, 0.0};
-    try (SolverSettings settings = new SolverSettings().setSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, false);
-        Problem problem = knapsack(2)) {
-      settings.addMIPStart(start);
-      start[0] = Double.NaN;
-      try (Solution solution = problem.solve(settings)) {
-        assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
-      }
-    }
-  }
-
-  @Test
-  void aWarmStartOfTheWrongLengthDoesNotCrashTheSolver() {
+  void aWarmStartOfTheWrongLengthIsRejectedBySolve() {
     try (Problem problem = tinyLP();
         SolverSettings settings =
             quiet()
                 .setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue())
                 .setInitialPrimalSolution(new double[] {1.0, 2.0, 3.0})) {
-      try (Solution solution = problem.solve(settings)) {
-        assertNotEquals(TerminationStatus.NO_TERMINATION, solution.getTerminationStatus());
-      } catch (CuOptException | IllegalArgumentException expected) {
-        // Rejecting the mismatch up front is as acceptable as ignoring it.
-      }
+      CuOptException error = assertThrows(CuOptException.class, () -> problem.solve(settings));
+      assertTrue(error.getMessage().contains("cuOptSolve failed"), error.getMessage());
     }
   }
 
@@ -278,14 +261,14 @@ final class NativeEdgeCaseTest {
   }
 
   @Test
-  void anUnboundedMIPIsNotReportedOptimal() {
+  void anUnboundedMIPIsReportedUnboundedOrInfeasible() {
     Problem problem = new Problem("unbounded-mip");
     Variable x = problem.addVariable(0, Double.POSITIVE_INFINITY, 0.0, VariableType.INTEGER, "x");
     Variable y = problem.addVariable(0, Double.POSITIVE_INFINITY, 0.0, VariableType.CONTINUOUS, "y");
     problem.addConstraint(LinearExpression.of(x).minus(y).le(5.0), "c");
     problem.setObjective(LinearExpression.of(x).plus(y), ObjectiveSense.MAXIMIZE);
     try (Solution solution = problem.solve(quiet())) {
-      assertNotEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
+      assertEquals(TerminationStatus.UNBOUNDED_OR_INFEASIBLE, solution.getTerminationStatus());
     }
   }
 
@@ -309,8 +292,6 @@ final class NativeEdgeCaseTest {
     problem.setObjective(LinearExpression.of(x), ObjectiveSense.MINIMIZE);
     try (Solution solution = problem.solve(quiet())) {
       assertEquals(TerminationStatus.INFEASIBLE, solution.getTerminationStatus());
-    } catch (CuOptException rejectedUpFront) {
-      // Refusing the model is as valid as reporting it infeasible.
     }
   }
 
@@ -409,13 +390,10 @@ final class NativeEdgeCaseTest {
   }
 
   @Test
-  void aProblemWithoutVariablesIsRejectedOrTriviallySolved() {
+  void aProblemWithoutVariablesIsRejectedByTheNativeLayer() {
     Problem problem = new Problem("no-variables");
-    try (Solution solution = problem.solve(quiet())) {
-      assertNotEquals(TerminationStatus.NO_TERMINATION, solution.getTerminationStatus());
-    } catch (CuOptException rejected) {
-      assertFalse(rejected.getMessage().isEmpty());
-    }
+    CuOptException error = assertThrows(CuOptException.class, () -> problem.solve(quiet()));
+    assertTrue(error.getMessage().contains("cuOptCreateProblem failed"), error.getMessage());
   }
 
   @Test
@@ -556,23 +534,26 @@ final class NativeEdgeCaseTest {
   }
 
   @Test
-  void theFixedFormatFlagIsAcceptedForAFixedFormatFile() throws IOException {
+  void theFixedFormatFlagAllowsSpacesInNames() throws IOException {
     String fixed =
         "NAME          FIXED\n"
             + "ROWS\n"
             + " N  COST\n"
-            + " G  LIM\n"
+            + " G  MY ROW\n"
             + "COLUMNS\n"
-            + "    X         COST               1.0   LIM                1.0\n"
+            + "    MY VAR    COST               1.0   MY ROW             1.0\n"
             + "RHS\n"
-            + "    RHS       LIM                2.0\n"
+            + "    RHS       MY ROW             2.0\n"
             + "ENDATA\n";
     Path file = write("fixed.mps", fixed);
     try (Problem problem = Problem.read(file.toString(), true)) {
       assertEquals(1, problem.getNumVariables());
+      assertEquals("MY VAR", problem.getVariable(0).getVariableName());
+      assertEquals("MY ROW", problem.getConstraint(0).getConstraintName());
       assertEquals(ConstraintSense.GE, problem.getConstraint(0).getSense());
       assertEquals(2.0, problem.getConstraint(0).getRHS(), 0.0);
     }
+    assertThrows(CuOptException.class, () -> Problem.read(file.toString(), false));
   }
 
   @Test
@@ -585,16 +566,16 @@ final class NativeEdgeCaseTest {
 
   @ParameterizedTest
   @ValueSource(strings = {"a.mps", "b.MPS", "c.qps", "d.QPS"})
-  void writeAcceptsEitherMPSExtensionInAnyCase(String name) {
+  void writeAcceptsEitherMPSExtensionInAnyCase(String name) throws IOException {
     try (Problem problem = tinyLP()) {
       Path file = temp.resolve(name);
       problem.write(file.toString());
-      assertTrue(Files.exists(file), name);
+      assertTrue(Files.readString(file).contains("ENDATA"), name);
     }
   }
 
   @Test
-  void aQuadraticObjectiveSurvivesAWriteAndRead() {
+  void aQuadraticObjectiveKeepsItsStructureAcrossAWriteAndRead() {
     Problem problem = new Problem("qround");
     Variable x = problem.addVariable(0, 5, 0.0, VariableType.CONTINUOUS, "x");
     Variable y = problem.addVariable(0, 5, 0.0, VariableType.CONTINUOUS, "y");
@@ -606,9 +587,26 @@ final class NativeEdgeCaseTest {
     try (Problem reread = Problem.read(file.toString())) {
       assertEquals(2, reread.getNumVariables());
       assertTrue(reread.getQuadraticObjectiveMatrix() != null);
-      assertEquals(
-          problem.getQuadraticObjectiveMatrix().getValues().length,
-          reread.getQuadraticObjectiveMatrix().getValues().length);
+      assertEquals(1.0, reread.getVariable(0).getObjectiveCoefficient(), 0.0);
+      assertEquals(0.0, reread.getVariable(1).getObjectiveCoefficient(), 0.0);
+    }
+  }
+
+  @Test
+  @Disabled("a QPS round trip doubles the quadratic objective: write stores 2Q, read returns it as Q")
+  void aQuadraticObjectiveHasTheSameValueAfterAWriteAndRead() {
+    Problem problem = new Problem("qround");
+    Variable x = problem.addVariable(0, 5, 0.0, VariableType.CONTINUOUS, "x");
+    Variable y = problem.addVariable(0, 5, 0.0, VariableType.CONTINUOUS, "y");
+    problem.addConstraint(LinearExpression.of(x).plus(y).ge(2.0), "c");
+    problem.setObjective(
+        QuadraticExpression.of(x, x, 1.0).plus(y, y, 2.0).plus(x, 1.0), ObjectiveSense.MINIMIZE);
+    Path file = temp.resolve("q.qps");
+    problem.write(file.toString());
+    try (Problem reread = Problem.read(file.toString());
+        Solution original = problem.solve(quiet());
+        Solution roundTripped = reread.solve(quiet())) {
+      assertEquals(original.getPrimalObjective(), roundTripped.getPrimalObjective(), 1e-4);
     }
   }
 

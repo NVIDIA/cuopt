@@ -152,13 +152,24 @@ final class ModelEdgeCaseTest {
   }
 
   @Test
-  void aRejectedObjectiveLeavesTheCurrentObjectiveUntouched() {
+  void aRejectedLinearObjectiveLeavesTheCurrentObjectiveUntouched() {
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Variable foreign = new Problem().addVariable(0, 1, 0, VariableType.CONTINUOUS, "f");
     problem.setObjective(LinearExpression.of(x, 3.0), ObjectiveSense.MAXIMIZE);
     assertThrows(
         IllegalArgumentException.class,
-        () -> problem.setObjective(LinearExpression.of(foreign, 5.0), ObjectiveSense.MINIMIZE));
+        () ->
+            problem.setObjective(
+                LinearExpression.of(x, 9.0).plus(foreign, 5.0), ObjectiveSense.MINIMIZE));
+    assertEquals(3.0, x.getObjectiveCoefficient(), 0.0);
+    assertEquals(ObjectiveSense.MAXIMIZE, problem.getObjectiveSense());
+  }
+
+  @Test
+  void aRejectedQuadraticObjectiveLeavesTheCurrentObjectiveUntouched() {
+    Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
+    Variable foreign = new Problem().addVariable(0, 1, 0, VariableType.CONTINUOUS, "f");
+    problem.setObjective(LinearExpression.of(x, 3.0), ObjectiveSense.MAXIMIZE);
     assertThrows(
         IllegalArgumentException.class,
         () ->
@@ -317,26 +328,40 @@ final class ModelEdgeCaseTest {
   }
 
   @Test
-  void nonFiniteCoefficientsAreCarriedThroughTheModel() {
+  void nonFiniteCoefficientsAreCarriedIntoTheConstraintMatrix() {
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
+    Variable y = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "y");
     LinearExpression nan = LinearExpression.of(x, Double.NaN);
-    LinearExpression inf = LinearExpression.of(x, Double.POSITIVE_INFINITY);
+    LinearExpression inf = LinearExpression.of(y, Double.POSITIVE_INFINITY);
     assertTrue(Double.isNaN(nan.getCoefficient(x)));
-    assertEquals(Double.POSITIVE_INFINITY, inf.getCoefficient(x), 0.0);
-    assertTrue(Double.isNaN(inf.plus(x, Double.NEGATIVE_INFINITY).getCoefficient(x)));
+    assertEquals(Double.POSITIVE_INFINITY, inf.getCoefficient(y), 0.0);
+    assertTrue(Double.isNaN(inf.plus(y, Double.NEGATIVE_INFINITY).getCoefficient(y)));
+    problem.addConstraint(nan.plus(inf).le(1.0));
+    double[] values = problem.getConstraintMatrix().getValues();
+    assertEquals(2, values.length);
+    assertTrue(Double.isNaN(values[0]));
+    assertEquals(Double.POSITIVE_INFINITY, values[1], 0.0);
   }
 
   @Test
-  void aConstraintCanBeAddedOnlyOnceBeforeItsIndexIsOverwritten() {
+  void aRejectedConstraintKeepsItsIndexAndName() {
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Constraint shared = LinearExpression.of(x).le(1);
     problem.addConstraint(shared, "first");
     Problem other = new Problem();
-    // Re-adding the same object, here to another problem that has no such variable, must not
-    // silently re-number the row it already holds in the first problem.
     assertThrows(IllegalArgumentException.class, () -> other.addConstraint(shared, "second"));
     assertEquals(0, shared.getIndex());
     assertEquals("first", shared.getConstraintName());
+  }
+
+  @Test
+  @Disabled("addConstraint accepts a constraint that is already in another problem if it has no variables")
+  void aConstraintWithoutVariablesCannotBeAddedToTwoProblems() {
+    Constraint shared = LinearExpression.ofConstant(0.0).le(1);
+    problem.addConstraint(shared, "first");
+    Problem other = new Problem();
+    assertThrows(IllegalArgumentException.class, () -> other.addConstraint(shared, "second"));
+    assertEquals(0, shared.getIndex());
   }
 
   @Test
@@ -397,24 +422,30 @@ final class ModelEdgeCaseTest {
 
   @Test
   void quadraticConstraintRecordValidatesItsArrays() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new QuadraticConstraint(
-                0, "q", ConstraintSense.LE, new double[] {1.0}, new int[] {}, 1.0, new int[0],
-                new int[0], new double[0]));
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new QuadraticConstraint(
-                0, "q", ConstraintSense.LE, new double[0], new int[0], 1.0, new int[] {0},
-                new int[] {0, 1}, new double[] {1.0}));
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new QuadraticConstraint(
-                0, "q", ConstraintSense.EQ, new double[0], new int[0], 1.0, new int[0],
-                new int[0], new double[0]));
+    IllegalArgumentException linear =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                new QuadraticConstraint(
+                    0, "q", ConstraintSense.LE, new double[] {1.0}, new int[] {}, 1.0, new int[0],
+                    new int[0], new double[0]));
+    assertTrue(linear.getMessage().contains("linearValues"), linear.getMessage());
+    IllegalArgumentException quadratic =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                new QuadraticConstraint(
+                    0, "q", ConstraintSense.LE, new double[0], new int[0], 1.0, new int[] {0},
+                    new int[] {0, 1}, new double[] {1.0}));
+    assertTrue(quadratic.getMessage().contains("quadratic COO"), quadratic.getMessage());
+    IllegalArgumentException equality =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                new QuadraticConstraint(
+                    0, "q", ConstraintSense.EQ, new double[0], new int[0], 1.0, new int[0],
+                    new int[0], new double[0]));
+    assertTrue(equality.getMessage().contains("Equality"), equality.getMessage());
   }
 
   @Test
@@ -461,7 +492,12 @@ final class ModelEdgeCaseTest {
   @Test
   void csrMatrixAcceptsEmptyRows() {
     CSRMatrix matrix = new CSRMatrix(new double[] {5.0}, new int[] {2}, new int[] {0, 0, 1, 1});
-    assertEquals(3, matrix.getRowOffsets().length - 1);
+    assertArrayEquals(new double[] {5.0}, matrix.getValues(), 0.0);
+    assertArrayEquals(new int[] {2}, matrix.getColumnIndices());
+    assertArrayEquals(new int[] {0, 0, 1, 1}, matrix.getRowOffsets());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CSRMatrix(new double[] {5.0}, new int[] {2}, new int[] {0, 1, 0, 1}));
   }
 
   @Test
