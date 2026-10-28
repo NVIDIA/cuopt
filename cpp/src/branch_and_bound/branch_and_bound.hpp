@@ -360,6 +360,9 @@ class branch_and_bound_t {
                        mip_node_t<i_t, f_t>* node_ptr,
                        f_t leaf_obj);
 
+  f_t compute_node_cutoff(const simplex::lp_problem_t<i_t, f_t>& lp, f_t upper_bound) const;
+  bool accept_new_incumbent(f_t obj);
+
   // Launch a new best-first worker from a given bfs worker.
   void launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker);
 
