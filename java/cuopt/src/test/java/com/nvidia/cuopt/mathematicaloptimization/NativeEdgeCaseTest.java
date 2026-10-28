@@ -593,7 +593,6 @@ final class NativeEdgeCaseTest {
   }
 
   @Test
-  @Disabled("a QPS round trip doubles the quadratic objective: write stores 2Q, read returns it as Q")
   void aQuadraticObjectiveHasTheSameValueAfterAWriteAndRead() {
     Problem problem = new Problem("qround");
     Variable x = problem.addVariable(0, 5, 0.0, VariableType.CONTINUOUS, "x");

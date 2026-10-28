@@ -349,11 +349,12 @@ public final class Problem implements AutoCloseable {
           objective = objective.plus(problem.getVariable(i), objectiveCoefficients[i]);
         }
       }
+      // The native problem holds the symmetrized H = Q + Q^T, so halve it to recover Q.
       for (int row = 0; row + 1 < qOffsets.length; row++) {
         for (int p = qOffsets[row]; p < qOffsets[row + 1]; p++) {
           objective =
               objective.plus(
-                  problem.getVariable(row), problem.getVariable(qIndices[p]), qValues[p]);
+                  problem.getVariable(row), problem.getVariable(qIndices[p]), 0.5 * qValues[p]);
         }
       }
       problem.setObjective(objective, nativeProblem.getObjectiveSense());
