@@ -13,7 +13,6 @@
 #include "../client/grpc_client.hpp"
 
 #include "../grpc_container_chunk.hpp"
-#include "grpc_routing_chunk_ids.hpp"
 #include "grpc_routing_problem_mapper.hpp"
 #include "grpc_routing_settings_mapper.hpp"
 #include "grpc_routing_solution_mapper.hpp"
@@ -22,12 +21,53 @@
 
 namespace cuopt::mathematical_optimization {
 
-static_assert(static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES) ==
-              cuopt::routing::kMatrixValuesFieldId);
-
 using cuopt::routing::map_proto_to_routing_solution;
 using cuopt::routing::map_routing_problem_to_proto;
 using cuopt::routing::map_routing_settings_to_proto;
+
+namespace {
+
+void append_routing_matrix_chunks(std::vector<cuopt::remote::SendArrayChunkRequest>& chunks,
+                                  const cuopt::routing::cpu_routing_problem_t& problem,
+                                  const std::string& upload_id,
+                                  int64_t chunk_data_budget)
+{
+#include "generated_routing_matrix_chunks.inc"
+}
+
+void append_routing_nonmatrix_chunks(std::vector<cuopt::remote::SendArrayChunkRequest>& chunks,
+                                     const cuopt::routing::cpu_routing_problem_t& problem,
+                                     const std::string& upload_id,
+                                     int64_t chunk_data_budget)
+{
+#include "generated_routing_nonmatrix_chunks.inc"
+}
+
+// Bytes in a protobuf varint. Matches CodedOutputStream::VarintSize for values
+// that fit in a protobuf message (under 2 GiB).
+int64_t varint_bytes(uint64_t value)
+{
+  int64_t bytes = 1;
+  while (value >= 128) {
+    value >>= 7;
+    ++bytes;
+  }
+  return bytes;
+}
+
+// StartChunkedUploadV2Request carries the job as one length-delimited message
+// field. An empty job is omitted. Otherwise the wrapper adds the field tag and
+// a varint length in front of the job payload.
+int64_t chunked_upload_v2_bytes(const cuopt::remote::SubmitJobRequest& job)
+{
+  const uint64_t payload = job.ByteSizeLong();
+  if (payload == 0) { return 0; }
+  const uint64_t tag =
+    static_cast<uint64_t>(cuopt::remote::StartChunkedUploadV2Request::kJobFieldNumber) << 3;
+  return static_cast<int64_t>(payload) + varint_bytes(tag) + varint_bytes(payload);
+}
+
+}  // namespace
 
 submit_result_t grpc_client_t::submit_vrp(
   const cuopt::routing::cpu_routing_problem_t& problem,
@@ -40,12 +80,15 @@ submit_result_t grpc_client_t::submit_vrp(
     return result;
   }
 
-  // The header carries everything except the matrix values, which dominate the size.
-  cuopt::remote::ChunkedProblemHeader header;
-  header.mutable_header()->set_version(1);
-  header.mutable_header()->set_problem_category(cuopt::remote::VRP);
-  map_routing_problem_to_proto(problem, header.mutable_routing_problem(), false);
-  map_routing_settings_to_proto(settings, header.mutable_vrp_settings());
+  // Start from a header with matrix values omitted. If that header does not fit
+  // the hard send limit, the other arrays are omitted too and sent as chunks.
+  // Unified upload uses the same SolveVRPRequest as the unary RPC.
+  cuopt::remote::SubmitJobRequest header;
+  auto* vrp_job = header.mutable_vrp_request();
+  vrp_job->mutable_header()->set_version(1);
+  vrp_job->mutable_header()->set_problem_category(cuopt::remote::VRP);
+  map_routing_problem_to_proto(problem, vrp_job->mutable_problem(), false, true);
+  map_routing_settings_to_proto(settings, vrp_job->mutable_settings());
 
   int64_t matrix_bytes = 0;
   for (const auto& m : problem.cost_matrices) {
@@ -68,26 +111,26 @@ submit_result_t grpc_client_t::submit_vrp(
   if (!server_limit_unknown && srv_max < message_limit) { message_limit = srv_max; }
   const bool use_chunked = server_limit_unknown || request_bytes > message_limit;
 
+  // Once we are chunking, the header only has to fit the hard send limit.
+  // The 75% threshold is not part of that check.
+  int64_t hard_limit = config_.max_message_bytes;
+  if (!server_limit_unknown && srv_max < hard_limit) { hard_limit = srv_max; }
+
   if (use_chunked) {
+    bool chunk_other_arrays = false;
+    if (chunked_upload_v2_bytes(header) > hard_limit) {
+      map_routing_problem_to_proto(problem, vrp_job->mutable_problem(), false, false);
+      if (chunked_upload_v2_bytes(header) > hard_limit) {
+        result.error_message = "VRP request header exceeds the maximum message size";
+        return result;
+      }
+      chunk_other_arrays = true;
+    }
     auto build_chunks = [&](const std::string& upload_id, int64_t chunk_data_budget) {
       std::vector<cuopt::remote::SendArrayChunkRequest> chunks;
-      for (size_t i = 0; i < problem.cost_matrices.size(); ++i) {
-        chunk_container_typed_array(chunks,
-                                    cuopt::routing::kCostMatricesContainer,
-                                    static_cast<int32_t>(i),
-                                    cuopt::remote::CostMatrix::VALUES,
-                                    problem.cost_matrices[i].matrix,
-                                    upload_id,
-                                    chunk_data_budget);
-      }
-      for (size_t i = 0; i < problem.transit_time_matrices.size(); ++i) {
-        chunk_container_typed_array(chunks,
-                                    cuopt::routing::kTransitMatricesContainer,
-                                    static_cast<int32_t>(i),
-                                    cuopt::remote::CostMatrix::VALUES,
-                                    problem.transit_time_matrices[i].matrix,
-                                    upload_id,
-                                    chunk_data_budget);
+      append_routing_matrix_chunks(chunks, problem, upload_id, chunk_data_budget);
+      if (chunk_other_arrays) {
+        append_routing_nonmatrix_chunks(chunks, problem, upload_id, chunk_data_budget);
       }
       return chunks;
     };

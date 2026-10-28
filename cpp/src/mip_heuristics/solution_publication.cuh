@@ -11,10 +11,10 @@
 #include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
-#include <mip_heuristics/presolve/semi_continuous.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <presolve/semi_continuous.cuh>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>

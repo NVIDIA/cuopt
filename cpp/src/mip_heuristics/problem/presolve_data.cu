@@ -13,7 +13,7 @@
 #include <utilities/copy_helpers.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <presolve/third_party_presolve.hpp>
 
 #include <mip_heuristics/utils.cuh>
 

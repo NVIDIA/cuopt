@@ -297,10 +297,8 @@ endif ()
 FetchContent_Declare(
         papilo
         GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
-        GIT_TAG "3a0d1d30a0a580530b37495b0ebb5926cf6e8a2c"
+        GIT_TAG "178364c774210a2c049e38b7a5a03a3f83eec2f7"
         GIT_PROGRESS TRUE
-        PATCH_COMMAND git -C <SOURCE_DIR> apply
-                      "${CMAKE_CURRENT_SOURCE_DIR}/patches/papilo_parallel_integrality_guard.patch"
         EXCLUDE_FROM_ALL
         SYSTEM
 )
@@ -550,7 +548,7 @@ if (NOT SKIP_GRPC_BUILD)
     set(GRPC_SERVICE_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote_service.grpc.pb.h")
 
     # Routing proto (standalone VRP messages; imported by service proto)
-    set(ROUTING_PROTO_FILE "${PROTO_PATH_ROUTING}/cuopt_routing.proto")
+    set(ROUTING_PROTO_FILE "${PROTO_PATH_GEN}/cuopt_routing.proto")
     set(ROUTING_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing.pb.cc")
     set(ROUTING_PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing.pb.h")
 
@@ -558,9 +556,9 @@ if (NOT SKIP_GRPC_BUILD)
             OUTPUT "${ROUTING_PROTO_SRCS}" "${ROUTING_PROTO_HDRS}"
             COMMAND ${_PROTOBUF_PROTOC}
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+            --proto_path ${PROTO_PATH_GEN}
             --proto_path ${PROTO_PATH_ROUTING}
             --proto_path ${PROTO_PATH_MANUAL}
-            --proto_path ${PROTO_PATH_GEN}
             ${ROUTING_PROTO_FILE}
             DEPENDS ${ROUTING_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_routing.proto"
@@ -1403,7 +1401,7 @@ if(NOT SKIP_GRPC_BUILD)
             ${PROTO_PATH_MANUAL}/cuopt_remote_service.proto
             ${PROTO_PATH_MANUAL}/cuopt_remote.proto
             ${PROTO_PATH_GEN}/cuopt_remote_data.proto
-            ${PROTO_PATH_ROUTING}/cuopt_routing.proto
+            ${PROTO_PATH_GEN}/cuopt_routing.proto
             ${PROTO_PATH_ROUTING}/cuopt_routing_solution.proto
             DESTINATION ${CMAKE_INSTALL_DATADIR}/cuopt/proto
             COMPONENT client-dev

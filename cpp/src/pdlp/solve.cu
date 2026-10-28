@@ -23,9 +23,9 @@
 
 #include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
+#include <presolve/third_party_presolve.hpp>
+#include <presolve/trivial_presolve.cuh>
 
 #include <barrier/barrier_transform.hpp>
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
@@ -3203,7 +3203,7 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-// third_party_presolve_t<int, float> (in mip_heuristics/presolve/) is built
+// third_party_presolve_t<int, float> (in presolve/) is built
 // whenever PDLP_INSTANTIATE_FLOAT is on and depends on the float overloads of
 // mps_data_model_to_optimization_problem and op_problem_to_mps_data_model.
 // Make sure both symbols exist in PDLP-only float builds where

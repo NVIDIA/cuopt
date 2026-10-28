@@ -64,6 +64,19 @@ bool recv_incumbent_pipe(int fd, std::vector<uint8_t>& data)
 // Job management
 // =============================================================================
 
+// Assign the next ticket and publish the slot. Call only after the payload and
+// tracker entry are in place. The lock is held across both steps so ticket N+1
+// cannot become visible while ticket N is still unpublished.
+static uint64_t publish_ready_job_slot(JobQueueEntry& job)
+{
+  std::lock_guard<std::mutex> lock(job_enqueue_mutex);
+  const uint64_t seq = next_job_enqueue_seq.fetch_add(1, std::memory_order_relaxed);
+  job.enqueue_seq.store(seq, std::memory_order_relaxed);
+  job.ready.store(true, std::memory_order_release);
+  job.claimed.store(false, std::memory_order_release);
+  return seq;
+}
+
 // Reserve a shared-memory job queue slot, store the serialized request data,
 // and register the job in the tracker. Returns {true, job_id} on success.
 // Uses CAS on `claimed` for lock-free slot reservation and release semantics
@@ -94,8 +107,9 @@ std::pair<bool, std::string> submit_job_async(std::vector<uint8_t>&& request_dat
   job_queue[slot].cancelled.store(false);
   job_queue[slot].worker_index.store(-1);
   job_queue[slot].data_sent.store(false);
-  job_queue[slot].is_chunked = false;
-  job_queue[slot].worker_pid = 0;
+  job_queue[slot].is_chunked     = false;
+  job_queue[slot].unified_header = false;
+  job_queue[slot].worker_pid     = 0;
 
   {
     std::lock_guard<std::mutex> lock(pending_data_mutex);
@@ -113,11 +127,13 @@ std::pair<bool, std::string> submit_job_async(std::vector<uint8_t>&& request_dat
     job_tracker[job_id]   = std::move(info);
   }
 
-  // Publish: release makes all writes above visible to the dispatch thread.
-  job_queue[slot].ready.store(true, std::memory_order_release);
-  job_queue[slot].claimed.store(false, std::memory_order_release);
+  const uint64_t seq = publish_ready_job_slot(job_queue[slot]);
 
-  if (config.verbose) { SERVER_LOG_DEBUG("[Server] Job submitted (async): %s", job_id.c_str()); }
+  if (config.verbose) {
+    SERVER_LOG_DEBUG("[Server] Job submitted (async): %s enqueue_seq=%lu",
+                     job_id.c_str(),
+                     static_cast<unsigned long>(seq));
+  }
 
   return {true, job_id};
 }
@@ -149,8 +165,9 @@ std::pair<bool, std::string> submit_chunked_job_async(PendingChunkedUpload&& chu
   job_queue[slot].cancelled.store(false);
   job_queue[slot].worker_index.store(-1);
   job_queue[slot].data_sent.store(false);
-  job_queue[slot].is_chunked = true;
-  job_queue[slot].worker_pid = 0;
+  job_queue[slot].is_chunked     = true;
+  job_queue[slot].unified_header = chunked_data.unified;
+  job_queue[slot].worker_pid     = 0;
 
   {
     std::lock_guard<std::mutex> lock(pending_data_mutex);
@@ -168,11 +185,12 @@ std::pair<bool, std::string> submit_chunked_job_async(PendingChunkedUpload&& chu
     job_tracker[job_id]   = std::move(info);
   }
 
-  job_queue[slot].ready.store(true, std::memory_order_release);
-  job_queue[slot].claimed.store(false, std::memory_order_release);
+  const uint64_t seq = publish_ready_job_slot(job_queue[slot]);
 
   if (config.verbose) {
-    SERVER_LOG_DEBUG("[Server] Chunked job submitted (async): %s", job_id.c_str());
+    SERVER_LOG_DEBUG("[Server] Chunked job submitted (async): %s enqueue_seq=%lu",
+                     job_id.c_str(),
+                     static_cast<unsigned long>(seq));
   }
 
   return {true, job_id};

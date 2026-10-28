@@ -62,7 +62,6 @@ struct mip_solver_context_t {
 
   raft::handle_t const* const handle_ptr;
   problem_t<i_t, f_t>* problem_ptr;
-  mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr{nullptr};
   diversity_manager_t<i_t, f_t>* diversity_manager_ptr{nullptr};
   std::atomic<bool> preempt_heuristic_solver_ = false;
   // Owned by solve_mip and rethrown after its OpenMP team joins. Tasks write it inside

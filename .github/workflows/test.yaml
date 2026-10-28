@@ -178,6 +178,42 @@ jobs:
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
+  # Installs each libcuopt-* package alone and builds and runs a C++ binary against it, on the
+  # latest amd64 CUDA and Python only.
+  conda-split-package-tests:
+    if: ${{ inputs.build_type == 'nightly' }}
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
+    with:
+      build_type: ${{ inputs.build_type }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      script: ci/test_conda_split_packages.sh
+      matrix_filter: 'map(select(.ARCH == "amd64")) | sort_by(.CUDA_VER, .PY_VER) | [last]'
+
+  wheel-split-package-tests:
+    if: ${{ inputs.build_type == 'nightly' }}
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
+    with:
+      build_type: ${{ inputs.build_type }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      script: ci/test_wheel_split_packages.sh
+      matrix_filter: 'map(select(.ARCH == "amd64")) | sort_by(.CUDA_VER, .PY_VER) | [last]'
+
   conda-notebook-tests:
     permissions:
       actions: read
@@ -210,6 +246,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
+    secrets: inherit # zizmor: ignore[secrets-inherit]
 
   nightly-summary:
     permissions:
@@ -222,6 +259,8 @@ jobs:
       - java-static-test
       - wheel-tests-cuopt
       - wheel-tests-cuopt-server
+      - conda-split-package-tests
+      - wheel-split-package-tests
       - conda-notebook-tests
       - multi-gpu-cpp-tests
     uses: ./.github/workflows/nightly-summary.yaml

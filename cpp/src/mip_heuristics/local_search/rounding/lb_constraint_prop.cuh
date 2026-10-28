@@ -7,10 +7,10 @@
 
 #pragma once
 
-#include <mip_heuristics/presolve/load_balanced_bounds_presolve.cuh>
 #include <mip_heuristics/problem/load_balanced_problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
+#include <presolve/load_balanced_bounds_presolve.cuh>
 #include <raft/random/rng_device.cuh>
 #include <utilities/timer.hpp>
 #include "lb_bounds_repair.cuh"
