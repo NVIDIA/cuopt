@@ -1075,7 +1075,7 @@ Bounds
   0 <= x <= 1
 End
 )LP");
-  const auto n = static_cast<std::size_t>(problem.get_n_variables());
+  const i_t n  = problem.get_n_variables();
 
   auto expect_model_sized = [&](pdlp_solver_settings_t<i_t, f_t> settings,
                                 pdlp_termination_status_t expected_status) {
