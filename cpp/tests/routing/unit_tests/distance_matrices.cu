@@ -9,7 +9,6 @@
 #include <cuopt/routing/cpu_routing_problem.hpp>
 #include <cuopt/routing/solve.hpp>
 #include <routing/utilities/md_utils.hpp>
-#include <routing/vehicle_info.hpp>
 #include <utilities/copy_helpers.hpp>
 
 #include <limits>
@@ -19,31 +18,43 @@
 
 namespace cuopt::routing::test {
 
-TEST(distance_matrices, host_builders_preserve_legacy_time_slot)
+TEST(distance_matrices, optional_distance_preserves_cost_and_arrival_times)
 {
-  auto single = detail::create_host_mdarray<float>(2, 1, 1);
-  EXPECT_EQ(single.get_time_matrix(0), single.get_cost_matrix(0));
-  auto pair   = detail::create_host_mdarray<float>(2, 1, 2);
-  pair.buffer = {0.f, 3.f, 5.f, 0.f, 0.f, 11.f, 17.f, 0.f};
-  EXPECT_FLOAT_EQ(pair.get_time_matrix(0)[1], 11.f);
-  EXPECT_FLOAT_EQ(pair.view().get_time_matrix(0)[1], 11.f);
+  raft::handle_t handle;
+  auto stream   = handle.get_stream();
+  auto cost     = cuopt::device_copy(std::vector<float>{0.f, 3.f, 5.f, 0.f}, stream);
+  auto distance = cuopt::device_copy(std::vector<float>{0.f, 100.f, 200.f, 0.f}, stream);
+  auto time     = cuopt::device_copy(std::vector<float>{0.f, 11.f, 17.f, 0.f}, stream);
+  auto order    = cuopt::device_copy(std::vector<int>{1}, stream);
+  auto earliest = cuopt::device_copy(std::vector<int>{0}, stream);
+  auto latest   = cuopt::device_copy(std::vector<int>{1000}, stream);
+  solver_settings_t<int, float> settings;
+  settings.set_time_limit(0.1);
+
+  for (bool with_time : {false, true}) {
+    for (bool with_distance : {false, true}) {
+      SCOPED_TRACE(::testing::Message()
+                   << "with_time=" << with_time << ", with_distance=" << with_distance);
+      data_model_view_t<int, float> model(&handle, 2, 1, 1);
+      model.add_cost_matrix(cost.data());
+      model.set_order_locations(order.data());
+      model.set_order_time_windows(earliest.data(), latest.data());
+      if (with_time) { model.add_transit_time_matrix(time.data()); }
+      if (with_distance) { model.add_distance_matrix(distance.data()); }
+
+      auto solution = solve(model, settings);
+      ASSERT_EQ(solution.get_status(), solution_status_t::SUCCESS);
+      EXPECT_DOUBLE_EQ(solution.get_total_objective(), 8.);
+      host_assignment_t<int> result(solution);
+      EXPECT_EQ(result.locations, (std::vector<int>{0, 1, 0}));
+      auto expected_arrivals =
+        with_time ? std::vector<double>{0., 11., 28.} : std::vector<double>{0., 3., 8.};
+      EXPECT_EQ(result.stamp, expected_arrivals);
+    }
+  }
 }
 
-TEST(distance_matrices, two_slot_distance_layout_does_not_report_transit_time)
-{
-  auto matrices                  = detail::create_host_mdarray<float>(2, 1, 2);
-  matrices.distance_matrix_index = 1;
-  matrices.time_matrix_index     = 0;
-  matrices.buffer                = {0.f, 3.f, 5.f, 0.f, 0.f, 100.f, 200.f, 0.f};
-  detail::VehicleInfo<float, false> vehicle;
-  vehicle.matrices = matrices.view();
-  EXPECT_FALSE(vehicle.has_time_matrix());
-  EXPECT_FLOAT_EQ(matrices.view().get_cost_matrix(0)[1], 3.f);
-  EXPECT_FLOAT_EQ(matrices.view().get_distance_matrix(0)[1], 100.f);
-  EXPECT_FLOAT_EQ(matrices.view().get_time_matrix(0)[1], 3.f);
-}
-
-TEST(distance_matrices, cpu_problem_and_device_layout_keep_three_metrics_separate)
+TEST(distance_matrices, cpu_problem_keeps_three_metrics_separate)
 {
   cpu_routing_problem_t problem;
   problem.num_locations         = 2;
@@ -55,22 +66,17 @@ TEST(distance_matrices, cpu_problem_and_device_layout_keep_three_metrics_separat
   problem.order_locations       = {1};
   raft::handle_t handle;
   auto [model, storage] = problem.to_device(&handle);
-  auto matrices         = detail::create_device_mdarray<float>(2, 1, 3, handle.get_stream());
-  detail::fill_mdarray_from_data_model(matrices, model);
-  EXPECT_EQ(matrices.distance_matrix_index, 1);
-  EXPECT_EQ(matrices.time_matrix_index, 2);
-  auto copied =
-    cuopt::host_copy(matrices.buffer.data(), matrices.buffer.size(), handle.get_stream());
-  EXPECT_EQ(copied,
-            (std::vector<float>{0.f, 3.f, 5.f, 0.f, 0.f, 100.f, 200.f, 0.f, 0.f, 11.f, 17.f, 0.f}));
+  ASSERT_NE(model.get_distance_matrix(), nullptr);
+  auto distance = cuopt::host_copy(model.get_distance_matrix(), 4, handle.get_stream());
+  EXPECT_EQ(distance, (std::vector<float>{0.f, 100.f, 200.f, 0.f}));
   solver_settings_t<int, float> settings;
   settings.set_time_limit(0.1);
   auto solution = solve(model, settings);
-  EXPECT_EQ(solution.get_status(), solution_status_t::SUCCESS);
+  ASSERT_EQ(solution.get_status(), solution_status_t::SUCCESS);
   EXPECT_DOUBLE_EQ(solution.get_total_objective(), 8.);
-  auto arrivals = cuopt::host_copy(
-    solution.get_arrival_stamp().data(), solution.get_arrival_stamp().size(), handle.get_stream());
-  EXPECT_EQ(arrivals, (std::vector<double>{0., 11., 28.}));
+  host_assignment_t<int> result(solution);
+  EXPECT_EQ(result.locations, (std::vector<int>{0, 1, 0}));
+  EXPECT_EQ(result.stamp, (std::vector<double>{0., 11., 28.}));
 }
 
 TEST(distance_matrices, cpu_problem_rejects_invalid_distance_data)
@@ -189,7 +195,8 @@ TEST(distance_matrices, unreachable_entries_are_clamped_in_distance_buffer_only)
   problem.distance_matrices = {{0, {0.f, std::numeric_limits<float>::infinity(), 1.e30f, 0.f}}};
   raft::handle_t handle;
   auto [model, storage] = problem.to_device(&handle);
-  auto matrices         = detail::create_device_mdarray<float>(2, 1, 2, handle.get_stream());
+  // Normalization affects solver-owned storage, not the input exposed by public getters.
+  auto matrices = detail::create_device_mdarray<float>(2, 1, 2, handle.get_stream());
   detail::fill_mdarray_from_data_model(matrices, model);
   auto values =
     cuopt::host_copy(matrices.buffer.data(), matrices.buffer.size(), handle.get_stream());
@@ -207,7 +214,6 @@ TEST(distance_matrices, omitted_distance_matrix_preserves_cost_only_model)
   raft::handle_t handle;
   auto [model, storage] = problem.to_device(&handle);
   EXPECT_TRUE(model.get_distance_matrices().empty());
-  EXPECT_EQ((detail::get_cost_matrix_type_dim<int, float>(model)), 1);
   solver_settings_t<int, float> settings;
   settings.set_time_limit(0.1);
   auto solution = solve(model, settings);
