@@ -1276,6 +1276,45 @@ TEST(mps_roundtrip, empty_constraint_matrix)
   EXPECT_THAT(reloaded.get_row_names(), ElementsAre("empty"));
 }
 
+TEST(mps_roundtrip, unnamed_quadratic_constraint)
+{
+  mps_data_model_t<int, double> model;
+  std::vector<double> values{1.0, 1.0};
+  std::vector<int> indices{0, 1};
+  std::vector<int> offsets{0, 2};
+  std::vector<double> rhs{10.0};
+  std::vector<double> objective{1.0, 1.0};
+  std::vector<double> lower_bounds{0.0, 0.0};
+  std::vector<double> upper_bounds{5.0, 5.0};
+  std::vector<char> row_types{'L'};
+
+  model.set_csr_constraint_matrix(values, indices, offsets);
+  model.set_constraint_bounds(rhs);
+  model.set_objective_coefficients(objective);
+  model.set_variable_lower_bounds(lower_bounds);
+  model.set_variable_upper_bounds(upper_bounds);
+  model.set_row_types(row_types);
+  model.set_variable_names({"x", "y"});
+  model.set_row_names({"lin"});
+
+  const std::vector<double> qc_linear_values{1.0, 1.0};
+  const std::vector<int> qc_linear_indices{0, 1};
+  const std::vector<double> qc_values{1.0, 1.0};
+  const std::vector<int> qc_rows{0, 1};
+  const std::vector<int> qc_cols{0, 1};
+  model.append_quadratic_constraint(
+    1, "", 'L', qc_linear_values, qc_linear_indices, 4.0, qc_values, qc_rows, qc_cols);
+
+  temp_file_t temp_file(".mps");
+  mps_writer_t<int, double> writer(model);
+  writer.write(temp_file.string());
+
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  ASSERT_EQ(1u, reloaded.get_quadratic_constraints().size());
+  EXPECT_EQ("QC0", reloaded.get_quadratic_constraints()[0].constraint_row_name);
+  EXPECT_EQ(4.0, reloaded.get_quadratic_constraints()[0].rhs_value);
+}
+
 TEST(mps_writer_op, rejects_missing_constraint_offsets)
 {
   mps_data_model_t<int, double> model;
