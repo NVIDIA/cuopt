@@ -119,6 +119,19 @@ final class ProblemModelingTest {
   }
 
   @Test
+  void addingTheSameConstraintTwiceIsRejected() {
+    Problem problem = new Problem();
+    Variable x = problem.addVariable();
+    Constraint constraint = problem.addConstraint(LinearExpression.of(x).le(1.0));
+
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class, () -> problem.addConstraint(constraint));
+    assertTrue(error.getMessage().contains("already been added"));
+    assertEquals(1, problem.getNumConstraints());
+  }
+
+  @Test
   void rejectsLinearConstraintOverAForeignVariable() {
     Problem owner = new Problem("owner");
     owner.addVariable(0, 10, 1, VariableType.CONTINUOUS, "mine");
