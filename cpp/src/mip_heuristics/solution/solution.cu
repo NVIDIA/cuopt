@@ -567,13 +567,10 @@ f_t solution_t<i_t, f_t>::compute_max_int_violation()
 {
   return thrust::transform_reduce(
     handle_ptr->get_thrust_policy(),
-    thrust::make_counting_iterator(0),
-    thrust::make_counting_iterator(0) + problem_ptr->n_integer_vars,
+    problem_ptr->integer_indices.begin(),
+    problem_ptr->integer_indices.end(),
     cuda::proclaim_return_type<f_t>([v = view()] __device__(i_t idx) -> f_t {
-      if (v.problem.variable_types[idx] == var_t::INTEGER) {
-        return abs(v.assignment[idx] - round(v.assignment[idx]));
-      }
-      return 0.;
+      return abs(v.assignment[idx] - round(v.assignment[idx]));
     }),
     0.,
     thrust::maximum<f_t>());
