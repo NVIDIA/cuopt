@@ -15,8 +15,8 @@
 #include <cuts/cuts.hpp>
 #include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
+#include <presolve/conflict_graph/clique_table.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>

@@ -11,13 +11,13 @@
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <presolve/third_party_presolve.hpp>
 
-#include <mip_heuristics/presolve/block_bve.cuh>
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
-#include <mip_heuristics/presolve/probing_cache.cuh>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem_helpers.cuh>
+#include <presolve/block_bve.cuh>
+#include <presolve/conflict_graph/clique_table.cuh>
+#include <presolve/probing_cache.cuh>
+#include <presolve/trivial_presolve.cuh>
 
 #include <pdlp/solve.cuh>
 

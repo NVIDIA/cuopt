@@ -23,6 +23,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_solution.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 
@@ -365,6 +366,219 @@ TEST_F(SolutionInterfaceTest, cpu_problem_to_optimization_problem)
   for (int i = 0; i < kNnz; ++i) {
     EXPECT_NEAR(vals[i], kCsrVal[i], 1e-9);
   }
+}
+
+// A CPU-memory problem is converted to a GPU problem and solved locally when no remote server is
+// configured.
+TEST_F(SolutionInterfaceTest, cpu_problem_solves_lp_locally)
+{
+  auto problem = std::make_unique<cpu_optimization_problem_t<int, double>>();
+  populate_tiny_problem(problem.get());
+  const char row_types[] = {'L', 'L'};
+  problem->set_row_types(row_types, kNCons);
+  problem->set_maximize(true);
+
+  solver_settings_t<int, double> settings;
+  auto solution = solve_lp<int, double>(problem.get(), settings);
+
+  ASSERT_NE(solution, nullptr);
+  EXPECT_FALSE(solution->is_mip());
+  EXPECT_EQ(solution->get_termination_status_int(),
+            static_cast<int>(pdlp_termination_status_t::Optimal));
+  // max x0 + 2 x1 + 3 x2 with x = (2.5, 0, 20 / 7)
+  EXPECT_NEAR(solution->get_objective_value(0), 2.5 + 60.0 / 7.0, 1e-4);
+  auto primal = solution->get_solution_host();
+  ASSERT_EQ(primal.size(), static_cast<size_t>(kNVars));
+  EXPECT_NEAR(primal[0], 2.5, 1e-4);
+  EXPECT_NEAR(primal[1], 0.0, 1e-4);
+  EXPECT_NEAR(primal[2], 20.0 / 7.0, 1e-4);
+}
+
+TEST_F(SolutionInterfaceTest, cpu_problem_multi_gpu_pdlp_matches_single_gpu)
+{
+  auto problem = std::make_unique<cpu_optimization_problem_t<int, double>>();
+  populate_tiny_problem(problem.get());
+  const char row_types[] = {'L', 'L'};
+  problem->set_row_types(row_types, kNCons);
+  problem->set_maximize(true);
+
+  solver_settings_t<int, double> single;
+  single.get_pdlp_settings().method   = method_t::PDLP;
+  single.get_pdlp_settings().num_gpus = 1;
+  auto single_solution                = solve_lp<int, double>(problem.get(), single);
+
+  solver_settings_t<int, double> multi;
+  multi.get_pdlp_settings().method   = method_t::PDLP;
+  multi.get_pdlp_settings().num_gpus = -1;
+  auto multi_solution                = solve_lp<int, double>(problem.get(), multi);
+
+  ASSERT_NE(single_solution, nullptr);
+  ASSERT_NE(multi_solution, nullptr);
+  EXPECT_EQ(multi_solution->get_termination_status_int(),
+            static_cast<int>(pdlp_termination_status_t::Optimal));
+  EXPECT_NEAR(
+    multi_solution->get_objective_value(0), single_solution->get_objective_value(0), 1e-3);
+}
+
+TEST_F(SolutionInterfaceTest, cpu_problem_solves_qp_locally)
+{
+  // min x^2 + 2 y^2 + x  s.t.  x + y >= 2,  0 <= x, y <= 5  (optimum 47 / 12 at x = 7/6, y = 5/6)
+  const double obj[]     = {1.0, 0.0};
+  const double lb[]      = {0.0, 0.0};
+  const double ub[]      = {5.0, 5.0};
+  const double rhs[]     = {2.0};
+  const double val[]     = {1.0, 1.0};
+  const int ind[]        = {0, 1};
+  const int off[]        = {0, 2};
+  const char row_types[] = {'G'};
+  const double q_val[]   = {1.0, 2.0};
+  const int q_ind[]      = {0, 1};
+  const int q_off[]      = {0, 1, 2};
+
+  auto problem = std::make_unique<cpu_optimization_problem_t<int, double>>();
+  problem->set_objective_coefficients(obj, 2);
+  problem->set_variable_lower_bounds(lb, 2);
+  problem->set_variable_upper_bounds(ub, 2);
+  problem->set_csr_constraint_matrix(val, 2, ind, 2, off, 2);
+  problem->set_row_types(row_types, 1);
+  problem->set_constraint_bounds(rhs, 1);
+  problem->set_quadratic_objective_matrix(q_val, 2, q_ind, 2, q_off, 3);
+
+  solver_settings_t<int, double> settings;
+  auto solution = solve_lp<int, double>(problem.get(), settings);
+
+  ASSERT_NE(solution, nullptr);
+  EXPECT_EQ(solution->get_termination_status_int(),
+            static_cast<int>(pdlp_termination_status_t::Optimal));
+  EXPECT_NEAR(solution->get_objective_value(0), 47.0 / 12.0, 1e-4);
+}
+
+namespace {
+class counting_get_solution_callback_t : public cuopt::internals::get_solution_callback_t {
+ public:
+  explicit counting_get_solution_callback_t(int n_variables) : n_variables_(n_variables) {}
+  void get_solution(void* data, void* cost, void* solution_bound, void* user_data) override
+  {
+    n_calls++;
+    if (user_data != expected_user_data) { bad_user_data = true; }
+    const auto* assignment = static_cast<const double*>(data);
+    last_assignment.assign(assignment, assignment + n_variables_);
+    last_cost = *static_cast<const double*>(cost);
+  }
+  int n_calls              = 0;
+  bool bad_user_data       = false;
+  void* expected_user_data = nullptr;
+  std::vector<double> last_assignment;
+  double last_cost = 0.0;
+
+ private:
+  int n_variables_;
+};
+}  // namespace
+
+TEST_F(SolutionInterfaceTest, cpu_problem_mip_reports_incumbents_to_callback)
+{
+  // 0/1 knapsack large enough that presolve cannot close it
+  constexpr int n = 40;
+  std::vector<double> value(n), weight(n), lb(n, 0.0), ub(n, 1.0);
+  std::vector<var_t> types(n, var_t::INTEGER);
+  std::vector<int> ind(n), off = {0, n};
+  for (int i = 0; i < n; ++i) {
+    value[i]  = 11 + (i * 17) % 31;
+    weight[i] = 7 + (i * 13) % 29;
+    ind[i]    = i;
+  }
+  const double rhs[]     = {n * 9.0};
+  const char row_types[] = {'L'};
+
+  auto problem = std::make_unique<cpu_optimization_problem_t<int, double>>();
+  problem->set_objective_coefficients(value.data(), n);
+  problem->set_maximize(true);
+  problem->set_variable_lower_bounds(lb.data(), n);
+  problem->set_variable_upper_bounds(ub.data(), n);
+  problem->set_variable_types(types.data(), n);
+  problem->set_csr_constraint_matrix(weight.data(), n, ind.data(), n, off.data(), 2);
+  problem->set_row_types(row_types, 1);
+  problem->set_constraint_bounds(rhs, 1);
+
+  int user_data = 42;
+  counting_get_solution_callback_t callback(n);
+  callback.expected_user_data = &user_data;
+  solver_settings_t<int, double> settings;
+  settings.set_mip_callback(&callback, &user_data);
+  auto solution = solve_mip<int, double>(problem.get(), settings);
+
+  ASSERT_NE(solution, nullptr);
+  EXPECT_GE(callback.n_calls, 1);
+  EXPECT_FALSE(callback.bad_user_data);
+  ASSERT_EQ(callback.last_assignment.size(), static_cast<size_t>(n));
+  // optimum of this instance (checked with a knapsack dynamic program)
+  EXPECT_NEAR(solution->get_objective_value(), 738.0, 1e-6);
+  EXPECT_NEAR(callback.last_cost, 738.0, 1e-6);
+}
+
+TEST_F(SolutionInterfaceTest, cpu_problem_solves_quadratic_constraint_locally)
+{
+  // min -x - 2 y  s.t.  x + y >= 1,  x^2 + y^2 <= 4,  0 <= x, y <= 5  (optimum -2 sqrt(5))
+  const double obj[]     = {-1.0, -2.0};
+  const double lb[]      = {0.0, 0.0};
+  const double ub[]      = {5.0, 5.0};
+  const double rhs[]     = {1.0};
+  const double val[]     = {1.0, 1.0};
+  const int ind[]        = {0, 1};
+  const int off[]        = {0, 2};
+  const char row_types[] = {'G'};
+  const int qc_rows[]    = {0, 1};
+  const int qc_cols[]    = {0, 1};
+  const double qc_val[]  = {1.0, 1.0};
+
+  auto problem = std::make_unique<cpu_optimization_problem_t<int, double>>();
+  problem->set_objective_coefficients(obj, 2);
+  problem->set_variable_lower_bounds(lb, 2);
+  problem->set_variable_upper_bounds(ub, 2);
+  problem->set_csr_constraint_matrix(val, 2, ind, 2, off, 2);
+  problem->set_row_types(row_types, 1);
+  problem->set_constraint_bounds(rhs, 1);
+  problem->add_quadratic_constraint('L', 4.0, qc_rows, qc_cols, qc_val, {}, {});
+
+  solver_settings_t<int, double> settings;
+  auto solution = solve_lp<int, double>(problem.get(), settings);
+
+  ASSERT_NE(solution, nullptr);
+  EXPECT_EQ(solution->get_termination_status_int(),
+            static_cast<int>(pdlp_termination_status_t::Optimal));
+  EXPECT_NEAR(solution->get_objective_value(0), -2.0 * std::sqrt(5.0), 1e-3);
+}
+
+TEST_F(SolutionInterfaceTest, cpu_problem_solves_mip_locally)
+{
+  // max x0 + x1  s.t.  2 x0 + 3 x1 <= 7,  x integer in [0, 10]  (LP relaxation is 3.5)
+  const double obj[]     = {1.0, 1.0};
+  const double lb[]      = {0.0, 0.0};
+  const double ub[]      = {10.0, 10.0};
+  const double rhs[]     = {7.0};
+  const double val[]     = {2.0, 3.0};
+  const int ind[]        = {0, 1};
+  const int off[]        = {0, 2};
+  const var_t types[]    = {var_t::INTEGER, var_t::INTEGER};
+  const char row_types[] = {'L'};
+
+  auto problem = std::make_unique<cpu_optimization_problem_t<int, double>>();
+  problem->set_objective_coefficients(obj, 2);
+  problem->set_maximize(true);
+  problem->set_variable_lower_bounds(lb, 2);
+  problem->set_variable_upper_bounds(ub, 2);
+  problem->set_variable_types(types, 2);
+  problem->set_csr_constraint_matrix(val, 2, ind, 2, off, 2);
+  problem->set_row_types(row_types, 1);
+  problem->set_constraint_bounds(rhs, 1);
+
+  solver_settings_t<int, double> settings;
+  auto solution = solve_mip<int, double>(problem.get(), settings);
+
+  ASSERT_NE(solution, nullptr);
+  EXPECT_TRUE(solution->is_mip());
+  EXPECT_NEAR(solution->get_objective_value(), 3.0, 1e-6);
 }
 
 // This test legitimately uses the MPS parser since it tests that pipeline

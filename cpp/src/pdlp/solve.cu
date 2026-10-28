@@ -23,9 +23,9 @@
 
 #include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
+#include <presolve/third_party_presolve.hpp>
+#include <presolve/trivial_presolve.cuh>
 
 #include <barrier/barrier_transform.hpp>
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
@@ -3099,10 +3099,26 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   auto& lp_settings = settings.get_pdlp_settings();
   auto* cpu_prob    = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
   if (cpu_prob != nullptr) {
-    cuopt_expects(is_remote_execution_enabled(),
+    int device_count = 0;
+    cuopt_expects(cudaGetDeviceCount(&device_count) == cudaSuccess && device_count > 0,
                   error_type_t::ValidationError,
-                  "A CPU-memory problem requires remote execution. Set CUOPT_REMOTE_HOST and "
-                  "CUOPT_REMOTE_PORT to solve on a remote GPU server.");
+                  "A CPU-memory problem needs a CUDA device to solve locally. Set "
+                  "CUOPT_REMOTE_HOST and CUOPT_REMOTE_PORT to solve on a remote GPU server.");
+    if (!is_batch_mode && lp_settings.method == method_t::PDLP &&
+        (lp_settings.num_gpus == -1 || lp_settings.num_gpus > 1)) {
+      // Take the same multi-GPU route as a GPU problem and return the solution in CPU memory.
+      rmm::cuda_stream stream;
+      raft::handle_t handle(stream);
+      auto gpu_problem = to_optimization_problem(*cpu_prob, &handle);
+      stream.synchronize();
+      cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> mps =
+        op_problem_to_mps_data_model(*gpu_problem);
+      auto gpu_solution =
+        solve_lp(&handle, mps, lp_settings, problem_checking, use_pdlp_solver_mode);
+      stream.synchronize();
+      gpu_lp_solution_t<i_t, f_t> gpu_sol_interface(std::move(gpu_solution));
+      return gpu_sol_interface.to_cpu_solution();
+    }
     return solve_lp(*cpu_prob, lp_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   }
 
@@ -3205,7 +3221,7 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-// third_party_presolve_t<int, float> (in mip_heuristics/presolve/) is built
+// third_party_presolve_t<int, float> (in presolve/) is built
 // whenever PDLP_INSTANTIATE_FLOAT is on and depends on the float overloads of
 // mps_data_model_to_optimization_problem and op_problem_to_mps_data_model.
 // Make sure both symbols exist in PDLP-only float builds where
