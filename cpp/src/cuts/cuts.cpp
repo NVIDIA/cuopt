@@ -10,7 +10,7 @@
 
 #include <dual_simplex/basis_solves.hpp>
 #include <math_optimization/tic_toc.hpp>
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
+#include <presolve/conflict_graph/clique_table.cuh>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 
