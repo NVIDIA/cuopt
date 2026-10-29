@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdint>
 #include <string>
 
 namespace cuopt::mathematical_optimization::test {
@@ -217,6 +218,83 @@ INSTANTIATE_TEST_SUITE_P(
   ::testing::Values(
     distributed_pdlp_test_param_t{"afiro", "linear_programming/afiro_original.mps", true},
     distributed_pdlp_test_param_t{"good_max", "linear_programming/good-max.mps", true},
+    distributed_pdlp_test_param_t{"graph40_40", "linear_programming/graph40-40/graph40-40.mps"},
+    distributed_pdlp_test_param_t{"ex10", "linear_programming/ex10/ex10.mps"}),
+  [](const ::testing::TestParamInfo<distributed_pdlp_test_param_t>& info) {
+    return info.param.name;
+  });
+
+// -----------------------------------------------------------------------------
+// 64-bit model index parity: parse the same instance into mps_data_model_t<int, double>
+// and mps_data_model_t<int64_t, double>, run both through multi-GPU PDLP, and assert
+// identical termination and matching objectives. The 64-bit path exists so that
+// problems with nnz > INT_MAX can still be partitioned and solved; this test exercises
+// the plumbing on small instances that both widths can represent.
+static void expect_distributed_int64_matches_int32(raft::handle_t const& handle,
+                                                   std::string const& mps_rel_path,
+                                                   bool fixed_mps_format = false)
+{
+  constexpr double loose_rel = 1e-3;
+  auto approx_equal          = [](double a, double b, double rel) {
+    const double scale = std::max(std::fabs(a), std::fabs(b));
+    return std::fabs(a - b) <= rel * (1.0 + scale);
+  };
+
+  auto path = make_path_absolute(mps_rel_path);
+  // Parse twice: once with the usual 32-bit model, once with the 64-bit model that only
+  // multi-GPU PDLP can consume. Same file, same contents, just a wider offset/index type.
+  auto problem_i32 = io::read_mps<int, double>(path, fixed_mps_format);
+  auto problem_i64 = io::read_mps<int64_t, double>(path, fixed_mps_format);
+
+  pdlp_solver_settings_t<int, double> dist_settings{};
+  dist_settings.method   = method_t::PDLP;
+  dist_settings.num_gpus = -1;  // use every visible GPU
+  // Presolve is not supported for mPDLP64
+  dist_settings.presolver = presolver_t::None;
+
+  auto sol_i32 = solve_lp(&handle, problem_i32, dist_settings);
+  auto sol_i64 = solve_lp(&handle, problem_i64, dist_settings);
+
+  ASSERT_EQ(static_cast<int>(sol_i32.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
+    << mps_rel_path << ": int32 model did not reach optimal";
+  ASSERT_EQ(static_cast<int>(sol_i64.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
+    << mps_rel_path << ": int64 model did not reach optimal";
+
+  const auto& info_i32 = sol_i32.get_additional_termination_information();
+  const auto& info_i64 = sol_i64.get_additional_termination_information();
+
+  EXPECT_TRUE(approx_equal(info_i32.primal_objective, info_i64.primal_objective, loose_rel))
+    << mps_rel_path << ": primal objective int32=" << info_i32.primal_objective
+    << " int64=" << info_i64.primal_objective;
+  EXPECT_TRUE(approx_equal(info_i32.dual_objective, info_i64.dual_objective, loose_rel))
+    << mps_rel_path << ": dual objective int32=" << info_i32.dual_objective
+    << " int64=" << info_i64.dual_objective;
+}
+
+// Reuses distributed_pdlp_test_param_t so new instances can be added by appending to
+// the INSTANTIATE_TEST_SUITE_P list below.
+class DistributedPdlpInt64ParityTest
+  : public ::testing::TestWithParam<distributed_pdlp_test_param_t> {
+ protected:
+  void SetUp() override
+  {
+    const int device_count = raft::device_setter::get_device_count();
+    if (device_count < 2) { GTEST_SKIP() << "Requires >=2 GPUs, found " << device_count; }
+  }
+  raft::handle_t handle{};
+};
+
+TEST_P(DistributedPdlpInt64ParityTest, matches_int32_model)
+{
+  const auto& param = GetParam();
+  expect_distributed_int64_matches_int32(handle, param.mps_path, param.fixed_mps_format);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+  distributed_pdlp_int64_index,
+  DistributedPdlpInt64ParityTest,
+  ::testing::Values(
+    distributed_pdlp_test_param_t{"afiro", "linear_programming/afiro_original.mps", true},
     distributed_pdlp_test_param_t{"graph40_40", "linear_programming/graph40-40/graph40-40.mps"},
     distributed_pdlp_test_param_t{"ex10", "linear_programming/ex10/ex10.mps"}),
   [](const ::testing::TestParamInfo<distributed_pdlp_test_param_t>& info) {

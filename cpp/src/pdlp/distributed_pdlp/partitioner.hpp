@@ -46,13 +46,13 @@ template <typename i_t, typename f_t>
 class partitioner_i {
  public:
   virtual ~partitioner_i()                                                             = default;
-  virtual std::vector<i_t> partition(partitioner_input_t<i_t, f_t> const& input) const = 0;
+  virtual std::vector<int> partition(partitioner_input_t<i_t, f_t> const& input) const = 0;
 };
 
 template <typename i_t, typename f_t>
 class round_robin_partitioner_t : public partitioner_i<i_t, f_t> {
  public:
-  std::vector<i_t> partition(partitioner_input_t<i_t, f_t> const& input) const override;
+  std::vector<int> partition(partitioner_input_t<i_t, f_t> const& input) const override;
 };
 
 // Multi-threaded k-way partitioner backed by KaMinPar. Builds a
@@ -61,7 +61,7 @@ class round_robin_partitioner_t : public partitioner_i<i_t, f_t> {
 template <typename i_t, typename f_t>
 class kaminpar_partitioner_t : public partitioner_i<i_t, f_t> {
  public:
-  std::vector<i_t> partition(partitioner_input_t<i_t, f_t> const& input) const override;
+  std::vector<int> partition(partitioner_input_t<i_t, f_t> const& input) const override;
 };
 
 void validate_partition(std::vector<int> const& parts,

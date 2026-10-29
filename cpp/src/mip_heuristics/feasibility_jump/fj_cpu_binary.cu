@@ -12,8 +12,8 @@
 #include "fj_cpu.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/probing_cache.cuh>
 #include <mip_heuristics/utils.hpp>
+#include <presolve/probing_cache.cuh>
 
 #include <raft/random/rng_device.cuh>
 
