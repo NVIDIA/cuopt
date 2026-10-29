@@ -80,8 +80,9 @@ class mip_node_t {
       objective_estimate(std::numeric_limits<f_t>::infinity()),
       packed_vstatus(0)
   {
-    children[0] = nullptr;
-    children[1] = nullptr;
+    children[0]  = nullptr;
+    children[1]  = nullptr;
+    num_children = 0;
   }
 
   mip_node_t(f_t root_lower_bound, const std::vector<simplex::variable_status_t>& basis)
@@ -96,8 +97,9 @@ class mip_node_t {
       objective_estimate(std::numeric_limits<f_t>::infinity()),
       packed_vstatus(compress_vstatus(basis))
   {
-    children[0] = nullptr;
-    children[1] = nullptr;
+    children[0]  = nullptr;
+    children[1]  = nullptr;
+    num_children = 0;
   }
 
   mip_node_t(const simplex::lp_problem_t<i_t, f_t>& problem,
@@ -126,6 +128,7 @@ class mip_node_t {
                                                                     : problem.upper[branch_var];
     children[0]      = nullptr;
     children[1]      = nullptr;
+    num_children     = 0;
   }
 
   void get_variable_bounds(std::vector<f_t>& lower,
@@ -177,54 +180,24 @@ class mip_node_t {
     children[1] = std::move(up_child);
     // When we add children we no longer need to store our basis
     packed_vstatus = {};
+    num_children   = 2;
   }
 
-  bool is_inactive() const
-  {
-    if (inactive_status(status)) { return true; }
-    if ((children[0] != nullptr && inactive_status(children[0]->status)) &&
-        (children[1] != nullptr && inactive_status(children[1]->status))) {
-      return true;
-    }
-    if (children[0] == nullptr && inactive_status(children[1]->status)) { return true; }
-    if (children[1] == nullptr && inactive_status(children[0]->status)) { return true; }
-    return false;
-  }
-
-  void update_bound()
-  {
-    if (children[0] != nullptr && children[1] != nullptr) {
-      if (inactive_status(children[0]->status) && inactive_status(children[1]->status)) {
-        lower_bound = std::min(children[0]->lower_bound, children[1]->lower_bound);
-      }
-    }
-    if (children[0] != nullptr && children[1] == nullptr) {
-      if (inactive_status(children[0]->status)) { lower_bound = children[0]->lower_bound; }
-    }
-    if (children[1] != nullptr && children[0] == nullptr) {
-      if (inactive_status(children[1]->status)) { lower_bound = children[1]->lower_bound; }
-    }
-  }
-
-  // outputs a stack containing inactive nodes in the tree that can be freed
-  void set_status(node_status_t node_status, std::vector<mip_node_t*>& stack)
+  void set_status(node_status_t node_status)
   {
     status = node_status;
-    if (inactive_status(status)) {
-      update_bound();
-      stack.push_back(this);
-      // Propagate to parent
-      mip_node_t* parent_ptr = parent;
-      while (parent_ptr != nullptr) {
-        if (parent_ptr->is_inactive()) {
-          parent_ptr->status = node_status_t::FATHOMED;
-          parent_ptr->update_bound();
-          stack.push_back(parent_ptr);
-        } else {
-          break;
-        }
-        parent_ptr = parent_ptr->parent;
-      }
+    if (!inactive_status(node_status)) { return; }
+
+    mip_node_t* parent_ptr = parent;
+    while (parent_ptr != nullptr) {
+      i_t old = parent_ptr->num_children.fetch_sub(1, std::memory_order::acq_rel);
+      if (old != 1) { return; }  // The sibling is still active.
+      parent_ptr->status = node_status_t::FATHOMED;
+      parent_ptr->lower_bound =
+        std::min(parent_ptr->children[0]->lower_bound, parent_ptr->children[1]->lower_bound);
+      parent_ptr->children[0].reset();
+      parent_ptr->children[1].reset();
+      parent_ptr = parent_ptr->parent;
     }
   }
 
@@ -302,8 +275,9 @@ class mip_node_t {
   f_t fractional_val;
   i_t integer_infeasible;
 
-  mip_node_t<i_t, f_t>* parent;
+  mip_node_t* parent;
   std::unique_ptr<mip_node_t> children[2];
+  omp_atomic_t<i_t> num_children;
 
   std::vector<uint8_t> packed_vstatus;
 
@@ -345,29 +319,11 @@ class mip_node_t {
 };
 
 template <typename i_t, typename f_t>
-void remove_fathomed_nodes(std::vector<mip_node_t<i_t, f_t>*>& stack)
-{
-  for (int i = 0; i < stack.size(); ++i) {
-    for (int child = 0; child < 2; ++child) {
-      if (stack[i]->children[child] != nullptr) { stack[i]->children[child].reset(); }
-    }
-  }
-}
-
-template <typename i_t, typename f_t>
 class search_tree_t {
  public:
   search_tree_t() : num_nodes(0) {}
 
   search_tree_t(mip_node_t<i_t, f_t>&& node) : root(std::move(node)), num_nodes(0) {}
-
-  void update(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
-  {
-    std::lock_guard<omp_mutex_t> lock(mutex);
-    std::vector<mip_node_t<i_t, f_t>*> stack;
-    node_ptr->set_status(status, stack);
-    remove_fathomed_nodes(stack);
-  }
 
   void branch(mip_node_t<i_t, f_t>* parent_node,
               const i_t branch_var,
@@ -377,7 +333,7 @@ class search_tree_t {
               const simplex::lp_problem_t<i_t, f_t>& original_lp,
               simplex::logger_t& log)
   {
-    i_t id = num_nodes.fetch_add(2);
+    i_t id = num_nodes.fetch_add(2, std::memory_order::relaxed);
 
     auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
                                                              parent_node,
@@ -443,7 +399,6 @@ class search_tree_t {
   }
 
   mip_node_t<i_t, f_t> root;
-  omp_mutex_t mutex;
   omp_atomic_t<i_t> num_nodes;
 
   static constexpr bool write_graphviz = false;

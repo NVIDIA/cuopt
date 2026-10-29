@@ -21,6 +21,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::io {
@@ -239,6 +240,33 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
   if (problem_.get_sense()) { mps_file << "OBJSENSE\n MAXIMIZE\n"; }
 
+  // Unnamed quadratic constraints get QC<q>, made unique against every other row name so the
+  // reader cannot mistake one for another row or the objective.
+  std::vector<std::string> quadratic_row_names(quadratic_constraints.size());
+  {
+    std::unordered_set<std::string> used_names;
+    used_names.insert(problem_.get_objective_name().empty() ? "OBJ"
+                                                            : problem_.get_objective_name());
+    for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
+      used_names.insert(k < problem_.get_row_names().size() ? problem_.get_row_names()[k]
+                                                            : "R" + std::to_string(k));
+    }
+    for (const auto& qc : quadratic_constraints) {
+      if (!qc.constraint_row_name.empty()) { used_names.insert(qc.constraint_row_name); }
+    }
+    for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
+      std::string name = quadratic_constraints[q].constraint_row_name;
+      if (name.empty()) {
+        name = "QC" + std::to_string(q);
+        while (used_names.count(name) != 0) {
+          name += "_";
+        }
+        used_names.insert(name);
+      }
+      quadratic_row_names[q] = std::move(name);
+    }
+  }
+
   // ROWS section
   mps_file << "ROWS\n";
   mps_file << " N  "
@@ -252,10 +280,9 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     mps_file << " " << type << "  " << row_name << "\n";
   }
   for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
-    const auto& qc = quadratic_constraints[q];
-    std::string row_name =
-      qc.constraint_row_name.empty() ? "QC" + std::to_string(q) : qc.constraint_row_name;
-    char const type = qc.constraint_row_type;
+    const auto& qc              = quadratic_constraints[q];
+    const std::string& row_name = quadratic_row_names[q];
+    char const type             = qc.constraint_row_type;
     mps_file << " " << type << "  " << row_name << "\n";
   }
 
@@ -340,9 +367,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
                        : "R" + std::to_string(nnz.first);
         } else if (nnz.first < static_cast<size_t>(n_constraints) + quadratic_constraints.size()) {
           const size_t q = nnz.first - static_cast<size_t>(n_constraints);
-          row_name       = quadratic_constraints[q].constraint_row_name.empty()
-                             ? "QC" + std::to_string(q)
-                             : quadratic_constraints[q].constraint_row_name;
+          row_name       = quadratic_row_names[q];
         } else {
           row_name = "R" + std::to_string(nnz.first);
         }
@@ -372,10 +397,9 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     }
   }
   for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
-    const auto& qc = quadratic_constraints[q];
-    std::string row_name =
-      qc.constraint_row_name.empty() ? "QC" + std::to_string(q) : qc.constraint_row_name;
-    const f_t rhs = qc.rhs_value;
+    const auto& qc              = quadratic_constraints[q];
+    const std::string& row_name = quadratic_row_names[q];
+    const f_t rhs               = qc.rhs_value;
     if (std::isfinite(rhs) && rhs != 0.0) {
       mps_file << "    RHS1      " << row_name << " " << rhs << "\n";
     }
@@ -499,8 +523,9 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   // QCMATRIX sections for quadratic constraints (QCQP)
   if (problem_.has_quadratic_constraints()) {
     coo_canonicalization_scratch_t<i_t, f_t> qc_scratch;
+    size_t qc_index = 0;
     for (const auto& qc : problem_.get_quadratic_constraints()) {
-      mps_file << "QCMATRIX   " << qc.constraint_row_name << "\n";
+      mps_file << "QCMATRIX   " << quadratic_row_names[qc_index++] << "\n";
       typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t qc_canon = qc;
       canonicalize_coo_matrix(qc_canon.rows, qc_canon.cols, qc_canon.vals, qc_scratch);
       const i_t nnz = static_cast<i_t>(qc_canon.vals.size());
