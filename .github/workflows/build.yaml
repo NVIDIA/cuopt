@@ -64,6 +64,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/build_cpp.sh
+      matrix_type: cuda-13-4-nightly
   java-static-build-matrix:
     permissions:
       contents: read
@@ -204,6 +205,7 @@ jobs:
       script: ci/build_python.sh
       # Build a conda package for each CUDA x ARCH x minimum supported Python version
       matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
+      matrix_type: cuda-13-4-nightly
   upload-conda:
     needs: [cpp-build, python-build]
     permissions:
@@ -242,6 +244,7 @@ jobs:
       package-name: libcuopt
       package-type: cpp
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+      matrix_type: cuda-13-4-nightly
   wheel-publish-libcuopt:
     # Gated on the whole libcuopt/cuopt family building.
     needs: [wheel-build-cuopt]
@@ -286,6 +289,7 @@ jobs:
       append-cuda-suffix: false
       # One build per arch: the client has no CUDA dimension.
       matrix_filter: group_by(.ARCH) | map(max_by([(.CUDA_VER|split(".")|map(tonumber)), (.PY_VER|split(".")|map(tonumber))]))
+      matrix_type: cuda-13-4-nightly
   wheel-publish-libcuopt-client:
     # Gated on the whole libcuopt/cuopt family building.
     needs: [wheel-build-cuopt]
@@ -328,6 +332,7 @@ jobs:
       package-name: libcuopt_mathopt
       package-type: cpp
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+      matrix_type: cuda-13-4-nightly
   wheel-publish-libcuopt-mathopt:
     # Gated on the whole libcuopt/cuopt family building.
     needs: [wheel-build-cuopt]
@@ -370,6 +375,7 @@ jobs:
       package-name: libcuopt_routing
       package-type: cpp
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+      matrix_type: cuda-13-4-nightly
   wheel-publish-libcuopt-routing:
     # Gated on the whole libcuopt/cuopt family building.
     needs: [wheel-build-cuopt]
@@ -417,6 +423,7 @@ jobs:
       package-type: python
       # Build a wheel for each CUDA x ARCH x minimum supported Python version
       matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
+      matrix_type: cuda-13-4-nightly
   wheel-publish-cuopt:
     # Gated on the whole libcuopt/cuopt family building.
     needs: [wheel-build-cuopt]
@@ -460,6 +467,7 @@ jobs:
       pure-wheel: true
       # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
       matrix_filter: map(select(.ARCH == "amd64")) | group_by(.CUDA_VER|split(".")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(".")|map(tonumber)), (.CUDA_VER|split(".")|map(tonumber))]))
+      matrix_type: cuda-13-4-nightly
   wheel-publish-cuopt-server:
     needs: wheel-build-cuopt-server
     permissions:
@@ -487,6 +495,7 @@ jobs:
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       matrix_name: docs-build
+      matrix_type: cuda-13-4-nightly
   docs-build:
     needs: [docs-build-matrix, python-build]
     permissions:
@@ -534,6 +543,7 @@ jobs:
       pure-wheel: true
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
       matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
+      matrix_type: cuda-13-4-nightly
   wheel-publish-cuopt-sh-client:
     needs: wheel-build-cuopt-sh-client
     permissions:

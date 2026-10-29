@@ -31,7 +31,7 @@
 # to nvstaging/nvaie/cuopt (docker login nvcr.io).
 #
 # Env overrides:
-#   CUDA_VERS    space-separated list of full CUDA versions (default: "12.9.0 13.3.0")
+#   CUDA_VERS    space-separated list of full CUDA versions (default: "12.9.0 13.4.3")
 #   RELEASE_TAG  override the derived release tag (default: derived from VERSION)
 #   NIGHTLY_TAG  override the derived source nightly tag (default: "${RELEASE_TAG}a")
 #   PUSH_LATEST  set to "true" to also push "latest" manifests (default: "false")
@@ -52,7 +52,7 @@ BASE_VER=$(sed -E 's/\.0+([0-9])/\.\1/g' VERSION | tr -d '[:space:]')
 
 RELEASE_TAG="${RELEASE_TAG:-${BASE_VER}}"
 NIGHTLY_TAG="${NIGHTLY_TAG:-${RELEASE_TAG}a}"
-CUDA_VERS="${CUDA_VERS:-12.9.0 13.3.0}"
+CUDA_VERS="${CUDA_VERS:-12.9.0 13.4.3}"
 DRY_RUN="${DRY_RUN:-false}"
 PUSH_LATEST="${PUSH_LATEST:-false}"
 
