@@ -63,13 +63,14 @@ public final class Problem implements AutoCloseable {
   }
 
   public Constraint addConstraint(Constraint constraint, String name) {
-      if (!addedConstraints.add(constraint)) {
+      if (addedConstraints.contains(constraint)) {
       throw new IllegalArgumentException("Constraint has already been added to this problem");
     }
     requireOwnedVariables(constraint);
     constraint.setConstraintName(name);
     constraint.setIndex(constraints.size());
     constraints.add(constraint);
+    addedConstraints.add(constraint);
     resetSolvedValues();
     return constraint;
   }
