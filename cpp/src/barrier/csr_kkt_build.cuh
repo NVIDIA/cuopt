@@ -750,15 +750,21 @@ i_t build_augmented_csr_on_device(i_t n,
 // the true unperturbed KKT operator -- so this is applied to the already-factorized buffer,
 // after chol->factorize() and before any CSR-based SpMV against it. Not idempotent: must run
 // exactly once per refresh of device_augmented.x.
+
+// Direct-free linear columns also need to remove their free-diagonal regularization stored in diag.
 template <std::integral i_t, std::floating_point f_t>
 __global__ void strip_primal_block_diag_kernel(raft::device_span<f_t> augmented_x,
                                                raft::device_span<const i_t> diag_indices,
+                                               raft::device_span<const f_t> diag,
+                                               raft::device_span<const i_t> is_direct_free_linear,
                                                f_t dual_perturb,
-                                               i_t n)
+                                               i_t n,
+                                               i_t linear_n)
 {
   const i_t row = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (row >= n) { return; }
-  augmented_x[diag_indices[row]] += dual_perturb;
+  const f_t free_diag = (row < linear_n && is_direct_free_linear[row]) ? diag[row] : f_t(0);
+  augmented_x[diag_indices[row]] += dual_perturb + free_diag;
 }
 
 template <std::integral i_t, std::floating_point f_t>
@@ -790,9 +796,12 @@ template <std::integral i_t, std::floating_point f_t>
 void strip_augmented_perturbation(i_t n,
                                   i_t m,
                                   i_t p,
+                                  i_t linear_n,
                                   f_t dual_perturb,
                                   f_t primal_perturb,
                                   rmm::device_uvector<i_t>& augmented_diagonal_indices,
+                                  const rmm::device_uvector<f_t>& diag,
+                                  const rmm::device_uvector<i_t>& is_direct_free_linear,
                                   cone_kkt_data_t<i_t, f_t>& cone_data,
                                   device_csr_matrix_t<i_t, f_t>& device_augmented,
                                   cuda::stream_ref stream)
@@ -803,8 +812,11 @@ void strip_augmented_perturbation(i_t n,
     strip_primal_block_diag_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.get()>>>(
       cuopt::make_span(device_augmented.x),
       cuopt::make_span(augmented_diagonal_indices),
+      cuopt::make_span(diag),
+      cuopt::make_span(is_direct_free_linear),
       dual_perturb,
-      n);
+      n,
+      linear_n);
     RAFT_CUDA_TRY(cudaPeekAtLastError());
   }
   if (m > 0) {
@@ -820,11 +832,10 @@ void strip_augmented_perturbation(i_t n,
   }
   if (p > 0) {
     const size_t grid = raft::ceildiv<size_t>(static_cast<size_t>(p), augmented_csr_block_size);
-    strip_sparse_expansion_D_kernel<i_t, f_t>
-      <<<grid, augmented_csr_block_size, 0, stream.get()>>>(
-        cuopt::make_span(device_augmented.x),
-        cuopt::make_span(cone_data.sparse_expansion_D),
-        dual_perturb);
+    strip_sparse_expansion_D_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.get()>>>(
+      cuopt::make_span(device_augmented.x),
+      cuopt::make_span(cone_data.sparse_expansion_D),
+      dual_perturb);
     RAFT_CUDA_TRY(cudaPeekAtLastError());
   }
 }

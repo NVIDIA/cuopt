@@ -2301,9 +2301,12 @@ class iteration_data_t {
       A.n,
       A.m,
       augmented_expansion_count(),
+      has_cones() ? cone_start() : A.n,
       dual_perturb,
       primal_perturb,
       d_augmented_diagonal_indices_,
+      d_diag_,
+      d_is_direct_free_linear_,
       cone_kkt_data_,
       device_augmented,
       stream_view_);
