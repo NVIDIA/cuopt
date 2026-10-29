@@ -12,6 +12,7 @@
 
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/export.hpp>
+#include <cuopt/mathematical_optimization/mip/branch_and_bound_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
@@ -209,9 +210,10 @@ class mip_solver_settings_t {
   // TODO check with Akif and Alice
   pdlp::pdlp_hyper_params_t hyper_params;
 
-  mip_heuristics_hyper_params_t<i_t, f_t> heuristic_params;
-  mip_diving_hyper_params_t<i_t, f_t> diving_params;
-  mip_submip_hyper_params_t<i_t, f_t> submip_params;
+  mip::heuristics_hyper_params_t<i_t, f_t> heuristic_params;
+  mip::diving_hyper_params_t<i_t, f_t> diving_params;
+  mip::submip_hyper_params_t<i_t, f_t> submip_params;
+  mip::branch_and_bound_hyper_params_t<i_t, f_t> branch_and_bound_params;
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;

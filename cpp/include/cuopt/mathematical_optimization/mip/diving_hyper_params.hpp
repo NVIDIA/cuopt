@@ -8,13 +8,13 @@
 #pragma once
 #include <cstdint>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt::mathematical_optimization::mip {
 
 /**
  * @brief Tuning knobs for the diving heuristics for the MIP solver.
  */
 template <typename i_t, typename f_t>
-struct mip_diving_hyper_params_t {
+struct diving_hyper_params_t {
   // -1 automatic, 0 disabled, 1 enabled
   i_t line_search_diving   = -1;
   i_t pseudocost_diving    = -1;
@@ -52,4 +52,4 @@ struct mip_diving_hyper_params_t {
   bool show_type = false;
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace cuopt::mathematical_optimization::mip

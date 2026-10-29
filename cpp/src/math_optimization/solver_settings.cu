@@ -164,6 +164,11 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP, &mip_settings.submip_params.target_mip_gap, f_t(0.0), f_t(1.0), f_t(0.01), "MIP gap target for the sub-MIP"},
     {CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO, &mip_settings.submip_params.iteration_limit_ratio, f_t(0.0), f_t(1.0), f_t(0.8), "sub-MIP simplex-iteration limit as a factor of parent B&B iterations"},
     {CUOPT_MIP_HYPER_SUBMIP_ROUND_CLOSE_RATIO, &mip_settings.submip_params.round_close_ratio, f_t(0.0), f_t(1.0), f_t(0.8), "share of the still-unfixed integers left for later neighbourhood rounds (0 reaches the target fix rate in a single round)"},
+    // Branch-and-bound hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_BNB_BFS_WORKERS_RATIO, &mip_settings.branch_and_bound_params.bfs_workers_ratio, f_t(0.0), f_t(1.0), f_t(0.5), "best-first search workers as a fraction of the B&B threads (at least 1)"},
+    {CUOPT_MIP_HYPER_BNB_DIVING_WORKERS_RATIO, &mip_settings.branch_and_bound_params.diving_workers_ratio, f_t(0.0), f_t(1.0), f_t(0.5), "diving workers as a fraction of the B&B threads (at least 1)"},
+    {CUOPT_MIP_HYPER_BNB_SUBMIP_WORKERS_RATIO, &mip_settings.branch_and_bound_params.submip_workers_ratio, f_t(0.0), f_t(1.0), f_t(0.125), "sub-MIP workers as a fraction of the B&B threads (at least 1)"},
+    {CUOPT_MIP_HYPER_BNB_STEAL_CHANCE, &mip_settings.branch_and_bound_params.steal_chance, f_t(0.0), f_t(1.0), f_t(0.05), "probability that a best-first worker steals nodes from another worker"},
    };
 
   // Int parameters
@@ -241,6 +246,10 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_OFFSET, &mip_settings.submip_params.node_limit_offset, 0, std::numeric_limits<i_t>::max(), 200, "base node limit for the sub-MIP"},
     {CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_OFFSET, &mip_settings.submip_params.iteration_limit_offset, 0, std::numeric_limits<i_t>::max(), 10000, "base sub-MIP simplex-iteration limit for root heuristics"},
     {CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL, &mip_settings.submip_params.max_level, 0, std::numeric_limits<i_t>::max(), 10, "maximum sub-MIP recursion level"},
+    // Branch-and-bound hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_BNB_NODES_PER_STEAL, &mip_settings.branch_and_bound_params.nodes_per_steal, 1, std::numeric_limits<i_t>::max(), 10, "nodes taken from the victim in each steal attempt"},
+    {CUOPT_MIP_HYPER_BNB_MAX_STEAL_ATTEMPTS, &mip_settings.branch_and_bound_params.max_steal_attempts, 0, std::numeric_limits<i_t>::max(), 3, "steal attempts before giving up"},
+    {CUOPT_MIP_HYPER_BNB_ROOT_HEURISTICS, &mip_settings.branch_and_bound_params.root_heuristics, -1, 1, -1, "root heuristics toggle: -1 automatic, 0 disabled, 1 enabled"},
     {CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES, &pdlp_settings.barrier_presolve_bound_free_variables, -1, 1, -1, "Bound free variables during barrier presolve: -1 automatic (default behavior), 0 disabled, 1 enabled"},
     {CUOPT_BARRIER_ADAPTIVE_REGULARIZATION, &pdlp_settings.barrier_adaptive_regularization, -1, 1, -1, "Adaptive regularization for barrier method: -1 automatic (default behavior), 0 disabled, 1 enabled"},
     // QCQP (barrier) scaling hyper-parameter

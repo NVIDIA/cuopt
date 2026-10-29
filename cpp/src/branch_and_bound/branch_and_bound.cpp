@@ -1868,7 +1868,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     }
 
     if (exploration_stats_.total_simplex_iters >
-        settings_.branch_and_bound_simplex_iteration_limit) {
+        settings_.branch_and_bound_settings.simplex_iteration_limit) {
       solver_status_ = mip_status_t::ITERATION_LIMIT;
       stack.push_front(node_ptr);
       --exploration_stats_.nodes_being_solved;
@@ -2011,10 +2011,9 @@ void branch_and_bound_t<i_t, f_t>::launch_bfs_worker(bfs_worker_t<i_t, f_t>* wor
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::work_stealing(bfs_worker_t<i_t, f_t>* worker)
 {
-  i_t nodes_to_steal = settings_.bnb_nodes_per_steal >= 0 ? settings_.bnb_nodes_per_steal
-                                                          : MIP_DEFAULT_NODES_PER_STEAL;
-  i_t max_attempts   = settings_.bnb_max_steal_attempts >= 0 ? settings_.bnb_max_steal_attempts
-                                                             : MIP_DEFAULT_MAX_STEAL_ATTEMPTS;
+  if (bfs_worker_pool_.size() < 2) { return; }
+  i_t nodes_to_steal = settings_.branch_and_bound_settings.nodes_per_steal;
+  i_t max_attempts   = settings_.branch_and_bound_settings.max_steal_attempts;
   for (i_t i = 0; i < max_attempts; ++i) {
     i_t victim_id                  = worker->rng.uniform(0, bfs_worker_pool_.size());
     bfs_worker_t<i_t, f_t>* victim = bfs_worker_pool_[victim_id];
@@ -2025,16 +2024,15 @@ void branch_and_bound_t<i_t, f_t>::work_stealing(bfs_worker_t<i_t, f_t>* worker)
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
-  f_t lower_bound = get_lower_bound();
-  f_t user_obj    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
-  f_t user_lower  = compute_user_objective(worker->leaf_problem, lower_bound);
-  f_t abs_gap     = compute_user_abs_gap(worker->leaf_problem, upper_bound_.load(), lower_bound);
-  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
-  f_t steal_chance =
-    settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : MIP_DEFAULT_STEAL_CHANCE;
+  f_t lower_bound  = get_lower_bound();
+  f_t user_obj     = compute_user_objective(worker->leaf_problem, upper_bound_.load());
+  f_t user_lower   = compute_user_objective(worker->leaf_problem, lower_bound);
+  f_t abs_gap      = compute_user_abs_gap(worker->leaf_problem, upper_bound_.load(), lower_bound);
+  f_t rel_gap      = user_relative_gap(user_obj, user_lower);
+  f_t steal_chance = settings_.branch_and_bound_settings.steal_chance;
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
 
-  mip_diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
+  diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
   if (diving_settings.guided_diving != 0 && !has_solver_space_incumbent()) {
     diving_settings.guided_diving = 0;
   }
@@ -2418,9 +2416,9 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   int64_t simplex_iter = exploration_stats_.total_simplex_iters;
   f_t iter_ratio       = settings_.submip_settings.iteration_limit_ratio;
 
-  submip_settings.branch_and_bound_simplex_iteration_limit =
+  submip_settings.branch_and_bound_settings.simplex_iteration_limit =
     iter_offset + simplex_iter * iter_ratio - simplex_iter_used;
-  if (submip_settings.branch_and_bound_simplex_iteration_limit <= 0) { return; }
+  if (submip_settings.branch_and_bound_settings.simplex_iteration_limit <= 0) { return; }
 
   submip_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
   if (submip_settings.time_limit <= 0) { return; }
@@ -2435,7 +2433,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     log_prefix,
     submip_settings.time_limit,
     submip_settings.node_limit,
-    submip_settings.branch_and_bound_simplex_iteration_limit,
+    submip_settings.branch_and_bound_settings.simplex_iteration_limit,
     exploration_stats_.total_simplex_iters.load(),
     submip_settings.relative_mip_gap_tol);
 
@@ -2626,7 +2624,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 
 template <typename i_t, typename f_t>
 f_t submip_get_max_fixrate(const submip_stats_t& stats,
-                           const mip_submip_hyper_params_t<i_t, f_t>& submip_settings,
+                           const submip_hyper_params_t<i_t, f_t>& submip_settings,
                            pcgenerator_t& rng)
 {
   // Adaptive fix rate based on previous successes and failures.
@@ -3260,6 +3258,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 {
   if (settings_.deterministic) return;
   if (settings_.num_threads < 2) return;
+  if (settings_.branch_and_bound_settings.root_heuristics == 0) return;
 
   // Using shared_ptr here, so the lifetime of the object is tied to the related task. This allows
   // the solver to send the stop signal and immediately continue the execution.
@@ -3386,7 +3385,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 
   constexpr bool use_diving = true;
   if (use_diving) {
-    mip_diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
+    diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
 
     if (diving_settings.guided_diving != 0 && !has_solver_space_incumbent()) {
       diving_settings.guided_diving = 0;
@@ -4149,7 +4148,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   // are fixed before launch.
   root_heuristics_t<i_t, f_t> root_heuristics(settings_.num_threads, settings_.random_seed);
   const f_t root_fj_time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
-  if (!settings_.deterministic && omp_in_parallel() && root_fj_time_limit > 0) {
+  if (!settings_.deterministic && omp_in_parallel() && root_fj_time_limit > 0 &&
+      settings_.branch_and_bound_settings.root_heuristics != 0) {
     std::vector<f_t> root_fj_incumbent;
     mutex_upper_.lock();
     if (incumbent_.has_incumbent && incumbent_.x.size() == (size_t)original_lp_.num_cols) {
@@ -4694,10 +4694,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (settings_.deterministic) {
       run_deterministic_coordinator(Arow_);
     } else {
+      branch_and_bound_hyper_params_t<i_t, f_t> params = settings_.branch_and_bound_settings;
+
       const i_t num_workers        = settings_.num_threads;
-      const i_t num_bfs_workers    = std::max(num_workers / 2, 1);
-      const i_t num_submip_workers = std::max(num_workers / 8, 1);
-      const i_t num_diving_workers = std::max(num_workers - num_bfs_workers, 1);
+      const i_t num_bfs_workers    = std::max(num_workers * params.bfs_workers_ratio, 1.0);
+      const i_t num_submip_workers = std::max(num_workers * params.submip_workers_ratio, 1.0);
+      const i_t num_diving_workers = std::max(num_workers * params.diving_workers_ratio, 1.0);
       bfs_worker_pool_.init(num_bfs_workers,
                             original_lp_,
                             Arow_,

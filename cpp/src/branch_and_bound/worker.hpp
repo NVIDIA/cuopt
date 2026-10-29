@@ -229,7 +229,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   // Calculate the number of diving workers that this worker can launch. And update the list
   // with all active diving heuristics.
-  void update_diving_heuristic_list(const mip_diving_hyper_params_t<i_t, f_t>& settings)
+  void update_diving_heuristic_list(const diving_hyper_params_t<i_t, f_t>& settings)
   {
     get_diving_heuristic_list(settings, diving_heuristics);
   }

@@ -19,7 +19,7 @@
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
-void get_diving_heuristic_list(const mip_diving_hyper_params_t<i_t, f_t>& settings,
+void get_diving_heuristic_list(const diving_hyper_params_t<i_t, f_t>& settings,
                                std::vector<search_strategy_t>& heuristic_list)
 {
   heuristic_list.clear();

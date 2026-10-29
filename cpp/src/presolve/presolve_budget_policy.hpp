@@ -98,7 +98,7 @@ struct presolve_budget_t {
 // badge accept an explicit override from the hyper-parameters; a negative setting asks for the
 // measured rule below, and any other value is passed through, where <=0 removes the cap.
 template <typename i_t, typename f_t>
-presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i_t, f_t>& hp,
+presolve_budget_t evaluate_presolve_budget(const heuristics_hyper_params_t<i_t, f_t>& hp,
                                            const presolve_features_t& feat)
 {
   presolve_budget_t b{};

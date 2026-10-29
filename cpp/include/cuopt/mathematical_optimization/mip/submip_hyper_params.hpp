@@ -7,11 +7,13 @@
 
 #pragma once
 
+namespace cuopt::mathematical_optimization::mip {
+
 /**
  * @brief Tuning knobs for the recursive sub-MIP.
  */
 template <typename i_t, typename f_t>
-struct mip_submip_hyper_params_t {
+struct submip_hyper_params_t {
   // Enable or disable (recursive) RINS/RENS: -1 automatic, 0 disabled, 1 enabled
   i_t rins     = -1;
   i_t rens     = -1;
@@ -58,3 +60,4 @@ struct mip_submip_hyper_params_t {
   // Run CPU FJ over the sub-MIP
   bool enable_cpufj = true;
 };
+}  // namespace cuopt::mathematical_optimization::mip

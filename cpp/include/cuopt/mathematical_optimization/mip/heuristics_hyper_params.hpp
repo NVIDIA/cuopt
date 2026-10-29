@@ -7,7 +7,7 @@
 
 #pragma once
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt::mathematical_optimization::mip {
 
 /**
  * @brief Tuning knobs for MIP GPU heuristics.
@@ -18,7 +18,7 @@ namespace cuopt::mathematical_optimization {
  * and can be loaded from a config file with load_parameters_from_file().
  */
 template <typename i_t, typename f_t>
-struct mip_heuristics_hyper_params_t {
+struct heuristics_hyper_params_t {
   i_t population_size   = 32;  // max solutions in pool
   i_t num_cpufj_threads = 8;   // parallel CPU FJ climbers
 
@@ -43,4 +43,4 @@ struct mip_heuristics_hyper_params_t {
   f_t related_vars_time_limit            = 2.0;     // time for related-variable structure build
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace cuopt::mathematical_optimization::mip

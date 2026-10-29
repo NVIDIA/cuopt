@@ -158,6 +158,15 @@
 #define CUOPT_MIP_HYPER_SUBMIP_ROUND_CLOSE_RATIO      "mip_hyper_submip_round_close_ratio"
 #define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ           "mip_hyper_submip_enable_cpufj"
 
+/* @brief Branch-and-bound hyper-parameters */
+#define CUOPT_MIP_HYPER_BNB_BFS_WORKERS_RATIO    "mip_hyper_bnb_bfs_workers_ratio"
+#define CUOPT_MIP_HYPER_BNB_DIVING_WORKERS_RATIO "mip_hyper_bnb_diving_workers_ratio"
+#define CUOPT_MIP_HYPER_BNB_SUBMIP_WORKERS_RATIO "mip_hyper_bnb_submip_workers_ratio"
+#define CUOPT_MIP_HYPER_BNB_STEAL_CHANCE         "mip_hyper_bnb_steal_chance"
+#define CUOPT_MIP_HYPER_BNB_NODES_PER_STEAL      "mip_hyper_bnb_nodes_per_steal"
+#define CUOPT_MIP_HYPER_BNB_MAX_STEAL_ATTEMPTS   "mip_hyper_bnb_max_steal_attempts"
+#define CUOPT_MIP_HYPER_BNB_ROOT_HEURISTICS      "mip_hyper_bnb_root_heuristics"
+
 /* @brief Block bounded-variable-elimination step of cuOpt's internal MIP presolve */
 #define CUOPT_MIP_HYPER_BLOCK_BVE "mip_hyper_block_bve"
 
