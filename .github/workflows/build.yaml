@@ -144,9 +144,8 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
-  # Release path only (vYY.MM.PP tags).
   java-maven-publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.build_type == 'nightly'
     needs: [java-static-gather]
     permissions:
       actions: read

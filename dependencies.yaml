@@ -560,10 +560,10 @@ dependencies:
           - &requests requests
       - output_types: [requirements, constraints, pyproject]
         packages:
-          - &msgpack msgpack==1.2.1
+          - &msgpack msgpack==1.2.3
       - output_types: conda
         packages:
-          - &msgpack_python msgpack-python==1.2.1
+          - &msgpack_python msgpack-python==1.2.3
 
   run_cuopt_server:
     common:

@@ -103,7 +103,8 @@ bool check_guess(const lp_problem_t<i_t, f_t>& original_lp,
                  const std::vector<f_t>& guess,
                  f_t& primal_error,
                  f_t& bound_error,
-                 i_t& num_fractional)
+                 i_t& num_fractional,
+                 f_t& integrality_error)
 {
   bool feasible = false;
   std::vector<f_t> residual(original_lp.num_rows);
@@ -111,8 +112,13 @@ bool check_guess(const lp_problem_t<i_t, f_t>& original_lp,
   matrix_vector_multiply(original_lp.A, 1.0, guess, -1.0, residual);
   primal_error           = vector_norm_inf<i_t, f_t>(residual);
   bound_error            = 0.0;
+  integrality_error      = 0.0;
   constexpr bool verbose = false;
   for (i_t j = 0; j < original_lp.num_cols; j++) {
+    if (var_types[j] == variable_type_t::INTEGER) {
+      integrality_error = std::max(integrality_error, std::abs(guess[j] - std::round(guess[j])));
+    }
+
     // l_j <= x_j  infeas means x_j < l_j or l_j - x_j > 0
     const f_t low_bound_err = std::max(0.0, original_lp.lower[j] - guess[j]);
     // x_j <= u_j infeas means u_j < x_j or x_j - u_j > 0
@@ -460,6 +466,64 @@ void branch_and_bound_t<i_t, f_t>::update_user_bound(const lp_problem_t<i_t, f_t
   user_bound_callback_(user_lower);
 }
 
+// If the objective is integral or must move in steps than
+// the lower bound will be different from the leaf objective.
+// We use the leaf objective for RINS (on_optimal_callback)
+// and if we are integer feasible (handle_integer_solution).
+// We use the lower bound to decide if we should fathom the
+// node or branch.
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::snap_to_lattice(const lp_problem_t<i_t, f_t>& lp,
+                                                   mip_node_t<i_t, f_t>* node_ptr,
+                                                   f_t leaf_obj)
+{
+  if (lp.objective_step.has_step()) {
+    f_t step = lp.objective_step.step_size;
+    f_t bias = lp.objective_step.bias;
+    // Round up to next value on the lattice: k * step + bias >= leaf_obj
+    f_t k                 = std::ceil((leaf_obj - bias) / step - settings_.integer_tol);
+    node_ptr->lower_bound = k * step + bias;
+  } else if (lp.objective_is_integral) {
+    node_ptr->lower_bound = std::ceil(leaf_obj - settings_.integer_tol);
+  }
+}
+
+template <typename i_t, typename f_t>
+f_t branch_and_bound_t<i_t, f_t>::compute_node_cutoff(const lp_problem_t<i_t, f_t>& lp,
+                                                      f_t upper_bound) const
+{
+  if (lp.objective_step.has_step()) {
+    f_t step = lp.objective_step.step_size;
+    f_t bias = lp.objective_step.bias;
+    f_t k    = std::ceil((upper_bound - bias) / step - settings_.integer_tol);
+    return (k - 1) * step + bias + settings_.dual_tol;
+  } else if (lp.objective_is_integral) {
+    return std::ceil(upper_bound - settings_.integer_tol) - 1 + settings_.dual_tol;
+  }
+  return upper_bound + settings_.dual_tol;
+}
+
+template <typename i_t, typename f_t>
+bool branch_and_bound_t<i_t, f_t>::accept_new_incumbent(f_t obj)
+{
+  if (!incumbent_.has_incumbent) return true;
+
+  f_t threshold = incumbent_.objective - settings_.primal_tol;
+  f_t step      = 0.0;
+  if (original_lp_.objective_step.has_step()) {
+    step = original_lp_.objective_step.step_size;
+  } else if (original_lp_.objective_is_integral) {
+    step = 1.0;
+  }
+  if (step > 0.0) {
+    // Half a step above the greatest lattice value strictly below the incumbent.
+    const f_t lattice_below =
+      compute_node_cutoff(original_lp_, incumbent_.objective) - settings_.dual_tol;
+    threshold = std::min(threshold, lattice_below + 0.5 * step);
+  }
+  return obj < threshold;
+}
+
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vector<f_t>& solution,
                                                                 heuristics_origin_t origin)
@@ -483,9 +547,10 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
                              feasible_solution_symbol(origin),
                              compute_user_objective(original_lp_, obj));
 
-  if (!incumbent_.has_incumbent || obj < incumbent_.objective) {
+  if (accept_new_incumbent(obj)) {
     f_t primal_err;
     f_t bound_err;
+    f_t integral_err;
     i_t num_fractional;
     mutex_original_lp_.lock();
     if (crushed_solution.size() != original_lp_.num_cols) {
@@ -494,19 +559,27 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
       crush_primal_solution<i_t, f_t>(
         original_problem_, original_lp_, solution, new_slacks_, crushed_solution);
     }
-    is_feasible = check_guess(
-      original_lp_, settings_, var_types_, crushed_solution, primal_err, bound_err, num_fractional);
+    is_feasible = check_guess(original_lp_,
+                              settings_,
+                              var_types_,
+                              crushed_solution,
+                              primal_err,
+                              bound_err,
+                              num_fractional,
+                              integral_err);
     mutex_original_lp_.unlock();
-    mutex_upper_.lock();
-    if (is_feasible && (!incumbent_.has_incumbent || obj < incumbent_.objective)) {
-      f_t current_upper_bound = upper_bound_.load();
-      upper_bound_            = std::min(current_upper_bound, obj);
-      incumbent_.set_incumbent_solution(obj, crushed_solution);
-      if (current_upper_bound > upper_bound_.load()) {
-        report_heuristic(obj, origin);
-        success = true;
-      }
 
+    if (is_feasible) {
+      std::lock_guard lock(mutex_upper_);
+      if (accept_new_incumbent(obj)) {
+        f_t current_upper_bound = upper_bound_.load();
+        upper_bound_            = std::min(current_upper_bound, obj);
+        incumbent_.set_incumbent_solution(obj, crushed_solution);
+        if (current_upper_bound > upper_bound_.load()) {
+          report_heuristic(obj, origin);
+          success = true;
+        }
+      }
     } else {
       attempt_repair         = true;
       constexpr bool verbose = false;
@@ -519,7 +592,6 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
           num_fractional);
       }
     }
-    mutex_upper_.unlock();
   } else {
     settings_.log.debug("Solution objective not better than current upper_bound_. Not accepted.\n");
   }
@@ -569,8 +641,15 @@ void branch_and_bound_t<i_t, f_t>::queue_external_solution_deterministic(
   f_t primal_err;
   f_t bound_err;
   i_t num_fractional;
-  bool is_feasible = check_guess(
-    original_lp_, settings_, var_types_, crushed_solution, primal_err, bound_err, num_fractional);
+  f_t integral_err;
+  bool is_feasible = check_guess(original_lp_,
+                                 settings_,
+                                 var_types_,
+                                 crushed_solution,
+                                 primal_err,
+                                 bound_err,
+                                 num_fractional,
+                                 integral_err);
   mutex_original_lp_.unlock();
 
   if (!is_feasible) {
@@ -697,13 +776,15 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
     f_t primal_error;
     f_t bound_error;
     i_t num_fractional;
+    f_t integral_err;
     feasible               = check_guess(original_lp_,
                            settings_,
                            var_types_,
                            lp_solution.x,
                            primal_error,
                            bound_error,
-                           num_fractional);
+                           num_fractional,
+                           integral_err);
     repaired_obj           = compute_objective(original_lp_, repaired_solution);
     constexpr bool verbose = false;
     if (verbose) {
@@ -745,8 +826,7 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
         repair_solution(edge_norms_, crushed_solution, repaired_obj, repaired_solution);
       if (is_feasible) {
         mutex_upper_.lock();
-
-        if (!incumbent_.has_incumbent || repaired_obj < incumbent_.objective) {
+        if (accept_new_incumbent(repaired_obj)) {
           upper_bound_ = std::min(upper_bound_.load(), repaired_obj);
           incumbent_.set_incumbent_solution(repaired_obj, repaired_solution);
           report_heuristic(repaired_obj, heuristics_origin_t::HEURISTICS);
@@ -920,7 +1000,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
                       compute_user_objective(lp, leaf_objective));
 
   mutex_upper_.lock();
-  if (!incumbent_.has_incumbent || leaf_objective < incumbent_.objective) {
+  if (accept_new_incumbent(leaf_objective)) {
     incumbent_.set_incumbent_solution(leaf_objective, sol.empty() ? leaf_solution : sol);
     fetch_min(upper_bound_, leaf_objective);
 
@@ -1342,28 +1422,6 @@ struct deterministic_diving_policy_t
   }
 };
 
-// If the objective is integral or must move in steps than
-// the lower bound will be different from the leaf objective.
-// We use the leaf objective for RINS (on_optimal_callback)
-// and if we are integer feasible (handle_integer_solution).
-// We use the lower bound to decide if we should fathom the
-// node or branch.
-template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::snap_to_lattice(const lp_problem_t<i_t, f_t>& lp,
-                                                   mip_node_t<i_t, f_t>* node_ptr,
-                                                   f_t leaf_obj)
-{
-  if (lp.objective_step.has_step()) {
-    f_t step = lp.objective_step.step_size;
-    f_t bias = lp.objective_step.bias;
-    // Round up to next value on the lattice: k * step + bias >= leaf_obj
-    f_t k                 = std::ceil((leaf_obj - bias) / step - settings_.integer_tol);
-    node_ptr->lower_bound = k * step + bias;
-  } else if (lp.objective_is_integral) {
-    node_ptr->lower_bound = std::ceil(leaf_obj - settings_.integer_tol);
-  }
-}
-
 template <typename i_t, typename f_t>
 template <typename WorkerT, typename Policy>
 std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::update_tree_impl(
@@ -1581,21 +1639,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     lp_settings.concurrent_halt = &node_concurrent_halt_;
   }
   lp_settings.set_log(false);
-  f_t cutoff = upper_bound_.load();
-  if (worker->leaf_problem.objective_step.has_step()) {
-    f_t step = worker->leaf_problem.objective_step.step_size;
-    f_t bias = worker->leaf_problem.objective_step.bias;
-    // Any improving feasible solution must have objective <= cutoff - step.
-    f_t k               = std::floor((cutoff - bias) / step + settings_.integer_tol);
-    lp_settings.cut_off = (k - 1) * step + bias + settings_.dual_tol;
-  } else if (worker->leaf_problem.objective_is_integral) {
-    // If the objective is integral, any feasible solution should produce an upper bound that is
-    // (approximately) integral. We add a small tolerance and floor this value to get an integer,
-    // we then subtract 1, to stop simplex on problems that cannot improve the primal objective.
-    lp_settings.cut_off = std::floor(cutoff + settings_.integer_tol) - 1 + settings_.dual_tol;
-  } else {
-    lp_settings.cut_off = cutoff + settings_.dual_tol;
-  }
+  lp_settings.cut_off    = compute_node_cutoff(worker->leaf_problem, upper_bound_.load());
   lp_settings.inside_mip = 2;
   lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
   if (lp_settings.time_limit <= 0.0) { return dual_status_t::TIME_LIMIT; }
@@ -4033,8 +4077,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     f_t primal_err;
     f_t bound_err;
     i_t num_fractional;
-    const bool feasible = check_guess(
-      original_lp_, settings_, var_types_, crushed_guess, primal_err, bound_err, num_fractional);
+    f_t integral_err;
+    const bool feasible = check_guess(original_lp_,
+                                      settings_,
+                                      var_types_,
+                                      crushed_guess,
+                                      primal_err,
+                                      bound_err,
+                                      num_fractional,
+                                      integral_err);
     if (feasible) {
       const f_t computed_obj = compute_objective(original_lp_, crushed_guess);
       mutex_upper_.lock();
@@ -5378,7 +5429,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
              deterministic_current_horizon_);
 
       bool improved = false;
-      if (!incumbent_.has_incumbent || sol->objective < incumbent_.objective) {
+      if (accept_new_incumbent(sol->objective)) {
         upper_bound_ = std::min(upper_bound_.load(), sol->objective);
         incumbent_.set_incumbent_solution(sol->objective, sol->solution);
         current_upper = sol->objective;
@@ -5541,8 +5592,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
 
       // Process heuristic solution at its correct work unit timestamp position
       f_t new_upper = std::numeric_limits<f_t>::infinity();
-
-      if (!incumbent_.has_incumbent || hsol.objective < incumbent_.objective) {
+      if (accept_new_incumbent(hsol.objective)) {
         upper_bound_ = std::min(upper_bound_.load(), hsol.objective);
         incumbent_.set_incumbent_solution(hsol.objective, hsol.solution);
         new_upper = hsol.objective;

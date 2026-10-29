@@ -71,6 +71,7 @@ public final class Problem implements AutoCloseable {
   }
 
   public Problem setObjective(LinearExpression expression, ObjectiveSense sense) {
+    requireOwnedObjectiveVariables(expression, null);
     this.linearObjective = expression;
     this.quadraticObjective = null;
     this.objectiveSense = sense;
@@ -89,6 +90,7 @@ public final class Problem implements AutoCloseable {
   }
 
   public Problem setObjective(QuadraticExpression expression, ObjectiveSense sense) {
+    requireOwnedObjectiveVariables(expression.getLinearExpression(), expression);
     this.linearObjective = expression.getLinearExpression();
     this.quadraticObjective = expression;
     this.objectiveSense = sense;
@@ -555,14 +557,31 @@ public final class Problem implements AutoCloseable {
     }
   }
 
+  private void requireOwnedObjectiveVariables(
+      LinearExpression linear, QuadraticExpression quadratic) {
+    for (Variable variable : linear.getTerms().keySet()) {
+      requireOwnedObjectiveVariable(variable);
+    }
+    if (quadratic != null) {
+      for (QuadraticExpression.QuadraticTerm term : quadratic.getQuadraticTerms()) {
+        requireOwnedObjectiveVariable(term.getFirst());
+        requireOwnedObjectiveVariable(term.getSecond());
+      }
+    }
+  }
+
+  private void requireOwnedObjectiveVariable(Variable variable) {
+    int index = variable.getIndex();
+    if (index < 0 || index >= variables.size() || variables.get(index) != variable) {
+      throw new IllegalArgumentException("Objective variable does not belong to this problem");
+    }
+  }
+
   private void syncVariableObjectiveCoefficients(LinearExpression expression) {
     for (Variable variable : variables) {
       variable.setObjectiveCoefficient(0.0);
     }
     for (Map.Entry<Variable, Double> entry : expression.getTerms().entrySet()) {
-      if (!variables.contains(entry.getKey())) {
-        throw new IllegalArgumentException("Objective variable does not belong to this problem");
-      }
       entry.getKey().setObjectiveCoefficient(entry.getValue());
     }
   }
