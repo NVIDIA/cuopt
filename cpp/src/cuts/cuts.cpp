@@ -2270,13 +2270,13 @@ flow_cover_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
   // Wolter (2006), Section 5.4: testing at most MAXTESTDELTA = 10 values of ubar keeps nearly all
   // of the gap closed by the full candidate set N*_3, whose size grows with the number of distinct
   // arc capacities in the row.
-  constexpr i_t max_test_delta = 10;
-  const f_t min_violation      = static_cast<f_t>(1e-6);
-  const f_t lambda_tol         = min_violation;
-  f_t max_c1_ltilde2           = -inf;
-  f_t max_c1                   = -inf;
-  f_t max_u_ge_lambda          = -inf;
-  const i_t number_of_arcs     = static_cast<i_t>(scratch.arcs.size());
+  constexpr size_t max_test_delta = 10;
+  const f_t min_violation         = 1e-6;
+  const f_t lambda_tol            = min_violation;
+  f_t max_c1_ltilde2              = -inf;
+  f_t max_c1                      = -inf;
+  f_t max_u_ge_lambda             = -inf;
+  const i_t number_of_arcs        = scratch.arcs.size();
 
   for (i_t k = 0; k < number_of_arcs; k++) {
     const auto& arc = scratch.arcs[k];
@@ -2298,7 +2298,7 @@ flow_cover_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
     const f_t f_beta = fractional_part(-lambda / candidate);
     if (f_beta < min_mir_beta_fraction || f_beta > max_mir_beta_fraction) { return; }
     for (f_t existing : scratch.ubar_candidates) {
-      const f_t duplicate_tol = static_cast<f_t>(1e-8) * std::max<f_t>(1.0, std::abs(candidate));
+      const f_t duplicate_tol = 1e-8 * std::max<f_t>(1.0, std::abs(candidate));
       if (std::abs(existing - candidate) <= duplicate_tol) { return; }
     }
     scratch.ubar_candidates.push_back(candidate);
@@ -2309,9 +2309,7 @@ flow_cover_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
   add_ubar_candidate(max_c1);
   add_ubar_candidate(lambda + 1.0);
   add_ubar_candidate(max_u_ge_lambda + 1.0);
-  for (i_t k = 0;
-       k < number_of_arcs && static_cast<i_t>(scratch.ubar_candidates.size()) < max_test_delta;
-       k++) {
+  for (i_t k = 0; k < number_of_arcs && scratch.ubar_candidates.size() < max_test_delta; k++) {
     add_ubar_candidate(scratch.arcs[k].u);
   }
 
