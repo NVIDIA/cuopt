@@ -615,9 +615,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   auto status = simplex::solve_linear_program_with_barrier<i_t, f_t>(
     user_problem, barrier_settings, timer.get_tic_start(), solution, cache, handle_ptr);
 
-  if (status == simplex::lp_status_t::OPTIMAL) {
-    barrier::project_barrier_solution_to_model_variables(user_problem, solution);
-  }
+  barrier::project_barrier_solution_to_model_variables(user_problem, solution);
 
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());

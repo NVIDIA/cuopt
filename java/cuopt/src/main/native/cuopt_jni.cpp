@@ -872,8 +872,17 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_getQuadraticObjective
                                                                                        jclass,
                                                                                        jlong handle)
 {
-  return to_double_array(env,
-                         to_problem_view(handle)->get_problem()->get_quadratic_objective_values());
+  auto* view         = to_problem_view(handle);
+  const auto& stored = view->get_problem()->get_quadratic_objective_values();
+  std::vector<cuopt_float_t> values(stored.begin(), stored.end());
+  // The GPU problem stores the symmetrized H = Q + Q^T, while the CPU problem and
+  // cuOptSetQuadraticObjective use Q itself. Return Q on both.
+  if (view->memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
+    for (auto& value : values) {
+      value *= 0.5;
+    }
+  }
+  return to_double_array(env, values);
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
