@@ -205,9 +205,8 @@ End
             "End\n");
 }
 
-TEST(lp_writer, unnamed_constraints_omit_names)
+TEST(lp_writer, unnamed_constraints_get_generated_names)
 {
-  // No row names in the model → writer must not invent or print names.
   mps_data_model_t<int, double> model;
   const std::vector<double> c{1.0, 1.0};
   const std::vector<double> lb{0.0, 0.0};
@@ -235,7 +234,7 @@ TEST(lp_writer, unnamed_constraints_omit_names)
             "Minimize\n"
             " obj: + 1 x + 1 y\n"
             "Subject To\n"
-            "  + 1 x + 1 y <= 5\n"
+            " R0: + 1 x + 1 y <= 5\n"
             "End\n");
 }
 

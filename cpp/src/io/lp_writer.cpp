@@ -15,12 +15,14 @@
 #include <utilities/sparse_matrix_helpers.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -39,6 +41,87 @@ template <typename f_t>
 f_t default_upper()
 {
   return std::numeric_limits<f_t>::infinity();
+}
+
+// Name characters accepted by the CPLEX LP grammar, minus ';', which HiGHS
+// treats as a terminator and silently drops the name that follows it, and '/',
+// which HiGHS reads as the division in '[ ... ] / 2'.
+bool is_name_start_char(char c)
+{
+  if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) return true;
+  switch (c) {
+    case '!':
+    case '"':
+    case '#':
+    case '$':
+    case '%':
+    case '&':
+    case '(':
+    case ')':
+    case ',':
+    case '?':
+    case '@':
+    case '_':
+    case '`':
+    case '\'':
+    case '{':
+    case '}':
+    case '|':
+    case '~': return true;
+    default: return false;
+  }
+}
+
+bool is_name_char(char c)
+{
+  return is_name_start_char(c) || (c >= '0' && c <= '9') || c == '.';
+}
+
+// Section headers and bound keywords recognized by read_lp and other LP readers.
+// A name equal to one of these (case-insensitively) is read as the keyword.
+bool is_lp_keyword(const std::string& name)
+{
+  static const std::unordered_set<std::string> keywords{
+    "minimize", "minimum",  "min",      "maximize", "maximum",  "max",  "subject",
+    "such",     "st",       "st.",      "s.t.",     "bounds",   "bound", "generals",
+    "general",  "gen",      "integer",  "integers", "binaries", "binary", "bin",
+    "semi",     "semis",    "sos",      "end",      "free",     "inf",  "infinity"};
+  std::string lower(name);
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return keywords.count(lower) > 0;
+}
+
+// Most LP readers (CPLEX, Gurobi) cap names at 255 characters.
+constexpr size_t max_name_length = 255;
+
+bool is_valid_lp_name(const std::string& name)
+{
+  if (name.empty() || name.size() > max_name_length) return false;
+  if (!is_name_start_char(name[0])) return false;
+  if (!std::all_of(name.begin(), name.end(), is_name_char)) return false;
+  return !is_lp_keyword(name);
+}
+
+void expect_valid_lp_name(const std::string& name, const char* kind)
+{
+  mps_parser_expects(is_valid_lp_name(name),
+                     error_type_t::ValidationError,
+                     "LP writer: %s name '%s' cannot be written to an LP file. Names may use only "
+                     "letters, digits and !\"#$%%&()',.?@_`{}|~, must not start with a digit or "
+                     "'.', must be at most %zu characters and must not be an LP keyword",
+                     kind,
+                     name.c_str(),
+                     max_name_length);
+}
+
+// Names are all-or-nothing: if any entry is missing, every entry is generated
+// as '<prefix><index>' so generated names can never collide with given ones.
+bool has_all_names(const std::vector<std::string>& names, size_t count)
+{
+  return names.size() == count &&
+         std::none_of(names.begin(), names.end(), [](const auto& n) { return n.empty(); });
 }
 
 template <typename i_t, typename f_t>
@@ -120,13 +203,6 @@ data_model_view_t<i_t, f_t> create_view(const mps_data_model_t<i_t, f_t>& model)
 template <typename i_t, typename f_t>
 void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_file_path)
 {
-  std::ofstream lp_file(lp_file_path);
-
-  mps_parser_expects(lp_file.is_open(),
-                     error_type_t::ValidationError,
-                     "Error creating output LP file! Given path: %s",
-                     lp_file_path.c_str());
-
   const f_t inf = std::numeric_limits<f_t>::infinity();
 
   const auto c_span                 = problem.get_objective_coefficients();
@@ -175,12 +251,23 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
   std::vector<char> var_types(n_variables, 'C');
   if (!types_span.empty()) { std::copy(types_span.begin(), types_span.end(), var_types.begin()); }
 
-  auto var_name = [&](i_t j) -> std::string {
-    if (static_cast<size_t>(j) < var_names_ref.size() && !var_names_ref[j].empty()) {
-      return var_names_ref[j];
+  std::vector<std::string> var_names(n_variables);
+  if (has_all_names(var_names_ref, n_variables)) {
+    std::unordered_set<std::string> seen;
+    for (i_t j = 0; j < n_variables; ++j) {
+      expect_valid_lp_name(var_names_ref[j], "variable");
+      mps_parser_expects(seen.insert(var_names_ref[j]).second,
+                         error_type_t::ValidationError,
+                         "LP writer: duplicate variable name '%s'",
+                         var_names_ref[j].c_str());
+      var_names[j] = var_names_ref[j];
     }
-    return "C" + std::to_string(j);
-  };
+  } else {
+    for (i_t j = 0; j < n_variables; ++j) {
+      var_names[j] = "C" + std::to_string(j);
+    }
+  }
+  auto var_name = [&](i_t j) -> const std::string& { return var_names[j]; };
 
   // --- Linear constraint bounds -------------------------------------------
   const auto b_span     = problem.get_constraint_bounds();
@@ -247,13 +334,79 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
     std::copy(cub_span.begin(), cub_span.end(), cub.begin());
   }
 
-  // Empty when the row has no name — LP does not require constraint names.
-  auto row_name = [&](i_t k) -> std::string {
-    if (static_cast<size_t>(k) < row_names_ref.size() && !row_names_ref[k].empty()) {
-      return row_names_ref[k];
-    }
-    return {};
+  // --- Names ----------------------------------------------------------------
+  // Linear and quadratic rows share one namespace with the objective. A range
+  // row is written as two rows, '<name>_lo' and '<name>_up'.
+  auto is_range_row = [&](i_t k) {
+    return clb[k] != cub[k] && !std::isinf(clb[k]) && !std::isinf(cub[k]);
   };
+  auto is_written_row = [&](i_t k) {
+    const f_t lo = clb[k];
+    const f_t hi = cub[k];
+    return lo == hi || (std::isinf(lo) && lo < 0 && !std::isinf(hi)) ||
+           (std::isinf(hi) && hi > 0 && !std::isinf(lo)) || is_range_row(k);
+  };
+
+  const size_t n_quadratic = quadratic_constraints.size();
+  std::vector<std::string> row_names(n_constraints);
+  std::vector<std::string> qc_names(n_quadratic);
+  const bool all_rows_named =
+    has_all_names(row_names_ref, n_constraints) &&
+    std::none_of(quadratic_constraints.begin(), quadratic_constraints.end(), [](const auto& qc) {
+      return qc.constraint_row_name.empty();
+    });
+  for (i_t k = 0; k < n_constraints; ++k) {
+    row_names[k] = all_rows_named ? row_names_ref[k] : "R" + std::to_string(k);
+  }
+  for (size_t q = 0; q < n_quadratic; ++q) {
+    qc_names[q] = all_rows_named ? quadratic_constraints[q].constraint_row_name
+                                 : "R" + std::to_string(n_constraints + q);
+  }
+
+  std::unordered_set<std::string> used_row_names;
+  auto claim_row_name = [&](const std::string& name) {
+    mps_parser_expects(used_row_names.insert(name).second,
+                       error_type_t::ValidationError,
+                       "LP writer: duplicate constraint name '%s'",
+                       name.c_str());
+  };
+  for (i_t k = 0; k < n_constraints; ++k) {
+    if (all_rows_named) { expect_valid_lp_name(row_names[k], "constraint"); }
+    if (!is_written_row(k)) { continue; }
+    if (is_range_row(k)) {
+      claim_row_name(row_names[k] + "_lo");
+      claim_row_name(row_names[k] + "_up");
+    } else {
+      claim_row_name(row_names[k]);
+    }
+  }
+  for (size_t q = 0; q < n_quadratic; ++q) {
+    const char row_type = quadratic_constraints[q].constraint_row_type;
+    mps_parser_expects(row_type == 'L' || row_type == 'G',
+                       error_type_t::ValidationError,
+                       "Quadratic constraint '%s' has unsupported row type '%c'",
+                       qc_names[q].c_str(),
+                       row_type);
+    if (all_rows_named) { expect_valid_lp_name(qc_names[q], "constraint"); }
+    claim_row_name(qc_names[q]);
+  }
+
+  std::string obj_name = problem.get_objective_name();
+  if (obj_name.empty()) {
+    obj_name = "obj";
+    for (int suffix = 1; used_row_names.count(obj_name) > 0; ++suffix) {
+      obj_name = "obj_" + std::to_string(suffix);
+    }
+  } else {
+    expect_valid_lp_name(obj_name, "objective");
+    claim_row_name(obj_name);
+  }
+
+  std::ofstream lp_file(lp_file_path);
+  mps_parser_expects(lp_file.is_open(),
+                     error_type_t::ValidationError,
+                     "Error creating output LP file! Given path: %s",
+                     lp_file_path.c_str());
 
   // --- Formatting helpers -------------------------------------------------
   const int precision = std::numeric_limits<f_t>::max_digits10;
@@ -281,8 +434,6 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
   // --- Objective ----------------------------------------------------------
   lp_file << (problem.get_sense() ? "Maximize\n" : "Minimize\n");
   {
-    std::string obj_name =
-      problem.get_objective_name().empty() ? "obj" : problem.get_objective_name();
     lp_file << " " << obj_name << ":";
 
     int terms_on_line = 0;
@@ -351,17 +502,11 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
   // --- Constraints --------------------------------------------------------
   lp_file << "Subject To\n";
 
-  // Emits "<name>: <linear terms> <rel> <rhs>" when `name` is non-empty, or
-  // " <linear terms> <rel> <rhs>" when the row is unnamed.
   auto write_linear_row = [&](const std::string& name,
                               const std::vector<std::pair<i_t, f_t>>& row,
                               const char* rel,
                               f_t rhs) {
-    if (name.empty()) {
-      lp_file << " ";
-    } else {
-      lp_file << " " << name << ":";
-    }
+    lp_file << " " << name << ":";
     int terms_on_line = 0;
     for (const auto& [vid, val] : row) {
       if (val != f_t(0)) { emit_term(val, var_name(vid), terms_on_line); }
@@ -377,9 +522,9 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
       }
     }
 
-    const f_t lo           = clb[k];
-    const f_t hi           = cub[k];
-    const std::string name = row_name(k);
+    const f_t lo            = clb[k];
+    const f_t hi            = cub[k];
+    const std::string& name = row_names[k];
     if (lo == hi) {
       write_linear_row(name, row, "=", lo);
     } else if (std::isinf(lo) && lo < 0 && !std::isinf(hi)) {
@@ -389,10 +534,8 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
     } else if (!std::isinf(lo) && !std::isinf(hi)) {
       // Range row: the LP format cannot express two finite bounds on a single
       // line, so split it into a '>=' row and a '<=' row.
-      const std::string lo_name = name.empty() ? std::string{} : name + "_lo";
-      const std::string up_name = name.empty() ? std::string{} : name + "_up";
-      write_linear_row(lo_name, row, ">=", lo);
-      write_linear_row(up_name, row, "<=", hi);
+      write_linear_row(name + "_lo", row, ">=", lo);
+      write_linear_row(name + "_up", row, "<=", hi);
     }
     // (-inf, +inf) is a non-constraining row and is intentionally omitted.
   }
@@ -404,19 +547,10 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
   coo_canonicalization_scratch_t<i_t, f_t> qc_scratch;
   for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
     typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t qc = quadratic_constraints[q];
-    const std::string name                                         = qc.constraint_row_name;
-    mps_parser_expects(qc.constraint_row_type == 'L' || qc.constraint_row_type == 'G',
-                       error_type_t::ValidationError,
-                       "Quadratic constraint '%s' has unsupported row type '%c'",
-                       name.c_str(),
-                       qc.constraint_row_type);
+    const std::string& name                                        = qc_names[q];
     const char* rel = qc.constraint_row_type == 'G' ? ">=" : "<=";
 
-    if (name.empty()) {
-      lp_file << " ";
-    } else {
-      lp_file << " " << name << ":";
-    }
+    lp_file << " " << name << ":";
     int terms_on_line = 0;
     for (size_t t = 0; t < qc.linear_indices.size(); ++t) {
       if (qc.linear_values[t] != f_t(0)) {

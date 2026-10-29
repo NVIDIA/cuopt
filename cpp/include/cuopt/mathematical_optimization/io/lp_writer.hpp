@@ -20,6 +20,10 @@ namespace cuopt::mathematical_optimization::io {
  * Writes CPLEX LP format, readable by read_lp(). Quadratic objective terms,
  * quadratic constraints and semi-continuous variables are written when present.
  *
+ * Names: if any variable (constraint) is unnamed, all are written as 'C<j>'
+ * ('R<k>'). Given names must be unique, valid LP identifiers and not keywords;
+ * otherwise a ValidationError is thrown and no file is written.
+ *
  * Limitations:
  *   - A ranged row is written as two rows, '<name>_lo' (>=) and '<name>_up' (<=).
  *   - The objective scaling factor is not written.
