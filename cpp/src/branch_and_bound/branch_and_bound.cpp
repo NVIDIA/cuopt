@@ -853,13 +853,13 @@ void branch_and_bound_t<i_t, f_t>::set_solution_at_root(mip_solution_t<i_t, f_t>
   mutex_upper_.lock();
   incumbent_.set_incumbent_solution(root_objective_, root_relax_soln_.x);
   upper_bound_ = root_objective_;
-  uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
-  solution.objective = incumbent_.objective;
   mutex_upper_.unlock();
 
   print_cut_info(settings_, cut_info);
 
   // We should be done here
+  uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
+  solution.objective          = incumbent_.objective;
   solution.lower_bound        = root_objective_;
   solution.nodes_explored     = 0;
   solution.simplex_iterations = root_relax_soln_.iterations;
@@ -955,28 +955,20 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
     } else {
       settings_.log.printf("Optimal solution found.\n");
     }
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
-    }
   }
 
   if (solver_status_ == mip_status_t::UNSET) {
     if (exploration_stats_.nodes_explored > 0 && exploration_stats_.nodes_unexplored == 0 &&
         upper_bound_ == inf) {
       solver_status_ = mip_status_t::INFEASIBLE;
-      if (settings_.heuristic_preemption_callback != nullptr) {
-        settings_.heuristic_preemption_callback();
-      }
     }
   }
 
-  mutex_upper_.lock();
   if (has_solver_space_incumbent()) {
     uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
     solution.objective     = incumbent_.objective;
     solution.has_incumbent = true;
   }
-  mutex_upper_.unlock();
 
   solution.lower_bound        = lower_bound;
   solution.nodes_explored     = exploration_stats_.nodes_explored;
