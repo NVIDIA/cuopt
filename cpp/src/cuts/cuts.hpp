@@ -668,8 +668,6 @@ class flow_cover_generation_t {
     in_c1.clear();
     in_c2.clear();
     ubar_candidates.clear();
-    in_l1.clear();
-    in_l2.clear();
     best_in_l1.clear();
     best_in_l2.clear();
     simple_generalized_flow_cover_in_l2.clear();
@@ -717,8 +715,6 @@ class flow_cover_generation_t {
   std::vector<uint8_t> in_c1;
   std::vector<uint8_t> in_c2;
   std::vector<f_t> ubar_candidates;
-  std::vector<uint8_t> in_l1;
-  std::vector<uint8_t> in_l2;
   std::vector<uint8_t> best_in_l1;
   std::vector<uint8_t> best_in_l2;
   std::vector<uint8_t> simple_generalized_flow_cover_in_l2;
