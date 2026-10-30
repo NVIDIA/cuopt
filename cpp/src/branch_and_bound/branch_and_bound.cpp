@@ -1244,7 +1244,7 @@ struct deterministic_policy_base_t : tree_update_policy_t<i_t, f_t> {
                    : std::ceil(node->fractional_val) - node->fractional_val;
     if (frac > 1e-10) {
       worker.pc_snapshot.queue_update(
-        node->branch_var, node->branch_dir, change / frac, worker.clock, worker.worker_id);
+        node->branch_var, node->branch_dir, change, frac, worker.clock, worker.worker_id);
     }
   }
 
