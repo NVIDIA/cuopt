@@ -498,6 +498,14 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       std::vector<f_t> assignment;
     };
     std::vector<early_incumbent_entry_t> early_incumbent_pool;
+    constexpr size_t max_early_incumbents = 5;
+    auto retain_early_incumbent           = [&early_incumbent_pool, max_early_incumbents](
+                                    f_t user_obj, const std::vector<f_t>& assignment) {
+      early_incumbent_pool.push_back({user_obj, assignment});
+      if (early_incumbent_pool.size() > max_early_incumbents) {
+        early_incumbent_pool.erase(early_incumbent_pool.begin());
+      }
+    };
 
     // Track best incumbent found during presolve (shared across CPU and GPU FJ).
     // The CPU and GPU heuristics can use differently scaled solver spaces, so compare their
@@ -532,13 +540,13 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       early_best_user_obj        = pre_solve_heuristics->get_best_user_objective();
       early_best_user_assignment = pre_solve_heuristics->get_best_assignment();
       early_best_user_score.store(objective_sense * early_best_user_obj);
-      early_incumbent_pool.push_back({early_best_user_obj, early_best_user_assignment});
+      retain_early_incumbent(early_best_user_obj, early_best_user_assignment);
     }
     auto early_fj_callback =
       [&early_best_user_score,
        &early_best_user_obj,
        &early_best_user_assignment,
-       &early_incumbent_pool,
+       &retain_early_incumbent,
        &early_callback_mutex,
        &timer,
        objective_sense,
@@ -556,7 +564,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         early_best_user_score.store(objective);
         early_best_user_obj        = user_obj;
         early_best_user_assignment = assignment;
-        early_incumbent_pool.push_back({user_obj, assignment});
+        retain_early_incumbent(user_obj, assignment);
         CUOPT_LOG_INFO("New solution from early primal heuristics (%s). Objective %+.6e. Time %.3f",
                        heuristic_name,
                        user_obj,
@@ -783,18 +791,14 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     // Add early-heuristic incumbents (original-space) to initial_solutions.
     // PaPILO crushing + validation happens downstream in add_user_given_solutions().
     if (!early_incumbent_pool.empty()) {
-      auto stream                           = op_problem.get_handle_ptr()->get_stream();
-      constexpr size_t max_early_incumbents = 5;
-      const size_t first_kept               = early_incumbent_pool.size() > max_early_incumbents
-                                                ? early_incumbent_pool.size() - max_early_incumbents
-                                                : 0;
-      for (size_t i = first_kept; i < early_incumbent_pool.size(); ++i) {
+      auto stream = op_problem.get_handle_ptr()->get_stream();
+      for (size_t i = 0; i < early_incumbent_pool.size(); ++i) {
         auto d = std::make_shared<rmm::device_uvector<f_t>>(
           device_copy(early_incumbent_pool[i].assignment, stream));
         settings.initial_solutions.emplace_back(std::move(d));
       }
       CUOPT_LOG_DEBUG("Added %zu early-heuristic incumbents to initial solutions",
-                      early_incumbent_pool.size() - first_kept);
+                      early_incumbent_pool.size());
     }
 
     if (settings.user_problem_file != "") {
