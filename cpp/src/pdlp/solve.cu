@@ -598,6 +598,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.barrier_dual_regularization      = settings.barrier_dual_regularization;
   barrier_settings.barrier_soc_threshold            = settings.barrier_soc_threshold;
   barrier_settings.barrier_step_scale               = settings.barrier_step_scale;
+  barrier_settings.barrier_csr_ir_matvec            = settings.barrier_csr_ir_matvec;
   barrier_settings.qcqp_ruiz_equilibration          = settings.qcqp_ruiz_equilibration;
   barrier_settings.gpu_ruiz_nnz_threshold           = settings.gpu_ruiz_nnz_threshold;
   barrier_settings.cudss_deterministic              = settings.cudss_deterministic;
@@ -849,6 +850,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.barrier_primal_regularization   = settings.barrier_primal_regularization;
   fs.barrier_dual_regularization     = settings.barrier_dual_regularization;
   fs.barrier_step_scale              = settings.barrier_step_scale;
+  fs.barrier_csr_ir_matvec           = settings.barrier_csr_ir_matvec;
   fs.pdlp_precision                  = pdlp_precision_t::DefaultPrecision;
   fs.method                          = method_t::PDLP;
   fs.inside_mip                      = settings.inside_mip;
