@@ -29,7 +29,7 @@ source rapids-rattler-channel-string
 
 
 # Override `rapids-rattler-channelstring` while cuOpt is not on the standard RAPIDS release cycle
-RATTLER_ARGS=("--experimental" "--no-build-id" "--channel-priority" "disabled" "--output-dir" "$RAPIDS_CONDA_BLD_OUTPUT_DIR")
+RATTLER_ARGS=("--experimental" "--no-build-id" "--channel-priority" "disabled" "--output-dir" "$RAPIDS_CONDA_BLD_OUTPUT_DIR" "--parallel-builds" "4")
 # Prepending `rapidsai` channel so cuOpt can grab release builds of dependencies
 # that have been cleared from `rapidsai-nightly`
 RATTLER_CHANNELS=("--channel" "rapidsai" "${RATTLER_CHANNELS[@]}")
