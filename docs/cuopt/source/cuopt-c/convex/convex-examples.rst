@@ -8,7 +8,7 @@ LP Example with Data
 
 This example demonstrates how to use the LP solver in C. More details on the API can be found in :doc:`C API <convex-c-api>`.
 
-The example code is available at ``examples/cuopt-c/lp/simple_lp_example.c`` (:download:`download <examples/simple_lp_example.c>`):
+The example code is available at ``docs/cuopt/source/cuopt-c/convex/examples/simple_lp_example.c`` (:download:`download <examples/simple_lp_example.c>`):
 
 .. literalinclude:: examples/simple_lp_example.c
    :language: c
@@ -19,12 +19,16 @@ The following commands are for Linux and might fail in cases where the cuopt lib
 
 If you have built it locally, libcuopt.so will be in the build directory ``cpp/build`` and include directoy would be ``cpp/include``.
 
+.. note::
+
+   ``-lcuopt`` requires all of the cuOpt libraries to be installed (the ``libcuopt`` package). With only the split packages installed, link ``-lcuopt_mathopt -lcuopt_client`` instead.
+
 .. code-block:: bash
 
    # Find the cuopt header file and assign to INCLUDE_PATH
-   INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" | sed 's/\/linear_programming//' 2>/dev/null)
-   # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
-   LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
+   INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/mathematical_optimization/*" -printf "%h\n" 2>/dev/null | head -1 | sed 's/\/cuopt\/mathematical_optimization$//')
+   # Find the libcuopt library directory and assign to LIBCUOPT_LIBRARY_PATH
+   LIBCUOPT_LIBRARY_PATH=$(dirname $(find / -name "libcuopt.so" 2>/dev/null | head -1))
 
 
 Build and run the example
@@ -79,7 +83,7 @@ format is dispatched from the filename extension (case-insensitive):
 their ``.gz`` / ``.bz2`` variants → MPS parser. Unknown extensions are
 rejected. See :ref:`lp-file-example-c` for an LP counterpart.
 
-The example code is available at ``examples/cuopt-c/lp/mps_file_example.c`` (:download:`download <examples/mps_file_example.c>`):
+The example code is available at ``docs/cuopt/source/cuopt-c/convex/examples/mps_file_example.c`` (:download:`download <examples/mps_file_example.c>`):
 
 .. literalinclude:: examples/mps_file_example.c
    :language: c
@@ -93,9 +97,9 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
 .. code-block:: bash
 
    # Find the cuopt header file and assign to INCLUDE_PATH
-   INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" | sed 's/\/linear_programming//' 2>/dev/null)
-   # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
-   LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
+   INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/mathematical_optimization/*" -printf "%h\n" 2>/dev/null | head -1 | sed 's/\/cuopt\/mathematical_optimization$//')
+   # Find the libcuopt library directory and assign to LIBCUOPT_LIBRARY_PATH
+   LIBCUOPT_LIBRARY_PATH=$(dirname $(find / -name "libcuopt.so" 2>/dev/null | head -1))
 
 A sample MPS file (:download:`download sample.mps <https://raw.githubusercontent.com/BUGSENG/PPL/devel/demos/ppl_lpsol/examples/sample.mps>`):
 
@@ -157,7 +161,7 @@ rejected. See the ``read_lp`` declaration in
 ``cuopt/mathematical_optimization/io/parser.hpp`` for the supported subset of
 the LP format.
 
-The example code is available at ``examples/cuopt-c/lp/lp_file_example.c`` (:download:`download <examples/lp_file_example.c>`):
+The example code is available at ``docs/cuopt/source/cuopt-c/convex/examples/lp_file_example.c`` (:download:`download <examples/lp_file_example.c>`):
 
 .. literalinclude:: examples/lp_file_example.c
    :language: c
@@ -187,7 +191,7 @@ Simple Quadratic Programming Example
 
 This example demonstrates how to use the cuOpt C API for quadratic programming.
 
-The example code is available at ``examples/cuopt-c/lp/simple_qp_example.c`` (:download:`download <examples/simple_qp_example.c>`):
+The example code is available at ``docs/cuopt/source/cuopt-c/convex/examples/simple_qp_example.c`` (:download:`download <examples/simple_qp_example.c>`):
 
 .. literalinclude:: examples/simple_qp_example.c
    :language: c
@@ -227,7 +231,7 @@ Simple Second-Order Cone Programming Example
 
 This example builds an SOCP directly with the C API: a linear problem is created with :c:func:`cuOptCreateProblem`, then a second-order cone constraint is added with :c:func:`cuOptAddQuadraticConstraint`. It minimizes ``x3`` subject to ``x1 + x2 >= 2`` and the cone ``||(x1, x2)||_2 <= x3``, written as the quadratic inequality ``x1^2 + x2^2 - x3^2 <= 0``. cuOpt detects the second-order cone structure and solves with the barrier method.
 
-The example code is available at ``examples/cuopt-c/lp/simple_socp_example.c`` (:download:`download <examples/simple_socp_example.c>`):
+The example code is available at ``docs/cuopt/source/cuopt-c/convex/examples/simple_socp_example.c`` (:download:`download <examples/simple_socp_example.c>`):
 
 .. literalinclude:: examples/simple_socp_example.c
    :language: c
@@ -273,7 +277,7 @@ cone ``x1^2 + x2^2 <= x3*x4`` is expressed as ``x1^2 + x2^2 - x3*x4 <= 0``. See 
 for other RSOC forms.
 It minimizes ``x3 + x4`` subject to ``x1 + x2 >= 2`` and the rotated cone.
 
-The example code is available at ``examples/cuopt-c/lp/rotated_socp_example.c`` (:download:`download <examples/rotated_socp_example.c>`):
+The example code is available at ``docs/cuopt/source/cuopt-c/convex/examples/rotated_socp_example.c`` (:download:`download <examples/rotated_socp_example.c>`):
 
 .. literalinclude:: examples/rotated_socp_example.c
    :language: c
@@ -320,7 +324,7 @@ This example adds a general convex quadratic constraint with
 ``2*x^2 + 2*x*y + 2*y^2 <= 6``. Note that the quadratic matrix Q that encodes this
 constraint need not be symmetric. Here the term ``2*x*y`` is supplied as a single entry ``Q[0,1] = 2``.
 
-The example code is available at ``examples/cuopt-c/lp/general_quadratic_example.c`` (:download:`download <examples/general_quadratic_example.c>`):
+The example code is available at ``docs/cuopt/source/cuopt-c/convex/examples/general_quadratic_example.c`` (:download:`download <examples/general_quadratic_example.c>`):
 
 .. literalinclude:: examples/general_quadratic_example.c
    :language: c

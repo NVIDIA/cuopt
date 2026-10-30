@@ -27,9 +27,7 @@ echo "Aborting job with UUID: $UUID"
 
 # Abort the job
 # -d: Delete/abort
-# -r: If running
-# -q: If queued
-cuopt_sh -d -r -q $UUID -i $ip -p $port
+cuopt_sh -d $UUID -i $ip -p $port
 
 echo "Job abort request sent"
 echo ""

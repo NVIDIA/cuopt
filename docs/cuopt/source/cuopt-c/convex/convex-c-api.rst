@@ -70,7 +70,7 @@ For problems with quadratic constraints, first create a problem, and then use
    Support for quadratic constraints is currently in **beta**. ``cuOptAddQuadraticConstraint``
    supports three types of quadratic constraints:
    - **Convex quadratic constraints** of the form ``x^T Q x + d^T x <= alpha`` where ``H=(Q+Q^T)/2`` is a symmetric positive semidefinite matrix. `Q` need not be symmetric.
-   - **Second-order cone constraints** of the form ``sum_{i=1}^n x_i^2 <= x_0``, ``x_0 >= 0``
+   - **Second-order cone constraints** of the form ``sum_{i=1}^n x_i^2 <= x_0^2``, ``x_0 >= 0``
    - **Rotated second-order cone constraints** of the form ``sum_{i=2}^n x_i^2 - 2 * x_0 * x_1 <= 0``, ``x_0 >= 0``, ``x_1 >= 0`` (supply ``Q[x_0, x_1] = -2`` in COO, or ``-x_0*x_1`` for the ``<= x_0*x_1`` cone form; see :doc:`/convex-features`)
 
    Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints are not supported.
@@ -134,6 +134,7 @@ The following functions may be used to get information about an `cuOptimizationP
 .. doxygenfunction:: cuOptGetNumNonZeros
 .. doxygenfunction:: cuOptGetConstraintMatrix
 .. doxygenfunction:: cuOptGetConstraintMatrixCSR
+.. doxygenfunction:: cuOptGetConstraintMatrixCSC
 .. doxygenfunction:: cuOptGetConstraintSense
 .. doxygenfunction:: cuOptGetConstraintRightHandSide
 .. doxygenfunction:: cuOptGetConstraintLowerBounds
@@ -142,6 +143,46 @@ The following functions may be used to get information about an `cuOptimizationP
 .. doxygenfunction:: cuOptGetVariableUpperBounds
 .. doxygenfunction:: cuOptGetVariableTypes
 .. doxygenfunction:: cuOptIsMIP
+
+Problem attributes can also be queried by selector with the following functions. The selector constants
+are listed in :ref:`problem-attribute-constants`.
+
+.. doxygenfunction:: cuOptGetProblemIntAttribute
+.. doxygenfunction:: cuOptGetProblemFloatAttribute
+.. doxygenfunction:: cuOptGetProblemCharArrayAttribute
+.. doxygenfunction:: cuOptGetProblemFloatArrayAttribute
+.. doxygenfunction:: cuOptGetProblemStringArrayAttribute
+
+.. _problem-attribute-constants:
+
+Problem Attribute Constants
+---------------------------
+
+These constants are the selectors passed to the ``cuOptGetProblem*Attribute`` functions.
+
+.. doxygendefine:: CUOPT_ATTR_NUM_VARIABLES
+.. doxygendefine:: CUOPT_ATTR_NUM_CONSTRAINTS
+.. doxygendefine:: CUOPT_ATTR_NUM_NONZEROS
+.. doxygendefine:: CUOPT_ATTR_NUM_INTEGERS
+.. doxygendefine:: CUOPT_ATTR_OBJECTIVE_SENSE
+.. doxygendefine:: CUOPT_ATTR_OBJECTIVE_OFFSET
+.. doxygendefine:: CUOPT_ATTR_OBJECTIVE_SCALING_FACTOR
+.. doxygendefine:: CUOPT_ATTR_PROBLEM_CATEGORY
+.. doxygendefine:: CUOPT_ATTR_IS_MIP
+.. doxygendefine:: CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE
+.. doxygendefine:: CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS
+.. doxygendefine:: CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS
+.. doxygendefine:: CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS
+.. doxygendefine:: CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS
+.. doxygendefine:: CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS
+.. doxygendefine:: CUOPT_ARRAY_ATTR_VARIABLE_UPPER_BOUNDS
+.. doxygendefine:: CUOPT_ARRAY_ATTR_CONSTRAINT_LOWER_BOUNDS
+.. doxygendefine:: CUOPT_ARRAY_ATTR_CONSTRAINT_UPPER_BOUNDS
+.. doxygendefine:: CUOPT_ARRAY_ATTR_CONSTRAINT_RHS
+.. doxygendefine:: CUOPT_ARRAY_ATTR_CONSTRAINT_SENSE
+.. doxygendefine:: CUOPT_ARRAY_ATTR_VARIABLE_TYPES
+.. doxygendefine:: CUOPT_STRING_ARRAY_VARIABLE_NAMES
+.. doxygendefine:: CUOPT_STRING_ARRAY_ROW_NAMES
 
 
 Solver Settings
@@ -302,6 +343,16 @@ These constants are used to configure `CUOPT_MULTIGPU_PDLP_PARTITIONER` via :c:f
 
 .. _barrier-iterative-refinement-constants:
 
+Presolve Constants
+------------------
+
+These constants are used to configure `CUOPT_PRESOLVE` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_PRESOLVE_DEFAULT
+.. doxygendefine:: CUOPT_PRESOLVE_OFF
+.. doxygendefine:: CUOPT_PRESOLVE_PAPILO
+.. doxygendefine:: CUOPT_PRESOLVE_PSLP
+
 Barrier Iterative Refinement Constants
 ---------------------------------------
 
@@ -352,9 +403,35 @@ The following functions may be used to access information from a `cuOptSolution`
 .. doxygenfunction:: cuOptGetDualObjectiveValue
 .. doxygenfunction:: cuOptGetReducedCosts
 
+Solution statistics can also be queried by selector with the following functions. The selector constants
+are listed in :ref:`solution-attribute-constants`.
+
+.. doxygenfunction:: cuOptGetSolutionIntAttribute
+.. doxygenfunction:: cuOptGetSolutionFloatAttribute
+
 When you are finished with a `cuOptSolution` object you should destory it with
 
 .. doxygenfunction:: cuOptDestroySolution
+
+.. _solution-attribute-constants:
+
+Solution Attribute Constants
+----------------------------
+
+These constants are the selectors passed to the ``cuOptGetSolution*Attribute`` functions. A selector that
+does not apply to the problem class that produced the solution returns ``CUOPT_INVALID_ARGUMENT``.
+
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_LP_GAP
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_LP_SOLVED_BY
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_MIP_PRESOLVE_TIME
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_MIP_NUM_NODES
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_MIP_NUM_SIMPLEX_ITERATIONS
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_MIP_MAX_INT_VIOLATION
+.. doxygendefine:: CUOPT_SOLUTION_ATTR_MIP_MAX_VARIABLE_BOUND_VIOLATION
 
 Termination Status Constants
 ----------------------------

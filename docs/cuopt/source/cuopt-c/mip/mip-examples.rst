@@ -7,7 +7,7 @@ Example with Data
 
 This example demonstrates how to use the MIP solver in C. More details on the API can be found in :doc:`MIP C API <mip-c-api>`.
 
-The example code is available at ``../lp-milp/examples/simple_milp_example.c`` (:download:`download <examples/simple_milp_example.c>`):
+The example code is available at ``docs/cuopt/source/cuopt-c/mip/examples/simple_milp_example.c`` (:download:`download <examples/simple_milp_example.c>`):
 
 .. literalinclude:: examples/simple_milp_example.c
    :language: c
@@ -18,12 +18,16 @@ The following commands are for Linux and might fail in cases where the cuopt lib
 
 If you have built it locally, libcuopt.so will be in the build directory ``cpp/build`` and include directoy would be ``cpp/include``.
 
+.. note::
+
+   ``-lcuopt`` requires all of the cuOpt libraries to be installed (the ``libcuopt`` package). With only the split packages installed, link ``-lcuopt_mathopt -lcuopt_client`` instead.
+
 .. code-block:: bash
 
    # Find the cuopt header file and assign to INCLUDE_PATH
-   INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" | sed 's/\/linear_programming//' 2>/dev/null)
+   INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/mathematical_optimization/*" -printf "%h\n" 2>/dev/null | head -1 | sed 's/\/cuopt\/mathematical_optimization$//')
    # Find the libcuopt library directory and assign to LIBCUOPT_LIBRARY_PATH
-   LIBCUOPT_LIBRARY_PATH=$(dirname $(find / -name "libcuopt.so" 2>/dev/null))
+   LIBCUOPT_LIBRARY_PATH=$(dirname $(find / -name "libcuopt.so" 2>/dev/null | head -1))
 
 
 Build and run the example
@@ -80,7 +84,7 @@ Example with MPS File
 
 This example demonstrates how to use the cuOpt solver in C to solve an MPS file.
 
-The example code is available at ``examples/milp_mps_example.c`` (:download:`download <examples/milp_mps_example.c>`):
+The example code is available at ``docs/cuopt/source/cuopt-c/mip/examples/milp_mps_example.c`` (:download:`download <examples/milp_mps_example.c>`):
 
 .. literalinclude:: examples/milp_mps_example.c
    :language: c
@@ -94,9 +98,9 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
 .. code-block:: bash
 
    # Find the cuopt header file and assign to INCLUDE_PATH
-   INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" | sed 's/\/linear_programming//' 2>/dev/null)
+   INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/mathematical_optimization/*" -printf "%h\n" 2>/dev/null | head -1 | sed 's/\/cuopt\/mathematical_optimization$//')
    # Find the libcuopt library directory and assign to LIBCUOPT_LIBRARY_PATH
-   LIBCUOPT_LIBRARY_PATH=$(dirname $(find / -name "libcuopt.so" 2>/dev/null))
+   LIBCUOPT_LIBRARY_PATH=$(dirname $(find / -name "libcuopt.so" 2>/dev/null | head -1))
 
 A sample MIP MPS file (:download:`download mip_sample.mps <https://raw.githubusercontent.com/coin-or/SYMPHONY/master/Datasets/sample.mps>`):
 

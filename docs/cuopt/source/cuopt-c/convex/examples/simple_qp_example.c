@@ -83,13 +83,14 @@ cuopt_int_t test_simple_qp()
   // 0 is the coefficient of the linear term on y
   cuopt_float_t linear_objective_coefficients[] = {0.0, 0.0};
 
-  // Quadratic objective matrix
+  // Quadratic objective matrix in coordinate (triplet) format
   // From the objective function: minimize x^2 + y^2
   // 1 is the coefficient of the quadratic term on x^2
   // 1 is the coefficient of the quadratic term on y^2
-  cuopt_float_t quadratic_objective_matrix_values[]       = {1.0, 1.0};
-  cuopt_int_t quadratic_objective_matrix_row_offsets[]    = {0, 1, 2};
-  cuopt_int_t quadratic_objective_matrix_column_indices[] = {0, 1};
+  cuopt_int_t quadratic_num_entries                = 2;
+  cuopt_int_t quadratic_objective_row_indices[]    = {0, 1};
+  cuopt_int_t quadratic_objective_column_indices[] = {0, 1};
+  cuopt_float_t quadratic_objective_values[]       = {1.0, 1.0};
 
   // Constraint bounds
   // From the constraints:
@@ -115,25 +116,34 @@ cuopt_int_t test_simple_qp()
 
   printf("Creating and solving simple QP problem...\n");
 
-  // Create the problem
-  status = cuOptCreateQuadraticProblem(num_constraints,
-                                       num_variables,
-                                       CUOPT_MINIMIZE,
-                                       0.0,  // objective offset
-                                       linear_objective_coefficients,
-                                       quadratic_objective_matrix_row_offsets,
-                                       quadratic_objective_matrix_column_indices,
-                                       quadratic_objective_matrix_values,
-                                       row_offsets,
-                                       column_indices,
-                                       values,
-                                       constraint_sense,
-                                       constraint_rhs,
-                                       var_lower_bounds,
-                                       var_upper_bounds,
-                                       &problem);
+  // Create the problem with its linear data
+  status = cuOptCreateProblem(num_constraints,
+                              num_variables,
+                              CUOPT_MINIMIZE,
+                              0.0,  // objective offset
+                              linear_objective_coefficients,
+                              row_offsets,
+                              column_indices,
+                              values,
+                              constraint_sense,
+                              constraint_rhs,
+                              var_lower_bounds,
+                              var_upper_bounds,
+                              variable_types,
+                              &problem);
   if (status != CUOPT_SUCCESS) {
     printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Set the quadratic objective
+  status = cuOptSetQuadraticObjective(problem,
+                                      quadratic_num_entries,
+                                      quadratic_objective_row_indices,
+                                      quadratic_objective_column_indices,
+                                      quadratic_objective_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting quadratic objective: %d\n", status);
     goto DONE;
   }
 
