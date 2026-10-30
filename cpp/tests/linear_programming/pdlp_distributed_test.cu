@@ -12,7 +12,9 @@
 
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/mathematical_optimization/cuopt_c.h>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
@@ -103,6 +105,41 @@ TEST_P(DistributedPdlpParityTest, matches_base)
 {
   const auto& param = GetParam();
   expect_distributed_matches_base(handle, param.mps_path, param.fixed_mps_format);
+}
+
+// A CPU-memory problem solved with all visible GPUs must match the single-GPU solve of the same
+// problem: the interface solve converts it to a GPU problem and takes the distributed route.
+TEST_P(DistributedPdlpParityTest, cpu_problem_matches_base)
+{
+  constexpr double loose_rel = 1e-3;
+  const auto& param          = GetParam();
+  auto path                  = make_path_absolute(param.mps_path);
+  io::mps_data_model_t<int, double> problem =
+    io::read_mps<int, double>(path, param.fixed_mps_format);
+
+  pdlp_solver_settings_t<int, double> base_settings{};
+  base_settings.method = method_t::PDLP;
+  auto base_op         = mps_data_model_to_optimization_problem<int, double>(&handle, problem);
+  auto base            = solve_lp(base_op, base_settings);
+
+  cpu_optimization_problem_t<int, double> cpu_problem;
+  populate_from_mps_data_model(&cpu_problem, problem);
+  solver_settings_t<int, double> dist_settings;
+  dist_settings.get_pdlp_settings().method   = method_t::PDLP;
+  dist_settings.get_pdlp_settings().num_gpus = -1;
+  auto dist                                  = solve_lp<int, double>(&cpu_problem, dist_settings);
+
+  ASSERT_EQ(static_cast<int>(base.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
+    << param.mps_path << ": base did not reach optimal";
+  ASSERT_NE(dist, nullptr);
+  ASSERT_EQ(dist->get_termination_status_int(), CUOPT_TERMINATION_STATUS_OPTIMAL)
+    << param.mps_path << ": CPU-memory problem did not reach optimal with all GPUs";
+  const double base_objective = base.get_additional_termination_information().primal_objective;
+  const double dist_objective = dist->get_objective_value(0);
+  const double scale          = std::max(std::fabs(base_objective), std::fabs(dist_objective));
+  EXPECT_LE(std::fabs(base_objective - dist_objective), loose_rel * (1.0 + scale))
+    << param.mps_path << ": primal objective base=" << base_objective
+    << " cpu-problem distributed=" << dist_objective;
 }
 
 // Same instances through the public C API: cuOptReadProblem materializes a GPU
