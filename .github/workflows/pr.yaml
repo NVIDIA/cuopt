@@ -514,6 +514,7 @@ jobs:
       build_type: pull-request
       matrix_name: conda-cpp-build
       matrix_filter: 'map(. + {CUDA_MAJOR: (.CUDA_VER | split(".") | .[0])}) | unique_by([.ARCH, .CUDA_MAJOR])'
+      matrix_type: cuda-13-4-nightly
 
   java-static-build:
     needs: [java-static-build-matrix, changed-files]

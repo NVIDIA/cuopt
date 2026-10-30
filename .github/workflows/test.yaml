@@ -104,6 +104,7 @@ jobs:
       build_type: ${{ inputs.build_type }}
       matrix_name: conda-cpp-build
       matrix_filter: 'map(. + {CUDA_MAJOR: (.CUDA_VER | split(".") | .[0])}) | unique_by([.ARCH, .CUDA_MAJOR])'
+      matrix_type: cuda-13-4-nightly
 
   # Runs the full Java suite against each classifier JAR build.yaml's java-static-build produced,
   # on a GPU, with no libcuopt installed, so a JAR that loads but computes wrong answers fails
