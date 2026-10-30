@@ -255,6 +255,77 @@ TEST(sparse_augmented_kkt, sparse_augmented_matvec)
   EXPECT_NEAR(yexp_host[1], eta_sq * x_vec[n_primal + m_rows + 1] + dot_u, 1e-10);
 }
 
+// dz on a sparse cone must come from the same expanded operator the augmented solve applies, so
+// that A' dy + dz reproduces the dual right-hand side; dense cones are left untouched.
+TEST(sparse_augmented_kkt, recover_sparse_cone_dz_matches_expanded_operator)
+{
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
+
+  // Cone 0 is dense (dim 3); cone 1 is sparse (dim 6) and starts at packed offset 3.
+  std::vector<int> cone_dimensions{3, 6};
+  const int n_cone = 9;
+  rmm::device_uvector<double> x(n_cone, stream);
+  rmm::device_uvector<double> z(n_cone, stream);
+  cone_data_t<int, double> cones(
+    cone_dimensions, cuopt::make_span(x), cuopt::make_span(z), stream, /*soc_threshold=*/4);
+  ASSERT_EQ(cones.n_sparse_cones, 1);
+
+  std::vector<double> x_host{1.5, 0.2, -0.3, 2.0, 0.2, 0.3, 0.4, 0.5, 0.6};
+  std::vector<double> z_host{1.2, -0.1, 0.4, 1.5, 0.1, 0.15, 0.2, 0.25, 0.3};
+  raft::copy(cones.x.data(), x_host.data(), x_host.size(), stream);
+  raft::copy(cones.z.data(), z_host.data(), z_host.size(), stream);
+  launch_nt_scaling(cones, stream);
+  launch_update_scaling_sparse(cones, stream);
+
+  const int m_rows   = 1;
+  const int p        = cones.expansion_var_count();
+  const int sys_size = n_cone + m_rows + p;
+  std::vector<double> x_vec{0.7, -0.2, 0.1, 1.1, 0.3, 0.4, 0.2, 0.5, 0.6, 0.0, 0.25, -0.15};
+  ASSERT_EQ(static_cast<int>(x_vec.size()), sys_size);
+
+  const auto hs_host = expected_Hs_diag(cones, stream);
+  auto d_hs          = cuopt::device_copy(hs_host, stream);
+  auto d_x           = cuopt::device_copy(x_vec, stream);
+  rmm::device_uvector<double> d_r1(n_cone, stream);
+  rmm::device_uvector<double> d_y_exp(p, stream);
+  thrust::fill(rmm::exec_policy(stream), d_r1.begin(), d_r1.end(), 0.0);
+  thrust::fill(rmm::exec_policy(stream), d_y_exp.begin(), d_y_exp.end(), 0.0);
+
+  // Sparse-cone part of the operator used by the augmented solve and iterative refinement.
+  launch_sparse_augmented_matvec(raft::device_span<const double>(d_x.data(), d_x.size()),
+                                 raft::device_span<double>(d_r1.data(), d_r1.size()),
+                                 raft::device_span<double>(d_y_exp.data(), d_y_exp.size()),
+                                 cones,
+                                 raft::device_span<const double>(d_hs.data(), d_hs.size()),
+                                 /*cone_var_start=*/0,
+                                 n_cone,
+                                 m_rows,
+                                 stream);
+
+  const std::vector<double> target_host{0.9, -0.4, 0.3, 2.5, -1.0, 0.7, 0.2, -0.6, 1.3};
+  auto d_target             = cuopt::device_copy(target_host, stream);
+  const double dense_marker = 123.0;
+  std::vector<double> dz_host(n_cone, dense_marker);
+  auto d_dz = cuopt::device_copy(dz_host, stream);
+
+  recover_sparse_cone_dz(raft::device_span<const double>(d_x.data(), n_cone),
+                         cones,
+                         raft::device_span<const double>(d_target.data(), d_target.size()),
+                         raft::device_span<double>(d_dz.data(), d_dz.size()),
+                         raft::device_span<const double>(d_hs.data(), d_hs.size()),
+                         raft::device_span<const double>(d_x.data() + n_cone + m_rows, p),
+                         stream);
+
+  const auto r1_host     = cuopt::host_copy(d_r1, stream);
+  const auto dz_out_host = cuopt::host_copy(d_dz, stream);
+  for (int j = 0; j < 3; ++j) {
+    EXPECT_EQ(dz_out_host[j], dense_marker) << "dense cone entry " << j;
+  }
+  for (int j = 3; j < n_cone; ++j) {
+    EXPECT_NEAR(dz_out_host[j], target_host[j] - r1_host[j], 1e-12) << "sparse cone entry " << j;
+  }
+}
+
 TEST(sparse_augmented_kkt, update_scaling_sparse_dim_1000)
 {
   auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
