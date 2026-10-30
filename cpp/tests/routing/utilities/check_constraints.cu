@@ -105,6 +105,13 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
 
   bool has_breaks = data_model.has_vehicle_breaks();
   std::vector<std::vector<i_t>> uniform_break_earliest_h, uniform_break_latest_h;
+  std::vector<std::vector<i_t>> uniform_break_load_min_h, uniform_break_load_max_h;
+  std::vector<std::vector<bool>> uniform_break_load_active_h;
+  std::vector<std::vector<i_t>> capacity_demands_h;
+  for (auto const& capacity : data_model.get_capacity_dimensions()) {
+    capacity_demands_h.push_back(
+      cuopt::host_copy(capacity.get_demands(), static_cast<size_t>(n_orders), stream));
+  }
   std::unordered_set<i_t> uniform_break_locations_set;
   if (has_breaks) {
     auto const& uniform = data_model.get_uniform_breaks();
@@ -114,6 +121,22 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
         cuopt::host_copy(e_ptr, static_cast<size_t>(fleet_size), stream));
       uniform_break_latest_h.push_back(
         cuopt::host_copy(l_ptr, static_cast<size_t>(fleet_size), stream));
+      std::vector<i_t> mins(max_break_load_window_dim * fleet_size, 0);
+      std::vector<i_t> maxs(max_break_load_window_dim * fleet_size, 0);
+      std::vector<bool> active(max_break_load_window_dim, false);
+      for (int cap_dim = 0; cap_dim < max_break_load_window_dim; ++cap_dim) {
+        if (!dim.has_load_window(cap_dim)) { continue; }
+        active[cap_dim] = true;
+        auto min_h = cuopt::host_copy(
+          dim.get_break_load_window_min(cap_dim), static_cast<size_t>(fleet_size), stream);
+        auto max_h = cuopt::host_copy(
+          dim.get_break_load_window_max(cap_dim), static_cast<size_t>(fleet_size), stream);
+        std::copy(min_h.begin(), min_h.end(), mins.begin() + cap_dim * fleet_size);
+        std::copy(max_h.begin(), max_h.end(), maxs.begin() + cap_dim * fleet_size);
+      }
+      uniform_break_load_active_h.push_back(std::move(active));
+      uniform_break_load_min_h.push_back(std::move(mins));
+      uniform_break_load_max_h.push_back(std::move(maxs));
     }
     auto [break_loc_ptr, n_break_loc] = data_model.get_break_locations();
     if (n_break_loc > 0) {
@@ -161,7 +184,14 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
       auto const& non_uniform = data_model.get_non_uniform_breaks();
       bool use_uniform        = !uniform_break_earliest_h.empty();
       bool use_non_uniform    = (non_uniform.count(id) > 0);
+      std::vector<i_t> active_load(capacity_demands_h.size(), 0);
       for (size_t k = i_vehicle_start; k < i; ++k) {
+        if (static_cast<node_type_t>(node_types[k]) != node_type_t::BREAK &&
+            route[k] >= 0 && route[k] < n_orders) {
+          for (size_t cap_dim = 0; cap_dim < active_load.size(); ++cap_dim) {
+            active_load[cap_dim] += capacity_demands_h[cap_dim][route[k]];
+          }
+        }
         if (static_cast<node_type_t>(node_types[k]) == node_type_t::BREAK) {
           double arrival   = h_routing_solution.stamp[k];
           i_t break_loc_id = locations[k];
@@ -180,6 +210,13 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
                 << "Break " << break_dim << " vehicle " << id << " at location " << break_loc_id
                 << " not in allowed break locations";
             }
+            for (size_t cap_dim = 0; cap_dim < active_load.size(); ++cap_dim) {
+              if (!uniform_break_load_active_h[break_dim][cap_dim]) { continue; }
+              auto const& mins = uniform_break_load_min_h[break_dim];
+              auto const& maxs = uniform_break_load_max_h[break_dim];
+              ASSERT_GE(active_load[cap_dim], mins[cap_dim * fleet_size + id]);
+              ASSERT_LE(active_load[cap_dim], maxs[cap_dim * fleet_size + id]);
+            }
           } else if (use_non_uniform) {
             auto const& breaks = non_uniform.at(id);
             if (break_dim < static_cast<int>(breaks.size())) {
@@ -195,6 +232,11 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
                 ASSERT_TRUE(found)
                   << "Non-uniform break " << break_dim << " vehicle " << id << " at location "
                   << break_loc_id << " not in allowed break locations";
+              }
+              for (size_t cap_dim = 0; cap_dim < active_load.size(); ++cap_dim) {
+                if (!b.load_window_active_[cap_dim]) { continue; }
+                ASSERT_GE(active_load[cap_dim], b.load_window_min_[cap_dim]);
+                ASSERT_LE(active_load[cap_dim], b.load_window_max_[cap_dim]);
               }
             }
           }

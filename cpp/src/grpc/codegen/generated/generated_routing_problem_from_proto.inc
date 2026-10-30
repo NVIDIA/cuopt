@@ -276,6 +276,30 @@
       copy_repeated_to_vector(_in.duration(), _out.duration);
       }
     }
+    {
+      const auto* _chunk = take_container(61, _i, 3);
+      if (_chunk) {
+        decode_u8(*_chunk, _out.load_window_active);
+      } else {
+      copy_u32_to_u8(_in.load_window_active(), _out.load_window_active);
+      }
+    }
+    {
+      const auto* _chunk = take_container(61, _i, 4);
+      if (_chunk) {
+        decode_i32(*_chunk, _out.load_window_min);
+      } else {
+      copy_repeated_to_vector(_in.load_window_min(), _out.load_window_min);
+      }
+    }
+    {
+      const auto* _chunk = take_container(61, _i, 5);
+      if (_chunk) {
+        decode_i32(*_chunk, _out.load_window_max);
+      } else {
+      copy_repeated_to_vector(_in.load_window_max(), _out.load_window_max);
+      }
+    }
     p.uniform_breaks.push_back(std::move(_out));
   }
 
@@ -340,6 +364,24 @@
           decode_i32(*_chunk, _out.locations);
         } else {
           copy_repeated_to_vector(_in.locations(), _out.locations);
+        }
+        const auto* _chunk = take_container(62, _flat, 1);
+        if (_chunk) {
+          decode_u8(*_chunk, _out.load_window_active);
+        } else {
+          copy_u32_to_u8(_in.load_window_active(), _out.load_window_active);
+        }
+        const auto* _chunk = take_container(62, _flat, 2);
+        if (_chunk) {
+          decode_i32(*_chunk, _out.load_window_min);
+        } else {
+          copy_repeated_to_vector(_in.load_window_min(), _out.load_window_min);
+        }
+        const auto* _chunk = take_container(62, _flat, 3);
+        if (_chunk) {
+          decode_i32(*_chunk, _out.load_window_max);
+        } else {
+          copy_repeated_to_vector(_in.load_window_max(), _out.load_window_max);
         }
         _breaks.push_back(std::move(_out));
       }

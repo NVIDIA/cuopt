@@ -3,8 +3,14 @@
 
 import copy
 
+import pandas as pd
+
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
 from cuopt_server.tests.utils.utils import RequestClient
+from cuopt_server.utils.routing.data_definition import VehicleBreak
+from cuopt_server.utils.routing.optimization_data_model import (
+    OptimizationDataModel,
+)
 from cuopt_server.utils.routing.validation_fleet_data import (
     validate_fleet_data,
 )
@@ -43,6 +49,13 @@ valid_data = {
             [[3, 4], [3, 4], [5, 6], [5, 6]],
         ],  # noqa
         "vehicle_break_durations": [[1, 1, 1, 1], [1, 1, 1, 1]],
+        "vehicle_break_load_windows": [
+            [
+                [[0, 0], [0, 0], [0, 1], [0, 1]],
+                None,
+            ],
+            [None, [[0, 2], [0, 2], [0, 3], [0, 3]]],
+        ],
         "vehicle_break_locations": [1, 2],
         "vehicle_order_match": [{"vehicle_id": 0, "order_ids": [0]}],
         "skip_first_trips": [False, False, True, True],
@@ -119,6 +132,119 @@ def test_validate_fleet_data_unique_vehicle_ids():
     )
     assert is_valid is True
     assert msg == "Valid Fleet Data"
+
+
+def test_validate_fleet_data_break_load_windows_require_capacities():
+    vehicle_locations = [[0, 0], [0, 0]]
+
+    is_valid, msg = validate_fleet_data(
+        vehicle_ids=None,
+        vehicle_locations=vehicle_locations,
+        capacities=None,
+        vehicle_time_windows=None,
+        vehicle_breaks=None,
+        vehicle_break_time_windows=[[[0, 1], [0, 1]]],
+        vehicle_break_durations=[[1, 1]],
+        vehicle_break_locations=None,
+        vehicle_types=None,
+        vehicle_types_dict={},
+        vehicle_order_match=None,
+        skip_first_trips=None,
+        drop_return_trips=None,
+        min_vehicles=None,
+        vehicle_max_costs=None,
+        vehicle_max_times=None,
+        vehicle_fixed_costs=None,
+        vehicle_break_load_windows=[[[[0, 0], [0, 0]]]],
+    )
+    assert is_valid is False
+    assert "require capacities" in msg
+
+
+def test_optimization_data_model_keeps_break_load_windows(monkeypatch):
+    import cuopt_server.utils.routing.optimization_data_model as model_module
+
+    monkeypatch.setattr(model_module, "cudf", pd)
+
+    model = OptimizationDataModel()
+    model.is_route_detail_set = True
+    is_valid = model.set_fleet_data(
+        vehicle_ids=None,
+        vehicle_locations=[[0, 0]],
+        capacities=[[10]],
+        vehicle_time_windows=None,
+        vehicle_breaks=[
+            VehicleBreak(
+                vehicle_id=0,
+                earliest=0,
+                latest=10,
+                duration=1,
+                locations=None,
+                load_windows=[[0, 0]],
+            )
+        ],
+        vehicle_break_time_windows=None,
+        vehicle_break_durations=None,
+        vehicle_break_locations=None,
+        vehicle_types=None,
+        vehicle_order_match=None,
+        skip_first_trips=None,
+        drop_return_trips=None,
+        min_vehicles=None,
+        vehicle_max_costs=None,
+        vehicle_max_times=None,
+        vehicle_fixed_costs=None,
+    )
+
+    assert is_valid[0]
+    assert model.fleet_data["vehicle_breaks"][0]["load_windows"] == [[0, 0]]
+
+    model = OptimizationDataModel()
+    model.is_route_detail_set = True
+    is_valid = model.set_fleet_data(
+        vehicle_ids=None,
+        vehicle_locations=[[0, 0]],
+        capacities=[[10]],
+        vehicle_time_windows=None,
+        vehicle_breaks=None,
+        vehicle_break_time_windows=[[[0, 10]]],
+        vehicle_break_durations=[[1]],
+        vehicle_break_locations=None,
+        vehicle_types=None,
+        vehicle_order_match=None,
+        skip_first_trips=None,
+        drop_return_trips=None,
+        min_vehicles=None,
+        vehicle_max_costs=None,
+        vehicle_max_times=None,
+        vehicle_fixed_costs=None,
+        vehicle_break_load_windows=[[[[0, 0]]]],
+    )
+
+    assert is_valid[0]
+    assert model.fleet_data["vehicle_break_load_windows"] == [[[[0, 0]]]]
+
+    is_valid = model.set_fleet_data(
+        vehicle_ids=None,
+        vehicle_locations=[[0, 0]],
+        capacities=[[10]],
+        vehicle_time_windows=None,
+        vehicle_breaks=None,
+        vehicle_break_time_windows=[[[0, 10]]],
+        vehicle_break_durations=[[1]],
+        vehicle_break_locations=None,
+        vehicle_types=None,
+        vehicle_order_match=None,
+        skip_first_trips=None,
+        drop_return_trips=None,
+        min_vehicles=None,
+        vehicle_max_costs=None,
+        vehicle_max_times=None,
+        vehicle_fixed_costs=None,
+    )
+
+    assert is_valid[0]
+    assert model.fleet_data["vehicle_break_load_windows"] is None
 
 
 # Test validate_fleet_data with vehicle_ids=None passes (no server required)

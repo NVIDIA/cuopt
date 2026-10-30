@@ -41,10 +41,16 @@ message UniformBreakDimension {
     EARLIEST = 0;  // raw int32 (little-endian on supported platforms), 4 B/elem
     LATEST = 1;  // raw int32 (little-endian on supported platforms), 4 B/elem
     DURATION = 2;  // raw int32 (little-endian on supported platforms), 4 B/elem
+    LOAD_WINDOW_ACTIVE = 3;  // raw uint8, 1 B/elem; the unary field is uint32
+    LOAD_WINDOW_MIN = 4;  // raw int32 (little-endian on supported platforms), 4 B/elem
+    LOAD_WINDOW_MAX = 5;  // raw int32 (little-endian on supported platforms), 4 B/elem
   }
   repeated int32 earliest = 1;
   repeated int32 latest = 2;
   repeated int32 duration = 3;
+  repeated uint32 load_window_active = 4;
+  repeated int32 load_window_min = 5;
+  repeated int32 load_window_max = 6;
 }
 
 message VehicleBreak {
@@ -52,11 +58,17 @@ message VehicleBreak {
   // It is not the protobuf tag of the field.
   enum ArrayId {
     LOCATIONS = 0;  // raw int32 (little-endian on supported platforms), 4 B/elem
+    LOAD_WINDOW_ACTIVE = 1;  // raw uint8, 1 B/elem; the unary field is uint32
+    LOAD_WINDOW_MIN = 2;  // raw int32 (little-endian on supported platforms), 4 B/elem
+    LOAD_WINDOW_MAX = 3;  // raw int32 (little-endian on supported platforms), 4 B/elem
   }
   int32 earliest = 1;
   int32 latest = 2;
   int32 duration = 3;
   repeated int32 locations = 4;
+  repeated uint32 load_window_active = 5;
+  repeated int32 load_window_min = 6;
+  repeated int32 load_window_max = 7;
 }
 
 message PerVehicleBreaks {

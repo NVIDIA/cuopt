@@ -250,6 +250,9 @@ cdef class DataModel:
         self.break_earliest = []
         self.break_latest = []
         self.break_duration = []
+        self.break_load_window_active = []
+        self.break_load_window_min = []
+        self.break_load_window_max = []
 
         self.non_uniform_breaks = {}
 
@@ -490,7 +493,8 @@ cdef class DataModel:
             <const int *> c_service_times, vehicle_id)
 
     def add_break_dimension(
-        self, break_earliest, break_latest, break_duration
+        self, break_earliest, break_latest, break_duration,
+        break_load_windows=None
     ):
         self.break_earliest.append(
             type_cast(break_earliest, np.int32, "break_earliest")
@@ -510,14 +514,59 @@ cdef class DataModel:
         cdef uintptr_t c_break_duration = (
             self.break_duration[-1].__cuda_array_interface__['data'][0]
         )
+        cdef uintptr_t c_break_load_window_active = <uintptr_t>NULL
+        cdef uintptr_t c_break_load_window_min = <uintptr_t>NULL
+        cdef uintptr_t c_break_load_window_max = <uintptr_t>NULL
+        cdef int n_break_load_window_dims = 0
+        if break_load_windows is not None:
+            n_break_load_window_dims = len(break_load_windows)
+            active = cp.zeros(n_break_load_window_dims, dtype=np.uint8)
+            mins = cp.zeros(
+                (n_break_load_window_dims, self.get_fleet_size()),
+                dtype=np.int32
+            )
+            maxs = cp.zeros_like(mins)
+            for dim, window in enumerate(break_load_windows):
+                if window is None:
+                    continue
+                if (
+                    len(window["min"]) != self.get_fleet_size()
+                    or len(window["max"]) != self.get_fleet_size()
+                ):
+                    raise ValueError(
+                        "break load window min and max must match the fleet size"
+                    )
+                active[dim] = 1
+                mins[dim] = cp.asarray(type_cast(
+                    window["min"], np.int32, "break_load_window_min"
+                ))
+                maxs[dim] = cp.asarray(type_cast(
+                    window["max"], np.int32, "break_load_window_max"
+                ))
+            self.break_load_window_active.append(active)
+            self.break_load_window_min.append(mins.ravel())
+            self.break_load_window_max.append(maxs.ravel())
+            c_break_load_window_active = self.break_load_window_active[-1].data.ptr
+            c_break_load_window_min = self.break_load_window_min[-1].data.ptr
+            c_break_load_window_max = self.break_load_window_max[-1].data.ptr
+        else:
+            self.break_load_window_active.append(None)
+            self.break_load_window_min.append(None)
+            self.break_load_window_max.append(None)
         self.c_data_model_view.get().add_break_dimension(
             <const int*>c_break_earliest,
             <const int*> c_break_latest,
-            <const int*> c_break_duration
+            <const int*> c_break_duration,
+            True,
+            <const uint8_t*> c_break_load_window_active,
+            <const int*> c_break_load_window_min,
+            <const int*> c_break_load_window_max,
+            n_break_load_window_dims
         )
 
     def add_vehicle_break(
-        self, vehicle_id, earliest, latest, duration, locations
+        self, vehicle_id, earliest, latest, duration, locations,
+        break_load_windows=None
     ):
         breaks = self.non_uniform_breaks.setdefault(vehicle_id, {})
         dim = len(breaks)
@@ -531,15 +580,41 @@ cdef class DataModel:
             "latest": latest,
             "duration": duration,
             "locations": casted_locations,
+            "load_windows": break_load_windows,
         }
 
         cdef uintptr_t c_locations_ptr = (
             casted_locations.__cuda_array_interface__['data'][0]
         )
+        cdef uintptr_t c_break_load_window_active = <uintptr_t>NULL
+        cdef uintptr_t c_break_load_window_min = <uintptr_t>NULL
+        cdef uintptr_t c_break_load_window_max = <uintptr_t>NULL
+        cdef int n_break_load_window_dims = 0
+        if break_load_windows is not None:
+            n_break_load_window_dims = len(break_load_windows)
+            active = cp.zeros(n_break_load_window_dims, dtype=np.uint8)
+            mins = cp.zeros(n_break_load_window_dims, dtype=np.int32)
+            maxs = cp.zeros(n_break_load_window_dims, dtype=np.int32)
+            for cap_dim, window in enumerate(break_load_windows):
+                if window is None:
+                    continue
+                active[cap_dim] = 1
+                mins[cap_dim], maxs[cap_dim] = window
+            breaks[dim]["load_window_active"] = active
+            breaks[dim]["load_window_min"] = mins
+            breaks[dim]["load_window_max"] = maxs
+            c_break_load_window_active = active.data.ptr
+            c_break_load_window_min = mins.data.ptr
+            c_break_load_window_max = maxs.data.ptr
 
         self.c_data_model_view.get().add_vehicle_break(
             vehicle_id, earliest, latest, duration,
-            <const int *> c_locations_ptr, len(locations))
+            <const int *> c_locations_ptr, len(locations),
+            True,
+            <const uint8_t *> c_break_load_window_active,
+            <const int *> c_break_load_window_min,
+            <const int *> c_break_load_window_max,
+            n_break_load_window_dims)
 
     def add_vehicle_distance_break(
         self, vehicle_id, distance_min, distance_max, duration, locations
@@ -762,14 +837,33 @@ cdef class DataModel:
 
     def get_break_dimensions(self):
         num_breaks = len(self.break_earliest)
-        return {
-            'break_'+str(i): {
+        ret = {}
+        for i in range(num_breaks):
+            load_windows = None
+            if self.break_load_window_active[i] is not None:
+                active = cp.asnumpy(self.break_load_window_active[i])
+                mins = cp.asnumpy(self.break_load_window_min[i]).reshape(
+                    len(active), self.get_fleet_size()
+                )
+                maxs = cp.asnumpy(self.break_load_window_max[i]).reshape(
+                    len(active), self.get_fleet_size()
+                )
+                load_windows = []
+                for dim in range(len(active)):
+                    if not active[dim]:
+                        load_windows.append(None)
+                    else:
+                        load_windows.append({
+                            "min": cudf.Series(mins[dim]).astype("int32"),
+                            "max": cudf.Series(maxs[dim]).astype("int32"),
+                        })
+            ret['break_'+str(i)] = {
                 "earliest": self.break_earliest[i],
                 "latest": self.break_latest[i],
                 "duration": self.break_duration[i],
+                "load_windows": load_windows,
             }
-            for i in range(num_breaks)
-        }
+        return ret
 
     def get_non_uniform_breaks(self):
         return self.non_uniform_breaks

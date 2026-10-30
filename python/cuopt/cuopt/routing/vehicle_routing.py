@@ -19,6 +19,53 @@ from .validation import (
 )
 
 
+def _to_numpy_array(values):
+    if hasattr(values, "to_numpy"):
+        return values.to_numpy()
+    return np.asarray(values)
+
+
+def _validate_break_load_windows(data_model, break_load_windows, per_vehicle):
+    if break_load_windows is None:
+        return None
+    n_capacity_dims = len(data_model._recorded("add_capacity_dimension"))
+    if n_capacity_dims == 0:
+        raise ValueError(
+            "break load windows require at least one capacity dimension"
+        )
+    if len(break_load_windows) != n_capacity_dims:
+        raise ValueError(
+            "break load windows must include one entry per capacity dimension"
+        )
+    if per_vehicle:
+        for dim, window in enumerate(break_load_windows):
+            if window is None:
+                continue
+            if len(window) != 2:
+                raise ValueError(
+                    f"break load window at dimension {dim} must be a [min, max] pair"
+                )
+            if int(window[0]) > int(window[1]):
+                raise ValueError(
+                    f"break load window at dimension {dim} has min > max"
+                )
+        return break_load_windows
+
+    n_fleet = data_model.get_fleet_size()
+    for dim, window in enumerate(break_load_windows):
+        if window is None:
+            continue
+        validate_size(window["min"], "break load window min", n_fleet, "number of vehicles")
+        validate_size(window["max"], "break load window max", n_fleet, "number of vehicles")
+        mins = _to_numpy_array(window["min"])
+        maxs = _to_numpy_array(window["max"])
+        if np.any(mins > maxs):
+            raise ValueError(
+                f"break load window at dimension {dim} has min > max"
+            )
+    return break_load_windows
+
+
 class DataModel(_DeferredDataModel):
     """
 
@@ -283,7 +330,7 @@ class DataModel(_DeferredDataModel):
 
     @catch_cuopt_exception
     def add_break_dimension(
-        self, break_earliest, break_latest, break_duration
+        self, break_earliest, break_latest, break_duration, break_load_windows=None
     ):
         """
         Add break time windows to model the Vehicle Routing Problem with Time
@@ -307,6 +354,10 @@ class DataModel(_DeferredDataModel):
         break_duration: cudf.Series dtype - int32
             Time spent at the break location, internally equivalent
             to service time.
+        break_load_windows: list, optional
+            One entry per capacity dimension. Each non-null entry is a
+            dictionary containing per-vehicle ``min`` and ``max`` series.
+            Bounds are inclusive; use ``None`` for an unconstrained dimension.
 
         Examples
         --------
@@ -362,13 +413,22 @@ class DataModel(_DeferredDataModel):
         validate_time_windows(
             break_earliest, break_latest, n_fleet, "number of vehicles"
         )
+        break_load_windows = _validate_break_load_windows(
+            self, break_load_windows, per_vehicle=False
+        )
         super().add_break_dimension(
-            break_earliest, break_latest, break_duration
+            break_earliest, break_latest, break_duration, break_load_windows
         )
 
     @catch_cuopt_exception
     def add_vehicle_break(
-        self, vehicle_id, earliest, latest, duration, locations=None
+        self,
+        vehicle_id,
+        earliest,
+        latest,
+        duration,
+        locations=None,
+        break_load_windows=None,
     ):
         """
         Specify a break for a given vehicle. Use this api to specify
@@ -393,6 +453,9 @@ class DataModel(_DeferredDataModel):
         locations: cudf.Series dtype - int32
             List of locations where this break can be taken. By default
             any location can be used
+        break_load_windows: list, optional
+            One inclusive ``[min, max]`` pair per capacity dimension. Use
+            ``None`` for an unconstrained dimension.
 
         Examples
         --------
@@ -410,9 +473,12 @@ class DataModel(_DeferredDataModel):
             validate_range(
                 locations, "break locations", 0, self.get_num_locations() - 1
             )
+        break_load_windows = _validate_break_load_windows(
+            self, break_load_windows, per_vehicle=True
+        )
 
         super().add_vehicle_break(
-            vehicle_id, earliest, latest, duration, locations
+            vehicle_id, earliest, latest, duration, locations, break_load_windows
         )
 
     @catch_cuopt_exception

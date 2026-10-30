@@ -8,6 +8,7 @@
 # cython: language_level = 3
 
 from libcpp cimport bool
+from libc.stdint cimport uint8_t
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
@@ -90,7 +91,12 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
         void add_break_dimension(
             const i_t *break_earliest,
             const i_t *break_latest,
-            const i_t *break_duration
+            const i_t *break_duration,
+            bool validate_input,
+            const uint8_t *break_load_window_active,
+            const i_t *break_load_window_min,
+            const i_t *break_load_window_max,
+            i_t n_break_load_window_dims
         ) except +
         void add_vehicle_break(
             const int vehicle_id,
@@ -98,7 +104,12 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
             const int latest,
             const int duration,
             const i_t *break_locations,
-            const int n_break_locations
+            const int n_break_locations,
+            bool validate_input,
+            const uint8_t *break_load_window_active,
+            const i_t *break_load_window_min,
+            const i_t *break_load_window_max,
+            i_t n_break_load_window_dims
         ) except +
         void add_vehicle_distance_break(
             const int vehicle_id,

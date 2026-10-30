@@ -30,7 +30,10 @@ class special_nodes_t {
       latest_time(0, handle_ptr->get_stream()),
       distance_min(0, handle_ptr->get_stream()),
       distance_max(0, handle_ptr->get_stream()),
-      break_loc_to_idx(0, handle_ptr->get_stream())
+      break_loc_to_idx(0, handle_ptr->get_stream()),
+      load_window_active(0, handle_ptr->get_stream()),
+      load_window_min(0, handle_ptr->get_stream()),
+      load_window_max(0, handle_ptr->get_stream())
   {
   }
 
@@ -59,6 +62,15 @@ class special_nodes_t {
         v.distance_min = raft::device_span<const float>(distance_min.data() + offset, sz);
         v.distance_max = raft::device_span<const float>(distance_max.data() + offset, sz);
       }
+      v.load_window_active =
+        raft::device_span<const uint8_t>(load_window_active.data() + offset * max_break_load_window_dim,
+                                         sz * max_break_load_window_dim);
+      v.load_window_min =
+        raft::device_span<const i_t>(load_window_min.data() + offset * max_break_load_window_dim,
+                                     sz * max_break_load_window_dim);
+      v.load_window_max =
+        raft::device_span<const i_t>(load_window_max.data() + offset * max_break_load_window_dim,
+                                     sz * max_break_load_window_dim);
 
       return v;
     }
@@ -79,6 +91,9 @@ class special_nodes_t {
     // populated only when distance-based breaks are present
     raft::device_span<const float> distance_min;
     raft::device_span<const float> distance_max;
+    raft::device_span<const uint8_t> load_window_active;
+    raft::device_span<const i_t> load_window_min;
+    raft::device_span<const i_t> load_window_max;
     raft::device_span<const i_t> break_loc_to_idx;
   };
 
@@ -97,6 +112,9 @@ class special_nodes_t {
       v.distance_min = cuopt::make_span(distance_min);
       v.distance_max = cuopt::make_span(distance_max);
     }
+    v.load_window_active = cuopt::make_span(load_window_active);
+    v.load_window_min    = cuopt::make_span(load_window_min);
+    v.load_window_max    = cuopt::make_span(load_window_max);
     v.break_loc_to_idx = cuopt::make_span(break_loc_to_idx);
 
     return v;
@@ -122,6 +140,9 @@ class special_nodes_t {
   rmm::device_uvector<float> distance_min;
   rmm::device_uvector<float> distance_max;
   rmm::device_uvector<i_t> break_loc_to_idx;
+  rmm::device_uvector<uint8_t> load_window_active;
+  rmm::device_uvector<i_t> load_window_min;
+  rmm::device_uvector<i_t> load_window_max;
 };
 }  // namespace detail
 }  // namespace routing

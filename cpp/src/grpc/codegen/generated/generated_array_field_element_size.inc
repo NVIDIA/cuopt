@@ -82,6 +82,9 @@
         case 0: return 4;  // earliest
         case 1: return 4;  // latest
         case 2: return 4;  // duration
+        case 3: return 1;  // load_window_active
+        case 4: return 4;  // load_window_min
+        case 5: return 4;  // load_window_max
       }
       return -1;
     }
@@ -112,6 +115,9 @@
     case 62: {  // VehicleBreak via PerVehicleBreaks (vehicle_breaks)
       switch (field_id) {
         case 0: return 4;  // locations
+        case 1: return 1;  // load_window_active
+        case 2: return 4;  // load_window_min
+        case 3: return 4;  // load_window_max
       }
       return -1;
     }

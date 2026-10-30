@@ -101,6 +101,17 @@
     if (include_other_arrays) {
       copy_vector_to_repeated(_entry.duration, _out->mutable_duration());
     }
+    if (include_other_arrays) {
+      for (auto v : _entry.load_window_active) {
+        _out->mutable_load_window_active()->Add(static_cast<uint32_t>(v));
+      }
+    }
+    if (include_other_arrays) {
+      copy_vector_to_repeated(_entry.load_window_min, _out->mutable_load_window_min());
+    }
+    if (include_other_arrays) {
+      copy_vector_to_repeated(_entry.load_window_max, _out->mutable_load_window_max());
+    }
   }
 
   for (auto const& [_key, _values] : p.order_service_times) {
@@ -142,6 +153,17 @@
       _brk->set_duration(_entry.duration);
       if (include_other_arrays) {
         copy_vector_to_repeated(_entry.locations, _brk->mutable_locations());
+      }
+      if (include_other_arrays) {
+        for (auto v : _entry.load_window_active) {
+          _brk->mutable_load_window_active()->Add(static_cast<uint32_t>(v));
+        }
+      }
+      if (include_other_arrays) {
+        copy_vector_to_repeated(_entry.load_window_min, _brk->mutable_load_window_min());
+      }
+      if (include_other_arrays) {
+        copy_vector_to_repeated(_entry.load_window_max, _brk->mutable_load_window_max());
       }
     }
   }

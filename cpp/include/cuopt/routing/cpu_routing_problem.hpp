@@ -49,6 +49,9 @@ struct cpu_vehicle_break_t {
   int32_t latest   = 0;
   int32_t duration = 0;
   std::vector<int32_t> locations;
+  std::vector<uint8_t> load_window_active;
+  std::vector<int32_t> load_window_min;
+  std::vector<int32_t> load_window_max;
 };
 
 struct cpu_vehicle_distance_break_t {
@@ -62,6 +65,9 @@ struct cpu_uniform_break_t {
   std::vector<int32_t> earliest;
   std::vector<int32_t> latest;
   std::vector<int32_t> duration;
+  std::vector<uint8_t> load_window_active;
+  std::vector<int32_t> load_window_min;
+  std::vector<int32_t> load_window_max;
 };
 
 struct cpu_initial_solution_t {

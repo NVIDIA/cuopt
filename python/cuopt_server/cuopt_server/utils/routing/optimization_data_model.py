@@ -95,6 +95,7 @@ class OptimizationDataModel:
             "vehicle_time_windows": None,
             "vehicle_break_time_windows": None,
             "vehicle_break_durations": None,
+            "vehicle_break_load_windows": None,
             "vehicle_break_locations": None,
             "vehicle_breaks": None,
             "vehicle_distance_breaks": None,
@@ -207,6 +208,9 @@ class OptimizationDataModel:
             ]
             if self.fleet_data["vehicle_break_durations"] is not None
             else None,
+            "vehicle_break_load_windows": self.fleet_data[
+                "vehicle_break_load_windows"
+            ],
             "vehicle_break_locations": self.fleet_data[
                 "vehicle_break_locations"
             ]  # noqa
@@ -493,6 +497,7 @@ class OptimizationDataModel:
         vehicle_max_times,
         vehicle_fixed_costs,
         vehicle_distance_breaks=None,
+        vehicle_break_load_windows=None,
     ):
         if not self.is_route_detail_set:
             return (
@@ -520,6 +525,9 @@ class OptimizationDataModel:
         )
         vehicle_break_durations = get_none_for_empty_list(
             vehicle_break_durations
+        )
+        vehicle_break_load_windows = get_none_for_empty_list(
+            vehicle_break_load_windows
         )
         vehicle_break_locations = get_none_for_empty_list(
             vehicle_break_locations
@@ -550,6 +558,7 @@ class OptimizationDataModel:
             vehicle_max_costs,
             vehicle_max_times,
             vehicle_fixed_costs,
+            vehicle_break_load_windows=vehicle_break_load_windows,
             updating=False,
             comparison_locations=None,
             vehicle_distance_breaks=vehicle_distance_breaks,
@@ -610,6 +619,9 @@ class OptimizationDataModel:
                     cudf.Series(val, dtype=np.int32)
                     for val in vehicle_break_durations
                 ]
+            self.fleet_data["vehicle_break_load_windows"] = (
+                vehicle_break_load_windows
+            )
             if vehicle_breaks is not None:
                 self.fleet_data["vehicle_breaks"] = [
                     {
@@ -618,6 +630,7 @@ class OptimizationDataModel:
                         "latest": data.latest,
                         "duration": data.duration,
                         "locations": data.locations,
+                        "load_windows": data.load_windows,
                     }
                     for data in vehicle_breaks
                 ]

@@ -148,11 +148,31 @@ template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::add_break_dimension(i_t const* break_earliest,
                                                       i_t const* break_latest,
                                                       i_t const* break_duration,
-                                                      bool validate_input)
+                                                      bool validate_input,
+                                                      uint8_t const* break_load_window_active,
+                                                      i_t const* break_load_window_min,
+                                                      i_t const* break_load_window_max,
+                                                      i_t n_break_load_window_dims)
 {
   cuopt_expects(break_earliest != nullptr && break_latest != nullptr && break_duration != nullptr,
                 error_type_t::ValidationError,
                 "Breaks cannot be null");
+  std::vector<uint8_t> load_window_active_h;
+  if (n_break_load_window_dims > 0) {
+    cuopt_expects(!caps_.empty(),
+                  error_type_t::ValidationError,
+                  "Break load windows require at least one capacity dimension");
+    cuopt_expects(n_break_load_window_dims == static_cast<i_t>(caps_.size()) &&
+                    n_break_load_window_dims <= max_break_load_window_dim,
+                  error_type_t::ValidationError,
+                  "Break load windows must match the number of supported capacity dimensions");
+    cuopt_expects(break_load_window_active != nullptr && break_load_window_min != nullptr &&
+                    break_load_window_max != nullptr,
+                  error_type_t::ValidationError,
+                  "Break load window inputs cannot be null");
+    load_window_active_h =
+      cuopt::host_copy(break_load_window_active, n_break_load_window_dims, handle_ptr_->get_stream());
+  }
   if (validate_input) {
     cuopt_expects(detail::check_min_max_values(break_earliest,
                                                get_fleet_size(),
@@ -178,7 +198,26 @@ void data_model_view_t<i_t, f_t>::add_break_dimension(i_t const* break_earliest,
                   error_type_t::ValidationError,
                   "break_duration values must be between min int32_t and max int32_t");
   }
-  break_dimensions_.emplace_back(break_earliest, break_latest, break_duration);
+  for (i_t dim = 0; dim < n_break_load_window_dims; ++dim) {
+    if (!load_window_active_h[dim]) { continue; }
+    auto* min_ptr = break_load_window_min + dim * get_fleet_size();
+    auto* max_ptr = break_load_window_max + dim * get_fleet_size();
+    auto min_h = cuopt::host_copy(min_ptr, get_fleet_size(), handle_ptr_->get_stream());
+    auto max_h = cuopt::host_copy(max_ptr, get_fleet_size(), handle_ptr_->get_stream());
+    for (i_t vehicle_id = 0; vehicle_id < get_fleet_size(); ++vehicle_id) {
+      cuopt_expects(min_h[vehicle_id] <= max_h[vehicle_id],
+                    error_type_t::ValidationError,
+                    "Break load window minimum must be less than or equal to maximum");
+    }
+  }
+  break_dimensions_.emplace_back(break_earliest,
+                                 break_latest,
+                                 break_duration,
+                                 load_window_active_h.data(),
+                                 break_load_window_min,
+                                 break_load_window_max,
+                                 static_cast<uint8_t>(n_break_load_window_dims),
+                                 get_fleet_size());
 }
 
 template <typename i_t, typename f_t>
@@ -188,7 +227,11 @@ void data_model_view_t<i_t, f_t>::add_vehicle_break(i_t vehicle_id,
                                                     i_t break_duration,
                                                     i_t const* break_locations,
                                                     i_t num_break_locations,
-                                                    bool validate_input)
+                                                    bool validate_input,
+                                                    uint8_t const* break_load_window_active,
+                                                    i_t const* break_load_window_min,
+                                                    i_t const* break_load_window_max,
+                                                    i_t n_break_load_window_dims)
 {
   cuopt_expects(0 <= vehicle_id && vehicle_id < fleet_size_,
                 error_type_t::ValidationError,
@@ -199,6 +242,35 @@ void data_model_view_t<i_t, f_t>::add_vehicle_break(i_t vehicle_id,
   cuopt_expects(
     break_duration >= 0, error_type_t::ValidationError, "break_duration must be non-negative!");
 
+  std::vector<uint8_t> load_window_active_h;
+  std::vector<i_t> load_window_min_h, load_window_max_h;
+  if (n_break_load_window_dims > 0) {
+    cuopt_expects(!caps_.empty(),
+                  error_type_t::ValidationError,
+                  "Break load windows require at least one capacity dimension");
+    cuopt_expects(n_break_load_window_dims == static_cast<i_t>(caps_.size()) &&
+                    n_break_load_window_dims <= max_break_load_window_dim,
+                  error_type_t::ValidationError,
+                  "Break load windows must match the number of supported capacity dimensions");
+    cuopt_expects(break_load_window_active != nullptr && break_load_window_min != nullptr &&
+                    break_load_window_max != nullptr,
+                  error_type_t::ValidationError,
+                  "Break load window inputs cannot be null");
+    load_window_active_h =
+      cuopt::host_copy(break_load_window_active, n_break_load_window_dims, handle_ptr_->get_stream());
+    load_window_min_h =
+      cuopt::host_copy(break_load_window_min, n_break_load_window_dims, handle_ptr_->get_stream());
+    load_window_max_h =
+      cuopt::host_copy(break_load_window_max, n_break_load_window_dims, handle_ptr_->get_stream());
+    for (i_t dim = 0; dim < n_break_load_window_dims; ++dim) {
+      if (load_window_active_h[dim]) {
+        cuopt_expects(load_window_min_h[dim] <= load_window_max_h[dim],
+                      error_type_t::ValidationError,
+                      "Break load window minimum must be less than or equal to maximum");
+      }
+    }
+  }
+
   if (validate_input) {
     validate_break_locations(break_locations, num_break_locations, num_locations_, handle_ptr_);
   }
@@ -207,7 +279,11 @@ void data_model_view_t<i_t, f_t>::add_vehicle_break(i_t vehicle_id,
     break_earliest,
     break_latest,
     break_duration,
-    raft::device_span<const i_t>(break_locations, num_break_locations)));
+    raft::device_span<const i_t>(break_locations, num_break_locations),
+    load_window_active_h.data(),
+    load_window_min_h.data(),
+    load_window_max_h.data(),
+    static_cast<uint8_t>(n_break_load_window_dims)));
 }
 
 template <typename i_t, typename f_t>
