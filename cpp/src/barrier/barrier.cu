@@ -2313,6 +2313,20 @@ class iteration_data_t {
 
   bool use_high_accuracy_ir = false;
 
+  // KKT iterative-refinement tolerance. By default LP/QP use 1e-8 throughout, dense-cone problems
+  // start at 1e-8 and tighten to 1e-12 once use_high_accuracy_ir is set, and sparse SOCs use 1e-12
+  // throughout. barrier_adaptive_ir applies the adaptive 1e-8 -> 1e-12 tolerance to every problem.
+  f_t kkt_ir_tol() const
+  {
+    const bool always_high = has_sparse_cones() && !settings_.barrier_adaptive_ir;
+    return (always_high || use_high_accuracy_ir) ? f_t(1e-12) : f_t(1e-8);
+  }
+  // ADAT (normal equations) IR tolerance: 1e-8 throughout unless barrier_adaptive_ir.
+  f_t adat_ir_tol() const
+  {
+    return (settings_.barrier_adaptive_ir && use_high_accuracy_ir) ? f_t(1e-12) : f_t(1e-8);
+  }
+
   dense_vector_t<i_t, f_t> diag;
   pinned_dense_vector_t<i_t, f_t> inv_diag;
   dense_vector_t<i_t, f_t> inv_sqrt_diag;
@@ -2698,8 +2712,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     } op(data);
 
     if (settings.barrier_iterative_refinement) {
-      const f_t ir_tol =
-        (data.has_sparse_cones() || data.use_high_accuracy_ir) ? f_t(1e-12) : f_t(1e-8);
+      const f_t ir_tol = data.kkt_ir_tol();
       iterative_refinement<i_t, f_t, op_t>(op, rhs, soln, ir_tol);
     }
 
@@ -3293,8 +3306,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     } op(data);
     if (settings.barrier_iterative_refinement) {
       raft::common::nvtx::range fun_scope("Barrier: iterative_refinement");
-      const f_t ir_tol =
-        (data.has_sparse_cones() || data.use_high_accuracy_ir) ? f_t(1e-12) : f_t(1e-8);
+      const f_t ir_tol    = data.kkt_ir_tol();
       const f_t solve_err = iterative_refinement<i_t, f_t, op_t>(
         op, data.d_augmented_rhs_, data.d_augmented_soln_, ir_tol);
       if (solve_err > 1e-1) {
@@ -3378,7 +3390,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
             data_.gpu_solve_adat(b, x);
           }
         } adat_op(data);
-        const f_t ir_tol = 1e-8;
+        const f_t ir_tol = data.adat_ir_tol();
         const f_t adat_solve_err =
           iterative_refinement<i_t, f_t, adat_op_t>(adat_op, data.d_h_, data.d_dy_, ir_tol);
         if (adat_solve_err > 1e-1) {
@@ -4536,6 +4548,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
       settings.log.printf("Adaptive regularization enabled\n");
     }
 
+    // IR tolerance state is per solve; a cached iteration_data still holds the previous solve's.
+    data.use_high_accuracy_ir = false;
+
     i_t initial_status = initial_point(data);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
@@ -4765,8 +4780,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
       compute_objective_gap(
         lp, primal_objective, dual_objective, objective_gap, relative_objective_gap);
 
-      if (data.has_cones() && !data.use_high_accuracy_ir && relative_primal_residual < 1e-6 &&
-          relative_dual_residual < 1e-6 && relative_complementarity_residual < 1e-6) {
+      if ((data.has_cones() || settings.barrier_adaptive_ir) && !data.use_high_accuracy_ir &&
+          relative_primal_residual < 1e-6 && relative_dual_residual < 1e-6 &&
+          relative_complementarity_residual < 1e-6) {
         data.use_high_accuracy_ir = true;
       }
 

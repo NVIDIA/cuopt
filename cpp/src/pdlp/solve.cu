@@ -593,6 +593,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.crossover                        = settings.crossover;
   barrier_settings.eliminate_dense_columns          = settings.eliminate_dense_columns;
   barrier_settings.barrier_iterative_refinement     = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_adaptive_ir              = settings.barrier_adaptive_ir;
   barrier_settings.barrier_adaptive_regularization  = settings.barrier_adaptive_regularization;
   barrier_settings.barrier_primal_regularization    = settings.barrier_primal_regularization;
   barrier_settings.barrier_dual_regularization      = settings.barrier_dual_regularization;
@@ -845,6 +846,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.all_primal_feasible             = settings.all_primal_feasible;
   fs.eliminate_dense_columns         = settings.eliminate_dense_columns;
   fs.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
+  fs.barrier_adaptive_ir             = settings.barrier_adaptive_ir;
   fs.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
   fs.barrier_primal_regularization   = settings.barrier_primal_regularization;
   fs.barrier_dual_regularization     = settings.barrier_dual_regularization;
