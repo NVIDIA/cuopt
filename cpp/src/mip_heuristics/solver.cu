@@ -27,6 +27,7 @@
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/structural/early_structural.cuh>
 #include <presolve/conflict_graph/clique_table.cuh>
+#include <presolve/probing_implied_bound.hpp>
 #include <raft/core/cusparse_macros.hpp>
 
 #include <cmath>

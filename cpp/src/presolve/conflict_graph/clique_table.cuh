@@ -168,7 +168,7 @@ struct clique_table_t {
       min_clique_size(other.min_clique_size),
       max_clique_size_for_extension(other.max_clique_size_for_extension),
       tolerances(other.tolerances),
-      ready(other.ready.load())
+      ready(other.ready.load(std::memory_order_acquire))
   {
   }
 

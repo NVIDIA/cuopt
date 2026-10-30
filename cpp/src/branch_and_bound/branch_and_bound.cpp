@@ -4837,7 +4837,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   lp_settings.set_log(false);
 
   const f_t cutoff = compute_node_cutoff(worker.leaf_problem, settings_, worker.local_upper_bound);
-  lp_settings.cut_off       = cutoff + settings_.dual_tol;
+  lp_settings.cut_off       = cutoff;
   lp_settings.inside_mip    = 2;
   lp_settings.time_limit    = remaining_time;
   lp_settings.scale_columns = false;
@@ -5476,7 +5476,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     lp_settings.set_log(false);
     const f_t cutoff =
       compute_node_cutoff(worker.leaf_problem, settings_, worker.local_upper_bound);
-    lp_settings.cut_off       = cutoff + settings_.dual_tol;
+    lp_settings.cut_off       = cutoff;
     lp_settings.inside_mip    = 2;
     lp_settings.time_limit    = remaining_time;
     lp_settings.scale_columns = false;
