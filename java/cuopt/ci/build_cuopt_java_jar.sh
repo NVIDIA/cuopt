@@ -127,10 +127,10 @@ CUDA_RUNTIME_LIBRARY_PATTERN='^lib(cublas|cublasLt|cusparse|cusolver|nvJitLink)\
 # preferred_dir, when given, is searched first and exclusively -- no falling through to the
 # broad search below even on a miss. It exists for two cases where the broad search could match
 # the wrong file even though a name-only match succeeds:
-#   - libcudss_mtlayer_gomp.so.0 (when cuDSS's prebuilt plugin is used instead of the custom
-#     one): dnf's cuDSS package registers /usr/lib64/libcudss_mtlayer_gomp.so.0 as an
+#   - libcudss_mtlayer_gomp.so.1 (when cuDSS's prebuilt plugin is used instead of the custom
+#     one): dnf's cuDSS package registers /usr/lib64/libcudss_mtlayer_gomp.so.1 as an
 #     `alternatives` symlink, which can point at a *different* cuDSS version's copy than the one
-#     actually pinned and linked. The versioned directory libcudss.so.0 itself was found in is
+#     actually pinned and linked. The versioned directory libcudss.so.1 itself was found in is
 #     unambiguous, so once that is known, use it for anything else that must be its exact version
 #     match.
 #   - libgomp.so.1: Rocky 8's own libgomp (including gcc-toolset-14's copy) lacks the OpenMP 5.0
@@ -181,13 +181,13 @@ MANIFEST="${STAGING}/${RESOURCE_DIR}/companions.txt"
 CUDSS_LIBRARY_DIR=""
 for companion in "${COMPANIONS[@]}"; do
   preferred_dir=""
-  if [[ "${companion}" == "libcudss_mtlayer_gomp.so.0" && -n "${CUDSS_LIBRARY_DIR}" ]]; then
+  if [[ "${companion}" == "libcudss_mtlayer_gomp.so.1" && -n "${CUDSS_LIBRARY_DIR}" ]]; then
     preferred_dir="${CUDSS_LIBRARY_DIR}"
   elif [[ "${companion}" == "libgomp.so.1" && -n "${CUOPT_MODERN_LIBGOMP_DIR:-}" ]]; then
     preferred_dir="${CUOPT_MODERN_LIBGOMP_DIR}"
   fi
   companion_path="$(find_companion "${companion}" "${preferred_dir}")"
-  if [[ "${companion}" == "libcudss.so.0" ]]; then
+  if [[ "${companion}" == "libcudss.so.1" ]]; then
     CUDSS_LIBRARY_DIR="$(dirname "${companion_path}")"
   fi
   # Dereference, since these are commonly symlinks into a versioned file.

@@ -351,14 +351,17 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       "cudssConfigSet for ir n steps");
 #endif
 
-#if USE_MATCHING
-    settings_.log.printf("Using matching\n");
-    int32_t use_matching = 1;
+    // cuDSS 1.0 chooses matching and pivoting automatically; turn both off.
+    cudssMatchingAlg_t matching_alg = CUDSS_MATCHING_ALG_NONE;
     CUDSS_CALL_AND_CHECK_EXIT(
-      cudssConfigSet(solverConfig, CUDSS_CONFIG_USE_MATCHING, &use_matching, sizeof(int32_t)),
+      cudssConfigSet(solverConfig, CUDSS_CONFIG_MATCHING_ALG, &matching_alg, sizeof(matching_alg)),
       status,
-      "cudssConfigSet for use matching");
-#endif
+      "cudssConfigSet for matching alg");
+    cudssPivotType_t pivot_type = CUDSS_PIVOT_NONE;
+    CUDSS_CALL_AND_CHECK_EXIT(
+      cudssConfigSet(solverConfig, CUDSS_CONFIG_PIVOT_TYPE, &pivot_type, sizeof(pivot_type)),
+      status,
+      "cudssConfigSet for pivot type");
 
     // Device pointers
     csr_offset_d  = nullptr;

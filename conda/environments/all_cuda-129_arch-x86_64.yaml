@@ -30,7 +30,7 @@ dependencies:
 - jsonref==1.1.0
 - libabseil
 - libboost-devel
-- libcudss-dev >=0.7,<0.8
+- libcudss-dev >=1.0,<1.1
 - libcusparse-dev
 - libgomp >=11
 - libgrpc >=1.78.0,<1.80.0a0

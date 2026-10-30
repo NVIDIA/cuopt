@@ -1000,7 +1000,7 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
-          - libcudss-dev >=0.7,<0.8
+          - libcudss-dev >=1.0,<1.1
           - libcusparse-dev
           - cuda-nvtx-dev
           - libnvjitlink-dev
@@ -1080,7 +1080,7 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==12.*
-              - &cudss_cu12 nvidia-cudss-cu12>=0.7,<0.8
+              - &cudss_cu12 nvidia-cudss-cu12>=1.0,<1.1
               - &nccl_cu12 nvidia-nccl-cu12>=2.19
               - *nvjitlink_cu12
           - matrix:
@@ -1088,7 +1088,7 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - &ctk_cu13 cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
-              - &cudss_cu13 nvidia-cudss-cu13>=0.7,<0.8
+              - &cudss_cu13 nvidia-cudss-cu13>=1.0,<1.1
               - &nccl_cu13 nvidia-nccl-cu13>=2.19
               - *nvjitlink_cu13
           # if no matching matrix selectors passed, list the CUDA 13 requirement

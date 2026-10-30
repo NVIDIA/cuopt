@@ -128,7 +128,7 @@ General FAQ
 
    .. code-block:: bash
 
-       export CUDSS_THREADING_LIB=/path/to/libcudss_mtlayer_gomp.so.0
+       export CUDSS_THREADING_LIB=/path/to/libcudss_mtlayer_gomp.so.1
 
    .. warning:: Whatever threading-layer library you point cuDSS at must be built against the same OpenMP runtime cuOpt itself uses. For pip installs, that's the bundled GNU libgomp, not necessarily the host's. Pointing cuDSS at a library linked against a *different* OpenMP runtime reintroduces the exact dual-runtime conflict described in `#1219 <https://github.com/NVIDIA/cuopt/issues/1219>`_, including possible crashes.
 
