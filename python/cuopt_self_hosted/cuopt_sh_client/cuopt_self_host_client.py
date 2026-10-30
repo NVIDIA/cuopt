@@ -1040,7 +1040,7 @@ class CuOptServiceSelfHostClient:
         Return the status of a cuOpt server request.
 
         id : str
-            A uuid identifying the solution to be deleted.
+            A uuid identifying the request.
         """
         if isinstance(id, dict):
             id = id["reqId"]
