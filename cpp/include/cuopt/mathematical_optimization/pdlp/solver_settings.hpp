@@ -15,7 +15,6 @@
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <optional>
-#include <raft/core/device_span.hpp>
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
