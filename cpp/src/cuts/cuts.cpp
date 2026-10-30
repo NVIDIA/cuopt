@@ -10,7 +10,7 @@
 
 #include <dual_simplex/basis_solves.hpp>
 #include <math_optimization/tic_toc.hpp>
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
+#include <presolve/conflict_graph/clique_table.cuh>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 
@@ -2267,24 +2267,19 @@ flow_cover_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
   auto& scratch                       = *this;
   constexpr f_t min_mir_beta_fraction = 0.01;
   constexpr f_t max_mir_beta_fraction = 0.95;
-  const f_t min_violation             = static_cast<f_t>(1e-6);
-  const f_t lambda_tol                = min_violation;
-  f_t max_c1_ltilde2                  = -inf;
-  f_t max_c1                          = -inf;
-  f_t max_u_ge_lambda                 = -inf;
+  // Wolter (2006), Section 5.4: testing at most MAXTESTDELTA = 10 values of ubar keeps nearly all
+  // of the gap closed by the full candidate set N*_3, whose size grows with the number of distinct
+  // arc capacities in the row.
+  constexpr size_t max_test_delta = 10;
+  const f_t min_violation         = 1e-6;
+  const f_t lambda_tol            = min_violation;
+  f_t max_c1_ltilde2              = -inf;
+  f_t max_c1                      = -inf;
+  f_t max_u_ge_lambda             = -inf;
+  const i_t number_of_arcs        = scratch.arcs.size();
 
-  auto add_ubar_candidate = [&](f_t candidate) {
-    if (candidate <= lambda + lambda_tol || !std::isfinite(candidate)) { return; }
-    for (f_t existing : scratch.ubar_candidates) {
-      const f_t duplicate_tol = static_cast<f_t>(1e-8) * std::max<f_t>(1.0, std::abs(candidate));
-      if (std::abs(existing - candidate) <= duplicate_tol) { return; }
-    }
-    scratch.ubar_candidates.push_back(candidate);
-  };
-
-  for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+  for (i_t k = 0; k < number_of_arcs; k++) {
     const auto& arc = scratch.arcs[k];
-    if (arc.u > lambda + lambda_tol) { add_ubar_candidate(arc.u); }
     if (arc.u >= lambda - lambda_tol) { max_u_ge_lambda = std::max(max_u_ge_lambda, arc.u); }
     if (!arc.in_n2 && scratch.in_c1[k] && arc.u > lambda + lambda_tol) {
       max_c1         = std::max(max_c1, arc.u);
@@ -2295,71 +2290,79 @@ flow_cover_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
       max_c1_ltilde2 = std::max(max_c1_ltilde2, arc.u);
     }
   }
+
+  // Only candidates that pass the f_beta filter generate an inequality, so only they count
+  // towards max_test_delta.
+  auto add_ubar_candidate = [&](f_t candidate) {
+    if (candidate <= lambda + lambda_tol || !std::isfinite(candidate)) { return; }
+    const f_t f_beta = fractional_part(-lambda / candidate);
+    if (f_beta < min_mir_beta_fraction || f_beta > max_mir_beta_fraction) { return; }
+    for (f_t existing : scratch.ubar_candidates) {
+      const f_t duplicate_tol = 1e-8 * std::max<f_t>(1.0, std::abs(candidate));
+      if (std::abs(existing - candidate) <= duplicate_tol) { return; }
+    }
+    scratch.ubar_candidates.push_back(candidate);
+  };
+
+  // Test N*_2 and max{u_j : u_j >= lambda} + 1 first, then fill up with the arc capacities of N*_3.
   add_ubar_candidate(max_c1_ltilde2);
   add_ubar_candidate(max_c1);
-  add_ubar_candidate(max_u_ge_lambda + 1.0);
   add_ubar_candidate(lambda + 1.0);
+  add_ubar_candidate(max_u_ge_lambda + 1.0);
+  for (i_t k = 0; k < number_of_arcs && scratch.ubar_candidates.size() < max_test_delta; k++) {
+    add_ubar_candidate(scratch.arcs[k].u);
+  }
 
   flow_cover_evaluation_t<f_t> best{0.0, 0.0};
   if (scratch.ubar_candidates.empty()) { return best; }
 
-  scratch.best_in_l1.assign(scratch.arcs.size(), 0);
-  scratch.best_in_l2.assign(scratch.arcs.size(), 0);
-
-  auto contribution = [&](const single_node_flow_arc_t<i_t, f_t>& arc,
-                          bool arc_in_c1,
-                          bool arc_in_c2,
-                          bool arc_in_l1,
-                          bool arc_in_l2,
-                          f_t ubar) {
-    const f_t f_beta = fractional_part(-lambda / ubar);
-    const f_t f_pos  = flow_cover_mir_f(f_beta, arc.u / ubar);
-    const f_t f_neg  = flow_cover_mir_f(f_beta, -arc.u / ubar);
-    if (arc_in_c1) { return arc.y_value + (arc.u + lambda * f_neg) * (1.0 - arc.x_value); }
-    if (!arc.in_n2) {
-      return arc_in_l1 ? arc.y_value - (arc.u - lambda * f_pos) * arc.x_value
-                       : static_cast<f_t>(0.0);
-    }
-    if (arc_in_c2) { return -arc.u + lambda * f_pos * (1.0 - arc.x_value); }
-    return arc_in_l2 ? lambda * f_neg * arc.x_value : -arc.y_value;
-  };
-
+  // L1 and L2 are chosen by comparison (Wolter (5.11) and (5.12)), so each arc contributes the
+  // better of its two options directly and the sets are only materialized for the best ubar.
   for (f_t ubar : scratch.ubar_candidates) {
-    const f_t beta   = -lambda / ubar;
-    const f_t f_beta = fractional_part(beta);
-    if (f_beta < min_mir_beta_fraction || f_beta > max_mir_beta_fraction) { continue; }
-
-    scratch.in_l1.assign(scratch.arcs.size(), 0);
-    scratch.in_l2.assign(scratch.arcs.size(), 0);
-    for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+    const f_t f_beta = fractional_part(-lambda / ubar);
+    f_t lhs_value    = 0.0;
+    for (i_t k = 0; k < number_of_arcs; k++) {
       const auto& arc = scratch.arcs[k];
-      const f_t f_pos = flow_cover_mir_f(f_beta, arc.u / ubar);
-      const f_t f_neg = flow_cover_mir_f(f_beta, -arc.u / ubar);
-      if (!arc.in_n2 && !scratch.in_c1[k] &&
-          arc.y_value - (arc.u - lambda * f_pos) * arc.x_value >= -min_violation) {
-        scratch.in_l1[k] = 1;
+      if (scratch.in_c1[k]) {
+        const f_t f_neg = flow_cover_mir_f(f_beta, -arc.u / ubar);
+        lhs_value += arc.y_value + (arc.u + lambda * f_neg) * (1.0 - arc.x_value);
+      } else if (!arc.in_n2) {
+        const f_t f_pos   = flow_cover_mir_f(f_beta, arc.u / ubar);
+        const f_t l1_term = arc.y_value - (arc.u - lambda * f_pos) * arc.x_value;
+        if (l1_term >= -min_violation) { lhs_value += l1_term; }
+      } else if (scratch.in_c2[k]) {
+        const f_t f_pos = flow_cover_mir_f(f_beta, arc.u / ubar);
+        lhs_value += -arc.u + lambda * f_pos * (1.0 - arc.x_value);
+      } else {
+        const f_t f_neg   = flow_cover_mir_f(f_beta, -arc.u / ubar);
+        const f_t l2_term = lambda * f_neg * arc.x_value;
+        lhs_value += l2_term >= -arc.y_value - min_violation ? l2_term : -arc.y_value;
       }
-      if (arc.in_n2 && !scratch.in_c2[k] &&
-          lambda * f_neg * arc.x_value >= -arc.y_value - min_violation) {
-        scratch.in_l2[k] = 1;
-      }
-    }
-
-    f_t lhs_value = 0.0;
-    for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
-      lhs_value += contribution(scratch.arcs[k],
-                                scratch.in_c1[k],
-                                scratch.in_c2[k],
-                                scratch.in_l1[k],
-                                scratch.in_l2[k],
-                                ubar);
     }
     const f_t violation = lhs_value - single_node_flow_b;
     if (violation > best.violation + min_violation) {
-      best.violation     = violation;
-      best.ubar          = ubar;
-      scratch.best_in_l1 = scratch.in_l1;
-      scratch.best_in_l2 = scratch.in_l2;
+      best.violation = violation;
+      best.ubar      = ubar;
+    }
+  }
+
+  scratch.best_in_l1.assign(number_of_arcs, 0);
+  scratch.best_in_l2.assign(number_of_arcs, 0);
+  if (best.ubar > 0.0) {
+    const f_t f_beta = fractional_part(-lambda / best.ubar);
+    for (i_t k = 0; k < number_of_arcs; k++) {
+      const auto& arc = scratch.arcs[k];
+      if (!arc.in_n2 && !scratch.in_c1[k]) {
+        const f_t f_pos = flow_cover_mir_f(f_beta, arc.u / best.ubar);
+        if (arc.y_value - (arc.u - lambda * f_pos) * arc.x_value >= -min_violation) {
+          scratch.best_in_l1[k] = 1;
+        }
+      } else if (arc.in_n2 && !scratch.in_c2[k]) {
+        const f_t f_neg = flow_cover_mir_f(f_beta, -arc.u / best.ubar);
+        if (lambda * f_neg * arc.x_value >= -arc.y_value - min_violation) {
+          scratch.best_in_l2[k] = 1;
+        }
+      }
     }
   }
 

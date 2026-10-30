@@ -15,13 +15,13 @@
 #include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
-#include <mip_heuristics/presolve/presolve_budget_policy.hpp>
-#include <mip_heuristics/presolve/semi_continuous.cuh>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/structural/early_structural.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <presolve/presolve_budget_policy.hpp>
+#include <presolve/semi_continuous.cuh>
+#include <presolve/third_party_presolve.hpp>
+#include <presolve/trivial_presolve.cuh>
 
 #include <pdlp/pdlp.cuh>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
@@ -849,8 +849,18 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         full_sol.copy_new_assignment(
           cuopt::host_copy(primal_solution, op_problem.get_handle_ptr()->get_stream()));
         full_sol.compute_feasibility();
+        CUOPT_LOG_DEBUG(
+          "Post solve: max residual error=%g, max integrality error=%g, max variable bound "
+          "error=%g",
+          full_sol.compute_max_constraint_violation(),
+          full_sol.compute_max_int_violation(),
+          full_sol.compute_max_variable_violation());
         if (!full_sol.get_feasible()) {
           CUOPT_LOG_WARN("The solution is not feasible after post solve");
+        }
+        if (mip::has_variable_bounds_violation(
+              full_problem.handle_ptr, full_sol.assignment, &full_problem)) {
+          CUOPT_LOG_WARN("The solution violates the variable bounds after post solve");
         }
 
         auto full_stats = sol.get_stats();

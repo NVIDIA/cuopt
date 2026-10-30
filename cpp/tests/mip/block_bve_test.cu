@@ -12,14 +12,14 @@
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/diversity/diversity_manager.cuh>
-#include <mip_heuristics/presolve/block_bve.cuh>
-#include <mip_heuristics/presolve/bounds_presolve.cuh>
-#include <mip_heuristics/presolve/probing_cache.cuh>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <presolve/block_bve.cuh>
+#include <presolve/bounds_presolve.cuh>
+#include <presolve/probing_cache.cuh>
+#include <presolve/third_party_presolve.hpp>
+#include <presolve/trivial_presolve.cuh>
 
 #include <raft/core/handle.hpp>
 

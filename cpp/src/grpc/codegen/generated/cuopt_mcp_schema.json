@@ -219,11 +219,6 @@
           "type": "boolean",
           "description": "Whether the solver writes log output to the console. Logs may still be written to a file when this is false. Default: true."
         },
-        "heuristics_only": {
-          "type": "boolean",
-          "description": "When true only the GPU heuristics run, improving the primal bound alone. When false both GPU and CPU are used and the dual bound is improved on the CPU. Default: false.",
-          "x-parameter-name": "mip_heuristics_only"
-        },
         "num_cpu_threads": {
           "type": "integer",
           "description": "Number of CPU threads used by the MIP solver. Lower values cap cuOpt's CPU footprint; higher values speed up the CPU-parallel parts. -1 derives the count from the number of CPU cores. Default: -1 (automatic)."

@@ -44,7 +44,7 @@ class heap_t {
     buffer.emplace_back(std::forward<Args>(args)...);
     std::push_heap(buffer.begin(), buffer.end(), comp);
     ++num_entries_;
-    assert(num_entries_.load() == buffer.size());
+    assert(num_entries_.load(std::memory_order::relaxed) == buffer.size());
   }
 
   T pop()
@@ -53,7 +53,7 @@ class heap_t {
     std::pop_heap(buffer.begin(), buffer.end(), comp);
     T node = std::move(buffer.back());
     buffer.pop_back();
-    assert(num_entries_.load() == buffer.size());
+    assert(num_entries_.load(std::memory_order::relaxed) == buffer.size());
     return node;
   }
 
@@ -154,7 +154,8 @@ class node_queue_t {
 
   f_t get_lower_bound()
   {
-    return best_first_heap_.empty() ? std::numeric_limits<f_t>::infinity() : lower_bound_.load();
+    return best_first_heap_.empty() ? std::numeric_limits<f_t>::infinity()
+                                    : lower_bound_.load(std::memory_order::relaxed);
   }
 
  private:

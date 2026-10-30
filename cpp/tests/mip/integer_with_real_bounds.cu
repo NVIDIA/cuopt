@@ -16,11 +16,10 @@
 namespace cuopt::mathematical_optimization::test {
 TEST(mip_solve, integer_with_real_bounds_test)
 {
-  auto time_limit      = 1;
-  auto heuristics_only = true;
-  auto presolver       = cuopt::mathematical_optimization::presolver_t::None;
+  auto time_limit = 1;
+  auto presolver  = cuopt::mathematical_optimization::presolver_t::None;
   auto [termination_status, obj_val, lb] =
-    test_mps_file("mip/integer-with-real-bounds.mps", time_limit, heuristics_only, presolver);
+    test_mps_file("mip/integer-with-real-bounds.mps", time_limit, presolver);
   EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
   EXPECT_NEAR(obj_val, 4, 1e-5);
 }

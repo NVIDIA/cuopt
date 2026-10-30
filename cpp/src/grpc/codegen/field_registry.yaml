@@ -103,6 +103,8 @@
 #   presence_check     – predicate expression to test if optional data is present
 #   getter             – (per-section) expression to access the section's C++ data
 #   embeds             – list of submessages embedded as fields (e.g. PDLPWarmStartData)
+#   reserved_fields    – settings-only mapping of removed proto field names to their
+#                        wire tags; neither names nor tags may be reused
 #   proto_type         – fully-qualified C++ proto type (settings sections)
 #   proto_message      – proto message name (optimization_problem)
 #   fields             – list of fields (settings sections; supports nested sub-structs)
@@ -839,6 +841,8 @@ pdlp_settings:
 mip_settings:
   cpp_type: "mip_solver_settings_t<i_t, f_t>"
   proto_type: "cuopt::remote::MIPSolverSettings"
+  reserved_fields:
+    heuristics_only: 9
   # See pdlp_settings.parameter_map. presolve_absolute_tolerance is not a
   # set_parameter() setting (param_name: null) and stays a typed field.
   parameter_map:
@@ -923,15 +927,6 @@ mip_settings:
       field_num: 8
       type: bool
       optional: true
-  - heuristics_only:
-      param_name: mip_heuristics_only
-      description: >-
-        When true only the GPU heuristics run, improving the primal bound
-        alone. When false both GPU and CPU are used and the dual bound is
-        improved on the CPU.
-      default: "false"
-      field_num: 9
-      type: bool
   - num_cpu_threads:
       description: >-
         Number of CPU threads used by the MIP solver. Lower values cap cuOpt's

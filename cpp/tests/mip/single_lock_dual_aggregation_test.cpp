@@ -8,8 +8,8 @@
 #include <utilities/inline_lp_test_utils.hpp>
 
 #include <cuopt/mathematical_optimization/solve.hpp>
-#include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <presolve/single_lock_dual_aggregation.hpp>
+#include <presolve/third_party_presolve.hpp>
 
 #include <papilo/core/ProblemBuilder.hpp>
 #include <papilo/core/ProblemUpdate.hpp>

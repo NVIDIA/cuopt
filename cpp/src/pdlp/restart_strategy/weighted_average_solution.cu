@@ -167,7 +167,8 @@ template <typename i_t, typename f_t>
 void weighted_average_solution_t<i_t, f_t>::set_iterations_since_last_restart(i_t iterations)
 {
   iterations_since_last_restart_ = iterations;
-  d_iterations_since_last_restart_.set_value_async(iterations, stream_view_);
+  RAFT_CUDA_TRY(cub::DeviceTransform::Fill(
+    d_iterations_since_last_restart_.data(), 1, iterations, stream_view_.get()));
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

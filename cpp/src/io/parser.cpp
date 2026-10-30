@@ -38,6 +38,8 @@ template CUOPT_EXPORT mps_data_model_t<int, float> read_mps(const std::string& m
                                                             bool fixed_mps_format);
 template CUOPT_EXPORT mps_data_model_t<int, double> read_mps(const std::string& mps_file,
                                                              bool fixed_mps_format);
+template CUOPT_EXPORT mps_data_model_t<int64_t, double> read_mps(const std::string& mps_file,
+                                                                 bool fixed_mps_format);
 template CUOPT_EXPORT mps_data_model_t<int, float> read_mps_from_string(
   std::string_view mps_contents, bool fixed_mps_format);
 template CUOPT_EXPORT mps_data_model_t<int, double> read_mps_from_string(
