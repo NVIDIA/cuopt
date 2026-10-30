@@ -1,6 +1,6 @@
 #! /usr/bin/python3
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -19,6 +19,19 @@ from cuopt_sh_client import (
 
 port_default = "5000"
 ip_default = "0.0.0.0"
+
+
+def seconds_or_none(value):
+    """An http timeout in seconds, or ``None`` to never time out.
+
+    ``CuOptServiceSelfHostClient`` accepts ``None`` for its timeouts on purpose
+    and hands it to requests, where it means wait forever. ``type=int`` turned
+    the spelling this flag's own help asks for into an argparse error.
+    """
+    if value.strip().lower() == "none":
+        return None
+    return int(value)
+
 
 result_types = {
     "json": mime_type.JSON,
@@ -579,7 +592,7 @@ def main():
     parser.add_argument(
         "-ht",
         "--http-timeout",
-        type=int,
+        type=seconds_or_none,
         default=30,
         help="Timeout in seconds for http requests. May need to be increased "
         "for large datasets or slow networks. Default is 30s. "
