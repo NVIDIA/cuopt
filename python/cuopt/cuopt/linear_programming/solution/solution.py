@@ -5,6 +5,7 @@ from cuopt.linear_programming.solver_settings.solver_settings import (
     SolverMethod,
 )
 from cuopt.linear_programming.solver.solver_wrapper import (
+    ErrorStatus,
     LPTerminationStatus,
     MILPTerminationStatus,
     ProblemCategory,
@@ -227,6 +228,17 @@ class Solution:
             "num_nodes": num_nodes,
             "num_simplex_iterations": num_simplex_iterations,
         }
+
+    def __repr__(self):
+        text = (
+            f"Solution(status={self.termination_status.name}, "
+            f"objective={self.primal_objective})"
+        )
+        if self.error_status != ErrorStatus.Success and self.error_message:
+            text += f"\n{self.error_message}"
+        return text
+
+    __str__ = __repr__
 
     def _set_termination_status(self, ts):
         if self.problem_category == ProblemCategory.LP:
