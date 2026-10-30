@@ -365,13 +365,13 @@ final class ModelEdgeCaseTest {
   }
 
   @Test
-  @Disabled("addConstraint accepts the same Constraint twice and overwrites its index")
   void addingTheSameConstraintTwiceToOneProblemIsRejected() {
     Variable x = problem.addVariable(0, 1, 0, VariableType.CONTINUOUS, "x");
     Constraint shared = LinearExpression.of(x).le(1);
     problem.addConstraint(shared);
     assertThrows(IllegalArgumentException.class, () -> problem.addConstraint(shared));
     assertEquals(1, problem.getNumConstraints());
+        assertEquals(0, shared.getIndex());
   }
 
   @Test
