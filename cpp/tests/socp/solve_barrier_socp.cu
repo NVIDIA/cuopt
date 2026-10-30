@@ -1387,6 +1387,105 @@ TEST(barrier, free_variable_substitution_postsolve_kkt)
   EXPECT_NEAR((vector_norm_inf<int, double>(solved_dual)), 0.0, 1e-5);
 }
 
+TEST(barrier, chained_singleton_row_slacks_are_uncrushed_in_reverse_order)
+{
+  // minimize x0 s.t. x0 + x1 == 3, x1 <= 5, 0 <= x0, x1 <= 10, with x1 zero-cost. The optimum
+  // is x0 = 0, x1 = 3, so the <= row's slack is s = 2.
+  //
+  // Presolve empties both rows in two passes: pass 1 takes the <= row, bounding x1 and
+  // recording its slack s. That leaves x1 a zero-cost column singleton, so pass 2 takes the
+  // equality and records x1 as its own slack. Postsolve must replay the records in reverse,
+  // because s is computed from x1 and only the later record restores x1.
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  constexpr int m  = 2;
+  constexpr int n  = 2;
+  constexpr int nz = 3;
+
+  user_problem_t<int, double> user_problem(&handle);
+  user_problem.num_rows = m;
+  user_problem.num_cols = n;
+  // x1 carries no cost, which is what lets it stand in as a slack in the second pass.
+  user_problem.objective = {1.0, 0.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  // Columns: x0 (r0 only), x1 (r0 and r1).
+  user_problem.A.col_start = {0, 1, 3};
+  user_problem.A.i         = {0, 0, 1};
+  user_problem.A.x         = {1.0, 1.0, 1.0};
+
+  user_problem.rhs       = {3.0, 5.0};
+  user_problem.row_sense = {'E', 'L'};
+  user_problem.lower     = {0.0, 0.0};
+  user_problem.upper     = {10.0, 10.0};
+
+  user_problem.num_range_rows = 0;
+  user_problem.problem_name   = "chained_singleton_rows";
+  user_problem.cone_var_start = n;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  simplex_solver_settings_t<int, double> settings;
+  settings.barrier                          = true;
+  settings.barrier_presolve                 = true;
+  settings.barrier_presolve_fixed_variables = 1;
+  settings.barrier_presolve_singleton_rows  = 1;
+  settings.dualize                          = 0;
+  settings.scale_columns                    = false;
+  settings.postsolve_info                   = 1;
+
+  std::vector<int> new_slacks;
+  dualize_info_t<int, double> dualize_info;
+  lp_problem_t<int, double> original_lp(user_problem.handle_ptr, 1, 1, 1);
+  convert_user_problem(user_problem, settings, original_lp, new_slacks, dualize_info);
+  // x0, x1 and the slack of r1.
+  ASSERT_EQ(original_lp.num_cols, 3);
+  ASSERT_EQ(original_lp.num_rows, 2);
+
+  presolve_info_t<int, double> presolve_info;
+  lp_problem_t<int, double> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
+  ASSERT_EQ(presolve(original_lp, settings, presolved_lp, presolve_info), 0);
+
+  // One record per removed row, and both carry a slack to recover -- that pairing is the chain.
+  ASSERT_EQ(presolve_info.singleton_rows.size(), 2u);
+  EXPECT_NE(presolve_info.singleton_rows[0].slack, -1);
+  EXPECT_NE(presolve_info.singleton_rows[1].slack, -1);
+  // The later record restores the variable the earlier record's slack is computed from.
+  EXPECT_EQ(presolve_info.singleton_rows[1].slack, presolve_info.singleton_rows[0].variable);
+
+  // Both rows are gone, so only x0 survives and the crushed optimum is x0 = 0.
+  ASSERT_EQ(presolved_lp.num_rows, 0);
+  ASSERT_EQ(presolved_lp.num_cols, 1);
+  std::vector<double> crushed_x{0.0};
+  std::vector<double> crushed_y(presolved_lp.num_rows, 0.0);
+  std::vector<double> crushed_z{1.0};
+
+  std::vector<double> uncrushed_x(original_lp.num_cols);
+  std::vector<double> uncrushed_y(original_lp.num_rows);
+  std::vector<double> uncrushed_z(original_lp.num_cols);
+  uncrush_solution(presolve_info,
+                   settings,
+                   original_lp,
+                   crushed_x,
+                   crushed_y,
+                   crushed_z,
+                   uncrushed_x,
+                   uncrushed_y,
+                   uncrushed_z);
+
+  EXPECT_NEAR(uncrushed_x[0], 0.0, 1e-12);
+  EXPECT_NEAR(uncrushed_x[1], 3.0, 1e-12);
+  // s = 5 - x1. Recovered forward it comes out 5, because x1 is still its placeholder.
+  EXPECT_NEAR(uncrushed_x[2], 2.0, 1e-12);
+
+  std::vector<double> primal_residual = original_lp.rhs;
+  matrix_vector_multiply(original_lp.A, 1.0, uncrushed_x, -1.0, primal_residual);
+  EXPECT_NEAR((vector_norm_inf<int, double>(primal_residual)), 0.0, 1e-12);
+}
+
 TEST(barrier, cached_solve_can_enable_iterative_refinement)
 {
   // The first solve has no GMRES workspace. Enabling refinement on a cached solve must

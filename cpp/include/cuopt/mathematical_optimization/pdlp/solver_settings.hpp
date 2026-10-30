@@ -311,6 +311,10 @@ class pdlp_solver_settings_t {
   barrier_dual_initial_point_t barrier_dual_initial_point{barrier_dual_initial_point_t::Automatic};
   i_t postsolve_info{-1};
   i_t barrier_presolve_bound_free_variables{-1};  // -1 automatic, 0 disabled, 1 enabled
+  // -1 automatic (on, off when the solve feeds a barrier cache), 0 disabled, 1 enabled.
+  i_t barrier_presolve_fixed_variables{-1};
+  // -1 automatic (on, off when the solve feeds a barrier cache), 0 disabled, 1 enabled.
+  i_t barrier_presolve_singleton_rows{-1};
   // Ruiz equilibration for QCQP (barrier) scaling: -1 automatic (row/column
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.
@@ -330,6 +334,9 @@ class pdlp_solver_settings_t {
   // iterations). -1 automatic (uses the built-in heuristic), else the literal starting value.
   f_t barrier_primal_regularization{-1.0};
   f_t barrier_dual_regularization{-1.0};
+  // Relative diagonal shift of the QP ADAT factorization (ADAT_ii scaled by 1 + value).
+  // Off by default.
+  f_t barrier_adat_regularization{0.0};
   i_t barrier_soc_threshold{100};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};
