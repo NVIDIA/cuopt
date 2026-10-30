@@ -75,303 +75,25 @@ jobs:
 
   changed-files:
     permissions:
-      actions: read
       contents: read
-      packages: read
       pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
-    with:
-      files_yaml: |
-        build_docs:
-          - '**'
-          - '!.ai/**'
-          - '!.clang-format'
-          - '!.coderabbit.yaml'
-          - '!.gitattributes'
-          - '!.github/.ai/**'
-          - '!.github/.coderabbit_review_guide.md'
-          - '!.github/CODEOWNERS'
-          - '!.github/CODE_OF_CONDUCT.md'
-          - '!.github/ISSUE_TEMPLATE/**'
-          - '!.github/PULL_REQUEST_TEMPLATE.md'
-          - '!.github/SECURITY.md'
-          - '!.github/agents/**'
-          - '!.github/copy-pr-bot.yaml'
-          - '!.github/ops-bot.yaml'
-          - '!.github/release.yml'
-          - '!.github/workflows/build.yaml'
-          - '!.github/workflows/build_images.yaml'
-          - '!.github/workflows/build_test_publish_images.yaml'
-          - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/kitmaker_portal.yaml'
-          - '!.github/workflows/nightly.yaml'
-          - '!.github/workflows/request-nvskills-ci.yml'
-          - '!.github/workflows/test.yaml'
-          - '!.github/workflows/test_images.yaml'
-          - '!.github/workflows/trigger-breaking-change-alert.yaml'
-          - '!.gitignore'
-          - '!.pre-commit-config.yaml'
-          - '!.yamllint.yaml'
-          - '!codecov.yml'
-          - '!AGENTS.md'
-          - '!CHANGELOG.md'
-          - '!CONTRIBUTING.md'
-          - '!LICENSE'
-          - '!README.md'
-          - '!SECURITY.md'
-          - '!ci/build_wheel*.sh'
-          - '!ci/build_java.sh'
-          - '!ci/build_java_static.sh'
-          - '!ci/check_style.sh'
-          - '!ci/docker/**'
-          - '!ci/release/**'
-          - '!ci/run_*.pytests.sh'
-          - '!ci/run_ctests.sh'
-          - '!ci/run-vale.sh'
-          - '!ci/test_cpp*.sh'
-          - '!ci/test_java.sh'
-          - '!ci/test_notebooks.sh'
-          - '!ci/test_python.sh'
-          - '!ci/test_self_hosted_service.sh'
-          - '!ci/test_wheel*.sh'
-          - '!ci/thirdparty-testing/**'
-          - '!container-builder/**'
-          - '!helmchart/**'
-          - '!java/**'
-          - '!ngc/**'
-          - '!sonar-project.properties'
-          - '!sonarqube/**'
-          - '!ucf/**'
-          - '!utilities/**'
-        test_cpp:
-          - '**'
-          - '!**/*.md'
-          - '!.ai/**'
-          - '!.clang-format'
-          - '!.claude-plugin/**'
-          - '!.coderabbit.yaml'
-          - '!.cursor-plugin/**'
-          - '!.gitattributes'
-          - '!.github/.ai/**'
-          - '!.github/.coderabbit_review_guide.md'
-          - '!.github/CODEOWNERS'
-          - '!.github/CODE_OF_CONDUCT.md'
-          - '!.github/ISSUE_TEMPLATE/**'
-          - '!.github/PULL_REQUEST_TEMPLATE.md'
-          - '!.github/SECURITY.md'
-          - '!.github/agents/**'
-          - '!.github/copy-pr-bot.yaml'
-          - '!.github/ops-bot.yaml'
-          - '!.github/release.yml'
-          - '!.github/workflows/build.yaml'
-          - '!.github/workflows/build_images.yaml'
-          - '!.github/workflows/build_test_publish_images.yaml'
-          - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/kitmaker_portal.yaml'
-          - '!.github/workflows/nightly.yaml'
-          - '!.github/workflows/request-nvskills-ci.yml'
-          - '!.github/workflows/test.yaml'
-          - '!.github/workflows/test_images.yaml'
-          - '!.github/workflows/trigger-breaking-change-alert.yaml'
-          - '!.gitignore'
-          - '!.pre-commit-config.yaml'
-          - '!.yamllint.yaml'
-          - '!codecov.yml'
-          - '!AGENTS.md'
-          - '!CONTRIBUTING.md'
-          - '!LICENSE'
-          - '!README.md'
-          - '!SECURITY.md'
-          - '!agents/**'
-          - '!ci/build_docs.sh'
-          - '!ci/build_java.sh'
-          - '!ci/build_java_static.sh'
-          - '!ci/build_python.sh'
-          - '!ci/build_wheel*.sh'
-          - '!ci/check_style.sh'
-          - '!ci/docker/**'
-          - '!ci/release/**'
-          - '!ci/run-vale.sh'
-          - '!ci/test_python.sh'
-          - '!ci/test_java.sh'
-          - '!ci/test_self_hosted_service.sh'
-          - '!ci/test_wheel*.sh'
-          - '!ci/thirdparty-testing/**'
-          - '!ci/utils/sync_skills_version.sh'
-          - '!ci/utils/validate_skills.sh'
-          - '!container-builder/**'
-          - '!docs/**'
-          - '!gemini-extension.json'
-          - '!helmchart/**'
-          - '!img/**'
-          - '!java/**'
-          - '!ngc/**'
-          - '!notebooks/**'
-          - '!python/**'
-          - '!skills/**/SKILL.md'
-          - '!skills/**/skill-card.md'
-          - '!skills/**/skill.oms.sig'
-          - '!skills/**/evals/**'
-          - '!skills/**/benchmark/**'
-          - '!skills/**/references/**'
-          - '!sonar-project.properties'
-          - '!sonarqube/**'
-          - '!ucf/**'
-          - '!utilities/**'
-        test_java:
-          - 'java/**'
-          - 'ci/build_java.sh'
-          - 'ci/build_java_static.sh'
-          - 'ci/test_java.sh'
-          - 'dependencies.yaml'
-          - '.github/workflows/pr.yaml'
-          - '.github/workflows/build.yaml'
-          - '.github/workflows/test.yaml'
-        test_python_conda:
-          - '**'
-          - '!**/*.md'
-          - '!.ai/**'
-          - '!.clang-format'
-          - '!.claude-plugin/**'
-          - '!.coderabbit.yaml'
-          - '!.cursor-plugin/**'
-          - '!.gitattributes'
-          - '!.github/.ai/**'
-          - '!.github/.coderabbit_review_guide.md'
-          - '!.github/CODEOWNERS'
-          - '!.github/CODE_OF_CONDUCT.md'
-          - '!.github/ISSUE_TEMPLATE/**'
-          - '!.github/PULL_REQUEST_TEMPLATE.md'
-          - '!.github/SECURITY.md'
-          - '!.github/agents/**'
-          - '!.github/copy-pr-bot.yaml'
-          - '!.github/ops-bot.yaml'
-          - '!.github/release.yml'
-          - '!.github/workflows/build.yaml'
-          - '!.github/workflows/build_images.yaml'
-          - '!.github/workflows/build_test_publish_images.yaml'
-          - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/kitmaker_portal.yaml'
-          - '!.github/workflows/nightly.yaml'
-          - '!.github/workflows/request-nvskills-ci.yml'
-          - '!.github/workflows/test.yaml'
-          - '!.github/workflows/test_images.yaml'
-          - '!.github/workflows/trigger-breaking-change-alert.yaml'
-          - '!.gitignore'
-          - '!.pre-commit-config.yaml'
-          - '!.yamllint.yaml'
-          - '!codecov.yml'
-          - '!AGENTS.md'
-          - '!CONTRIBUTING.md'
-          - '!LICENSE'
-          - '!README.md'
-          - '!SECURITY.md'
-          - '!agents/**'
-          - '!ci/build_docs.sh'
-          - '!ci/build_java.sh'
-          - '!ci/build_java_static.sh'
-          - '!ci/build_wheel*.sh'
-          - '!ci/check_style.sh'
-          - '!ci/docker/**'
-          - '!ci/release/**'
-          - '!ci/run-vale.sh'
-          - '!ci/test_self_hosted_service.sh'
-          - '!ci/test_java.sh'
-          - '!ci/test_wheel*.sh'
-          - '!ci/thirdparty-testing/**'
-          - '!ci/utils/sync_skills_version.sh'
-          - '!ci/utils/validate_skills.sh'
-          - '!container-builder/**'
-          - '!docs/**'
-          - '!gemini-extension.json'
-          - '!helmchart/**'
-          - '!img/**'
-          - '!java/**'
-          - '!ngc/**'
-          - '!notebooks/**'
-          - '!skills/**/SKILL.md'
-          - '!skills/**/skill-card.md'
-          - '!skills/**/skill.oms.sig'
-          - '!skills/**/evals/**'
-          - '!skills/**/benchmark/**'
-          - '!skills/**/references/**'
-          - '!sonar-project.properties'
-          - '!sonarqube/**'
-          - '!ucf/**'
-          - '!utilities/**'
-        test_python_wheels:
-          - '**'
-          - '!**/*.md'
-          - '!.ai/**'
-          - '!.clang-format'
-          - '!.claude-plugin/**'
-          - '!.coderabbit.yaml'
-          - '!.cursor-plugin/**'
-          - '!.gitattributes'
-          - '!.github/.ai/**'
-          - '!.github/.coderabbit_review_guide.md'
-          - '!.github/CODEOWNERS'
-          - '!.github/CODE_OF_CONDUCT.md'
-          - '!.github/ISSUE_TEMPLATE/**'
-          - '!.github/PULL_REQUEST_TEMPLATE.md'
-          - '!.github/SECURITY.md'
-          - '!.github/agents/**'
-          - '!.github/copy-pr-bot.yaml'
-          - '!.github/ops-bot.yaml'
-          - '!.github/release.yml'
-          - '!.github/workflows/build.yaml'
-          - '!.github/workflows/build_images.yaml'
-          - '!.github/workflows/build_test_publish_images.yaml'
-          - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/kitmaker_portal.yaml'
-          - '!.github/workflows/nightly.yaml'
-          - '!.github/workflows/request-nvskills-ci.yml'
-          - '!.github/workflows/test.yaml'
-          - '!.github/workflows/test_images.yaml'
-          - '!.github/workflows/trigger-breaking-change-alert.yaml'
-          - '!.gitignore'
-          - '!.pre-commit-config.yaml'
-          - '!.yamllint.yaml'
-          - '!codecov.yml'
-          - '!AGENTS.md'
-          - '!CONTRIBUTING.md'
-          - '!LICENSE'
-          - '!README.md'
-          - '!SECURITY.md'
-          - '!agents/**'
-          - '!ci/build_cpp.sh'
-          - '!ci/build_docs.sh'
-          - '!ci/build_python.sh'
-          - '!ci/build_java.sh'
-          - '!ci/build_java_static.sh'
-          - '!ci/check_style.sh'
-          - '!ci/docker/**'
-          - '!ci/release/**'
-          - '!ci/run_ctests.sh'
-          - '!ci/run-vale.sh'
-          - '!ci/test_python.sh'
-          - '!ci/test_java.sh'
-          - '!ci/thirdparty-testing/**'
-          - '!ci/utils/sync_skills_version.sh'
-          - '!ci/utils/validate_skills.sh'
-          - '!conda/**'
-          - '!container-builder/**'
-          - '!gemini-extension.json'
-          - '!helmchart/**'
-          - '!img/**'
-          - '!java/**'
-          - '!ngc/**'
-          - '!notebooks/**'
-          - '!skills/**/SKILL.md'
-          - '!skills/**/skill-card.md'
-          - '!skills/**/skill.oms.sig'
-          - '!skills/**/evals/**'
-          - '!skills/**/benchmark/**'
-          - '!skills/**/references/**'
-          - '!sonar-project.properties'
-          - '!sonarqube/**'
-          - '!ucf/**'
-          - '!utilities/**'
+    runs-on: ubuntu-latest
+    outputs:
+      jobs: ${{ steps.select.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/workflows/pr.yaml
+            ci/utils/select_pr_jobs.py
+            ci/utils/test_select_pr_jobs.py
+          sparse-checkout-cone-mode: false
+      - run: python3 -m unittest ci/utils/test_select_pr_jobs.py
+      - id: select
+        run: python3 ci/utils/select_pr_jobs.py
+        env:
+          GH_TOKEN: ${{ github.token }}
   checks:
     permissions:
       contents: read
@@ -381,12 +103,7 @@ jobs:
       ignored_pr_jobs: "pr-test-summary"
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
-    # Consumed by C++, Java, Python, and docs jobs.
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    if: fromJSON(needs.changed-files.outputs.jobs).conda_cpp_build
     permissions:
       actions: read
       contents: read
@@ -408,7 +125,7 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    if: fromJSON(needs.changed-files.outputs.jobs).conda_cpp_tests
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
@@ -428,16 +145,14 @@ jobs:
       packages: read
       pull-requests: read
     uses: ./.github/workflows/multi_gpu_cpp_test.yaml
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    if: fromJSON(needs.changed-files.outputs.jobs).multi_gpu_cpp_tests
     with:
       build_type: pull-request
     secrets: inherit # zizmor: ignore[secrets-inherit]
   conda-python-build:
     needs: [build-details, conda-cpp-build, changed-files]
     # Consumed by conda-python-tests and docs-build.
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    if: fromJSON(needs.changed-files.outputs.jobs).conda_python_build
     permissions:
       actions: read
       contents: read
@@ -461,7 +176,7 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
+    if: fromJSON(needs.changed-files.outputs.jobs).conda_python_tests
     with:
       build_type: pull-request
       run_codecov: false
@@ -486,7 +201,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.docs-build-matrix.outputs.matrix) }}
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    if: fromJSON(needs.changed-files.outputs.jobs).docs_build
     with:
       build_type: pull-request
       node_type: "gpu-${{ matrix.GPU }}-${{ matrix.DRIVER }}-1"
@@ -502,9 +217,7 @@ jobs:
     permissions:
       contents: read
     uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    if: fromJSON(needs.changed-files.outputs.jobs).java_static
     with:
       build_type: pull-request
       matrix_name: conda-cpp-build
@@ -523,9 +236,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    if: fromJSON(needs.changed-files.outputs.jobs).java_static
     with:
       build_type: pull-request
       node_type: "cpu16"
@@ -588,9 +299,7 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    if: fromJSON(needs.changed-files.outputs.jobs).java_build
     with:
       build_type: pull-request
       node_type: "gpu-l4-latest-1"
@@ -601,7 +310,7 @@ jobs:
       file_to_upload: "java/cuopt/target/"
   wheel-build-libcuopt-client:
     needs: [build-details, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).wheel_build
     permissions:
       actions: read
       contents: read
@@ -621,7 +330,7 @@ jobs:
       script: ci/build_wheel_libcuopt_client.sh
   wheel-build-libcuopt-mathopt:
     needs: [build-details, compute-matrix-filters, changed-files, wheel-build-libcuopt-client]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).wheel_build
     permissions:
       actions: read
       contents: read
@@ -640,7 +349,7 @@ jobs:
       script: ci/build_wheel_libcuopt_mathopt.sh
   wheel-build-libcuopt-routing:
     needs: [build-details, compute-matrix-filters, changed-files, wheel-build-libcuopt-client]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).wheel_build
     permissions:
       actions: read
       contents: read
@@ -665,7 +374,7 @@ jobs:
       - wheel-build-libcuopt-client
       - wheel-build-libcuopt-mathopt
       - wheel-build-libcuopt-routing
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).wheel_build
     permissions:
       actions: read
       contents: read
@@ -691,7 +400,7 @@ jobs:
       - wheel-build-libcuopt-routing
       - compute-matrix-filters
       - changed-files
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).wheel_build
     permissions:
       actions: read
       contents: read
@@ -717,7 +426,7 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).wheel_tests
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
@@ -730,7 +439,7 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-build-cuopt-server:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).wheel_build
     permissions:
       actions: read
       contents: read
@@ -750,7 +459,7 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
   wheel-build-cuopt-sh-client:
     needs: [build-details, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).wheel_build
     permissions:
       actions: read
       contents: read
@@ -778,7 +487,7 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).wheel_tests
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
@@ -800,7 +509,7 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/self_hosted_service_test.yaml
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: fromJSON(needs.changed-files.outputs.jobs).self_hosted
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
