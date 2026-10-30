@@ -29,6 +29,7 @@
 #include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
 #include <utilities/producer_sync.hpp>
+#include <utilities/splitmix64.hpp>
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
@@ -256,6 +257,8 @@ class branch_and_bound_t {
   std::atomic<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
   bool has_initial_pseudocost_{false};
+
+  splitmix64_t seed_generator_;
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;

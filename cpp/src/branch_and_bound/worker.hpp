@@ -17,6 +17,7 @@
 #include <dual_simplex/bounds_strengthening.hpp>
 
 #include <utilities/pcgenerator.hpp>
+#include <utilities/splitmix64.hpp>
 
 #include <vector>
 
@@ -125,7 +126,7 @@ class branch_and_bound_worker_t {
                             const std::vector<f_t>& root_solution,
                             const std::vector<f_t>& root_edge_norm,
                             const std::vector<i_t>& new_slacks,
-                            uint64_t rng_offset = 0)
+                            splitmix64_t& seed_gen)
     : worker_id(worker_id),
       search_strategy(search_strategy_t::BEST_FIRST),
       is_active(false),
@@ -138,8 +139,7 @@ class branch_and_bound_worker_t {
       nonbasic_list(),
       node_presolver(leaf_problem, Arow, {}, var_type),
       bounds_changed(original_lp.num_cols, false),
-      rng(settings.random_seed + pcgenerator_t::default_seed + rng_offset + worker_id,
-          pcgenerator_t::default_stream ^ (worker_id + rng_offset)),
+      rng{seed_gen.next_u64(), seed_gen.generate_stream()},
       root_solution(root_solution),
       root_edge_norm(root_edge_norm),
       var_types(var_type),
@@ -186,7 +186,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                const std::vector<f_t>& root_solution,
                const std::vector<f_t>& root_edge_norm,
                const std::vector<i_t>& new_slacks,
-               uint64_t rng_offset = 0)
+               splitmix64_t& seed_gen)
     : Base(worker_id,
            original_lp,
            Arow,
@@ -196,7 +196,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
            root_solution,
            root_edge_norm,
            new_slacks,
-           rng_offset)
+           seed_gen)
   {
     this->start_lower     = original_lp.lower;
     this->start_upper     = original_lp.upper;
@@ -274,7 +274,7 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                   const std::vector<f_t>& root_solution,
                   const std::vector<f_t>& root_edge_norm,
                   const std::vector<i_t>& new_slacks,
-                  uint64_t rng_offset = 0)
+                  splitmix64_t& seed_gen)
     : Base(worker_id,
            original_lp,
            Arow,
@@ -284,7 +284,7 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
            root_solution,
            root_edge_norm,
            new_slacks,
-           rng_offset)
+           seed_gen)
   {
     this->start_lower     = original_lp.lower;
     this->start_upper     = original_lp.upper;

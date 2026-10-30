@@ -280,13 +280,22 @@ Set this value to k > 0, to enable reliability branching. A variable will be con
 
 .. note:: The default value is ``-1`` (automatic).
 
+RINS
+^^^^
+
+``CUOPT_MIP_RINS`` controls whether the RINS (Relaxation Induced Neighborhood Search) sub-MIP heuristic is used inside branch and bound.
+Valid values are ``-1`` (automatic), ``0`` and ``1``.
+Set this value to 0 to disable RINS. Set it to -1 or 1 to enable RINS.
+
 Batch PDLP Strong Branching
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING`` controls whether to use batched PDLP over Dual Simplex during strong branching at the root.
 When enabled, the solver evaluates multiple branching candidates simultaneously in a single batched PDLP solve rather than solving them in parallel using Dual Simplex. This can significantly reduce the time spent in strong branching if Dual Simplex is struggling.
-Set this value to 0 to disable batched PDLP strong branching.
-Set this value to 1 to enable batched PDLP strong branching.
+Set this value to 0 to disable batched PDLP strong branching (Dual Simplex only).
+Set this value to 1 to use batched PDLP cooperatively with Dual Simplex.
+Set this value to 2 to use batched PDLP only.
+For modes 1 and 2, the solver falls back to Dual Simplex when it evaluates a sub-MIP or when too few OpenMP threads are available. Mode 1 also falls back to Dual Simplex in deterministic mode.
 
 .. note:: The default value is ``0`` (disabled). This setting is ignored if the problem is not a MIP problem.
 
@@ -295,8 +304,9 @@ Batch PDLP Reliability Branching
 
 ``CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING`` controls whether to use batched PDLP for reliability branching evaluations.
 When enabled, candidate variables for reliability branching are evaluated simultaneously using a single batched PDLP solve.
-Set this value to 0 to disable.
-Set this value to 1 to enable.
+Set this value to 0 to disable (Dual Simplex only).
+Set this value to 1 to let the solver decide whether to use batched PDLP alongside Dual Simplex.
+Set this value to 2 to always use batched PDLP only.
 
 .. note:: The default value is ``0`` (disabled).
 
@@ -380,7 +390,7 @@ Primal Degenerate Pivots
 
 ``CUOPT_MIP_PRIMAL_DEGENERATE_PIVOTS`` controls whether primal degenerate pivots are performed to improve reduced cost strengthening. These pivots attempt to move
 basic integer variables on their bound out of the basis. This can lead to more reduced cost bound strengthening. This setting only has an affect when
-``CUOPT_REDUCED_COST_STRENGTHENING`` is enabled.
+``CUOPT_MIP_REDUCED_COST_STRENGTHENING`` is enabled.
 The default value of ``-1`` (automatic) means the solver will decide whether to do primal degenerate pivots.
 Set this value to 0 to disable primal degenerate pivots.
 Set this value to 1 to enable primal degenerate pivots.

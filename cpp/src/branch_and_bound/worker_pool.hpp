@@ -28,7 +28,7 @@ class worker_pool_t {
             const std::vector<f_t>& root_solution,
             const std::vector<f_t>& root_edge_norm,
             const std::vector<i_t>& new_slacks,
-            const uint64_t rng_offset = 0)
+            splitmix64_t& seed_gen)
   {
     assert(!is_initialized_);
     assert(num_workers > 0);
@@ -46,7 +46,7 @@ class worker_pool_t {
                                                  root_solution,
                                                  root_edge_norm,
                                                  new_slacks,
-                                                 rng_offset);
+                                                 seed_gen);
       idle_workers_.push_back(i);
       // Propagate the (possibly null) symmetry pointer; workers lazily build
       // their orbital_fixing/lexical_reduction state via ensure_orbital_fixing().
