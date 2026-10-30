@@ -112,7 +112,7 @@ The primal feasibility condition is computed as follows::
 
    primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
 
-Default value is ``1e-4``.
+.. note:: The default value is ``1e-4``.
 
 
 Relative Primal Tolerance
@@ -183,8 +183,8 @@ PDLP Solver Mode
 PDLP internally optimizes the problem. The mode choice can drastically impact how fast a
 specific problem will be solved. Users are encouraged to test different modes to see which one
 fits the best their problem. By default, the solver uses ``Stable3``, the best
-overall mode from our experiments. For now, only three modes are available: ``Stable3``,
-``Methodical1``, and ``Fast1``.
+overall mode from our experiments. Five modes are available: ``Stable1``, ``Stable2``,
+``Methodical1``, ``Fast1`` and ``Stable3``.
 
 For now, we do not offer a mechanism to know upfront which solver mode will be the best
 for a specific problem.
@@ -284,7 +284,7 @@ constraints, n - m variables will be on their bounds in a basic solution.
 
 Save Best Primal So Far
 ^^^^^^^^^^^^^^^^^^^^^^^
-``CUOPT_SAVE_BEST_PRIMAL_SOLUTION`` controls whether PDLP should save the best primal solution so far
+``CUOPT_SAVE_BEST_PRIMAL_SO_FAR`` controls whether PDLP should save the best primal solution so far
 With this parameter set to true, PDLP
 * Will always prioritize a primal feasible to a non primal feasible
 * If a new primal feasible is found, the one with the best primal objective will be kept
@@ -325,8 +325,6 @@ available:
   FP64, improving SpMV performance. Convergence checking and restart logic always use the
   full FP64 matrix, so this mode does not reduce overall memory usage. This provides a middle ground
   between full FP64 and FP32: faster PDHG iterations with limited impact on convergence.
-
-.. note:: The default value is 0 (default precision).
 
 Simplex Settings
 ^^^^^^^^^^^^^^^^
@@ -467,10 +465,8 @@ Barrier Iterative Refinement
 
 ``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` controls whether iterative refinement is applied after each barrier iteration to improve solution accuracy.
 
-* ``0`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF``): Disable iterative refinement (default).
+* ``0`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF``): Disable iterative refinement.
 * ``1`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON``): Enable iterative refinement.
-
-.. note:: The default value is ``0`` (off).
 
 Barrier Step Scale
 ^^^^^^^^^^^^^^^^^^^
