@@ -129,6 +129,23 @@ Fixed Cost per Vehicle
 -----------------------
 Vehicles can have different fixed costs associated with them. This helps in scenarios where a single vehicle with a higher cost can be avoided if it can be done with two or more vehicles with lesser costs. This would be dependent on the objective function.
 
+Independent Distance Matrices
+-----------------------------
+The C++ routing data model accepts optional physical-distance matrices through
+``data_model_view_t::add_distance_matrix``. The CPU problem representation stores
+them in ``cpu_routing_problem_t::distance_matrices`` and copies them to device
+memory when constructing the data model.
+
+Distance matrices must have the same dimensions as the cost matrices and a
+corresponding cost matrix for each vehicle type. When provided, distance matrices
+must cover every vehicle type used by the fleet. Entries must be non-negative
+and not NaN. Positive infinity and values at or above ``1e30`` encode unreachable
+distance arcs and are limited to the solver's finite matrix sentinel.
+
+Registering a distance matrix does not change the ``COST`` objective, constrain
+routes, or replace the transit-time matrix. The distance input is auxiliary data;
+it does not introduce an objective to minimize physical distance.
+
 Mapping Orders to Vehicles, and Vehicles to Orders
 ---------------------------------------------------
 By default, cuOpt will assign orders to vehicles based on the optimal routes. However, in some cases, it makes sense to assign specific orders to specific vehicles, or, conversely, specific vehicles to specific orders.
