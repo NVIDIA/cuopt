@@ -1376,6 +1376,125 @@ TEST(mps_roundtrip, unnamed_quadratic_constraints_avoid_existing_row_names)
             reloaded.get_quadratic_constraints()[1].constraint_row_name);
 }
 
+TEST(mps_roundtrip, free_row_stays_free)
+{
+  // free: -inf <= x - y + 2 z <= +inf constrains nothing and must not come back as a >= 0 row.
+  // z appears only in the free row and must still be kept as a variable.
+  const double inf = std::numeric_limits<double>::infinity();
+  mps_data_model_t<int, double> model;
+  std::vector<double> values{1.0, -1.0, 2.0, 1.0, 1.0};
+  std::vector<int> indices{0, 1, 2, 0, 1};
+  std::vector<int> offsets{0, 3, 5};
+  std::vector<double> objective{1.0, 1.0, 3.0};
+  std::vector<double> constraint_lower_bounds{-inf, -4.0};
+  std::vector<double> constraint_upper_bounds{inf, inf};
+  std::vector<double> lower_bounds{-5.0, -5.0, -1.0};
+  std::vector<double> upper_bounds{5.0, 5.0, 7.0};
+
+  model.set_maximize(false);
+  model.set_csr_constraint_matrix(values, indices, offsets);
+  model.set_objective_coefficients(objective);
+  model.set_constraint_lower_bounds(constraint_lower_bounds);
+  model.set_constraint_upper_bounds(constraint_upper_bounds);
+  model.set_variable_lower_bounds(lower_bounds);
+  model.set_variable_upper_bounds(upper_bounds);
+  model.set_variable_names({"x", "y", "z"});
+  model.set_row_names({"free", "lower"});
+
+  temp_file_t temp_file(".mps");
+  mps_writer_t<int, double> writer(model);
+  writer.write(temp_file.string());
+
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  EXPECT_THAT(reloaded.get_row_names(), ElementsAre("lower"));
+  EXPECT_THAT(reloaded.get_constraint_lower_bounds(), ElementsAre(-4.0));
+  EXPECT_THAT(reloaded.get_constraint_upper_bounds(), ElementsAre(inf));
+  EXPECT_THAT(reloaded.get_constraint_matrix_offsets(), ElementsAre(0, 2));
+  EXPECT_THAT(reloaded.get_constraint_matrix_indices(), ElementsAre(0, 1));
+  EXPECT_THAT(reloaded.get_constraint_matrix_values(), ElementsAre(1.0, 1.0));
+  EXPECT_THAT(reloaded.get_variable_names(), ElementsAre("x", "y", "z"));
+  EXPECT_THAT(reloaded.get_objective_coefficients(), ElementsAre(1.0, 1.0, 3.0));
+  EXPECT_THAT(reloaded.get_variable_lower_bounds(), ElementsAre(-5.0, -5.0, -1.0));
+  EXPECT_THAT(reloaded.get_variable_upper_bounds(), ElementsAre(5.0, 5.0, 7.0));
+}
+
+TEST(mps_roundtrip, all_free_rows)
+{
+  // Every row is free, so nothing comes back as a constraint; z is only in the free row and has a
+  // zero objective coefficient, so it must still be kept as a variable.
+  const double inf = std::numeric_limits<double>::infinity();
+  mps_data_model_t<int, double> model;
+  std::vector<double> values{1.0, 2.0};
+  std::vector<int> indices{0, 1};
+  std::vector<int> offsets{0, 2};
+  std::vector<double> objective{1.0, 0.0};
+  std::vector<double> constraint_lower_bounds{-inf};
+  std::vector<double> constraint_upper_bounds{inf};
+  std::vector<double> lower_bounds{-5.0, -1.0};
+  std::vector<double> upper_bounds{5.0, 7.0};
+
+  model.set_maximize(false);
+  model.set_csr_constraint_matrix(values, indices, offsets);
+  model.set_objective_coefficients(objective);
+  model.set_constraint_lower_bounds(constraint_lower_bounds);
+  model.set_constraint_upper_bounds(constraint_upper_bounds);
+  model.set_variable_lower_bounds(lower_bounds);
+  model.set_variable_upper_bounds(upper_bounds);
+  model.set_variable_names({"x", "z"});
+  model.set_row_names({"free"});
+
+  temp_file_t temp_file(".mps");
+  mps_writer_t<int, double> writer(model);
+  writer.write(temp_file.string());
+
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  EXPECT_TRUE(reloaded.get_row_names().empty());
+  EXPECT_THAT(reloaded.get_constraint_matrix_offsets(), ElementsAre(0));
+  EXPECT_THAT(reloaded.get_variable_names(), ElementsAre("x", "z"));
+  EXPECT_THAT(reloaded.get_objective_coefficients(), ElementsAre(1.0, 0.0));
+  EXPECT_THAT(reloaded.get_variable_lower_bounds(), ElementsAre(-5.0, -1.0));
+  EXPECT_THAT(reloaded.get_variable_upper_bounds(), ElementsAre(5.0, 7.0));
+}
+
+TEST(mps_roundtrip, generated_row_names_avoid_supplied_names)
+{
+  // Only the first row is named, and its name is the one the writer would generate for the second
+  // row. A shared name would let the dropped free row swallow the second row's coefficients.
+  const double inf = std::numeric_limits<double>::infinity();
+  mps_data_model_t<int, double> model;
+  std::vector<double> values{1.0, -1.0, 1.0, 1.0};
+  std::vector<int> indices{0, 1, 0, 1};
+  std::vector<int> offsets{0, 2, 4};
+  std::vector<double> objective{1.0, 1.0};
+  std::vector<double> constraint_lower_bounds{-inf, -4.0};
+  std::vector<double> constraint_upper_bounds{inf, inf};
+  std::vector<double> lower_bounds{-5.0, -5.0};
+  std::vector<double> upper_bounds{5.0, 5.0};
+
+  model.set_maximize(false);
+  model.set_csr_constraint_matrix(values, indices, offsets);
+  model.set_objective_coefficients(objective);
+  model.set_constraint_lower_bounds(constraint_lower_bounds);
+  model.set_constraint_upper_bounds(constraint_upper_bounds);
+  model.set_variable_lower_bounds(lower_bounds);
+  model.set_variable_upper_bounds(upper_bounds);
+  model.set_variable_names({"x", "y"});
+  model.set_row_names({"R1"});
+
+  temp_file_t temp_file(".mps");
+  mps_writer_t<int, double> writer(model);
+  writer.write(temp_file.string());
+
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  ASSERT_EQ(1u, reloaded.get_row_names().size());
+  EXPECT_NE("R1", reloaded.get_row_names()[0]);
+  EXPECT_THAT(reloaded.get_constraint_lower_bounds(), ElementsAre(-4.0));
+  EXPECT_THAT(reloaded.get_constraint_upper_bounds(), ElementsAre(inf));
+  EXPECT_THAT(reloaded.get_constraint_matrix_offsets(), ElementsAre(0, 2));
+  EXPECT_THAT(reloaded.get_constraint_matrix_indices(), ElementsAre(0, 1));
+  EXPECT_THAT(reloaded.get_constraint_matrix_values(), ElementsAre(1.0, 1.0));
+}
+
 TEST(mps_writer_op, rejects_missing_constraint_offsets)
 {
   mps_data_model_t<int, double> model;
