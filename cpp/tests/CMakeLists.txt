@@ -126,6 +126,15 @@ function(ConfigureTest CMAKE_TEST_NAME)
     rapids_test_add(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME} INSTALL_COMPONENT_SET testing)
     if(CT_LABELS)
         set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES LABELS "${CT_LABELS}")
+        # Installed next to the binary so ci/run_ctests.sh can select tests by label.
+        string(REPLACE ";" "\n" CT_LABELS_TEXT "${CT_LABELS}")
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_TEST_NAME}.labels" "${CT_LABELS_TEXT}\n")
+        install(
+            FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_TEST_NAME}.labels"
+            COMPONENT testing
+            DESTINATION bin/gtests/libcuopt
+            EXCLUDE_FROM_ALL
+        )
     endif()
     install(
         TARGETS ${CMAKE_TEST_NAME}
