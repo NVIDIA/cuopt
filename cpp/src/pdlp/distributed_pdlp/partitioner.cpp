@@ -60,6 +60,8 @@ std::vector<int> round_robin_partitioner_t<i_t, f_t>::partition(
 //   * nodes [0, nb_cstr)              : constraint nodes
 //   * nodes [nb_cstr, nb_cstr+nb_vars): variable nodes
 //   * each edge is a nnz between a constraint and a variable
+//
+// The partition tries to ensure nnz-balance and row/col-balance. This is done through mpdlp_partition_nnz_weight.
 template <typename i_t, typename f_t>
 std::vector<int> kaminpar_partitioner_t<i_t, f_t>::partition(
   partitioner_input_t<i_t, f_t> const& input) const
@@ -140,12 +142,28 @@ std::vector<int> kaminpar_partitioner_t<i_t, f_t>::partition(
     adjncy[nnz + k] = static_cast<kaminpar::shm::NodeID>(A_t_cols[k]);
   }
 
+  std::vector<kaminpar::shm::NodeWeight> vwgt;
+  vwgt.resize(static_cast<std::size_t>(nvtx));
+  for (i_t i = 0; i < nb_cstr; ++i) {
+    const i_t row_nnz = A_offsets[i + 1] - A_offsets[i];
+    const double w    = 1.0 + input.nnz_weight * static_cast<double>(row_nnz);
+    vwgt[static_cast<std::size_t>(i)] =
+      static_cast<kaminpar::shm::NodeWeight>(w);
+  }
+  for (i_t j = 0; j < nb_vars; ++j) {
+    const i_t col_nnz = A_t_offsets[j + 1] - A_t_offsets[j];
+    const double w    = 1.0 + input.nnz_weight * static_cast<double>(col_nnz);
+    vwgt[static_cast<std::size_t>(nb_cstr + j)] =
+      static_cast<kaminpar::shm::NodeWeight>(w);
+  }
+
   std::vector<kaminpar::shm::BlockID> block_of(static_cast<std::size_t>(nvtx));
 
   kaminpar::KaMinPar engine(nthreads, kaminpar::shm::create_default_context());
   engine.set_output_level(kaminpar::OutputLevel::QUIET);
   engine.copy_graph(std::span<const kaminpar::shm::EdgeID>(xadj),
-                    std::span<const kaminpar::shm::NodeID>(adjncy));
+                    std::span<const kaminpar::shm::NodeID>(adjncy),
+                    std::span<const kaminpar::shm::NodeWeight>(vwgt));
   engine.set_k(static_cast<kaminpar::shm::BlockID>(input.nb_parts));
   engine.set_uniform_max_block_weights(kaminpar_max_block_weight_imbalance);
 
