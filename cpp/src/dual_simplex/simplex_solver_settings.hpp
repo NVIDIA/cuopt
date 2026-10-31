@@ -70,6 +70,8 @@ struct simplex_solver_settings_t {
       barrier_presolve(false),
       barrier_eliminate_free_variables(true),
       cudss_deterministic(false),
+      cudss_nd_nlevels(-1),
+      cudss_hybrid_execute_mode(-1),
       deterministic(false),
       barrier(false),
       eliminate_dense_columns(true),
@@ -181,7 +183,9 @@ struct simplex_solver_settings_t {
   bool barrier_presolve;                  // true to use barrier presolve
   bool barrier_eliminate_free_variables;  // true to eliminate zero-cost free variables
   bool cudss_deterministic;  // true to use cuDSS deterministic mode, false for non-deterministic
-  bool barrier;              // true to use barrier method, false to use dual simplex method
+  i_t cudss_nd_nlevels;      // -1 cuDSS default, else CUDSS_CONFIG_ND_NLEVELS (at least 2)
+  i_t cudss_hybrid_execute_mode;  // -1 cuDSS default, 0 disabled, 1 enabled
+  bool barrier;                   // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
   bool eliminate_dense_columns;         // true to eliminate dense columns from A*D*A^T
   bool barrier_iterative_refinement;    // true to use iterative refinement for barrier method
