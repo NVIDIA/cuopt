@@ -137,6 +137,11 @@ struct simplex_solver_settings_t {
   void enable_log_to_file() { log.enable_log_to_file(); }
   void set_log_filename(const std::string& log_filename) { log.set_log_file(log_filename); }
   void close_log_file() { log.close_log_file(); }
+  bool received_halt_signal() const
+  {
+    return concurrent_halt ? concurrent_halt->load(std::memory_order::acquire) : false;
+  }
+
   i_t iteration_limit;
   i_t node_limit;
   f_t time_limit;
