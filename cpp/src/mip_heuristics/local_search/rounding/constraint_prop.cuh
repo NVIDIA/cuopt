@@ -9,11 +9,11 @@
 
 #include <thrust/pair.h>
 #include <mip_heuristics/local_search/rounding/bounds_repair.cuh>
-#include <mip_heuristics/presolve/bounds_presolve.cuh>
-#include <mip_heuristics/presolve/conditional_bound_strengthening.cuh>
-#include <mip_heuristics/presolve/multi_probe.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
+#include <presolve/bounds_presolve.cuh>
+#include <presolve/conditional_bound_strengthening.cuh>
+#include <presolve/multi_probe.cuh>
 #include <raft/random/rng_device.cuh>
 #include <utilities/timer.hpp>
 

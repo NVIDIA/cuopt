@@ -18,7 +18,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/user_problem.hpp>
-#include <mip_heuristics/presolve/presolve_budget_policy.hpp>
+#include <presolve/presolve_budget_policy.hpp>
 
 #include <PSLP/PSLP_API.h>
 

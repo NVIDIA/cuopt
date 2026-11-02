@@ -5,12 +5,17 @@ SPDX-License-Identifier: Apache-2.0
 
 # cuOpt Java Binding Tests
 
-The Java module has three test classes under
+The Java module has these test classes under
 `src/test/java/com/nvidia/cuopt/mathematicaloptimization`:
 
-- `ProblemModelingTest`: five pure Java modeling tests.
-- `NativeIntegrationTest`: seven JNI/native cuOpt smoke tests.
-- `ProblemIntegrationTest`: ten standalone Java problem and solve tests.
+- `ProblemModelingTest` and `ModelEdgeCaseTest`: pure Java modeling tests and corner cases.
+- `NativeIntegrationTest`: JNI/native cuOpt smoke tests.
+- `NativeEdgeCaseTest`: native corner cases (handle lifecycle, settings, degenerate and extreme
+  models, MPS files, MIP callbacks, concurrent solves).
+- `ProblemIntegrationTest`: standalone Java problem and solve tests.
+- `NativeLibraryLoaderTest` and `NativeLogSinkTest`: loader and log-sink tests.
+
+Tests marked `@Disabled` record known defects and state the defect in their reason.
 
 The suite has no dependency on the cuOpt Python interface.
 
@@ -49,8 +54,18 @@ category mapping, expression construction, CSR generation, duplicate-term
 merging, problem updates, relaxation, and quadratic inspection without loading
 the native library.
 
+`ModelEdgeCaseTest` covers the pure Java model: null names, lookups, foreign
+variables, rejected constraints, objective replacement, expression
+immutability, quadratic terms and constraints, CSR copies, callback-solution
+copies, and enum code mappings.
+
 `NativeIntegrationTest` covers settings, setting-file round trips, LP/MILP/QP
 solves, solution statistics, error propagation, and MPS read/write paths.
+
+`NativeEdgeCaseTest` covers handle lifecycle, settings and typed getters,
+unbounded, infeasible and degenerate models, MPS read and write, MIP callbacks,
+concurrent solves, and repeated solve cycles. It skips without the native
+library and a GPU.
 
 `ProblemIntegrationTest` constructs ten LP, MILP, and QP cases entirely in
 Java. Each dynamic test verifies the public `Problem` model built from the

@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
+#include <presolve/trivial_presolve.cuh>
 
 namespace cuopt::mathematical_optimization::mip {
 

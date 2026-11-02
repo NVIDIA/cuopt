@@ -7,10 +7,10 @@
 
 #pragma once
 
-#include <mip_heuristics/presolve/load_balanced_bounds_presolve.cuh>
 #include <mip_heuristics/problem/load_balanced_problem.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
+#include <presolve/load_balanced_bounds_presolve.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 #include "bounds_repair.cuh"

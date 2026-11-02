@@ -17,10 +17,10 @@
 #include <utilities/macros.cuh>
 
 #include <mip_heuristics/logger.hpp>
-#include <mip_heuristics/presolve/load_balanced_bounds_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
+#include <presolve/load_balanced_bounds_presolve.cuh>
 
-#include <mip_heuristics/presolve/load_balanced_partition_helpers.cuh>
+#include <presolve/load_balanced_partition_helpers.cuh>
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
 #include <raft/util/cuda_dev_essentials.cuh>

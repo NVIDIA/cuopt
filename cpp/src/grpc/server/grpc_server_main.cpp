@@ -233,6 +233,7 @@ int main(int argc, char** argv)
       job_queue[i].claimed.store(false);
       job_queue[i].cancelled.store(false);
       job_queue[i].worker_index.store(-1);
+      job_queue[i].enqueue_seq.store(0);
     }
 
     for (size_t i = 0; i < MAX_RESULTS; ++i) {

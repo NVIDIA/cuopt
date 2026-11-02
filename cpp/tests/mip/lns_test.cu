@@ -667,8 +667,7 @@ TEST(Lns, MainWorkersStopWithoutBranchAndBoundOnSmallTeams)
     opt::optimization_problem_t<int, double> op(&handle);
     init_test_problem(op, true);
     opt::mip_solver_settings_t<int, double> settings;
-    settings.heuristics_only = true;
-    settings.seed            = 42;
+    settings.seed = 42;
     mip::problem_t<int, double> problem(op, settings.get_tolerances());
     problem.preprocess_problem();
     mip::mip_solver_context_t<int, double> context(&handle, &problem, settings);

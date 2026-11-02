@@ -33,12 +33,12 @@
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/bhw_coeff_reduce.hpp>
-#include <mip_heuristics/presolve/gf2_presolve.hpp>
-#include <mip_heuristics/presolve/indicator_strengthening.hpp>
-#include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/utils.hpp>
+#include <presolve/bhw_coeff_reduce.hpp>
+#include <presolve/gf2_presolve.hpp>
+#include <presolve/indicator_strengthening.hpp>
+#include <presolve/single_lock_dual_aggregation.hpp>
+#include <presolve/third_party_presolve.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>

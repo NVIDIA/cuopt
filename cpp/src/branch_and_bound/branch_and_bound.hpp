@@ -29,13 +29,14 @@
 #include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
 #include <utilities/producer_sync.hpp>
+#include <utilities/splitmix64.hpp>
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/root_heuristics.hpp>
+#include <presolve/third_party_presolve.hpp>
 
 #include <omp.h>
 
@@ -157,7 +158,7 @@ class branch_and_bound_t {
   void set_initial_pseudocost(const pseudo_costs_t<i_t, f_t>& parent_pc,
                               const std::vector<i_t>& reduced_to_original);
 
-  f_t get_upper_bound() const { return upper_bound_.load(); }
+  f_t get_upper_bound() const { return upper_bound_.load(std::memory_order::relaxed); }
   bool has_solver_space_incumbent() const { return incumbent_.has_incumbent; }
 
   // Repair a low-quality solution from the heuristics.
@@ -256,6 +257,8 @@ class branch_and_bound_t {
   std::atomic<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
   bool has_initial_pseudocost_{false};
+
+  splitmix64_t seed_generator_;
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
@@ -359,6 +362,9 @@ class branch_and_bound_t {
   void snap_to_lattice(const simplex::lp_problem_t<i_t, f_t>& lp,
                        mip_node_t<i_t, f_t>* node_ptr,
                        f_t leaf_obj);
+
+  f_t compute_node_cutoff(const simplex::lp_problem_t<i_t, f_t>& lp, f_t upper_bound) const;
+  bool accept_new_incumbent(f_t obj);
 
   // Launch a new best-first worker from a given bfs worker.
   void launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker);

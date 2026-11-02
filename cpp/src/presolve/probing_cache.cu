@@ -8,9 +8,9 @@
 #include "probing_cache.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/multi_probe.cuh>
 #include <mip_heuristics/utilities/work_unit_ordered_queue.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <presolve/multi_probe.cuh>
 
 #include <omp.h>
 #include <thrust/binary_search.h>
