@@ -18,10 +18,6 @@ The following commands are for Linux and might fail in cases where the cuopt lib
 
 If you have built it locally, libcuopt.so will be in the build directory ``cpp/build`` and include directoy would be ``cpp/include``.
 
-.. note::
-
-   ``-lcuopt`` requires all of the cuOpt libraries to be installed (the ``libcuopt`` package). With only the split packages installed, link ``-lcuopt_mathopt -lcuopt_client`` instead.
-
 .. code-block:: bash
 
    # Find the cuopt header file and assign to INCLUDE_PATH
