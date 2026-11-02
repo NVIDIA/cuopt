@@ -183,6 +183,42 @@ void extract_probing_implied_bounds(const problem_t<i_t, f_t>& op_problem,
 }
 
 template <typename i_t, typename f_t>
+void mip_solver_t<i_t, f_t>::stop_early_heuristics()
+{
+  if (context.early_cpufj_ptr) { context.early_cpufj_ptr->request_stop(); }
+  if (context.early_structural_ptr) { context.early_structural_ptr->request_stop(); }
+  if (context.early_cpufj_ptr) {
+    context.early_cpufj_ptr->stop();
+    if (context.early_cpufj_ptr->solution_found()) {
+      CUOPT_LOG_DEBUG("Early CPUFJ found incumbent with user-space objective %g during presolve",
+                      context.early_cpufj_ptr->get_best_user_objective());
+    }
+  }
+
+  if (context.early_structural_ptr) {
+    context.early_structural_ptr->stop();
+    if (context.early_structural_ptr->solution_found()) {
+      CUOPT_LOG_DEBUG(
+        "Early structural heuristic found incumbent with user-space objective %g "
+        "during presolve",
+        context.early_structural_ptr->get_best_user_objective());
+    }
+  }
+
+  auto& incumbents = context.papilo_model_incumbents;
+  if (incumbents.empty()) { return; }
+  for (const auto& incumbent : incumbents) {
+    std::vector<f_t> user_assignment;
+    context.problem_ptr->presolve_data.papilo_uncrush_assignment(incumbent.assignment,
+                                                                 user_assignment);
+    context.papilo_model_user_incumbents.push_back(std::move(user_assignment));
+  }
+  context.initial_upper_bound          = incumbents.back().user_obj;
+  context.initial_incumbent_assignment = context.papilo_model_user_incumbents.back();
+  incumbents.clear();
+}
+
+template <typename i_t, typename f_t>
 solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 {
   solution_t<i_t, f_t> sol(*context.problem_ptr);
@@ -193,40 +229,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   cuopt_expects(context.problem_ptr->preprocess_called,
                 error_type_t::RuntimeError,
                 "preprocess_problem should be called before running the solver");
-
-  auto stop_early_heuristics = [this]() {
-    if (context.early_cpufj_ptr) { context.early_cpufj_ptr->request_stop(); }
-    if (context.early_structural_ptr) { context.early_structural_ptr->request_stop(); }
-    if (context.early_cpufj_ptr) {
-      context.early_cpufj_ptr->stop();
-      if (context.early_cpufj_ptr->solution_found()) {
-        CUOPT_LOG_DEBUG("Early CPUFJ found incumbent with user-space objective %g during presolve",
-                        context.early_cpufj_ptr->get_best_user_objective());
-      }
-    }
-
-    if (context.early_structural_ptr) {
-      context.early_structural_ptr->stop();
-      if (context.early_structural_ptr->solution_found()) {
-        CUOPT_LOG_DEBUG(
-          "Early structural heuristic found incumbent with user-space objective %g "
-          "during presolve",
-          context.early_structural_ptr->get_best_user_objective());
-      }
-    }
-
-    auto& incumbents = context.papilo_model_incumbents;
-    if (incumbents.empty()) { return; }
-    for (const auto& incumbent : incumbents) {
-      std::vector<f_t> user_assignment;
-      context.problem_ptr->presolve_data.papilo_uncrush_assignment(incumbent.assignment,
-                                                                   user_assignment);
-      context.papilo_model_user_incumbents.push_back(std::move(user_assignment));
-    }
-    context.initial_upper_bound          = incumbents.back().user_obj;
-    context.initial_incumbent_assignment = context.papilo_model_user_incumbents.back();
-    incumbents.clear();
-  };
 
   diversity_manager_t<i_t, f_t> dm(context);
   if (context.problem_ptr->empty) {
