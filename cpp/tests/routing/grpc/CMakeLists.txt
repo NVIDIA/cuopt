@@ -67,6 +67,7 @@ endif()
 rapids_test_add(NAME GRPC_ROUTING_PROBLEM_MAPPER_TEST COMMAND GRPC_ROUTING_PROBLEM_MAPPER_TEST
                  INSTALL_COMPONENT_SET testing)
 set_tests_properties(GRPC_ROUTING_PROBLEM_MAPPER_TEST PROPERTIES LABELS "routing")
+install_test_labels(GRPC_ROUTING_PROBLEM_MAPPER_TEST routing)
 
 # Settings mapper round-trip (no running server). This mapper reads
 # routing::solver_settings_t, so it covers the host-only accessors that build into
@@ -100,6 +101,7 @@ endif()
 rapids_test_add(NAME GRPC_ROUTING_SETTINGS_MAPPER_TEST COMMAND GRPC_ROUTING_SETTINGS_MAPPER_TEST
                  INSTALL_COMPONENT_SET testing)
 set_tests_properties(GRPC_ROUTING_SETTINGS_MAPPER_TEST PROPERTIES LABELS "routing")
+install_test_labels(GRPC_ROUTING_SETTINGS_MAPPER_TEST routing)
 
 install(
     TARGETS GRPC_ROUTING_SETTINGS_MAPPER_TEST
