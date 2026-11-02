@@ -28,7 +28,8 @@ Here we are sharing current directory as both data and result directory.
 
    ip="0.0.0.0"
    port=5000
-   python -m cuopt_server.cuopt_service -d="$PWD" -r="$PWD" -i="$ip" -p="$port"
+   cuopt_grpc_server --port 5001 &
+   python -m cuopt_server.cuopt_proxy -d="$PWD" -r="$PWD" -i="$ip" -p="$port" --grpc-port 5001
 
 Example with JSON data as a direct string:
 
@@ -73,7 +74,7 @@ Success Response:
    {"reqId":"1df28c33-8b8c-4bb7-9ff9-1e19929094c6"}
 
 
-When sending files to the server, the server must be configured with appropriate data and result directories to temporarily store these files. These directories can be set using the ``-d`` and ``-r`` options when starting the server. Please refer to the :doc:`Server CLI documentation <../server-api/server-cli>` for more details on configuring these directories.
+When sending files to the server, the proxy must be configured with data and result directories to temporarily store these files. Set them with ``-d`` / ``--data-dir`` and ``-r`` / ``--result-dir``. ``python -m cuopt_server.cuopt_proxy --help`` lists the proxy flags.
 
 ``JSON_DATA`` should follow the :doc:`spec under "POST /cuopt/request" schema <../../open-api>` described for cuOpt input.
 

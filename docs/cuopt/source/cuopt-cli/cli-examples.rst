@@ -105,3 +105,15 @@ You can customize the solver behavior using various command line parameters. Her
 .. literalinclude:: examples/lp/examples/solver_parameters_example.sh
    :language: bash
    :linenos:
+
+
+Solving an LP on Multiple GPUs
+##############################
+
+Multi-GPU PDLP shards an LP across GPUs. Select it with ``--method 1`` (PDLP) and set ``--num-gpus`` to ``-1`` (all visible GPUs) or to a value greater than 1. ``--multigpu-pdlp-partitioner`` chooses how the problem is split (``0`` auto, ``1`` KaMinPar, ``2`` round robin). Multi-GPU PDLP supports LPs only, and the number of GPUs cannot exceed the number of visible CUDA devices.
+
+:download:`multi_gpu_pdlp_example.sh <examples/lp/examples/multi_gpu_pdlp_example.sh>`
+
+.. literalinclude:: examples/lp/examples/multi_gpu_pdlp_example.sh
+   :language: bash
+   :linenos:

@@ -71,7 +71,7 @@ class timer_t {
     auto diff_from_now = begin - steady_now;
 
     // Apply that same difference to the current system clock time point
-    std::chrono::system_clock::time_point sys_t = sys_now + diff_from_now;
+    auto sys_t = sys_now + diff_from_now;
 
     // Convert the resulting system_clock time point to microseconds since the system epoch
     auto us_since_epoch =

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -56,7 +56,7 @@ void run_extract_kernel(solution_t<i_t, f_t, REQUEST>& sol,
   i_t TPB      = 256;
   i_t n_blocks = sol.get_n_routes();
   extract_nodes_to_search_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, 0, sol.sol_handle->get_stream()>>>(
+    <<<n_blocks, TPB, 0, sol.sol_handle->get_stream().get()>>>(
       sol.view(), nodes_to_search.view(), restore_phase);
 }
 

@@ -12,6 +12,7 @@
 #include "../solution/solution_handle.cuh"
 #include "tsp_route.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
 
@@ -60,7 +61,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
     std::cout << "]\n";
   }
 
-  void resize(i_t max_nodes_per_route, bool is_tsp, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, bool is_tsp, cuda::stream_ref stream)
   {
     node_info.resize(max_nodes_per_route, stream);
     brother_info.resize(max_nodes_per_route, stream);
@@ -182,7 +183,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
     std::cout << "]\n";
   }
 
-  void resize(i_t max_nodes_per_route, bool is_tsp, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, bool is_tsp, cuda::stream_ref stream)
   {
     node_info.resize(max_nodes_per_route, stream);
     if (is_tsp) { tsp_requests.resize(max_nodes_per_route, stream); }

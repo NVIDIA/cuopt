@@ -2,10 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import threading
 import time
 
 import pytest
 
+from cuopt.grpc.client.grpc_client import (
+    _WAIT_POLL_INTERVAL_S,
+    _wait_poll_loop,
+)
 from cuopt.grpc.linear_programming import (
     Client,
     GrpcError,
@@ -16,7 +21,12 @@ from cuopt.grpc.linear_programming import (
 from cuopt.linear_programming import Read, SolverSettings
 from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
-from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_METHOD,
+    CUOPT_PRESOLVE,
+    CUOPT_TIME_LIMIT,
+)
+from cuopt.linear_programming.solver_settings import SolverMethod
 
 from grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
 
@@ -73,6 +83,151 @@ def _assert_demo_lp_solution(client):
         assert solution.get_primal_objective() == pytest.approx(0.36, rel=1e-3)
     finally:
         client.delete(job_id)
+
+
+class TestWaitPollLoop:
+    def test_returns_immediately_when_already_terminal(self, monkeypatch):
+        sleeps = []
+        monkeypatch.setattr(time, "sleep", sleeps.append)
+        status = _wait_poll_loop(
+            lambda job_id: JobStatus.COMPLETED, "job", 0, GrpcError
+        )
+        assert status is JobStatus.COMPLETED
+        assert sleeps == []
+
+    def test_sleeps_between_in_flight_polls(self, monkeypatch):
+        polls = []
+        sleeps = []
+
+        def get_status(job_id):
+            polls.append(job_id)
+            if len(polls) < 3:
+                return JobStatus.PROCESSING
+            return JobStatus.CANCELLED
+
+        monkeypatch.setattr(time, "sleep", sleeps.append)
+        status = _wait_poll_loop(get_status, "abc", 0, GrpcError)
+        assert status is JobStatus.CANCELLED
+        assert polls == ["abc", "abc", "abc"]
+        assert sleeps == [_WAIT_POLL_INTERVAL_S, _WAIT_POLL_INTERVAL_S]
+
+    def test_timeout_raises_after_deadline(self, monkeypatch):
+        ticks = iter([100.0, 100.0, 101.0])
+        monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+        monkeypatch.setattr(time, "sleep", lambda seconds: None)
+        with pytest.raises(
+            GrpcError, match="Timeout waiting for job completion"
+        ):
+            _wait_poll_loop(
+                lambda job_id: JobStatus.QUEUED, "job", 1, GrpcError
+            )
+
+    def test_sleep_is_capped_to_remaining_deadline(self, monkeypatch):
+        ticks = iter([100.0, 100.6])
+        sleeps = []
+        monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+        monkeypatch.setattr(time, "sleep", sleeps.append)
+
+        polls = {"n": 0}
+
+        def get_status(job_id):
+            polls["n"] += 1
+            if polls["n"] == 1:
+                return JobStatus.PROCESSING
+            return JobStatus.COMPLETED
+
+        status = _wait_poll_loop(get_status, "job", 1, GrpcError)
+        assert status is JobStatus.COMPLETED
+        assert sleeps == [pytest.approx(0.4)]
+
+    def test_rejects_negative_timeout(self):
+        with pytest.raises(
+            GrpcError, match="timeout_seconds must be non-negative"
+        ):
+            _wait_poll_loop(
+                lambda job_id: JobStatus.PROCESSING, "job", -1, GrpcError
+            )
+
+    def test_other_thread_runs_during_sleep(self):
+        started = threading.Event()
+        progressed = threading.Event()
+        polls = {"n": 0}
+
+        def get_status(job_id):
+            polls["n"] += 1
+            if polls["n"] == 1:
+                started.set()
+                return JobStatus.PROCESSING
+            assert progressed.wait(timeout=2)
+            return JobStatus.COMPLETED
+
+        def worker():
+            assert started.wait(timeout=2)
+            progressed.set()
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        status = _wait_poll_loop(
+            get_status,
+            "job",
+            0,
+            GrpcError,
+            poll_interval_s=0.05,
+        )
+        thread.join(timeout=2)
+        assert status is JobStatus.COMPLETED
+        assert progressed.is_set()
+
+    def test_client_wait_releases_gil(self, monkeypatch):
+        """A GIL-bound spinner must progress during Client.wait's poll sleep.
+
+        Hits are counted only inside the sleep, so this fails if wait() still
+        called the C++ WaitForCompletion/sleep path that holds the GIL.
+        """
+        import cuopt.grpc.client.grpc_client as grpc_mod
+
+        polls = {"n": 0}
+
+        class StatusStubClient(Client):
+            def status(self, job_id):
+                polls["n"] += 1
+                if polls["n"] == 1:
+                    return JobStatus.PROCESSING
+                return JobStatus.COMPLETED
+
+        client = StatusStubClient.__new__(StatusStubClient)
+
+        hits = {"n": 0}
+        during_sleep = []
+        stop = threading.Event()
+
+        def spinner():
+            while not stop.is_set():
+                hits["n"] += 1
+
+        real_sleep = time.sleep
+
+        def tracking_sleep(seconds):
+            assert seconds == _WAIT_POLL_INTERVAL_S
+            before = hits["n"]
+            real_sleep(0.15)
+            during_sleep.append(hits["n"] - before)
+
+        monkeypatch.setattr(grpc_mod.time, "sleep", tracking_sleep)
+        thread = threading.Thread(target=spinner)
+        thread.start()
+        try:
+            status = client.wait("job")
+        finally:
+            stop.set()
+            thread.join(timeout=2)
+
+        assert status is JobStatus.COMPLETED
+        assert during_sleep, "wait() never slept between status polls"
+        assert during_sleep[0] > 0, (
+            "spinner made no progress during wait sleep; GIL likely held "
+            f"(hits={during_sleep[0]})"
+        )
 
 
 class TestTlsConfig:
@@ -185,6 +340,67 @@ class TestGrpcClient:
         assert solution.get_primal_objective() == pytest.approx(15.0, rel=1e-3)
         client.delete(job_id)
 
+    def test_mip_start_over_grpc(self, grpc_server):
+        problem = Problem("grpc_mip_start")
+        x = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="x")
+        y = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="y")
+        problem.addConstraint(x + y <= 10, name="c1")
+        problem.addConstraint(x - y >= 0, name="c2")
+        problem.setObjective(x + 2 * y, sense=MAXIMIZE)
+        x.setMIPStart(5)
+        y.MIPStart = 5.0
+
+        client = Client("localhost", grpc_server)
+        job_id = client.submit(problem, SolverSettings())
+        try:
+            assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+
+            solution = client.result(job_id, _MIP_NAMES)
+            assert solution is not None
+            assert solution.get_primal_objective() == pytest.approx(
+                15.0, rel=1e-3
+            )
+            assert any(
+                "Using 1 user-provided initial MIP solution" in line
+                for line in client.logs(job_id)
+            )
+        finally:
+            client.delete(job_id)
+
+    def test_lp_initial_solution_over_grpc(self, grpc_server):
+        settings = SolverSettings()
+        settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+        settings.set_parameter(CUOPT_PRESOLVE, 0)
+
+        client = Client("localhost", grpc_server)
+
+        def solve(problem):
+            job_id = client.submit(problem, settings)
+            try:
+                assert client.wait(job_id, timeout=30) == JobStatus.COMPLETED
+                solution = client.result(job_id, _DEMO_LP_NAMES)
+                assert solution is not None
+                assert solution.get_primal_objective() == pytest.approx(
+                    0.36, rel=1e-3
+                )
+                assert solution.get_solved_by() == SolverMethod.PDLP
+                return solution.get_lp_stats()["nb_iterations"]
+            finally:
+                client.delete(job_id)
+
+        n_cold = solve(_demo_lp_problem())
+
+        warm = _demo_lp_problem()
+        warm._to_data_model()
+        warm.model.set_initial_primal_solution([1.8, 0.0])
+        warm.model.set_initial_dual_solution([-1.0 / 15.0, 0.0])
+        n_warm = solve(warm)
+
+        assert n_warm * 5 < n_cold, (
+            "initial primal/dual did not reduce PDLP iterations "
+            f"(cold={n_cold}, warm={n_warm})"
+        )
+
     def test_invalid_job_id(self, grpc_server):
         client = Client("localhost", grpc_server)
         assert (
@@ -272,7 +488,7 @@ class TestGrpcClient:
         job_id = client.submit(problem, settings)
         client.start_incumbent_stream(job_id, settings=settings)
 
-        terminal = _poll_until_complete(client, job_id, _MIP_NAMES)
+        terminal = client.wait(job_id, timeout=120)
         assert terminal == JobStatus.COMPLETED
         client.join_incumbent_stream(job_id)
 
@@ -283,6 +499,54 @@ class TestGrpcClient:
         solution = client.result(job_id, _MIP_NAMES)
         assert solution is not None
         client.delete(job_id)
+
+    def test_mip_incumbent_stream_live_during_wait(self, grpc_server):
+        """At least one incumbent callback must run before wait() returns.
+
+        A GIL-holding wait() defers Python callbacks until join(). swath1 is
+        used because the tiny MIP in test_mip_incumbent_stream finishes too
+        fast to tell.
+        """
+        if not os.path.isfile(_SWATH1_MPS):
+            pytest.skip(f"dataset not found: {_SWATH1_MPS}")
+
+        class CountIncumbents(GetSolutionCallback):
+            def __init__(self):
+                super().__init__()
+                self.n = 0
+                self.gate = False
+
+            def get_solution(
+                self, solution, solution_cost, solution_bound, user_data
+            ):
+                if self.gate:
+                    self.n += 1
+
+        collector = CountIncumbents()
+        settings = SolverSettings()
+        settings.set_mip_callback(collector, None)
+        settings.set_parameter(CUOPT_TIME_LIMIT, 8)
+
+        client = Client("localhost", grpc_server)
+        job_id = client.submit(Read(_SWATH1_MPS), settings)
+        collector.gate = False
+        client.start_incumbent_stream(
+            job_id, settings=settings, poll_interval_ms=200
+        )
+        try:
+            collector.gate = True
+            terminal = client.wait(job_id, timeout=30)
+            n_during_wait = collector.n
+            collector.gate = False
+            client.join_incumbent_stream(job_id)
+        finally:
+            client.delete(job_id)
+
+        if terminal != JobStatus.COMPLETED:
+            pytest.skip(f"job did not complete ({terminal.name})")
+        assert n_during_wait >= 1, (
+            "no incumbent callback before wait() returned; GIL likely held"
+        )
 
 
 @pytest.mark.xdist_group(name="grpc_server")

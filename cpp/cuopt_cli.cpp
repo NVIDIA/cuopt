@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 
@@ -23,9 +24,11 @@
 
 #include <unistd.h>
 #include <argparse/argparse.hpp>
+#include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <math_optimization/solution_reader.hpp>
@@ -85,6 +88,33 @@ inline cuopt::init_logger_t dummy_logger(
 }
 
 /**
+ * @brief A parsed problem held with either 32-bit or 64-bit matrix indices.
+ *
+ * The 64-bit alternative exists for problems whose nonzero count exceeds INT_MAX.
+ * Only multi-GPU PDLP can solve those (it partitions the matrix into per-GPU
+ * sub-problems that are individually 32-bit), so every other code path in this
+ * CLI works exclusively with the 32-bit alternative.
+ */
+using problem_variant_t =
+  std::variant<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>,
+               cuopt::mathematical_optimization::io::mps_data_model_t<int64_t, double>>;
+
+/**
+ * @brief Parse the input file into the requested index width.
+ * @param file_path Path to the input file; the format is dispatched by extension.
+ * @param mps_reader MPS reader implementation selected by the CLI
+ * @param index_64bit If true, parse into a 64-bit index model
+ */
+problem_variant_t read_problem(const std::string& file_path,
+                               cuopt::mathematical_optimization::io::mps_reader_type_t mps_reader,
+                               bool index_64bit)
+{
+  namespace io = cuopt::mathematical_optimization::io;
+  if (index_64bit) { return io::read<int64_t, double>(file_path, mps_reader); }
+  return io::read<int, double>(file_path, mps_reader);
+}
+
+/**
  * @brief Run a single file
  * @param file_path Path to the input file. Dispatched by extension:
  *                  .lp/.lp.gz/.lp.bz2 → LP parser;
@@ -98,21 +128,28 @@ int run_single_file(const std::string& file_path,
                     const std::string& initial_solution_file,
                     bool solve_relaxation,
                     cuopt::mathematical_optimization::io::mps_reader_type_t mps_reader,
-                    cuopt::mathematical_optimization::solver_settings_t<int, double>& settings)
+                    cuopt::mathematical_optimization::solver_settings_t<int, double>& settings,
+                    bool index_64bit = false)
 {
-  cuopt::init_logger_t log(settings.get_parameter<std::string>(CUOPT_LOG_FILE),
-                           settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
+  // The CLI and the solver library have separate loggers that both write this file.
+  // Configure the solver's first so its own initializer reuses that configuration rather
+  // than truncating the file mid-solve; the CLI's own logger then appends to it.
+  const auto log_file    = settings.get_parameter<std::string>(CUOPT_LOG_FILE);
+  const auto log_console = settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE);
+
+  auto solver_log =
+    cuopt::mathematical_optimization::configure_logging(log_file, log_console, true);
+  cuopt::init_logger_t log(log_file, log_console, /*truncate=*/false);
 
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
 
-  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_data_model;
+  problem_variant_t problem;
   bool parsing_failed = false;
   auto timer          = cuopt::timer_t(settings.get_parameter<double>(CUOPT_TIME_LIMIT));
   {
     CUOPT_LOG_INFO("Reading file %s", base_filename.c_str());
     try {
-      mps_data_model =
-        cuopt::mathematical_optimization::io::read<int, double>(file_path, mps_reader);
+      problem = read_problem(file_path, mps_reader, index_64bit);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("Parser exception: %s", e.what());
       parsing_failed = true;
@@ -142,25 +179,43 @@ int run_single_file(const std::string& file_path,
       std::make_unique<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>>();
   }
 
-  // Distributed PDLP is used for large problems that don't fit on a single GPU.
+  // Multi-GPU PDLP is used for large problems that don't fit on a single GPU.
   // We need to debranch before the problem_interface is created and tries to materialize the
   // problem in device memory.
-  if (settings.get_pdlp_settings().use_distributed_pdlp) {
+  const auto& pdlp_settings_ref = settings.get_pdlp_settings();
+  if (pdlp_settings_ref.method == cuopt::mathematical_optimization::method_t::PDLP &&
+      (pdlp_settings_ref.num_gpus == -1 || pdlp_settings_ref.num_gpus > 1)) {
     if (handle_ptr == nullptr) {
       CUOPT_LOG_ERROR(
-        "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
+        "Multi-GPU PDLP requires the GPU memory backend; no GPU handle is available for the "
         "selected memory backend.");
       return -1;
     }
     if (!initial_solution_file.empty()) {
-      CUOPT_LOG_ERROR("Initial solution file is not supported for distributed PDLP.");
+      CUOPT_LOG_ERROR("Initial solution file is not supported for multi-GPU PDLP.");
       return -1;
     }
-    auto solution = cuopt::mathematical_optimization::solve_lp(
-      handle_ptr.get(), mps_data_model, settings.get_pdlp_settings());
+    auto sol = std::visit(
+      [&](auto const& mps) {
+        return cuopt::mathematical_optimization::solve_lp(
+          handle_ptr.get(), mps, settings.get_pdlp_settings());
+      },
+      problem);
+    if (sol.get_error_status().get_error_type() != cuopt::error_type_t::Success) {
+      CUOPT_LOG_ERROR("Multi-GPU PDLP failed: %s", sol.get_error_status().what());
+      return -1;
+    }
     return 0;
   }
-
+  // Only the 32-bit model is wired into the solver; the 64-bit one stops here for now.
+  if (std::holds_alternative<
+        cuopt::mathematical_optimization::io::mps_data_model_t<int64_t, double>>(problem)) {
+    CUOPT_LOG_ERROR(
+      "64-bit index is only supported for multi-GPU PDLP, set it using --num-gpus and --method 1.");
+    return -1;
+  }
+  auto& mps_data_model =
+    std::get<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>>(problem);
   cuopt::mathematical_optimization::adopt_from_mps_data_model(problem_interface.get(),
                                                               std::move(mps_data_model));
 
@@ -195,16 +250,36 @@ int run_single_file(const std::string& file_path,
   }
 
   try {
-    if (is_mip) {
-      auto& mip_settings = settings.get_mip_settings();
+    if (cuopt::mathematical_optimization::is_remote_execution_enabled()) {
+      // Remote execution: problem_interface holds a cpu_optimization_problem_t.
+      // solve_lp/mip_remote live in cuopt_client, which this binary already links.
+      auto* cpu_prob =
+        dynamic_cast<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>*>(
+          problem_interface.get());
+      if (cpu_prob == nullptr) {
+        CUOPT_LOG_ERROR("Remote execution requires the CPU memory backend.");
+        return -1;
+      }
+#ifdef CUOPT_ENABLE_GRPC
+      if (is_mip) {
+        auto solution = cuopt::mathematical_optimization::solve_mip_remote(*cpu_prob, settings);
+      } else {
+        auto solution = cuopt::mathematical_optimization::solve_lp_remote(*cpu_prob, settings);
+      }
+#else
+      // solve_remote.cpp only builds when gRPC is enabled, so these entry points do not
+      // exist in a SKIP_GRPC_BUILD tree. cuopt_cli is still built there (it is gated on
+      // BUILD_LP_ONLY, not on gRPC), so without this the link fails.
+      CUOPT_LOG_ERROR("Remote execution requires cuOpt built with gRPC support.");
+      return -1;
+#endif
+    } else if (is_mip) {
       auto solution =
-        cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);
+        cuopt::mathematical_optimization::solve_mip(problem_interface.get(), settings);
     } else {
-      // Distributed PDLP was handled by the early-exit branch above; this
+      // Multi-GPU PDLP was handled by the early-exit branch above; this
       // path is always single-GPU LP going through problem_interface.
-      auto& lp_settings = settings.get_pdlp_settings();
-      auto solution =
-        cuopt::mathematical_optimization::solve_lp(problem_interface.get(), lp_settings);
+      auto solution = cuopt::mathematical_optimization::solve_lp(problem_interface.get(), settings);
     }
   } catch (const std::exception& e) {
     fprintf(stderr, "cuopt_cli error: %s\n", e.what());
@@ -339,6 +414,13 @@ int main(int argc, char* argv[])
     .default_value(std::string("default"))
     .choices("default", "experimental-fast");
 
+  program.add_argument("--mps-index-64bit")
+    .help(
+      "parse the input MPS/LP file into a 64-bit index model (required when the nonzero "
+      "count exceeds INT_MAX; only usable with --presolve 0, --method 1 and --num-gpus >1 or -1)")
+    .default_value(false)
+    .implicit_value(true);
+
   program.add_argument("--dump-hyper-params")
     .help("print hyper-parameters only in config file format and exit")
     .default_value(false)
@@ -393,10 +475,7 @@ int main(int argc, char* argv[])
       std::string arg_name = param_name_to_arg_name(param.param_name);
       if (arg_name_to_param_name.count(arg_name) == 0) {
         auto& arg = program.add_argument(arg_name.c_str()).default_value(param.default_value);
-        if (param.param_name.find("hyper_") != std::string::npos ||
-            param.param_name == CUOPT_USE_DISTRIBUTED_PDLP) {
-          arg.hidden();
-        }
+        if (param.param_name.find("hyper_") != std::string::npos) { arg.hidden(); }
         arg_name_to_param_name[arg_name] = param.param_name;
       }
     }
@@ -443,6 +522,7 @@ int main(int argc, char* argv[])
   const auto solve_relaxation      = program.get<bool>("--relaxation");
   const auto params_file           = program.get<std::string>("--params-file");
   const auto mps_reader_arg        = program.get<std::string>("--mps-reader");
+  const auto index_64bit           = program.get<bool>("--mps-index-64bit");
 
   auto mps_reader = cuopt::mathematical_optimization::io::mps_reader_type_t::default_reader;
   if (mps_reader_arg == "experimental-fast") {
@@ -454,6 +534,7 @@ int main(int argc, char* argv[])
     if (!params_file.empty()) { settings.load_parameters_from_file(params_file); }
     for (auto& [key, val] : settings_strings) {
       settings.set_parameter_from_string(key, val);
+      CUOPT_LOG_INFO("Setting parameter %s to %s", key.c_str(), val.c_str());
     }
   } catch (const std::exception& e) {
     auto log = dummy_logger(settings);
@@ -461,18 +542,18 @@ int main(int argc, char* argv[])
     return -1;
   }
 
-  // --method 1 --num-gpus N (N>1 or -1 for all visible GPUs) selects distributed PDLP.
+  // --method 1 --num-gpus N (N>1 or -1 for all visible GPUs) selects multi-GPU PDLP.
   // Default / concurrent requires 1–2 GPUs.
   {
     auto& pdlp_settings = settings.get_pdlp_settings();
     const int num_gpus  = pdlp_settings.num_gpus;
-    if (pdlp_settings.method == cuopt::mathematical_optimization::method_t::PDLP &&
-        (num_gpus == -1 || num_gpus > 1)) {
-      pdlp_settings.use_distributed_pdlp = true;
-    } else if (!pdlp_settings.use_distributed_pdlp && (num_gpus < 1 || num_gpus > 2)) {
+    const bool is_mpdlp =
+      pdlp_settings.method == cuopt::mathematical_optimization::method_t::PDLP &&
+      (num_gpus == -1 || num_gpus > 1);
+    if (!is_mpdlp && (num_gpus < 1 || num_gpus > 2)) {
       auto log = dummy_logger(settings);
       CUOPT_LOG_ERROR(
-        "num_gpus=%d is only supported with --method 1 (distributed PDLP, where -1 selects "
+        "num_gpus=%d is only supported with --method 1 (multi-GPU PDLP, where -1 selects "
         "all visible GPUs). Concurrent / default mode requires 1 or 2 GPUs.",
         num_gpus);
       return -1;
@@ -491,7 +572,8 @@ int main(int argc, char* argv[])
       settings.get_pdlp_settings().num_gpus = requested_gpus;
     }
     if (requested_gpus > device_count) {
-      CUOPT_LOG_ERROR("num_gpus=%d exceeds the number of visible CUDA devices (%d).",
+      auto log = dummy_logger(settings);
+      CUOPT_LOG_ERROR("num-gpus=%d exceeds the number of visible CUDA devices: %d. Aborting solve.",
                       requested_gpus,
                       device_count);
       return -1;
@@ -504,5 +586,6 @@ int main(int argc, char* argv[])
     }
   }
 
-  return run_single_file(file_name, initial_solution_file, solve_relaxation, mps_reader, settings);
+  return run_single_file(
+    file_name, initial_solution_file, solve_relaxation, mps_reader, settings, index_64bit);
 }

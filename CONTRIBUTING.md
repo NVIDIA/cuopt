@@ -107,8 +107,6 @@ implementation of the issue, ask them in the issue instead of the PR.
 
 PRs that change content under `skills/` must be validated by NVSkills CI before merge. A maintainer or admin comments `/nvskills-ci` on the PR; the `nv-nvskill-ci[bot]` pushes a signature commit (`Attach NVSkills validation signatures`) that must remain in the PR. Re-comment `/nvskills-ci` after any further pushes to re-sign.
 
-NVSkills CI requires the PR to originate from a branch in `NVIDIA/cuopt`; fork-based PRs are not supported.
-
 ## Setting up your build environment
 
 The following instructions are for developers and contributors to NVIDIA cuOpt development. These
@@ -128,7 +126,7 @@ CUDA/GPU Runtime:
 
 Python:
 
-* Python >=3.11.x, <= 3.14.x
+* Python >=3.12.x, <= 3.14.x
 
 OS:
 
@@ -157,15 +155,15 @@ cd $CUOPT_HOME
 
 Please install conda if you don't have it already. You can install [miniforge](https://conda-forge.org/download/) or [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux)
 
-**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda. And it's the default package manager for miniforge. If you are using mamba just replace `conda` with `mamba` in the following commands.
+**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda. It's already included if you installed miniforge above; if you installed miniconda instead, it doesn't come bundled — follow the mamba link to install it into your base environment. The commands below use `mamba`; if you don't have it installed, replace `mamba` with `conda`.
 
 ```bash
 # create the conda environment (assuming in base `cuopt` directory)
 # note: cuOpt currently doesn't support `channel_priority: strict`;
 # use `channel_priority: flexible` instead
-conda env create -p ./.cuopt_env --file conda/environments/all_cuda-133_arch-$(uname -m).yaml
+mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-134_arch-$(uname -m).yaml
 # activate the environment
-conda activate ./.cuopt_env
+mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env
 ```
 
 - **Note**: the conda environment files are updated frequently, so the
@@ -177,6 +175,9 @@ conda activate ./.cuopt_env
   installing them into the conda environment. Pass `--install` to also install `libcuopt` into the
   active conda environment (`$CONDA_PREFIX`, or a custom location via `$PREFIX`). Note that
   the script depends on the `nvcc` executable being on your path, or defined in `$CUDACXX`.
+  `--install` is the recommended way to build the Python packages. Without it, they load the
+  libraries from `$CUOPT_HOME/cpp/build` (or `$LIBCUOPT_BUILD_DIR` if you set it) through an
+  embedded RPATH, so that directory must stay in place.
 
 ```bash
 cd $CUOPT_HOME
@@ -185,7 +186,7 @@ cd $CUOPT_HOME
 # you want to build and install the libcuopt C++ library only,
 # or include the cuopt Python libraries:
 
-./build.sh           # All the libraries
+./build.sh --install # All the libraries (recommended)
 ./build.sh libcuopt  # libcuopt C++ only
 ```
 
@@ -211,10 +212,13 @@ This is only available to be built through source code and libcuopt is not being
 To build all libraries and tests, simply run
 
 ```bash
-./build.sh
+./build.sh --install
 ```
 
 - **Note**: if Cython files (`*.pyx` or `*.pxd`) have changed, the Python build must be rerun.
+- **Note**: the `cuopt` wheel is built against the CPython Limited API (abi3), so Cython code must
+  use only APIs the Limited API exposes. An unsupported API fails to compile under
+  `-DPy_LIMITED_API` rather than failing at runtime.
 
 To run the C++ tests, run
 
@@ -255,7 +259,7 @@ GPU server from a program using the API locally. User documentation lives under 
 
 ### Building in debug mode from source
 
-Follow the instructions to [build from source](#build-cudf-from-source) and add `-g` to the
+Follow the instructions to [build from source](#build-nvidia-cuopt-from-source) and add `-g` to the
 `./build.sh` command.
 
 For example:
@@ -311,7 +315,7 @@ Please don't try to add dependencies directly to environment.yaml files under `c
 When copying or adapting files from external projects into the repository:
 
 1. **Keep the original license/copyright header** in the copied file
-2. **Add an entry to the `THIRDPARTY` file** at the repo root with: the source project, its license type, the URL where the original code was found, and which files were copied or derived from it
+2. **Add an entry to `thirdparty/THIRD_PARTY_LICENSES`** with: the source project, its license type, the URL where the original code was found, and which files were copied or derived from it
 3. **Verify license compatibility** — the included code must be compatible with Apache-2.0
 
 Do not copy third-party code without proper attribution. **Always ask before including external code** — flag it in your PR description so reviewers can verify the license and attribution.

@@ -30,6 +30,10 @@ class mip_solver_t {
   const problem_t<i_t, f_t>& op_problem_;
   const mip_solver_settings_t<i_t, f_t>& solver_settings_;
   timer_t timer_;
+
+ private:
+  // Joins the early heuristics on the Papilo model and uncrushes their incumbents.
+  void stop_early_heuristics();
 };
 
 }  // namespace cuopt::mathematical_optimization::mip

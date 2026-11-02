@@ -1,0 +1,80 @@
+/* clang-format off */
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/* clang-format on */
+
+#include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
+#include <cuopt/routing/solver_settings.hpp>
+
+namespace cuopt {
+namespace routing {
+
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::set_time_limit(f_t seconds)
+{
+  time_limit_ = seconds;
+}
+
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::set_verbose_mode(bool verbose)
+{
+  enable_verbose_mode_ = verbose;
+}
+
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::set_error_logging_mode(bool logging)
+{
+  log_errors_ = logging;
+}
+
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::dump_best_results(const std::string& file_path, i_t interval)
+{
+  dump_interval_         = interval;
+  dump_best_results_     = true;
+  best_result_file_name_ = file_path;
+}
+
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::set_seed(i_t seed)
+{
+  seed_ = seed;
+}
+
+template <typename i_t, typename f_t>
+f_t solver_settings_t<i_t, f_t>::get_time_limit() const noexcept
+{
+  return time_limit_;
+}
+
+template <typename i_t, typename f_t>
+bool solver_settings_t<i_t, f_t>::get_verbose_mode() const noexcept
+{
+  return enable_verbose_mode_;
+}
+
+template <typename i_t, typename f_t>
+bool solver_settings_t<i_t, f_t>::get_error_logging_mode() const noexcept
+{
+  return log_errors_;
+}
+
+template <typename i_t, typename f_t>
+std::tuple<i_t, bool, std::string> solver_settings_t<i_t, f_t>::get_dump_best_results()
+  const noexcept
+{
+  return std::make_tuple(dump_interval_, dump_best_results_, best_result_file_name_);
+}
+
+template <typename i_t, typename f_t>
+i_t solver_settings_t<i_t, f_t>::get_seed() const noexcept
+{
+  return seed_;
+}
+
+template class CUOPT_EXPORT solver_settings_t<int, float>;
+}  // namespace routing
+}  // namespace cuopt

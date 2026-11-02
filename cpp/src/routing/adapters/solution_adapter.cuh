@@ -32,7 +32,7 @@ void fill_routes_data(solution_t<i_t, f_t, REQUEST>& sol,
   auto h_node_types      = cuopt::host_copy(assignment.get_node_types(), stream);
 
   sol.sol_handle->sync_stream();
-  assignment.get_truck_id().stream().synchronize();
+  assignment.get_truck_id().stream().sync();
   i_t route_id = -1;
   NodeInfo<i_t> curr_node;
   // depot is counter only once

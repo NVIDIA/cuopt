@@ -35,9 +35,8 @@ class diversity_manager_t {
  public:
   diversity_manager_t(mip_solver_context_t<i_t, f_t>& context);
   bool run_presolve(f_t time_limit, timer_t global_timer);
-  solution_t<i_t, f_t> run_solver();
+  solution_t<i_t, f_t> run_solver(branch_and_bound_t<i_t, f_t>& branch_and_bound);
   void generate_solution(f_t time_limit, bool random_start = true);
-  void run_fj_alone(solution_t<i_t, f_t>& solution);
   void run_fp_alone();
   // main loop of diversity improvements
   void main_loop();
@@ -72,7 +71,6 @@ class diversity_manager_t {
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
   mip_solver_context_t<i_t, f_t>& context;
-  mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;
   diversity_config_t diversity_config;
   population_t<i_t, f_t> population;

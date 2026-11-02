@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
@@ -50,6 +50,7 @@ valid_data = {
             "travel_time": 200,
             "variance_route_size": 10,
             "variance_route_service_time": 50,
+            "distance_break_cost": 25,
         },
         "config_file": "config.yaml",
     },
@@ -85,7 +86,7 @@ def test_invalid_values_set_solver_config(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "SolverSettings time limit must be greater than 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     # config_file should be a valid file path
@@ -98,7 +99,7 @@ def test_invalid_values_set_solver_config(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "File path to save configuration should be valid and not empty",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 

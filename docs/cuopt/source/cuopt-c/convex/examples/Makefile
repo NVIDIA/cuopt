@@ -20,7 +20,8 @@
 #
 # Prerequisites:
 #   - cuOpt C library installed or built locally
-#   - Set INCLUDE_PATH and LIBCUOPT_LIBRARY_PATH (see below)
+#   - Set INCLUDE_PATH/LIBCUOPT_LIBRARY_PATH (libcuopt-mathopt) and
+#     CLIENT_INCLUDE_PATH/CLIENT_LIBRARY_PATH (libcuopt-client) (see below)
 
 # Compiler
 CC = gcc
@@ -28,25 +29,32 @@ CC = gcc
 # Set include and library paths
 # REQUIRED: Set these paths either:
 #   1. As environment variables
-#   2. On command line: make INCLUDE_PATH=... LIBCUOPT_LIBRARY_PATH=...
+#   2. On command line: make INCLUDE_PATH=... LIBCUOPT_LIBRARY_PATH=... CLIENT_INCLUDE_PATH=... CLIENT_LIBRARY_PATH=...
 #   3. Uncomment and edit below for your system:
 #
-# INCLUDE_PATH = /path/to/cuopt/include
-# LIBCUOPT_LIBRARY_PATH = /path/to/cuopt/lib
+# INCLUDE_PATH = /path/to/libcuopt_mathopt/include
+# LIBCUOPT_LIBRARY_PATH = /path/to/libcuopt_mathopt/lib
+# CLIENT_INCLUDE_PATH = /path/to/libcuopt_client/include
+# CLIENT_LIBRARY_PATH = /path/to/libcuopt_client/lib
 #
 # Example for local build:
 # INCLUDE_PATH = ../../../cpp/include
 # LIBCUOPT_LIBRARY_PATH = ../../../cpp/build
+# CLIENT_INCLUDE_PATH = ../../../cpp/include
+# CLIENT_LIBRARY_PATH = ../../../cpp/build
 #
 # Example for conda install:
 # INCLUDE_PATH = $(CONDA_PREFIX)/include
 # LIBCUOPT_LIBRARY_PATH = $(CONDA_PREFIX)/lib
+# CLIENT_INCLUDE_PATH = $(CONDA_PREFIX)/include
+# CLIENT_LIBRARY_PATH = $(CONDA_PREFIX)/lib
 #
 # Note: The test script automatically finds and passes these paths
 
 # Compiler flags
-CFLAGS = -I$(INCLUDE_PATH) -Wall -Wextra
-LDFLAGS = -L$(LIBCUOPT_LIBRARY_PATH) -lcuopt -Wl,-rpath,$(LIBCUOPT_LIBRARY_PATH)
+CFLAGS = -I$(INCLUDE_PATH) -I$(CLIENT_INCLUDE_PATH) -Wall -Wextra
+LDFLAGS = -L$(LIBCUOPT_LIBRARY_PATH) -L$(CLIENT_LIBRARY_PATH) -Wl,--no-as-needed -lcuopt_mathopt -lcuopt_client \
+          -Wl,-rpath,$(LIBCUOPT_LIBRARY_PATH) -Wl,-rpath,$(CLIENT_LIBRARY_PATH)
 
 # Automatically discover all C source files in current directory
 SOURCES = $(wildcard *.c)
@@ -82,22 +90,13 @@ clean:
 
 # Check if required paths are set
 check-paths:
-	@if [ -z "$(INCLUDE_PATH)" ]; then \
-		echo "ERROR: INCLUDE_PATH is not set"; \
+	@if [ -z "$(INCLUDE_PATH)" ] || [ -z "$(LIBCUOPT_LIBRARY_PATH)" ] || \
+	    [ -z "$(CLIENT_INCLUDE_PATH)" ] || [ -z "$(CLIENT_LIBRARY_PATH)" ]; then \
+		echo "ERROR: one or more required paths are not set"; \
 		echo ""; \
-		echo "Please set it using one of these methods:"; \
-		echo "  1. Environment: export INCLUDE_PATH=/path/to/cuopt/include"; \
-		echo "  2. Command line: make INCLUDE_PATH=/path/to/cuopt/include LIBCUOPT_LIBRARY_PATH=/path/to/lib"; \
-		echo "  3. Edit Makefile and uncomment/set the path variables"; \
-		echo ""; \
-		exit 1; \
-	fi
-	@if [ -z "$(LIBCUOPT_LIBRARY_PATH)" ]; then \
-		echo "ERROR: LIBCUOPT_LIBRARY_PATH is not set"; \
-		echo ""; \
-		echo "Please set it using one of these methods:"; \
-		echo "  1. Environment: export LIBCUOPT_LIBRARY_PATH=/path/to/cuopt/lib"; \
-		echo "  2. Command line: make LIBCUOPT_LIBRARY_PATH=/path/to/lib"; \
+		echo "Please set them using one of these methods:"; \
+		echo "  1. Environment: export INCLUDE_PATH=... LIBCUOPT_LIBRARY_PATH=... CLIENT_INCLUDE_PATH=... CLIENT_LIBRARY_PATH=..."; \
+		echo "  2. Command line: make INCLUDE_PATH=... LIBCUOPT_LIBRARY_PATH=... CLIENT_INCLUDE_PATH=... CLIENT_LIBRARY_PATH=..."; \
 		echo "  3. Edit Makefile and uncomment/set the path variables"; \
 		echo ""; \
 		exit 1; \
@@ -130,6 +129,8 @@ help:
 	@echo "Current Configuration:"
 	@echo "  INCLUDE_PATH: $(INCLUDE_PATH)"
 	@echo "  LIBCUOPT_LIBRARY_PATH: $(LIBCUOPT_LIBRARY_PATH)"
+	@echo "  CLIENT_INCLUDE_PATH: $(CLIENT_INCLUDE_PATH)"
+	@echo "  CLIENT_LIBRARY_PATH: $(CLIENT_LIBRARY_PATH)"
 	@echo ""
 	@echo "Discovered Files:"
 	@echo "  C sources: $(words $(SOURCES))"

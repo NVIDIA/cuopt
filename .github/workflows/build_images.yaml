@@ -61,6 +61,16 @@ jobs:
         run: |
           git rev-parse HEAD > ./ci/docker/context/COMMIT_SHA
           git log -n1 --pretty='%ct' > ./ci/docker/context/COMMIT_TIME
+      # cpp/include and cpp/src aren't in the pip wheel; cuopt_jni.cpp needs both (the latter for
+      # internal headers like pdlp/cuopt_c_internal.hpp) to build the JNI library in-image.
+      - name: Stage Java sources for the in-image dynamic build
+        run: |
+          mkdir -p ./ci/docker/context/repo
+          cp -r ./java ./ci/docker/context/repo/java
+          mkdir -p ./ci/docker/context/repo/cpp
+          cp -r ./cpp/include ./ci/docker/context/repo/cpp/include
+          cp -r ./cpp/src ./ci/docker/context/repo/cpp/src
+          cp ./ci/docker/build_java_dynamic.sh ./ci/docker/context/build_java_dynamic.sh
       - name: Login to NGC
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
@@ -82,7 +92,7 @@ jobs:
           CUDA_VER: ${{ inputs.CUDA_VER }}
           PYTHON_VER: ${{ inputs.PYTHON_VER }}
         run: |
-          echo "CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "CUDA_MAJOR=${CUDA_VER%%.*}" >> $GITHUB_OUTPUT
           echo "PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
       - name: Build image and push to DockerHub and NGC
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
@@ -100,17 +110,16 @@ jobs:
             PYTHON_SHORT_VER=${{ steps.trim.outputs.PYTHON_SHORT }}
             CUOPT_VER=${{ inputs.CUOPT_VER }}
             LINUX_VER=${{ inputs.LINUX_VER }}
-          tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
+          tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cu${{ steps.trim.outputs.CUDA_MAJOR }}-${{ matrix.ARCH }}
 
       - name: Push image to NGC
         env:
           IMAGE_TAG_PREFIX: ${{ inputs.IMAGE_TAG_PREFIX }}
           ARCH: ${{ matrix.ARCH }}
-          CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
-          PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
+          CUDA_MAJOR: ${{ steps.trim.outputs.CUDA_MAJOR }}
         run: |
-          docker tag "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-${ARCH}" "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-${ARCH}"
-          docker push "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-${ARCH}"
+          docker tag "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-${ARCH}" "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-${ARCH}"
+          docker push "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-${ARCH}"
 
       - name: Build UBI10 image and push to DockerHub and NGC
         if: ${{ startsWith(inputs.CUDA_VER, '13.') }}
@@ -125,14 +134,14 @@ jobs:
           build-args: |
             CUDA_VER=${{ inputs.CUDA_VER }}
             CUOPT_VER=${{ inputs.CUOPT_VER }}
-          tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-ubi10-${{ matrix.ARCH }}
+          tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cu${{ steps.trim.outputs.CUDA_MAJOR }}-ubi10-${{ matrix.ARCH }}
 
       - name: Push UBI10 image to NGC
         if: ${{ startsWith(inputs.CUDA_VER, '13.') }}
         env:
           IMAGE_TAG_PREFIX: ${{ inputs.IMAGE_TAG_PREFIX }}
           ARCH: ${{ matrix.ARCH }}
-          CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
+          CUDA_MAJOR: ${{ steps.trim.outputs.CUDA_MAJOR }}
         run: |
-          docker tag "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-${ARCH}" "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-${ARCH}"
-          docker push "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-${ARCH}"
+          docker tag "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10-${ARCH}" "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10-${ARCH}"
+          docker push "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10-${ARCH}"

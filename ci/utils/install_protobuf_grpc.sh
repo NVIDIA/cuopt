@@ -18,6 +18,10 @@ set -euo pipefail
 #   --prefix=DIR       Installation prefix (default: /usr/local)
 #   --build-dir=DIR    Build directory for source builds (default: /tmp)
 #   --skip-deps        Skip installing system dependencies (for conda builds)
+#   --deps-only        Install system dependencies (incl. openssl3-devel) and exit, skipping
+#                       the gRPC/Protobuf/Abseil source build. For wheels that link a
+#                       gRPC-enabled cuopt_client.so (so need OpenSSL resolvable) but don't
+#                       build gRPC themselves.
 #   --help             Show this help message
 #
 # Examples:
@@ -34,6 +38,7 @@ GRPC_VERSION="v1.64.2"
 PREFIX="/usr/local"
 BUILD_DIR="/tmp"
 SKIP_DEPS=false
+DEPS_ONLY=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -50,6 +55,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_DEPS=true
             shift
             ;;
+        --deps-only)
+            DEPS_ONLY=true
+            shift
+            ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -59,6 +68,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --prefix=DIR       Installation prefix (default: /usr/local)"
             echo "  --build-dir=DIR    Build directory for source builds (default: /tmp)"
             echo "  --skip-deps        Skip installing system dependencies (for conda builds)"
+            echo "  --deps-only        Install system dependencies and exit, skipping the build"
             echo "  --help             Show this help message"
             exit 0
             ;;
@@ -147,6 +157,11 @@ if [ "${SKIP_DEPS}" = false ]; then
     else
         echo "Warning: /etc/os-release not found. Assuming build tools are already installed."
     fi
+fi
+
+if [ "${DEPS_ONLY}" = true ]; then
+    echo "Deps-only mode: skipping the gRPC/Protobuf/Abseil source build."
+    exit 0
 fi
 
 # Verify required tools are available

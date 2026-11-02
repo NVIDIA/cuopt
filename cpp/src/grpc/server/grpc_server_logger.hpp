@@ -14,12 +14,14 @@
 // lifecycle, throughput, IPC).  Completely separate from the solver logger
 // (cuopt::default_logger / CUOPT_LOG_INFO) so the two never interfere.
 //
-// Created before fork() — both main and worker processes share the same
-// stdout/file descriptors, so all output goes to one place.
+// Server and worker each create their own logger. The worker is an exec'd
+// copy of this binary and re-inits the logger; it does not inherit the
+// parent's logger object. Stdout is inherited, so console lines still land
+// in the same place.
 rapids_logger::logger& server_logger();
 
-// Reconfigure server logger sinks and level.  Call once in main() after
-// argument parsing, before fork().
+// Reconfigure server logger sinks and level. Call from the server after
+// argument parsing, and from the exec'd worker before it logs.
 void init_server_logger(const std::string& log_file = {},
                         bool to_console             = true,
                         bool verbose                = true);

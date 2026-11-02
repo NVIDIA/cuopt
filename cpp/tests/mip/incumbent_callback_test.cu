@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
+#include <utilities/scope_guard.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/handle.hpp>
@@ -26,11 +27,14 @@
 
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <unistd.h>
 
 namespace cuopt::mathematical_optimization::test {
 
@@ -134,10 +138,17 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
-  auto settings       = mip_solver_settings_t<int, double>{};
-  settings.time_limit = 30.;
-  settings.presolver  = presolver_t::Papilo;
-  int user_data       = 42;
+  auto settings          = mip_solver_settings_t<int, double>{};
+  settings.time_limit    = 30.;
+  settings.presolver     = presolver_t::Papilo;
+  settings.presolve_file = (std::filesystem::temp_directory_path() /
+                            ("cuopt_callback_presolve_" + std::to_string(::getpid()) + ".mps"))
+                             .string();
+  cuopt::scope_guard remove_presolve_file([&]() {
+    std::error_code error;
+    std::filesystem::remove(settings.presolve_file, error);
+  });
+  int user_data = 42;
   std::vector<std::pair<std::vector<double>, double>> solutions;
   test_get_solution_callback_t get_solution_callback(
     solutions, op_problem.get_n_variables(), &user_data);
@@ -148,6 +159,8 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
     settings.set_mip_callback(set_solution_callback.get(), &user_data);
   }
   auto solution = solve_mip(op_problem, settings);
+  ASSERT_TRUE(std::filesystem::exists(settings.presolve_file));
+  EXPECT_GT(std::filesystem::file_size(settings.presolve_file), 0);
   EXPECT_GE(get_solution_callback.n_calls, 1);
   if (include_set_callback) { EXPECT_GE(set_solution_callback->n_calls, 1); }
   check_solutions(get_solution_callback, mps_problem, settings);

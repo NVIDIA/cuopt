@@ -9,9 +9,9 @@
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
-#include <mip_heuristics/presolve/bounds_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
+#include <presolve/bounds_presolve.cuh>
 #include "lp_state.cuh"
 
 namespace cuopt::mathematical_optimization::mip {

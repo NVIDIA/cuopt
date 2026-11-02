@@ -5,7 +5,9 @@ Quickstart Guide
 Installation
 ============
 
-Choose your install method below; the selector is pre-set for the Server. Copy the command and run it in your environment. See :doc:`../install` for all interfaces and options.
+Choose your install method below; the selector is pre-set for the HTTP Server. Copy the command and run it in your environment. See :doc:`../install` for all interfaces and options.
+
+The HTTP server package depends on ``libcuopt``, so this install also provides ``cuopt_grpc_server``. The proxy forwards jobs to that binary. Installing ``libcuopt`` alone does not install the HTTP proxy.
 
 .. install-selector::
    :default-iface: server
@@ -42,28 +44,36 @@ Step 4: Pull the container:
         docker pull CONTAINER_IMAGE_PATH
 
 
-The container includes both the Python API and self-hosted server components. To run the container:
+The container includes the HTTP proxy and ``cuopt_grpc_server``. Start commands are in :ref:`starting-the-server` below. The :doc:`legacy HTTP server <legacy-http-server>` is deprecated and is not the default container command.
+
+.. _starting-the-server:
+
+Starting the Server
+===================
+
+The HTTP proxy accepts REST requests and forwards each solve to ``cuopt_grpc_server``. Start the gRPC server first so the proxy has a server to dial, then start the proxy.
+
+From the command line, ``cuopt_grpc_server`` listens on port 5001. The proxy listens on port 5000 and forwards requests to that gRPC port:
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 <CONTAINER_IMAGE_PATH>
+    cuopt_grpc_server --port 5001 &
+    python -m cuopt_server.cuopt_proxy --ip 0.0.0.0 --port 5000 --grpc-port 5001
 
-NVIDIA Launchable
--------------------
+The container starts both processes. With no command, it runs ``cuopt_grpc_server`` on port 5001 inside the container and the HTTP proxy on port 5000. Publishing port 5000 exposes the proxy:
 
-NVIDIA cuOpt can be tested with `NVIDIA Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_ with `example notebooks <https://github.com/NVIDIA/cuopt-examples>`_. For more details, please refer to the `NVIDIA Launchable documentation <https://docs.nvidia.com/brev/latest/>`_.
+.. code-block:: bash
+
+    docker run --gpus all -it --rm -p 5000:5000 <CONTAINER_IMAGE_PATH>
+
+``python -m cuopt_server.cuopt_proxy --help`` lists the HTTP proxy server flags. For further startup options, including how to specify the container mode in a Kubernetes environment, see :doc:`advanced`.
 
 Smoke Test
 ----------
 
-After installation, you can verify that cuOpt Server is working correctly by running a simple test.
+After installation, you can verify that the cuOpt server is working correctly by running a simple test.
 
-.. note::
-
-   The following example is for running the server locally. If you are using the container approach, you should comment out the server start and kill commands in the script below since the server is already running in the container.
-
-The following example is testing with a simple routing problem constuctured as Json request and sent over HTTP to the server using ``curl``.This example is running server with few configuration options such as ``--ip`` and ``--port``.
-Additional configuration options for server can be found in :doc:`Server CLI <server-api/server-cli>`.
+The following example sends a simple routing problem as JSON over HTTP with ``curl``. It starts ``cuopt_grpc_server`` and the HTTP proxy with ``--ip`` and ``--port``. ``python -m cuopt_server.cuopt_proxy --help`` lists the other proxy flags.
 
 
 Install jq and curl for basic HTTP requests and parsing JSON responses
@@ -78,19 +88,22 @@ Run the server and test
 
     # Set the server IP and port to be used
     SERVER_IP=0.0.0.0
-    SERVER_PORT=8000
+    SERVER_PORT=5000
 
-    # Start server and store PID
-    python3 -m cuopt_server.cuopt_service --ip $SERVER_IP --port $SERVER_PORT > cuopt_server.log 2>&1 &
+    # Start gRPC, then the HTTP proxy, and store PIDs
+    cuopt_grpc_server --port 5001 > cuopt_grpc.log 2>&1 &
+    GRPC_PID=$!
+    python3 -m cuopt_server.cuopt_proxy --ip $SERVER_IP --port $SERVER_PORT --grpc-port 5001 > cuopt_server.log 2>&1 &
     SERVER_PID=$!
+    trap 'kill $SERVER_PID $GRPC_PID 2>/dev/null || true' EXIT
 
-    # Check if cuOpt server is ready
-    for i in {1..5}; do
+    # The proxy health check waits until it can reach gRPC
+    for i in {1..30}; do
         if [ "$(curl -s -o /dev/null -w "%{http_code}" http://${SERVER_IP}:${SERVER_PORT}/cuopt/health)" = "200" ]; then
             echo "cuOpt server is ready"
             break
         fi
-        if [ $i -eq 5 ]; then
+        if [ $i -eq 30 ]; then
             echo "Error: cuOpt server failed to start"
             exit 1
         fi
@@ -141,9 +154,6 @@ Run the server and test
         echo "Waiting for solution..."
         sleep 1
     done
-
-    # Shutdown the server
-    kill $SERVER_PID
 
 The Open API specification for the server is available in :doc:`open-api spec <../open-api>`.
 

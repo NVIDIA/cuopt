@@ -4,7 +4,7 @@
 # cmake-format: on
 
 set(cython_sources solver_settings.pyx)
-set(linked_libraries cuopt::cuopt)
+set(linked_libraries cuopt::mathopt cuopt::client)
 
 rapids_cython_create_modules(SOURCE_FILES "${cython_sources}" LINKED_LIBRARIES "${linked_libraries}" ASSOCIATED_TARGETS cuopt
                                                                                CXX)

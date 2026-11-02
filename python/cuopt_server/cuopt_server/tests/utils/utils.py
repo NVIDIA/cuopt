@@ -61,6 +61,7 @@ def get_routes(
     capacities: Optional[List[List[int]]] = None,
     vehicle_time_windows: Optional[List[List[float]]] = None,
     vehicle_breaks: Optional[List[Dict]] = None,
+    vehicle_distance_breaks: Optional[List[Dict]] = None,
     vehicle_break_time_windows: Optional[List[List[List[int]]]] = None,
     vehicle_break_durations: Optional[List[List[int]]] = None,
     vehicle_break_locations: Optional[List[int]] = None,
@@ -113,6 +114,7 @@ def get_routes(
         capacities=capacities,
         vehicle_time_windows=vehicle_time_windows,
         vehicle_breaks=vehicle_breaks,
+        vehicle_distance_breaks=vehicle_distance_breaks,
         vehicle_break_time_windows=vehicle_break_time_windows,
         vehicle_break_durations=vehicle_break_durations,
         vehicle_break_locations=vehicle_break_locations,
@@ -179,6 +181,7 @@ def cuopt_service_sync(
     capacities: Optional[List[List[int]]] = None,
     vehicle_time_windows: Optional[List[List[float]]] = None,
     vehicle_breaks: Optional[List[Dict]] = None,
+    vehicle_distance_breaks: Optional[List[Dict]] = None,
     vehicle_break_time_windows: Optional[List[List[List[int]]]] = None,
     vehicle_break_durations: Optional[List[List[int]]] = None,
     vehicle_break_locations: Optional[List[int]] = None,
@@ -225,6 +228,7 @@ def cuopt_service_sync(
         capacities=capacities,
         vehicle_time_windows=vehicle_time_windows,
         vehicle_breaks=vehicle_breaks,
+        vehicle_distance_breaks=vehicle_distance_breaks,
         vehicle_break_time_windows=vehicle_break_time_windows,
         vehicle_break_durations=vehicle_break_durations,
         vehicle_break_locations=vehicle_break_locations,
@@ -270,27 +274,42 @@ def cuopt_service_sync(
     )
 
 
-# Fixture and client to allow full cuopt service
-# to run as a separate process for multiple tests
+# Fixture and client to allow the HTTP proxy and its gRPC backend
+# to run as separate processes for multiple tests
 cuoptmain = None
+grpcmain = None
 # True after server has passed initial healthcheck; used to fail-fast on later crashes
 _server_was_up = False
 # Use module name instead of file path to ensure we use the installed package
 server_script = "-m"
-server_module = "cuopt_server.cuopt_service"
+server_module = "cuopt_server.cuopt_proxy"
 python_path = shutil.which("python")
 
 
 def cleanup_cuopt_process():
-    """Clean up the cuopt process if it's still running"""
-    global cuoptmain
-    if cuoptmain and cuoptmain.poll() is None:
-        cuoptmain.terminate()
+    """Clean up the HTTP proxy and gRPC server if they're still running."""
+    global cuoptmain, grpcmain
+    for process in (cuoptmain, grpcmain):
+        if process is None:
+            continue
+        # Each server owns children (uvicorn or gRPC workers). Terminating only
+        # the parent leaks those children after cancellation/respawn tests.
         try:
-            cuoptmain.wait(timeout=5)
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+        try:
+            process.wait(timeout=5)
         except TimeoutExpired:
-            cuoptmain.kill()
-            cuoptmain.wait()
+            pass
+        # The gRPC parent may exit cleanly before a worker does. Always reap
+        # anything left in the dedicated process group.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        if process.poll() is None:
+            process.wait()
 
 
 def signal_handler(signum, frame):
@@ -342,7 +361,34 @@ def spinup_wait():
 
 @pytest.fixture(scope="session")
 def cuoptproc(request):
-    global cuoptmain
+    global cuoptmain, grpcmain
+    # Test modules import this fixture into their own namespaces, so pytest may
+    # register multiple session-scoped fixture definitions. Reuse the pair
+    # already started by the first definition instead of binding the same ports
+    # repeatedly and allocating another GPU worker for every test module.
+    if (
+        cuoptmain is not None
+        and cuoptmain.poll() is None
+        and grpcmain is not None
+        and grpcmain.poll() is None
+    ):
+        return
+
+    # One of the pair may still be alive (or a child still bound to the
+    # worker ports). Reap it before the replacement bind.
+    cleanup_cuopt_process()
+    cuoptmain = None
+    grpcmain = None
+
+    grpc_port = _worker_port(base=6555)
+    # Inherit the caller env so CUDA_PATH / CONDA_PREFIX reach CuPy in the
+    # proxy process (waypoint-graph conversion compiles CUDA kernels).
+    child_env = os.environ.copy()
+    grpcmain = Popen(
+        ["cuopt_grpc_server", "--port", str(grpc_port)],
+        start_new_session=True,
+        env=child_env,
+    )
     cuoptmain = Popen(
         [
             python_path,
@@ -354,7 +400,11 @@ def cuoptproc(request):
             str(_worker_port()),
             "-l",
             "debug",
-        ]
+            "--grpc-port",
+            str(grpc_port),
+        ],
+        start_new_session=True,
+        env=child_env,
     )
     spinup_wait()
 

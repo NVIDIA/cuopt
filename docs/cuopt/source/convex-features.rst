@@ -51,6 +51,8 @@ The convex optimization solvers for Linear Programming (LP), Quadratic Programmi
 
 - **Python SDK**: A Python package that provides direct access to cuOpt's convex optimization solvers through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
 
+- **Java (experimental)**: JNI bindings that provide direct access to cuOpt's convex optimization solvers from Java applications. For more information, see :doc:`cuopt-java/quick-start`.
+
 - **As a Self-Hosted Service**: cuOpt's convex optimization solvers can be deployed as a self-hosted service in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
 Each option provides access to the same powerful convex optimization solvers while offering flexibility in deployment and integration.
@@ -237,15 +239,17 @@ Method
 .. note::
    PDLP solves to 1e-4 relative accuracy by default.
 
-**Barrier**: The barrier method (also known as interior-point method) solves linear and quadratic programs using a primal-dual predictor-corrector algorithm. This method uses GPU-accelerated sparse Cholesky and sparse LDLT solves via cuDSS, and GPU-accelerated sparse matrix-vector and matrix-matrix operations via cuSparse. Barrier is particularly effective for large-scale problems and can automatically apply techniques like folding, dualization, and dense column elimination to improve performance. This method solves the linear systems at each iteration using the augmented system or the normal equations (ADAT). Enable crossover to obtain a highly accurate basic solution from a barrier solution.
+**Barrier**: The barrier method (also known as interior-point) solves linear, quadratic, and second-order cone programs using a primal-dual predictor-corrector algorithm. This method uses GPU-accelerated sparse Cholesky and sparse LDLT solves via cuDSS, and GPU-accelerated sparse matrix-vector and matrix-matrix operations via cuSparse. Barrier is particularly effective for large-scale problems and can automatically apply techniques like folding, dualization, and dense column elimination to improve performance. This method solves the linear systems at each iteration using the augmented system or the normal equations (ADAT). Enable crossover to obtain a highly accurate basic solution from a barrier solution.
 
 .. note::
    Barrier solves to 1e-8 relative accuracy by default.
 
-**Dual Simplex**: Dual simplex is the simplex method applied to the dual of the linear program. Dual simplex requires the basis factorization of linear program fit into memory. Select this method if your LP is small to medium sized, or if you require a high-quality basic solution.
+**Dual Simplex**: Dual simplex begins with a dual feasible point and iterates until primal feasibility and optimality is established. Dual simplex requires the basis factorization of linear program fit into memory. Select this method if your LP is small to medium sized, or if you require a high-quality basic solution.
 
 .. note::
    Dual Simplex solves to 1e-6 absolute accuracy by default.
+
+**Primal Simplex**: Primal simplex begins with a primal feasible point and iterates until dual feasibility and optimality is established. Primal simplex is also used by dual simplex to remove cost perturbations. Primal simplex is typically slower than dual simplex (about 2.3x in internal testing). Select dual simplex or the default concurrent method unless you have a specific reason to use primal simplex.
 
 
 Crossover
@@ -273,7 +277,7 @@ Logging Callback in the Service
 
 In the cuOpt service API, the ``log_file`` value in ``solver_configs`` is ignored.
 
-If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Examples <generic-example-with-normal-and-batch-mode>` on the self-hosted page.
+If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Examples <generic-lp-example>` on the self-hosted page.
 
 
 Infeasibility Detection
@@ -299,17 +303,22 @@ The user may specify a time limit to the solver. By default the solver runs unti
 Batch Mode
 ----------
 
-Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout :ref:`self-hosted client <generic-example-with-normal-and-batch-mode>` example in thin client.
+Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU.
 
 .. warning:: Deprecated
 
-   LP batch mode (Python ``cuopt.linear_programming.BatchSolve``, server requests
-   with a list of LP problems, and multi-file ``cuopt_sh`` LP submissions) is
-   deprecated and will be removed in a future release. Prefer sequential
-   ``cuopt.linear_programming.Solve`` calls, or implement your own parallelism
-   (for example with ``concurrent.futures``). Existing batch APIs still run in
-   parallel today; callers may see a ``DeprecationWarning`` or a deprecation
-   message in server ``warnings``.
+   ``BatchSolve`` is deprecated and will be removed in a future release. Prefer sequential ``cuopt.linear_programming.Solve`` calls, or your own parallelism (for example with ``concurrent.futures``). While it remains, a local batch still runs in parallel and may raise ``DeprecationWarning``.
+
+The HTTP proxy does not support batch LP. A JSON list of LP problems on ``POST /cuopt/request`` returns 501, as does a multi-file ``cuopt_sh`` LP submission. Only the :doc:`legacy HTTP server <cuopt-server/legacy-http-server>` accepts those requests. The legacy server will be removed in 26.12.
+
+Sequence Solves
+---------------
+
+When a sequence of convex optimization problems with the same constraint matrix are solved, cuOpt can reuse work from the first solve. To enable this, set the ``sequence_solve`` setting to true and solve with the barrier method. After the first solve you can change the linear objective with :meth:`~cuopt.linear_programming.data_model.DataModel.update_linear_objective` or the constraint right-hand side with :meth:`~cuopt.linear_programming.data_model.DataModel.update_rhs`, and solve again. Subsequent solves skip ordering and symbolic factorization.
+
+The quadratic objective, the constraint matrix, the row senses, and the variable bounds must stay unchanged between solves. See ``CUOPT_SEQUENCE_SOLVE`` in :doc:`convex-settings` for details and limits.
+
+.. note:: Sequence solves are currently only supported with the Python API.
 
 PDLP Precision Modes
 --------------------
@@ -325,4 +334,9 @@ By default, PDLP operates in the native precision of the problem type (FP64 for 
 Multi-GPU Mode
 --------------
 
-Users can use multiple GPUs to solve a problem by specifying the ``num_gpus`` parameter. The feature is restricted to LP problems that uses concurrent mode and supports up to 2 GPUs at the moment. Using this mode will run PDLP and barrier in parallel on different GPUs to avoid sharing single GPU resources.
+Multiple GPUs may be used to solve a linear program by specifying the ``num_gpus`` parameter. Multiple GPUs are used differently depending on the ``method`` parameter:
+
+* When the PDLP method is specified, multi-GPU PDLP is used to solve LPs faster or solve very large LPs that do not fit in the memory of a single GPU.
+* When the concurrent method is specified, setting ``num_gpus=2``, will run PDLP and barrier concurrently on two GPUs to avoid sharing resources on a single GPU. Increasing ``num_gpus`` beyond two has no effect in this mode.
+
+.. note:: Concurrent is the default method; to run multi-GPU PDLP, users must specify the PDLP method. Multi-GPU mode is not supported on QP, QCQP, or SOCP problems.

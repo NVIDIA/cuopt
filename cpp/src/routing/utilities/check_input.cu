@@ -8,6 +8,7 @@
 #include <cuopt/error.hpp>
 #include <routing/utilities/check_input.hpp>
 
+#include <cuda/stream>
 #include <raft/core/device_mdarray.hpp>
 #include <raft/linalg/transpose.cuh>
 #include <raft/util/cudart_utils.hpp>
@@ -33,13 +34,13 @@ namespace detail {
  * @param stream_view Stream view
  */
 template <typename T>
-void transform_absolute(rmm::device_uvector<T>& v, rmm::cuda_stream_view stream_view)
+void transform_absolute(rmm::device_uvector<T>& v, cuda::stream_ref stream_view)
 {
   thrust::transform(
     rmm::exec_policy(stream_view), v.begin(), v.end(), v.begin(), [] __device__(T x) -> T {
       return x < 0 ? -x : x;
     });
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  stream_view.sync();
 }
 
 /**
@@ -57,7 +58,7 @@ bool check_pickup_tw(const i_t* pickup_indices,
                      const i_t* earliest_time,
                      const i_t* latest_time,
                      size_t n_requests,
-                     rmm::cuda_stream_view stream_view)
+                     cuda::stream_ref stream_view)
 {
   typedef typename rmm::device_uvector<const i_t>::iterator IterConstInt;
   thrust::permutation_iterator<IterConstInt, IterConstInt> pickup_iter(earliest_time,
@@ -70,7 +71,7 @@ bool check_pickup_tw(const i_t* pickup_indices,
     zip_iterator,
     zip_iterator + n_requests,
     [] __device__(const auto& x) -> bool { return thrust::get<0>(x) > thrust::get<1>(x); });
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  stream_view.sync();
   return !violates_sanity;
 }
 
@@ -87,7 +88,7 @@ bool check_pickup_demands(const i_t* pickup_indices,
                           const i_t* delivery_indices,
                           const i_t* demands,
                           size_t n_requests,
-                          rmm::cuda_stream_view stream_view)
+                          cuda::stream_ref stream_view)
 {
   typedef typename rmm::device_uvector<const i_t>::iterator IterConstInt;
   thrust::permutation_iterator<IterConstInt, IterConstInt> pickup_iter(demands, pickup_indices);
@@ -98,7 +99,7 @@ bool check_pickup_demands(const i_t* pickup_indices,
     zip_iterator,
     zip_iterator + n_requests,
     [] __device__(const auto& x) -> bool { return thrust::get<0>(x) != -thrust::get<1>(x); });
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  stream_view.sync();
   return !violates_sanity;
 }
 
@@ -107,7 +108,7 @@ bool check_pdp_values(const i_t* pickup_indices,
                       const i_t* delivery_indices,
                       const v_t* values,
                       size_t n_requests,
-                      rmm::cuda_stream_view stream_view)
+                      cuda::stream_ref stream_view)
 {
   auto pickup_iter     = thrust::make_permutation_iterator(values, pickup_indices);
   auto delivery_iter   = thrust::make_permutation_iterator(values, delivery_indices);
@@ -117,7 +118,7 @@ bool check_pdp_values(const i_t* pickup_indices,
     zip_iterator,
     zip_iterator + n_requests,
     [] __device__(const auto& x) -> bool { return thrust::get<0>(x) != thrust::get<1>(x); });
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  stream_view.sync();
   return !violates_sanity;
 }
 
@@ -138,8 +139,8 @@ bool is_symmetric_matrix(f_t const* matrix, i_t width, raft::handle_t const* han
                                transposed_matrix.data_handle(),
                                width,
                                width,
-                               handle_ptr->get_stream());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(handle_ptr->get_stream()));
+                               handle_ptr->get_stream().get());
+  handle_ptr->get_stream().sync();
 
   return thrust::equal(handle_ptr->get_thrust_policy(),
                        matrix,
@@ -158,13 +159,13 @@ template bool is_symmetric_matrix<int, float>(float const*, int, raft::handle_t 
 template <typename i_t>
 bool check_min_latest_with_depot(rmm::device_uvector<i_t>& v_latest_time,
                                  i_t depot_earliest,
-                                 rmm::cuda_stream_view stream_view)
+                                 cuda::stream_ref stream_view)
 {
   i_t min_latest;
   i_t* min_latest_ptr = thrust::min_element(
     rmm::exec_policy(stream_view), v_latest_time.begin() + 1, v_latest_time.end());
-  raft::copy(&min_latest, min_latest_ptr, 1, stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  raft::copy(&min_latest, min_latest_ptr, 1, stream_view.get());
+  stream_view.sync();
 
   return min_latest >= depot_earliest;
 }
@@ -178,13 +179,13 @@ bool check_min_latest_with_depot(rmm::device_uvector<i_t>& v_latest_time,
 template <typename i_t>
 bool check_max_earliest_with_depot(rmm::device_uvector<i_t>& v_earliest_time,
                                    i_t depot_latest,
-                                   rmm::cuda_stream_view stream_view)
+                                   cuda::stream_ref stream_view)
 {
   i_t max_earliest;
   i_t* max_earliest_ptr = thrust::max_element(
     rmm::exec_policy(stream_view), v_earliest_time.begin() + 1, v_earliest_time.end());
-  raft::copy(&max_earliest, max_earliest_ptr, 1, stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  raft::copy(&max_earliest, max_earliest_ptr, 1, stream_view.get());
+  stream_view.sync();
 
   return max_earliest <= depot_latest;
 }
@@ -198,7 +199,7 @@ bool check_max_earliest_with_depot(rmm::device_uvector<i_t>& v_earliest_time,
 template <typename i_t>
 bool check_earliest_with_latest(rmm::device_uvector<i_t>& v_earliest_time,
                                 rmm::device_uvector<i_t>& v_latest_time,
-                                rmm::cuda_stream_view stream_view)
+                                cuda::stream_ref stream_view)
 {
   return thrust::equal(rmm::exec_policy(stream_view),
                        v_earliest_time.begin(),
@@ -220,14 +221,14 @@ bool check_min_max_values(const T* ptr,
                           size_t size,
                           const RefType min_value,
                           const RefType max_value,
-                          rmm::cuda_stream_view stream_view)
+                          cuda::stream_ref stream_view)
 {
   T min, max;
   thrust::pair<const T*, const T*> pair =
     thrust::minmax_element(rmm::exec_policy(stream_view), ptr, ptr + size);
-  raft::copy(&min, pair.first, 1, stream_view.value());
-  raft::copy(&max, pair.second, 1, stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  raft::copy(&min, pair.first, 1, stream_view.get());
+  raft::copy(&max, pair.second, 1, stream_view.get());
+  stream_view.sync();
   return (min >= static_cast<T>(min_value)) && (max <= static_cast<T>(max_value));
 }
 
@@ -241,7 +242,7 @@ void check_guess(i_t const* guess_id,
                  i_t fleet_size,
                  bool const* drop_return_trip,
                  bool const* skip_first_trip,
-                 rmm::cuda_stream_view stream_view)
+                 cuda::stream_ref stream_view)
 {
   cuopt_expects(check_min_max_values(truck_id, size, 0, fleet_size - 1, stream_view),
                 error_type_t::ValidationError,
@@ -262,7 +263,7 @@ void check_guess(i_t const* guess_id,
                     d_int_drop_return_trip.data(),
                     id);
   raft::update_host(
-    h_drop_return_trip.data(), d_int_drop_return_trip.data(), fleet_size, stream_view.value());
+    h_drop_return_trip.data(), d_int_drop_return_trip.data(), fleet_size, stream_view.get());
 
   thrust::transform(rmm::exec_policy(stream_view),
                     skip_first_trip,
@@ -270,7 +271,7 @@ void check_guess(i_t const* guess_id,
                     d_int_skip_first_trip.data(),
                     id);
   raft::update_host(
-    h_skip_first_trip.data(), d_int_skip_first_trip.data(), fleet_size, stream_view.value());
+    h_skip_first_trip.data(), d_int_skip_first_trip.data(), fleet_size, stream_view.get());
 
   raft::update_host(h_guess_id.data(), guess_id, size, stream_view);
   raft::update_host(h_truck_id.data(), truck_id, size, stream_view);
@@ -341,7 +342,7 @@ bool check_no_circular_precedence(i_t node_id,
                                   i_t const* preceding_nodes,
                                   i_t n_preceding_nodes,
                                   std::unordered_map<i_t, std::pair<i_t const*, i_t>> precedence,
-                                  rmm::cuda_stream_view stream_view)
+                                  cuda::stream_ref stream_view)
 {
   for (const auto& pair : precedence) {
     auto other_node   = pair.first;
@@ -372,7 +373,7 @@ bool check_no_circular_precedence(i_t node_id,
  * @return bool Whether the item exists
  */
 template <typename T>
-bool check_exists(T item_id, T const* device_ptr, T n_items, rmm::cuda_stream_view stream_view)
+bool check_exists(T item_id, T const* device_ptr, T n_items, cuda::stream_ref stream_view)
 {
   auto end_ptr  = device_ptr + n_items;
   auto iter_end = thrust::find(rmm::exec_policy(stream_view), device_ptr, end_ptr, item_id);
@@ -383,74 +384,69 @@ template bool check_min_max_values<uint8_t, int>(const uint8_t* ptr,
                                                  size_t size,
                                                  const int min_value,
                                                  const int max_value,
-                                                 rmm::cuda_stream_view stream_view);
+                                                 cuda::stream_ref stream_view);
 
 template bool check_min_max_values<int, int>(const int* ptr,
                                              size_t size,
                                              const int min_value,
                                              const int max_value,
-                                             rmm::cuda_stream_view stream_view);
+                                             cuda::stream_ref stream_view);
 
 template bool check_min_max_values<int, int16_t>(const int* ptr,
                                                  size_t size,
                                                  const int16_t min_value,
                                                  const int16_t max_value,
-                                                 rmm::cuda_stream_view stream_view);
+                                                 cuda::stream_ref stream_view);
 
 template bool check_min_max_values<int, uint16_t>(const int* ptr,
                                                   size_t size,
                                                   const uint16_t min_value,
                                                   const uint16_t max_value,
-                                                  rmm::cuda_stream_view stream_view);
+                                                  cuda::stream_ref stream_view);
 
 template bool check_min_max_values<float, float>(const float* ptr,
                                                  size_t size,
                                                  const float min_value,
                                                  const float max_value,
-                                                 rmm::cuda_stream_view stream_view);
+                                                 cuda::stream_ref stream_view);
 
 template bool check_min_max_values<double, double>(const double* ptr,
                                                    size_t size,
                                                    const double min_value,
                                                    const double max_value,
-                                                   rmm::cuda_stream_view stream_view);
+                                                   cuda::stream_ref stream_view);
 
-template void transform_absolute<int>(rmm::device_uvector<int>& v,
-                                      rmm::cuda_stream_view stream_view);
+template void transform_absolute<int>(rmm::device_uvector<int>& v, cuda::stream_ref stream_view);
 
 template bool check_no_circular_precedence<int>(
   int node_id,
   int const* preceding_nodes,
   int n_preceding_nodes,
   std::unordered_map<int, std::pair<int const*, int>> precedence,
-  rmm::cuda_stream_view stream_view);
+  cuda::stream_ref stream_view);
 
 template bool check_exists<int>(int item_id,
                                 int const* device_ptr,
                                 int n_items,
-                                rmm::cuda_stream_view stream_view);
+                                cuda::stream_ref stream_view);
 
 template bool check_earliest_with_latest<int>(rmm::device_uvector<int>&,
                                               rmm::device_uvector<int>&,
-                                              rmm::cuda_stream_view);
-template bool check_max_earliest_with_depot<int>(rmm::device_uvector<int>&,
-                                                 int,
-                                                 rmm::cuda_stream_view);
+                                              cuda::stream_ref);
+template bool check_max_earliest_with_depot<int>(rmm::device_uvector<int>&, int, cuda::stream_ref);
 template bool check_pickup_tw<int>(
-  int const*, int const*, int const*, int const*, unsigned long, rmm::cuda_stream_view);
+  int const*, int const*, int const*, int const*, unsigned long, cuda::stream_ref);
 template bool check_pickup_demands<int>(
-  int const*, int const*, int const*, unsigned long, rmm::cuda_stream_view);
+  int const*, int const*, int const*, unsigned long, cuda::stream_ref);
 
 template bool check_pdp_values<int, uint8_t>(
-  int const*, int const*, uint8_t const*, unsigned long, rmm::cuda_stream_view);
+  int const*, int const*, uint8_t const*, unsigned long, cuda::stream_ref);
 template bool check_pdp_values<int, int>(
-  int const*, int const*, int const*, unsigned long, rmm::cuda_stream_view);
+  int const*, int const*, int const*, unsigned long, cuda::stream_ref);
 template bool check_pdp_values<int, float>(
-  int const*, int const*, float const*, unsigned long, rmm::cuda_stream_view);
+  int const*, int const*, float const*, unsigned long, cuda::stream_ref);
 
-template bool check_min_latest_with_depot<int>(rmm::device_uvector<int>&,
-                                               int,
-                                               rmm::cuda_stream_view);
+template bool check_min_latest_with_depot<int>(rmm::device_uvector<int>&, int, cuda::stream_ref);
 template void check_guess<int>(int const*,
                                int const*,
                                int const*,
@@ -460,7 +456,7 @@ template void check_guess<int>(int const*,
                                int,
                                bool const*,
                                bool const*,
-                               rmm::cuda_stream_view);
+                               cuda::stream_ref);
 
 }  // namespace detail
 }  // namespace routing

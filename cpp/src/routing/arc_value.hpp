@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -35,7 +35,7 @@ constexpr void get_row_and_col_index(i_t& row, i_t& col, i_t flat_index, i_t nod
 }
 
 template <typename i_t, typename f_t>
-constexpr double lookup_dist(f_t const* table, i_t i, i_t j, size_t width)
+constexpr double lookup_matrix_value(f_t const* table, i_t i, i_t j, size_t width)
 {
   return table[i * width + j];
 }
@@ -48,14 +48,14 @@ static constexpr NodeInfo<i_t> load(i_t pos, NodeInfo<i_t> const* path_node)
 
 // All values pre-loaded overload
 template <typename i_t, typename f_t, bool is_device = true>
-static constexpr double get_distance(const NodeInfo<i_t>& l1,
+static constexpr double get_arc_cost(const NodeInfo<i_t>& l1,
                                      const NodeInfo<i_t>& l2,
                                      const VehicleInfo<f_t, is_device>& vehicle_info)
 {
   if (vehicle_info.skip_first_trip && l1.node_type() == node_type_t::DEPOT) { return 0.f; }
   if (vehicle_info.drop_return_trip && l2.node_type() == node_type_t::DEPOT) { return 0.f; }
   auto matrix = vehicle_info.matrices.get_cost_matrix(vehicle_info.type);
-  return lookup_dist(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
+  return lookup_matrix_value(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
 }
 
 // All values pre-loaded overload
@@ -85,7 +85,7 @@ static constexpr double get_transit_time(const NodeInfo<i_t>& l1,
 
   auto matrix = vehicle_info.matrices.get_time_matrix(vehicle_info.type);
   transit_time +=
-    lookup_dist(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
+    lookup_matrix_value(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
 
   return transit_time;
 }
@@ -96,7 +96,7 @@ static constexpr double get_arc_dimension(dim_t dim,
                                           const NodeInfo<i_t>& l2,
                                           const VehicleInfo<f_t>& vehicle_info)
 {
-  if (dim == dim_t::DIST) { return get_distance(l1, l2, vehicle_info); }
+  if (dim == dim_t::COST) { return get_arc_cost(l1, l2, vehicle_info); }
   return get_transit_time(l1, l2, vehicle_info);
 }
 
@@ -105,8 +105,8 @@ static constexpr double get_arc_of_dimension(const NodeInfo<i_t>& l1,
                                              const NodeInfo<i_t>& l2,
                                              const VehicleInfo<f_t, is_device>& vehicle_info)
 {
-  if constexpr (dim == dim_t::DIST) {
-    return get_distance(l1, l2, vehicle_info);
+  if constexpr (dim == dim_t::COST) {
+    return get_arc_cost(l1, l2, vehicle_info);
   } else if constexpr (dim == dim_t::TIME) {
     return get_transit_time(l1, l2, vehicle_info, true);
   } else if constexpr (dim == dim_t::SERVICE_TIME) {

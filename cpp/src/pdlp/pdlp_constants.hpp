@@ -9,6 +9,8 @@
 
 #include <cuda/cmath>
 
+#include <cstddef>
+
 namespace cuopt::mathematical_optimization::pdlp {
 inline constexpr int block_size = 128;
 
@@ -37,6 +39,29 @@ inline constexpr int dual_stride   = 1;
 inline constexpr bool deterministic_batch_pdlp = true;
 
 inline constexpr bool enable_batch_resizing = true;
+
+inline constexpr int concurrent_barrier_required_thread_count = 3;
+
+inline constexpr bool should_skip_concurrent_cpu_solvers(std::size_t num_nonzeros, int nnz_cutoff)
+{
+  return nnz_cutoff >= 0 && num_nonzeros >= static_cast<std::size_t>(nnz_cutoff);
+}
+
+inline constexpr bool should_enable_concurrent_barrier(std::size_t num_nonzeros,
+                                                       int nnz_cutoff,
+                                                       bool inside_mip,
+                                                       int available_threads)
+{
+  return !should_skip_concurrent_cpu_solvers(num_nonzeros, nnz_cutoff) &&
+         (!inside_mip || available_threads >= concurrent_barrier_required_thread_count);
+}
+
+inline constexpr bool should_enable_concurrent_dual_simplex(std::size_t num_nonzeros,
+                                                            int nnz_cutoff,
+                                                            bool inside_mip)
+{
+  return !inside_mip && !should_skip_concurrent_cpu_solvers(num_nonzeros, nnz_cutoff);
+}
 
 // Value used to determine what we see as too small (the value) or too large (1/value) values when
 // computing the new primal weight during the restart.

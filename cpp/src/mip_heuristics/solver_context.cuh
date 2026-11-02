@@ -7,13 +7,18 @@
 
 #include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
 
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
+#include <mip_heuristics/solution_publication.cuh>
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
+#include <deque>
+#include <exception>
 #include <limits>
 #include <memory>
+#include <vector>
 
 #pragma once
 
@@ -33,6 +38,9 @@ class diversity_manager_t;
 template <typename i_t, typename f_t>
 class early_cpufj_t;
 
+template <typename i_t, typename f_t>
+class early_structural_t;
+
 // Aggregate structure containing the global context of the solving process for convenience:
 // The current problem, user settings, raft handle and statistics objects
 template <typename i_t, typename f_t>
@@ -40,7 +48,10 @@ struct mip_solver_context_t {
   explicit mip_solver_context_t(raft::handle_t const* handle_ptr_,
                                 problem_t<i_t, f_t>* problem_ptr_,
                                 mip_solver_settings_t<i_t, f_t> settings_)
-    : handle_ptr(handle_ptr_), problem_ptr(problem_ptr_), settings(settings_)
+    : handle_ptr(handle_ptr_),
+      problem_ptr(problem_ptr_),
+      settings(settings_),
+      base_seed(get_base_seed(settings_.seed))
   {
     cuopt_assert(problem_ptr != nullptr, "problem_ptr is nullptr");
     stats.set_solution_bound(problem_ptr->maximize ? std::numeric_limits<f_t>::infinity()
@@ -53,11 +64,18 @@ struct mip_solver_context_t {
 
   raft::handle_t const* const handle_ptr;
   problem_t<i_t, f_t>* problem_ptr;
-  mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr{nullptr};
   diversity_manager_t<i_t, f_t>* diversity_manager_ptr{nullptr};
   std::atomic<bool> preempt_heuristic_solver_ = false;
+  // Owned by solve_mip and rethrown after its OpenMP team joins. Tasks write it inside
+  // omp critical(cuopt_mip_task_exception).
+  std::exception_ptr* task_exception{nullptr};
   const mip_solver_settings_t<i_t, f_t> settings;
+
+  // Base seed, all random number generators derive a seed and strem from it.
+  const uint64_t base_seed;
   solver_stats_t<i_t, f_t> stats;
+  // Every incumbent reported to the user goes through here, from whichever thread found it.
+  solution_publication_t<i_t, f_t> solution_publication{settings, stats};
   // Work limit context for tracking work units in deterministic mode (shared across all timers in
   // GPU heuristic loop)
   work_limit_context_t gpu_heur_loop{"GPUHeur"};
@@ -66,6 +84,7 @@ struct mip_solver_context_t {
   work_unit_scheduler_t work_unit_scheduler_{5.0};
 
   early_cpufj_t<i_t, f_t>* early_cpufj_ptr{nullptr};
+  early_structural_t<i_t, f_t>* early_structural_ptr{nullptr};
   // Best upper bound from early heuristics, in user-space.
   // Must be converted to the target solver-space before use:
   //   - B&B: problem_ptr->get_solver_obj_from_user_obj(initial_upper_bound)
@@ -74,6 +93,16 @@ struct mip_solver_context_t {
 
   // Matching incumbent assignment in original output space from early heuristics.
   std::vector<f_t> initial_incumbent_assignment{};
+  struct papilo_model_incumbent_t {
+    f_t user_obj;
+    std::vector<f_t> assignment;
+  };
+  // Incumbents of the early heuristics on the Papilo model, best last, in Papilo-presolved space.
+  // Uncrushing every improvement would serialize the reporting lanes, so they are only uncrushed
+  // into papilo_model_user_incumbents once those heuristics have been joined.
+  std::deque<papilo_model_incumbent_t> papilo_model_incumbents{};
+  // Those runs start after the earlier incumbents were copied into settings.initial_solutions.
+  std::vector<std::vector<f_t>> papilo_model_user_incumbents{};
 
   // Symmetry information for orbital fixing during B&B. Null if no exploitable symmetry.
   std::unique_ptr<mip::mip_symmetry_t<i_t, f_t>> symmetry;

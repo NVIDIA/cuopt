@@ -11,6 +11,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>
@@ -121,6 +122,16 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
   optimization_problem_t(optimization_problem_t<i_t, f_t>&&) noexcept            = default;
   optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) noexcept = default;
+
+  /**
+   * @brief Release all device buffers while retaining dimensions and host metadata.
+   *
+   * Use after transferring model data to a solver that still references this object's
+   * metadata. Device views are invalidated and the model data must be populated again
+   * before solving, exporting, or converting this object to another precision.
+   * Deallocation is ordered on the problem's stream.
+   */
+  void clear();
 
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
@@ -284,6 +295,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   std::string get_objective_name() const override;
   std::string get_problem_name() const override;
   problem_category_t get_problem_category() const override;
+  bool has_semi_continuous_variables() const noexcept;
   const std::vector<std::string>& get_variable_names() const override;
   const std::vector<std::string>& get_row_names() const override;
   const std::vector<i_t>& get_quadratic_objective_offsets() const override;
@@ -350,14 +362,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
    * @tparam other_f_t  Target floating-point type (e.g. float when this is double)
    */
   template <typename other_f_t>
-  optimization_problem_t<i_t, other_f_t> convert_to_other_prec(rmm::cuda_stream_view stream) const;
-
-  /**
-   * @brief Returns nullptr since this is already a GPU problem.
-   * @return nullptr
-   */
-  std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
-    raft::handle_t const* handle_ptr = nullptr) override;
+  optimization_problem_t<i_t, other_f_t> convert_to_other_prec(cuda::stream_ref stream) const;
 
   // ============================================================================
   // C API support: Copy to host (polymorphic)
@@ -388,9 +393,10 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
 
  private:
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   problem_category_t problem_category_ = problem_category_t::LP;
+  bool has_semi_continuous_variables_{false};
   bool maximize_{false};
   i_t n_vars_{0};
   i_t n_constraints_{0};
@@ -426,6 +432,27 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   std::vector<std::string> var_names_{};
   std::vector<std::string> row_names_{};
 };
+
+/**
+ * @brief Convert a problem to a GPU-backed optimization_problem_t.
+ *
+ * For optimization_problem_t (GPU): returns nullptr (already is one).
+ * For cpu_optimization_problem_t: creates a new GPU problem, copies data, returns it.
+ *
+ * Usage pattern:
+ *   auto temp = to_optimization_problem(problem, &handle);
+ *   optimization_problem_t& op = temp ? *temp : static_cast<optimization_problem_t&>(problem);
+ *
+ * A free function rather than a virtual member so that cpu_optimization_problem_t's vtable
+ * carries no GPU-defined entry; see optimization_problem_interface.hpp.
+ *
+ * @param problem     The problem to convert.
+ * @param handle_ptr  RAFT handle with CUDA resources. Required for CPU->GPU conversion.
+ * @return unique_ptr to a new GPU problem, or nullptr if it already is one.
+ */
+template <typename i_t, typename f_t>
+std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
+  optimization_problem_interface_t<i_t, f_t>& problem, raft::handle_t const* handle_ptr = nullptr);
 
 }  // namespace CUOPT_EXPORT mathematical_optimization
 }  // namespace cuopt

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -15,18 +15,18 @@ namespace detail {
 template <typename i_t, typename f_t>
 class tasks_node_t {
  public:
-  //! Distance gathered to node
+  //! Tasks gathered to node
   i_t tasks_forward = 0;
-  //! Distance gathered after node
+  //! Tasks gathered after node
   i_t tasks_backward = 0;
 
-  /*! \brief { Calculate next node forward gathered distance data based on actual node} */
+  /*! \brief { Calculate next node forward gathered task data based on actual node} */
   void HDI calculate_forward(tasks_node_t& next, [[maybe_unused]] f_t dummy = 0.) const noexcept
   {
     next.tasks_forward = tasks_forward + 1;
   }
 
-  /*! \brief { Calculate prev node gathered distance backward data based on actual node} */
+  /*! \brief { Calculate prev node gathered task backward data based on actual node} */
   void HDI calculate_backward(tasks_node_t& prev, [[maybe_unused]] f_t dummy = 0.) const noexcept
   {
     prev.tasks_backward = tasks_backward + 1;
@@ -50,7 +50,8 @@ class tasks_node_t {
   }
 
   /*! \brief  { Combine information from begining and ending fragments.}
-      \return { Distance excess of route represented by nodes prev and next }*/
+      \return { Task excess
+   * of route represented by nodes prev and next }*/
   static HDI double combine([[maybe_unused]] const tasks_node_t& prev,
                             [[maybe_unused]] const tasks_node_t& next,
                             [[maybe_unused]] const VehicleInfo<f_t>& vehicle_info,

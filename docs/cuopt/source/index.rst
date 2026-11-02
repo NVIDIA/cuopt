@@ -42,25 +42,37 @@ Python (cuopt)
 
    Python Overview <cuopt-python/index.rst>
 
-====================================
-gRPC Remote Execution
-====================================
+==========================
+Java (cuopt)
+==========================
 .. toctree::
    :maxdepth: 4
-   :caption: gRPC Remote Execution
-   :name: gRPC Remote Execution
+   :caption: Java API
+   :name: Java API
+
+   Java Overview <cuopt-java/index.rst>
+
+====
+gRPC
+====
+.. toctree::
+   :maxdepth: 4
+   :caption: gRPC
+   :name: gRPC
 
    gRPC Overview <cuopt-grpc/index.rst>
 
-===============================
-Server (cuopt-server)
-===============================
+==========================
+HTTP Server (cuopt-server)
+==========================
 .. toctree::
    :maxdepth: 1
-   :caption: Server
-   :name: Server
+   :caption: HTTP Server
+   :name: HTTP Server
 
    Server Overview <cuopt-server/index.rst>
+   Advanced Configuration <cuopt-server/advanced.rst>
+   Legacy HTTP Server <cuopt-server/legacy-http-server.rst>
 
 ==================================
 Command Line Interface (cuopt-cli)

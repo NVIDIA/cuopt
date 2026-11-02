@@ -44,8 +44,15 @@ if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
   target_link_options(GRPC_CLIENT_TEST PRIVATE -Wl,--enable-new-dtags)
 endif()
 
-rapids_test_add(NAME GRPC_CLIENT_TEST COMMAND GRPC_CLIENT_TEST GPUS 1 INSTALL_COMPONENT_SET testing)
+rapids_test_add(NAME GRPC_CLIENT_TEST COMMAND GRPC_CLIENT_TEST INSTALL_COMPONENT_SET testing)
 set_tests_properties(GRPC_CLIENT_TEST PROPERTIES LABELS "numopt")
+
+install(
+    TARGETS GRPC_CLIENT_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)
 
 # ##################################################################################################
 # - gRPC Pipe Serialization Unit Tests -------------------------------------------------------------
@@ -79,8 +86,72 @@ if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
   target_link_options(GRPC_PIPE_SERIALIZATION_TEST PRIVATE -Wl,--enable-new-dtags)
 endif()
 
-rapids_test_add(NAME GRPC_PIPE_SERIALIZATION_TEST COMMAND GRPC_PIPE_SERIALIZATION_TEST GPUS 1 INSTALL_COMPONENT_SET testing)
+rapids_test_add(NAME GRPC_PIPE_SERIALIZATION_TEST COMMAND GRPC_PIPE_SERIALIZATION_TEST
+                 INSTALL_COMPONENT_SET testing)
 set_tests_properties(GRPC_PIPE_SERIALIZATION_TEST PROPERTIES LABELS "numopt")
+
+install(
+    TARGETS GRPC_PIPE_SERIALIZATION_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)
+
+# ##################################################################################################
+# - gRPC worker spawn argument checks --------------------------------------------------------------
+# Runs cuopt_grpc_server with internal and user argv. Both cases exit in the
+# argument parser, so no GPU or listening socket is required.
+
+add_executable(GRPC_WORKER_SPAWN_TEST ${CMAKE_CURRENT_SOURCE_DIR}/grpc_worker_spawn_test.cpp)
+
+target_link_libraries(GRPC_WORKER_SPAWN_TEST PRIVATE GTest::gtest GTest::gtest_main)
+
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(GRPC_WORKER_SPAWN_TEST PRIVATE -Wl,--enable-new-dtags)
+endif()
+
+add_dependencies(GRPC_WORKER_SPAWN_TEST cuopt_grpc_server)
+
+add_test(
+    NAME GRPC_WORKER_SPAWN_TEST
+    COMMAND ${CMAKE_COMMAND} -E env
+        "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
+        $<TARGET_FILE:GRPC_WORKER_SPAWN_TEST>
+)
+set_tests_properties(GRPC_WORKER_SPAWN_TEST PROPERTIES LABELS "numopt")
+
+install(
+    TARGETS GRPC_WORKER_SPAWN_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)
+
+# ##################################################################################################
+# - gRPC job queue ordering ------------------------------------------------------------------------
+# Header-only checks of claim_ready_job_slot; no server or GPU is required.
+
+add_executable(GRPC_JOB_QUEUE_TEST ${CMAKE_CURRENT_SOURCE_DIR}/grpc_job_queue_test.cpp)
+
+target_compile_definitions(GRPC_JOB_QUEUE_TEST PRIVATE CUOPT_ENABLE_GRPC)
+
+target_include_directories(GRPC_JOB_QUEUE_TEST PRIVATE "${CUOPT_SOURCE_DIR}/src/grpc/server")
+
+target_link_libraries(GRPC_JOB_QUEUE_TEST PRIVATE GTest::gtest GTest::gtest_main Threads::Threads)
+
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(GRPC_JOB_QUEUE_TEST PRIVATE -Wl,--enable-new-dtags)
+endif()
+
+rapids_test_add(NAME GRPC_JOB_QUEUE_TEST COMMAND GRPC_JOB_QUEUE_TEST INSTALL_COMPONENT_SET testing)
+set_tests_properties(GRPC_JOB_QUEUE_TEST PROPERTIES LABELS "numopt")
+
+install(
+    TARGETS GRPC_JOB_QUEUE_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)
 
 # ##################################################################################################
 # - gRPC Integration Tests -------------------------------------------------------------------------
@@ -112,6 +183,10 @@ target_link_libraries(GRPC_INTEGRATION_TEST
     protobuf::libprotobuf
 )
 
+if(CUOPT_ENABLE_GRPC_ROUTING)
+    target_compile_definitions(GRPC_INTEGRATION_TEST PRIVATE CUOPT_ENABLE_GRPC_ROUTING)
+endif()
+
 if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
   target_link_options(GRPC_INTEGRATION_TEST PRIVATE -Wl,--enable-new-dtags)
 endif()
@@ -124,8 +199,16 @@ rapids_test_add(
     COMMAND ${CMAKE_COMMAND} -E env
         "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
         $<TARGET_FILE:GRPC_INTEGRATION_TEST>
-    GPUS 1
-    INSTALL_TARGET GRPC_INTEGRATION_TEST
+    # The COMMAND's first token is cmake itself, not the test target, so
+    # rapids_test_add can't infer what to install -- name it explicitly.
     INSTALL_COMPONENT_SET testing
+    INSTALL_TARGET GRPC_INTEGRATION_TEST
 )
 set_tests_properties(GRPC_INTEGRATION_TEST PROPERTIES LABELS "numopt")
+
+install(
+    TARGETS GRPC_INTEGRATION_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)

@@ -2,9 +2,9 @@
    SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    SPDX-License-Identifier: Apache-2.0
 
-=====================================
-Python Async gRPC Client Examples
-=====================================
+=======================================
+gRPC Linear Programming Client Examples
+=======================================
 
 These snippets build on the :doc:`python-async-client` **Connect and Solve**
 example. Start ``cuopt_grpc_server`` first, and pass the server host and port

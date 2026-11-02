@@ -4,7 +4,6 @@
 import os
 import time
 
-
 from . import data_model_wrapper
 from .utilities import catch_cuopt_exception
 
@@ -227,6 +226,59 @@ class DataModel(data_model_wrapper.DataModel):
 
         """
         super().set_objective_coefficients(c)
+
+    @catch_cuopt_exception
+    def update_linear_objective(self, coefficients):
+        """
+        Update the linear objective coefficients for a sequence re-solve.
+        Writes ``coefficients`` onto this DataModel. If a barrier cache is
+        present, also maps them into the presolved space and marks
+        it dirty (quadratic ``Q``, ``A``, bounds, and the quadratic
+        constraints must stay unchanged).
+
+        Parameters
+        ----------
+        coefficients : array-like of float64
+            Linear objective coefficients, length equal to the number of
+            variables on the first ``CUOPT_SEQUENCE_SOLVE`` solve.
+        """
+        super().update_linear_objective(coefficients)
+
+    @catch_cuopt_exception
+    def update_rhs(self, b):
+        """
+        Update the linear-equality constraint right-hand side (b) for a sequence re-solve.
+
+        Writes ``b`` onto this DataModel. If a barrier cache is present, also
+        maps ``b`` into the presolved space and marks it dirty
+        (quadratic ``Q``, ``A``, row senses, bounds, and the quadratic
+        constraints must stay unchanged).
+
+        Range rows and folding in the first solve are not supported and raise;
+        run a full solve for those models. Rows that presolve dropped as empty
+        are allowed: if the new ``b`` makes one infeasible, the next solve
+        reports infeasible without rerunning barrier.
+
+        Parameters
+        ----------
+        b : array-like of float64
+            Linear equality constraint right-hand sides, length equal to the number of
+            constraints on the first ``sequence_solve``.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If this DataModel holds an invalid barrier-cache capsule.
+        InputValidationError
+            If ``b`` has the wrong length, the cached convert used range rows
+            or folding, or the barrier cache has no transform from a prior
+            ``CUOPT_SEQUENCE_SOLVE`` solve.
+        """
+        super().update_rhs(b)
 
     @catch_cuopt_exception
     def set_objective_scaling_factor(self, objective_scaling_factor):

@@ -1,9 +1,13 @@
 [
   {
-    "version": "26.10.00",
-    "url": "https://docs.nvidia.com/cuopt/user-guide/26.10.00/",
+    "version": "26.12.00",
+    "url": "https://docs.nvidia.com/cuopt/user-guide/26.12.00/",
     "name": "latest",
     "preferred": true
+  },
+  {
+    "version": "26.10.00",
+    "url": "https://docs.nvidia.com/cuopt/user-guide/26.10.00/"
   },
   {
     "version": "26.08.00",

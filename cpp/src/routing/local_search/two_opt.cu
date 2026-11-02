@@ -51,16 +51,16 @@ DI thrust::pair<double, double> evaluate_two_opt_cvrp_move(
   i_t second)
 {
   auto n_nodes         = route.get_num_nodes();
-  double frag_backward = reverse_route.distance_dim.distance_forward[n_nodes - (first + 1)] -
-                         reverse_route.distance_dim.distance_forward[n_nodes - second];
-  double forward_sum = route.get_node(second + 1).distance_dim.distance_forward -
-                       route.get_node(first).distance_dim.distance_forward;
+  double frag_backward = reverse_route.cost_dim.cost_forward[n_nodes - (first + 1)] -
+                         reverse_route.cost_dim.cost_forward[n_nodes - second];
+  double forward_sum =
+    route.get_node(second + 1).cost_dim.cost_forward - route.get_node(first).cost_dim.cost_forward;
 
-  double first_second = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+  double first_second = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
     route.get_node(first).node_info(), route.get_node(second).node_info(), route.vehicle_info());
 
   double first_next_second_next =
-    get_arc_of_dimension<i_t, f_t, dim_t::DIST>(route.get_node(first + 1).node_info(),
+    get_arc_of_dimension<i_t, f_t, dim_t::COST>(route.get_node(first + 1).node_info(),
                                                 route.get_node(second + 1).node_info(),
                                                 route.vehicle_info());
 
@@ -393,13 +393,13 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_two_opt(
   if (!set_shmem_of_kernel(find_two_opt_moves<i_t, f_t, REQUEST>, sh_size)) { return false; }
 
   find_two_opt_moves<i_t, f_t, REQUEST>
-    <<<n_blocks, n_threads, sh_size, sol.sol_handle->get_stream()>>>(
+    <<<n_blocks, n_threads, sh_size, sol.sol_handle->get_stream().get()>>>(
       sol.view(),
       move_candidates.view(),
       cuopt::make_span(two_opt_cand_data_),
       cuopt::make_span(sampled_nodes_data_),
       cuopt::make_span(locks_));
-  RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+  RAFT_CHECK_CUDA(sol.sol_handle->get_stream().get());
 
   n_moves_found = thrust::count_if(sol.sol_handle->get_thrust_policy(),
                                    sampled_nodes_data_.begin(),
@@ -434,7 +434,7 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_two_opt(
                           sol.sol_handle->get_stream());
     async_fill(moved_regions_, 0, sol.sol_handle->get_stream());
     execute_recycle<i_t, f_t, REQUEST, n_threads>
-      <<<sol.get_n_routes(), n_threads, sh_size, sol.sol_handle->get_stream()>>>(
+      <<<sol.get_n_routes(), n_threads, sh_size, sol.sol_handle->get_stream().get()>>>(
         sol.view(),
         move_candidates.view(),
         cuopt::make_span(sampled_nodes_data_),
@@ -442,13 +442,13 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_two_opt(
   } else {
     if (!set_shmem_of_kernel(execute_two_opt_moves<i_t, f_t, REQUEST>, sh_size)) { return false; }
     execute_two_opt_moves<i_t, f_t, REQUEST>
-      <<<sol.get_n_routes(), n_threads, sh_size, sol.sol_handle->get_stream()>>>(
+      <<<sol.get_n_routes(), n_threads, sh_size, sol.sol_handle->get_stream().get()>>>(
         sol.view(),
         move_candidates.view(),
         cuopt::make_span(two_opt_cand_data_),
         cuopt::make_span(moved_regions_));
   }
-  RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+  RAFT_CHECK_CUDA(sol.sol_handle->get_stream().get());
 
   cuopt_func_call(sol.compute_cost());
   cuopt_func_call(cost_after =

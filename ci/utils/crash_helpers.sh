@@ -92,6 +92,72 @@ write_pytest_crash_marker() {
         "pytest process terminated by ${sig} mid-run. The JUnit XML was not finalized; the test that triggered the crash is unknown — inspect the run log for the last test invoked."
 }
 
+# Synthesize a JUnit XML record for a step killed by the 'timeout' command.
+# nightly_report.py classifies purely from XML, so without this a step that
+# hits its time limit is invisible in the report -- it looks like nothing ran.
+#
+# Usage: write_pytest_timeout_marker <junitxml_path> <suite_name> <limit>
+write_pytest_timeout_marker() {
+    local junitxml_path="$1"
+    local suite_name="$2"
+    local limit="$3"
+
+    if [ -z "${junitxml_path}" ]; then
+        return
+    fi
+
+    local timeout_xml="${junitxml_path%.xml}-timeout.xml"
+    write_crash_xml "${timeout_xml}" "${suite_name}" "STEP_TIMEOUT" \
+        "${suite_name} did not finish within its ${limit} time limit and was killed" \
+        "The step was killed by the 'timeout' command after ${limit}. It was terminated before it could report, so the JUnit XML was never finalized. Either the time limit is too low for this suite, or a test is taking longer than expected -- raise the limit for this step in the CI script, or investigate the slow test. The pytest progress output in the run log shows which tests had not produced a result."
+}
+
+# Run a step under a time limit, reporting a timeout kill distinctly from an
+# ordinary failure. Appends to the caller's FAILED_STEPS array.
+#
+# Plain 'timeout Nm cmd || FAILED_STEPS+=(label)' discards the exit code, so a
+# step that burns the full limit is reported identically to a test failure and
+# emits no XML. That is silent enough that the only evidence is the gap between
+# step timestamps.
+#
+# Usage: run_step_with_timeout <label> <limit> <junitxml_or_empty> <cmd> [args...]
+run_step_with_timeout() {
+    local label="$1"
+    local limit="$2"
+    local junitxml="$3"
+    shift 3
+
+    local rc=0
+    timeout "${limit}" "$@" || rc=$?
+
+    if [ "${rc}" -eq 0 ]; then
+        return 0
+    fi
+
+    if [ "${rc}" -eq 124 ]; then
+        echo ""
+        echo "=================================================================="
+        echo "TIMEOUT: '${label}' did not finish within its ${limit} time limit"
+        echo "         and was killed."
+        echo ""
+        echo "  It was terminated before it could report, so no result"
+        echo "  summary was written. Either the time limit is too low for"
+        echo "  this suite, or a test is taking longer than expected."
+        echo ""
+        echo "  Raise the limit for this step in the CI script, or"
+        echo "  investigate the slow test. The progress output above shows"
+        echo "  which tests had not produced a result."
+        echo "=================================================================="
+        echo ""
+        FAILED_STEPS+=("${label} (TIMEOUT after ${limit})")
+        write_pytest_timeout_marker "${junitxml}" "${label}" "${limit}"
+    else
+        FAILED_STEPS+=("${label}")
+    fi
+
+    return "${rc}"
+}
+
 # Isolate crashing pytest tests by retrying individually.
 # Called after pytest exits with a signal (exit code > 128) on nightly builds.
 #

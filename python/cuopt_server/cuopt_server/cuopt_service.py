@@ -10,11 +10,11 @@ from multiprocessing import get_context
 
 import psutil
 
-import cuopt_server.utils.process_handler as process_handler
-import cuopt_server.utils.request_filter as request_filter
+import cuopt_server.utils.deprecated.process_handler as process_handler
+import cuopt_server.utils.deprecated.request_filter as request_filter
 import cuopt_server.utils.settings as settings
 from cuopt_server._version import __version__
-from cuopt_server.utils.job_queue import create_abort_list
+from cuopt_server.utils.deprecated.job_queue import create_abort_list
 from cuopt_server.utils.logutil import (
     get_ncaid,
     get_requestid,

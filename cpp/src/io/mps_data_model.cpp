@@ -12,6 +12,7 @@
 #include <mps_parser_internal.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <utility>
 
@@ -200,7 +201,8 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
     qc.rows.assign(rows.begin(), rows.end());
     qc.cols.assign(cols.begin(), cols.end());
     qc.vals.assign(vals.begin(), vals.end());
-    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
+    coo_canonicalization_scratch_t<i_t, f_t> scratch;
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, scratch);
   }
 
   quadratic_constraints_.push_back(std::move(qc));
@@ -464,8 +466,9 @@ template <typename i_t, typename f_t>
 void canonicalize_quadratic_constraints(
   std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints)
 {
+  coo_canonicalization_scratch_t<i_t, f_t> scratch;
   for (auto& qc : constraints) {
-    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, scratch);
   }
 }
 
@@ -473,6 +476,11 @@ void canonicalize_quadratic_constraints(
 template class CUOPT_EXPORT mps_data_model_t<int, float>;
 
 template class CUOPT_EXPORT mps_data_model_t<int, double>;
+
+// 64-bit index model, for problems whose nnz exceeds INT_MAX. Those are only
+// solvable through multi-GPU PDLP, which partitions the matrix into 32-bit
+// sub-problems, so double is the only float type that needs a 64-bit model.
+template class CUOPT_EXPORT mps_data_model_t<int64_t, double>;
 
 template CUOPT_EXPORT void canonicalize_quadratic_constraints<int, float>(
   std::vector<mps_data_model_t<int, float>::quadratic_constraint_t>&);

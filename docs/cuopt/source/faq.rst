@@ -49,8 +49,20 @@ General FAQ
 
 .. dropdown:: Does cuOpt use multiple GPUs/multi-GPUs/multi GPUs?
 
-    #. Yes, in cuOpt self-hosted server, a solver process per GPU can be configured to run multiple solvers. Requests are accepted in a round-robin queue. More details are available in :doc:`server api <cuopt-server/server-api/server-cli>`.
-    #. There is no support for leveraging multiple GPUs to solve a single problem or oversubscribing a single GPU for multiple solvers.
+    Yes. ``cuopt_grpc_server`` runs one worker process per concurrent solve. Set ``--workers`` to the number of visible GPUs, one worker per GPU. On a node with two GPUs:
+
+    .. code-block:: bash
+
+        cuopt_grpc_server --port 5001 --workers 2
+
+    Call that server directly, or start the HTTP proxy against it. The proxy forwards each request to the same workers:
+
+    .. code-block:: bash
+
+        cuopt_grpc_server --port 5001 --workers 2 &
+        python -m cuopt_server.cuopt_proxy --port 5000 --grpc-port 5001
+
+    In the container, ``CUOPT_GPU_COUNT`` is passed as ``--workers`` for the HTTP proxy server and for ``grpc``. See :doc:`cuopt-server/advanced` and :doc:`cuopt-grpc/advanced`.
 
 .. dropdown:: The cuOpt Service is not starting: Issue with port?
 
@@ -101,6 +113,24 @@ General FAQ
    - **Other distributions**: install your distribution's OpenSSL 3 development/runtime package, or use the cuOpt container.
 
    After installing, re-run ``pip install`` (or restart the Python process) and the import should succeed.
+
+.. dropdown:: Why does my MIP/LP solve run single-threaded, or log a "could not load cuDSS threading layer" warning?
+
+   cuDSS's threading layer (used by the barrier method) must be built against the *same* GNU OpenMP runtime as cuOpt itself. If it isn't, cuDSS falls back to single-threaded execution and logs a warning instead of failing the solve.
+
+   **pip installs**: the wheel bundles its own GNU OpenMP runtime and a cuDSS threading layer built against it, so this shouldn't happen out of the box; no host ``libgomp`` is required.
+
+   **conda installs**: ``libgomp`` is a runtime dependency of the ``libcuopt`` package, so ``conda install`` pulls it in automatically, no manual step needed.
+
+   **source builds**: building with the conda dev environment (``conda/environments/*.yaml``) already provides a matching ``libgomp``, the same one cuDSS itself uses via conda, so this shouldn't happen either. Only a build done entirely outside that conda environment (a bare system toolchain) needs ``libgomp.so.1`` installed manually: install your distribution's GNU OpenMP runtime package, typically ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora), then re-run the solve.
+
+   If you want cuDSS to use a specific threading-layer library, set the ``CUDSS_THREADING_LIB`` environment variable to its absolute path before running:
+
+   .. code-block:: bash
+
+       export CUDSS_THREADING_LIB=/path/to/libcudss_mtlayer_gomp.so.0
+
+   .. warning:: Whatever threading-layer library you point cuDSS at must be built against the same OpenMP runtime cuOpt itself uses. For pip installs, that's the bundled GNU libgomp, not necessarily the host's. Pointing cuDSS at a library linked against a *different* OpenMP runtime reintroduces the exact dual-runtime conflict described in `#1219 <https://github.com/NVIDIA/cuopt/issues/1219>`_, including possible crashes.
 
 .. dropdown:: Why am I getting "libcuopt.so: cannot open shared object file: No such file or directory" error?
 
@@ -365,8 +395,7 @@ Linear Programming FAQs
 
 .. dropdown:: How small and how many problems can I give when using the batch mode?
 
-    LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
-    :doc:`convex-features`.
+    LP batch mode in Python is ``cuopt.linear_programming.BatchSolve``. It is deprecated; see :ref:`Batch Mode <batch-mode>` in :doc:`convex-features`. The HTTP proxy does not accept a batch. Only the legacy HTTP server does.
 
     The batch mode allows solving many LPs in parallel to try to fully utilize the GPU when LP problems are too small. Using H100 SXM, the problem should be of at least 1K elements, and giving more than 100 LPs will usually not increase performance.
 
@@ -388,7 +417,7 @@ Linear Programming FAQs
     - Hardware: If using self-hosted, you should use a recent server-grade GPU. We recommend H100 SXM (not the PCIE version).
     - Tolerance: The set tolerance usually has a massive impact on performance. Try the lowest possible value using ``set_optimality_tolerance`` until you have reached your lowest possible acceptable accuracy.
     - PDLP Solver mode: PDLP solver mode will change the way PDLP internally optimizes the problem. The mode choice can drastically impact how fast a specific problem will be solved. You should test the different modes to see which one fits your problem best.
-    - Batch mode: Deprecated for LP; prefer sequential ``cuopt.linear_programming.Solve`` calls (see :ref:`Batch Mode <batch-mode>`). While available, batch mode can solve multiple LPs in parallel.
+    - Batch mode: ``cuopt.linear_programming.BatchSolve`` is deprecated; prefer sequential ``cuopt.linear_programming.Solve`` calls (see :ref:`Batch Mode <batch-mode>`). The HTTP proxy does not accept a batch. Only the legacy HTTP server does.
     - Presolve: Presolve can reduce problem size and improve solve time.
 
 .. dropdown:: What solver mode should I choose?
@@ -415,9 +444,15 @@ Linear Programming FAQs
 
 .. dropdown:: How do I use warm start with PDLP?
 
-    To use warm start functionality with PDLP, you must explicitly disable presolve by setting ``CUOPT_PRESOLVE=0`` in solver_config.
-    This is required because presolve transforms the problem, and the warm start solution from the original problem
+    To use PDLP warm start data (``set_pdlp_warm_start_data``), you must explicitly disable presolve by setting ``CUOPT_PRESOLVE=0`` in solver_config.
+    This is required because presolve transforms the problem, and the warm start data from the original problem
     cannot be applied to the presolved problem.
+
+    An initial primal and dual solution (``set_initial_primal_solution`` and ``set_initial_dual_solution``) does not
+    require disabling presolve when PSLP is used (the default for LP): cuOpt maps both into the presolved problem before
+    solving. If only one of the two is given, or for LP with Papilo presolve, cuOpt cannot map the initial solution and
+    skips presolve instead (MIP starts are still mapped through Papilo presolve). For LP, cuOpt clips the initial primal solution to the
+    problem's variable bounds, so a previous solution can be passed as is, even after changing bounds.
 
 Mixed Integer Programming FAQs
 --------------------------------------

@@ -63,8 +63,9 @@ class Solution:
     ----------
     problem_category : int
         Whether it is a LP-0, MIP-1 or IP-2 solution
-    vars : Dict[str, float64]
-        Dictionary mapping each variable (name) to its value.
+    vars : Dict[str, float64] or callable
+        Dictionary mapping each variable (name) to its value, or a
+        zero-argument function returning it, called on first access.
     primal_solution : numpy.array
         Primal solution of the LP problem
     dual_solution : numpy.array
@@ -74,6 +75,10 @@ class Solution:
         Note: Applicable to only LP
         The reduced cost.
         It contains the dual multipliers for the linear constraints.
+    slack : numpy.array
+        Slack/surplus per linear constraint in CSR row order:
+        ``rhs - lhs`` for ``<=``, ``lhs - rhs`` for ``>=``. Equality rows
+        store the residual ``rhs - lhs``. None when it was not computed.
     termination_status: Integer
         Termination status value.
     primal_residual: Float64
@@ -121,8 +126,8 @@ class Solution:
         Solve time in seconds
     solved_by: enum
         Note: Applicable to only LP
-        Whether the LP was solved by Dual Simplex, PDLP or Barrier. This is populated
-        by the solver using the values from SolverMethod.
+        The method that solved the LP. This is populated by the solver using the
+        values from SolverMethod.
     """
 
     def __init__(
@@ -168,10 +173,12 @@ class Solution:
         max_variable_bound_violation=0.0,
         num_nodes=0,
         num_simplex_iterations=0,
+        slack=None,
     ):
         self.problem_category = problem_category
         self.primal_solution = primal_solution
         self.dual_solution = dual_solution
+        self.slack = slack
         if problem_category == ProblemCategory.LP:
             self.pdlp_warm_start_data = PDLPWarmStartData(
                 current_primal_solution,
@@ -262,6 +269,22 @@ class Solution:
         self.raise_if_milp_solution("get_dual_solution")
         return self.dual_solution
 
+    def get_slack(self):
+        """
+        Returns the constraint slack/surplus as numpy.array with float64 type.
+
+        For each linear constraint with ``lhs = A_i @ primal``:
+
+        * ``<=``: ``rhs - lhs`` (slack; non-negative if feasible)
+        * ``>=``: ``lhs - rhs`` (surplus; non-negative if feasible)
+        * ``==``: ``rhs - lhs`` (residual; near zero if feasible)
+
+        Quadratic constraints are not included. Returns None when the values
+        could not be computed, for example when the solver returned no primal
+        solution.
+        """
+        return self.slack
+
     def get_primal_objective(self):
         """
         Returns the primal objective as a float64.
@@ -308,9 +331,19 @@ class Solution:
 
     def get_solved_by(self):
         """
-        Returns whether the LP was solved by Dual Simplex, PDLP or Barrier. See SolverMethod for all possible values.
+        Returns the method that solved the LP. See SolverMethod for all possible values.
         """
         return self.solved_by
+
+    @property
+    def vars(self):
+        if callable(self._vars):
+            self._vars = self._vars()
+        return self._vars
+
+    @vars.setter
+    def vars(self, value):
+        self._vars = value
 
     def get_vars(self):
         """

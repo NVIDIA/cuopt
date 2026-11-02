@@ -116,6 +116,15 @@ TEST(c_api, mip_get_callbacks_only) { EXPECT_EQ(test_mip_get_callbacks_only(), C
 
 TEST(c_api, mip_get_set_callbacks) { EXPECT_EQ(test_mip_get_set_callbacks(), CUOPT_SUCCESS); }
 
+TEST(c_api, log_callback) { EXPECT_EQ(test_log_callback(), CUOPT_SUCCESS); }
+
+TEST(c_api, log_callback_cleared) { EXPECT_EQ(test_log_callback_cleared(), CUOPT_SUCCESS); }
+
+TEST(c_api, log_callback_not_leaked_across_solves)
+{
+  EXPECT_EQ(test_log_callback_not_leaked_across_solves(), CUOPT_SUCCESS);
+}
+
 TEST(c_api, burglar) { EXPECT_EQ(burglar_problem(), CUOPT_SUCCESS); }
 
 TEST(c_api, test_missing_file) { EXPECT_EQ(test_missing_file(), CUOPT_MPS_FILE_ERROR); }
@@ -483,6 +492,11 @@ TEST(c_api, lp_solution_mip_methods) { EXPECT_EQ(test_lp_solution_mip_methods(),
 
 TEST(c_api, mip_solution_lp_methods) { EXPECT_EQ(test_mip_solution_lp_methods(), CUOPT_SUCCESS); }
 
+TEST(c_api, qcqp_solution_dual_methods)
+{
+  EXPECT_EQ(test_qcqp_solution_dual_methods(), CUOPT_SUCCESS);
+}
+
 // =============================================================================
 // CPU-Only Execution Tests
 // These tests verify that cuOpt can run on a CPU-only host with remote execution
@@ -774,6 +788,13 @@ TEST_F(CpuOnlyWithServerTest, lp_solve)
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   std::string lp_file = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
   EXPECT_EQ(test_cpu_only_execution(lp_file.c_str()), CUOPT_SUCCESS);
+}
+
+TEST_F(CpuOnlyWithServerTest, log_callback_remote)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string lp_file = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  EXPECT_EQ(test_log_callback_remote(lp_file.c_str()), CUOPT_SUCCESS);
 }
 
 TEST_F(CpuOnlyWithServerTest, mip_solve)
@@ -1233,4 +1254,215 @@ TEST(c_api, mip_solution_attributes)
   cuopt_float_t as_float = 0;
   EXPECT_EQ(cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, &as_float),
             CUOPT_INVALID_ARGUMENT);
+}
+
+// =============================================================================
+// Solution accessors on a solve that produced no values
+// =============================================================================
+
+TEST(c_api, solution_accessors_report_absent_values)
+{
+  // x >= 2 and x <= 1 has no feasible point, so the solve produces no primal, dual, or reduced
+  // cost values.
+  cuopt_int_t row_offsets[]     = {0, 1, 2};
+  cuopt_int_t column_indices[]  = {0, 0};
+  cuopt_float_t matrix_values[] = {1.0, 1.0};
+  cuopt_float_t objective[]     = {1.0};
+  cuopt_float_t rhs[]           = {2.0, 1.0};
+  char constraint_sense[]       = {CUOPT_GREATER_THAN, CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[]  = {-CUOPT_INFINITY};
+  cuopt_float_t upper_bounds[]  = {CUOPT_INFINITY};
+  char variable_types[]         = {CUOPT_CONTINUOUS};
+
+  cuOptOptimizationProblem problem = nullptr;
+  cuOptSolverSettings settings     = nullptr;
+  cuOptSolution raw_solution       = nullptr;
+  ASSERT_EQ(cuOptCreateProblem(2,
+                               1,
+                               CUOPT_MINIMIZE,
+                               0,
+                               objective,
+                               row_offsets,
+                               column_indices,
+                               matrix_values,
+                               constraint_sense,
+                               rhs,
+                               lower_bounds,
+                               upper_bounds,
+                               variable_types,
+                               &problem),
+            CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSolve(problem, settings, &raw_solution), CUOPT_SUCCESS);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+
+  ASSERT_NE(raw_solution, nullptr);
+  scoped_solution_t scoped(raw_solution);
+  cuOptSolution solution = scoped.get();
+
+  cuopt_int_t termination_status = -1;
+  ASSERT_EQ(cuOptGetTerminationStatus(solution, &termination_status), CUOPT_SUCCESS);
+  ASSERT_EQ(termination_status, CUOPT_TERMINATION_STATUS_INFEASIBLE);
+
+  // The buffers carry a sentinel no solve would produce. Each accessor must report the absence
+  // rather than returning success having written nothing, which would leave the caller reading
+  // whatever the buffer already held and unable to tell that from a real result.
+  const cuopt_float_t sentinel = -12345.0;
+  cuopt_float_t primal[1]      = {sentinel};
+  cuopt_float_t dual[2]        = {sentinel, sentinel};
+  cuopt_float_t reduced[1]     = {sentinel};
+
+  EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_INVALID_ARGUMENT);
+
+  EXPECT_EQ(primal[0], sentinel);
+  EXPECT_EQ(dual[0], sentinel);
+  EXPECT_EQ(dual[1], sentinel);
+  EXPECT_EQ(reduced[0], sentinel);
+}
+
+TEST(c_api, solution_accessors_on_a_problem_with_no_constraints)
+{
+  // A box-constrained LP with no constraints solves to optimality. Its primal and reduced-cost
+  // vectors are populated; its dual vector is empty because there are no constraints to have
+  // duals for, and asking for it reports CUOPT_INVALID_ARGUMENT.
+  cuopt_int_t row_offsets[]     = {0};
+  cuopt_int_t column_indices[]  = {0};
+  cuopt_float_t matrix_values[] = {0.0};
+  cuopt_float_t objective[]     = {1.0};
+  cuopt_float_t rhs[]           = {0.0};
+  char constraint_sense[]       = {CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[]  = {0.0};
+  cuopt_float_t upper_bounds[]  = {5.0};
+  char variable_types[]         = {CUOPT_CONTINUOUS};
+
+  cuOptOptimizationProblem problem = nullptr;
+  cuOptSolverSettings settings     = nullptr;
+  cuOptSolution raw_solution       = nullptr;
+  ASSERT_EQ(cuOptCreateProblem(0,
+                               1,
+                               CUOPT_MINIMIZE,
+                               0,
+                               objective,
+                               row_offsets,
+                               column_indices,
+                               matrix_values,
+                               constraint_sense,
+                               rhs,
+                               lower_bounds,
+                               upper_bounds,
+                               variable_types,
+                               &problem),
+            CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSolve(problem, settings, &raw_solution), CUOPT_SUCCESS);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+
+  ASSERT_NE(raw_solution, nullptr);
+  scoped_solution_t scoped(raw_solution);
+  cuOptSolution solution = scoped.get();
+
+  cuopt_int_t termination_status = -1;
+  ASSERT_EQ(cuOptGetTerminationStatus(solution, &termination_status), CUOPT_SUCCESS);
+  ASSERT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
+
+  const cuopt_float_t sentinel = -12345.0;
+  cuopt_float_t primal[1]      = {sentinel};
+  cuopt_float_t reduced[1]     = {sentinel};
+  cuopt_float_t dual[1]        = {sentinel};
+
+  // minimize x over 0 <= x <= 5, so the optimum sits at the lower bound with the objective
+  // coefficient as its reduced cost.
+  EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_SUCCESS);
+  EXPECT_NEAR(primal[0], 0.0, 1e-6);
+  EXPECT_NEAR(reduced[0], 1.0, 1e-6);
+
+  cuopt_float_t objective_value = sentinel;
+  EXPECT_EQ(cuOptGetObjectiveValue(solution, &objective_value), CUOPT_SUCCESS);
+  EXPECT_NEAR(objective_value, 0.0, 1e-6);
+
+  // No constraints means no dual vector to return. Reporting that as an absence is intended,
+  // so this assertion is what pins it down.
+  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(dual[0], sentinel);
+}
+
+TEST(c_api, multi_gpu_pdlp_create_problem_row_sense)
+{
+  // min -x - y  s.t.  x + y <= 1,  0 <= x, y <= 10. Optimum is -1.
+  // cuOptCreateProblem stores a row sense and one RHS. Multi-GPU PDLP sizes the model from ranged
+  // constraint bounds, so those bounds have to be filled in before the solve. Presolve is off so
+  // it cannot fill them in first. num_gpus=-1 selects the multi-GPU path for every visible GPU,
+  // including a single one.
+  cuopt_int_t offsets[]  = {0, 2};
+  cuopt_int_t indices[]  = {0, 1};
+  cuopt_float_t values[] = {1.0, 1.0};
+  cuopt_float_t obj[]    = {-1.0, -1.0};
+  cuopt_float_t lb[]     = {0.0, 0.0};
+  cuopt_float_t ub[]     = {10.0, 10.0};
+  char vtypes[]          = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+  char sense[]           = {CUOPT_LESS_THAN};
+  cuopt_float_t rhs[]    = {1.0};
+
+  struct handles_t {
+    cuOptOptimizationProblem problem{nullptr};
+    cuOptSolverSettings settings{nullptr};
+    cuOptSolution solution{nullptr};
+    ~handles_t()
+    {
+      cuOptDestroySolution(&solution);
+      cuOptDestroySolverSettings(&settings);
+      cuOptDestroyProblem(&problem);
+    }
+    handles_t()                            = default;
+    handles_t(const handles_t&)            = delete;
+    handles_t& operator=(const handles_t&) = delete;
+  } handles;
+
+  ASSERT_EQ(cuOptCreateProblem(1,
+                               2,
+                               CUOPT_MINIMIZE,
+                               0.0,
+                               obj,
+                               offsets,
+                               indices,
+                               values,
+                               sense,
+                               rhs,
+                               lb,
+                               ub,
+                               vtypes,
+                               &handles.problem),
+            CUOPT_SUCCESS);
+
+  cuopt_int_t num_constraints = -1;
+  ASSERT_EQ(cuOptGetNumConstraints(handles.problem, &num_constraints), CUOPT_SUCCESS);
+  ASSERT_EQ(num_constraints, 1);
+
+  ASSERT_EQ(cuOptCreateSolverSettings(&handles.settings), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSetIntegerParameter(handles.settings, CUOPT_METHOD, CUOPT_METHOD_PDLP),
+            CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSetIntegerParameter(handles.settings, CUOPT_PRESOLVE, CUOPT_PRESOLVE_OFF),
+            CUOPT_SUCCESS);
+  // mPDLP path but with 1 GPU
+  ASSERT_EQ(cuOptSetIntegerParameter(handles.settings, CUOPT_NUM_GPUS, -1), CUOPT_SUCCESS);
+
+  const cuopt_int_t solve_status = cuOptSolve(handles.problem, handles.settings, &handles.solution);
+  char error_string[512]         = {};
+  if (handles.solution != nullptr) {
+    cuOptGetErrorString(handles.solution, error_string, sizeof(error_string));
+  }
+  ASSERT_EQ(solve_status, CUOPT_SUCCESS) << error_string;
+
+  cuopt_int_t termination_status = -1;
+  ASSERT_EQ(cuOptGetTerminationStatus(handles.solution, &termination_status), CUOPT_SUCCESS);
+  ASSERT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL) << error_string;
+
+  cuopt_float_t objective = 0.0;
+  ASSERT_EQ(cuOptGetObjectiveValue(handles.solution, &objective), CUOPT_SUCCESS);
+  EXPECT_NEAR(objective, -1.0, 1e-3);
 }

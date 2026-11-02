@@ -29,6 +29,7 @@ enum class objective_t {
   VARIANCE_ROUTE_SERVICE_TIME,  // Variance in route service times
   PRIZE,                        // Sum of prizes of all orders that are served
   VEHICLE_FIXED_COST,           // Used when fixed vehicle cost are enabled
+  DISTANCE_BREAK_COST,          // Maximum distance-break lower-bound shortfall per route
   SIZE  // Helper enum to keep track of number of supported objective functions
 };
 
@@ -58,11 +59,38 @@ class break_dimension_t {
   i_t const* break_duration_;
 };
 
-template <typename i_t>
+/**
+ * @brief A mandatory break a vehicle must take during its route, triggered either by time
+ *        or by cumulative route distance. If @p locations is empty the break may be taken
+ *        anywhere; otherwise it must occur at one of the specified location IDs.
+ */
+template <typename i_t, typename f_t>
 class vehicle_break_t {
  public:
+  /// Time-windowed break: must start within [earliest, latest].
   vehicle_break_t(i_t earliest, i_t latest, i_t duration, raft::device_span<const i_t> locations)
-    : earliest_(earliest), latest_(latest), duration_(duration), locations_(locations)
+    : earliest_(earliest),
+      latest_(latest),
+      duration_(duration),
+      locations_(locations),
+      is_distance_based_(false),
+      distance_min_(0),
+      distance_max_(std::numeric_limits<f_t>::max())
+  {
+  }
+
+  /// Distance-windowed break: distance_min is soft and distance_max is hard.
+  vehicle_break_t(f_t distance_min,
+                  f_t distance_max,
+                  i_t duration,
+                  raft::device_span<const i_t> locations)
+    : earliest_(0),
+      latest_(std::numeric_limits<i_t>::max()),
+      duration_(duration),
+      locations_(locations),
+      is_distance_based_(true),
+      distance_min_(distance_min),
+      distance_max_(distance_max)
   {
   }
 
@@ -70,6 +98,9 @@ class vehicle_break_t {
   i_t latest_;
   i_t duration_;
   raft::device_span<const i_t> locations_{};
+  bool is_distance_based_;
+  f_t distance_min_;
+  f_t distance_max_;
 };
 
 template <typename i_t, typename f_t>

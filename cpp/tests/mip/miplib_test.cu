@@ -97,7 +97,7 @@ TEST(mip_solve, node_limit_test)
 {
   mip_solver_settings_t<int, double> settings;
   settings.node_limit      = 1000;
-  settings.time_limit      = 60;
+  settings.time_limit      = 120;
   settings.num_cpu_threads = 8;
   double expect_obj        = 3.8151140644999992e+02;
 

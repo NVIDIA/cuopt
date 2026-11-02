@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -33,14 +33,13 @@ class random_move_candidates_t {
 
   void reset(solution_handle_t<i_t, f_t> const* sol_handle)
   {
-    constexpr i_t zero_val = 0;
     async_fill(moves_per_route_pair,
                int2{std::numeric_limits<int>::max(), std::numeric_limits<int>::max()},
                sol_handle->get_stream());
     async_fill(move_begin_offset, 0, sol_handle->get_stream());
     async_fill(move_end_offset, 0, sol_handle->get_stream());
-    n_moves.set_value_async(zero_val, sol_handle->get_stream());
-    n_selected_moves.set_value_async(zero_val, sol_handle->get_stream());
+    n_moves.set_value_to_zero_async(sol_handle->get_stream());
+    n_selected_moves.set_value_to_zero_async(sol_handle->get_stream());
   }
 
   struct view_t {

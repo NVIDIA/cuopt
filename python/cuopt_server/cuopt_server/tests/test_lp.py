@@ -105,12 +105,12 @@ def test_sample_lp(cuoptproc):  # noqa
 
 
 @pytest.mark.parametrize(
-    "maximize, scaling, expected_status, heuristics_only",
+    "maximize, scaling, expected_status",
     [
-        (True, 1, MILPTerminationStatus.Optimal.name, True),
-        (False, 1, MILPTerminationStatus.Optimal.name, False),
-        (True, 0, MILPTerminationStatus.Optimal.name, True),
-        (False, 0, MILPTerminationStatus.Optimal.name, False),
+        (True, 1, MILPTerminationStatus.Optimal.name),
+        (False, 1, MILPTerminationStatus.Optimal.name),
+        (True, 0, MILPTerminationStatus.Optimal.name),
+        (False, 0, MILPTerminationStatus.Optimal.name),
     ],
 )
 def test_sample_milp(
@@ -118,12 +118,10 @@ def test_sample_milp(
     maximize,
     scaling,
     expected_status,
-    heuristics_only,
 ):
     data = get_std_data_for_milp()
     data["maximize"] = maximize
     data["solver_config"]["mip_scaling"] = scaling
-    data["solver_config"]["mip_heuristics_only"] = heuristics_only
     data["solver_config"]["num_cpu_threads"] = 4
     res = get_lp(client, data)
 
@@ -180,7 +178,7 @@ def test_barrier_solver_options(
     - cudss_deterministic: True for deterministic, False for
       nondeterministic
     - barrier_dual_initial_point: (-1) automatic, (0) Lustig-Marsten-Shanno,
-      (1) dual least squares
+      (1) dual least squares, (2) Sturm/SeDuMi mu-based primal+dual
     """
     data = get_std_data_for_lp()
 

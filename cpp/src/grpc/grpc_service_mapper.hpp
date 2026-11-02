@@ -17,33 +17,56 @@ template <typename i_t, typename f_t>
 class cpu_optimization_problem_t;
 
 template <typename i_t, typename f_t>
-struct pdlp_solver_settings_t;
-
-template <typename i_t, typename f_t>
-struct mip_solver_settings_t;
+class solver_settings_t;
 
 /**
  * @brief Build a gRPC SubmitJobRequest for an LP problem.
  *
- * Creates a SubmitJobRequest containing the LP problem and settings using
- * the problem and settings mappers. Serialization is handled by the protobuf library.
+ * Warm start is written from get_pdlp_settings(). Every set_parameter() value
+ * is written into settings.parameters and not as a deprecated typed field.
+ * A server from before the parameter map cannot apply this request.
  */
 template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_lp_submit_request(
-  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
-  const pdlp_solver_settings_t<i_t, f_t>& settings);
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem, solver_settings_t<i_t, f_t>& settings);
 
 /**
  * @brief Build a gRPC SubmitJobRequest for a MIP problem.
  *
- * Creates a SubmitJobRequest containing the MIP problem and settings using
- * the problem and settings mappers. Serialization is handled by the protobuf library.
+ * presolve_absolute_tolerance is written from get_mip_settings(). Every
+ * set_parameter() value is written into settings.parameters and not as a
+ * deprecated typed field. A server from before the parameter map cannot
+ * apply this request.
  */
 template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
-  const mip_solver_settings_t<i_t, f_t>& settings,
-  bool enable_incumbents = false);
+  solver_settings_t<i_t, f_t>& settings,
+  bool enable_incumbents    = false,
+  bool enable_set_incumbent = false);
+
+/**
+ * @brief Build the unified chunked-upload header for an LP problem.
+ *
+ * Same request as build_lp_submit_request, with problem arrays left empty.
+ * Array payloads are sent separately as ArrayChunks.
+ */
+template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_chunked_lp_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem, solver_settings_t<i_t, f_t>& settings);
+
+/**
+ * @brief Build the unified chunked-upload header for a MIP problem.
+ *
+ * Same request as build_mip_submit_request, with problem arrays left empty.
+ * Array payloads are sent separately as ArrayChunks.
+ */
+template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_chunked_mip_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+  solver_settings_t<i_t, f_t>& settings,
+  bool enable_incumbents    = false,
+  bool enable_set_incumbent = false);
 
 /**
  * @brief Build a gRPC StatusRequest.

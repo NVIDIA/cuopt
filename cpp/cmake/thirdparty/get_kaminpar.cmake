@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-# Multi-threaded graph partitioner for distributed PDLP.
+# Multi-threaded graph partitioner for multi-GPU PDLP.
 # Uses rapids_cpm_find so a system / conda / .deb install of KaMinPar (which ships a
 # CMake config package exporting KaMinPar::KaMinPar) is used when available, and
 # otherwise the pinned source is cloned and built via CPM. KaMinPar depends on TBB,

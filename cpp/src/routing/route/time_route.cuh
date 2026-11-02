@@ -12,6 +12,7 @@
 #include "../solution/solution_handle.cuh"
 #include "routing/routing_helpers.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
 
@@ -66,7 +67,7 @@ class time_route_t {
 
   time_route_t& operator=(time_route_t&& time_route) = default;
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
     departure_forward.resize(max_nodes_per_route, stream);
     excess_forward.resize(max_nodes_per_route, stream);

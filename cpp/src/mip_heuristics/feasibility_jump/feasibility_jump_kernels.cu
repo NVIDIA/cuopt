@@ -12,9 +12,12 @@
 #include <mip_heuristics/logger.cuh>
 #include <utilities/device_utils.cuh>
 
+#include <cuda/functional>
+#include <cuda/stream>
 #include <raft/random/rng.cuh>
 
 #include <thrust/iterator/transform_iterator.h>
+#include <cub/block/block_reduce.cuh>
 
 #include <cooperative_groups.h>
 
@@ -146,12 +149,11 @@ __global__ void init_lhs_and_violation(typename fj_t<i_t, f_t>::climber_data_t::
   for (i_t cstr_idx = TH_ID_X; cstr_idx < fj.pb.n_constraints; cstr_idx += GRID_STRIDE) {
     auto [offset_begin, offset_end] = fj.pb.range_for_constraint(cstr_idx);
 
-    auto delta_it =
-      thrust::make_transform_iterator(thrust::make_counting_iterator(0), [fj] __device__(i_t j) {
-        return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
-      });
     fj.incumbent_lhs[cstr_idx] =
-      fj_kahan_babushka_neumaier_sum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
+      compensated_dot2(fj.pb.coefficients.data() + offset_begin,
+                       thrust::make_permutation_iterator(fj.incumbent_assignment.data(),
+                                                         fj.pb.variables.data() + offset_begin),
+                       offset_end - offset_begin);
     fj.incumbent_lhs_sumcomp[cstr_idx] = 0;
 
     f_t th_violation       = fj.excess_score(cstr_idx, fj.incumbent_lhs[cstr_idx]);
@@ -306,9 +308,9 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
     }
 
     // fallback
-    if (!fj.pb.check_variable_within_bounds(var_idx, new_val)) {
+    if (new_val < v_lb || new_val > v_ub) {
       if (fj.settings->feasibility_run) {
-        new_val = min(max(new_val, v_lb), v_ub);
+        new_val = std::clamp(new_val, v_lb, v_ub);
       } else {
         new_val = cstr_coeff * sign > 0 ? v_lb : v_ub;
       }
@@ -320,7 +322,7 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
 
     if (threadIdx.x == 0) {
       cuopt_assert(isfinite(new_val), "");
-      cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, new_val), "");
+      cuopt_assert(new_val >= v_lb && new_val <= v_ub, "");
     }
 
     auto new_score_info = compute_new_score<i_t, f_t, TPB>(fj, var_idx, new_val - old_val);
@@ -338,7 +340,7 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
   }
 
   if (threadIdx.x == 0) {
-    cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, best_val), "Var not within bounds!");
+    cuopt_assert(best_val >= v_lb && best_val <= v_ub, "Var not within bounds!");
     cuopt_assert(isfinite(fj.incumbent_assignment[var_idx]), "");
     cuopt_assert(isfinite(best_val - fj.incumbent_assignment[var_idx]),
                  "Jump move delta is not finite!");
@@ -428,16 +430,15 @@ DI bool check_feasibility(const typename fj_t<i_t, f_t>::climber_data_t::view_t&
 {
   for (i_t cIdx = threadIdx.x; cIdx < fj.pb.n_constraints; cIdx += blockDim.x) {
     auto [offset_begin, offset_end] = fj.pb.range_for_constraint(cIdx);
-    auto delta_it =
-      thrust::make_transform_iterator(thrust::make_counting_iterator(0), [fj] __device__(i_t j) {
-        return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
-      });
 
     f_t lhs =
-      fj_kahan_babushka_neumaier_sum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
+      compensated_dot2(fj.pb.coefficients.data() + offset_begin,
+                       thrust::make_permutation_iterator(fj.incumbent_assignment.data(),
+                                                         fj.pb.variables.data() + offset_begin),
+                       offset_end - offset_begin);
     cuopt_assert(fj.cstr_satisfied(cIdx, lhs), "constraint violated");
   }
-  cuopt_func_call((check_variable_feasibility<i_t, f_t>(fj, check_integer)));
+  cuopt_func_call(check_variable_feasibility<i_t, f_t>(fj, check_integer));
 
   return true;
 }
@@ -488,7 +489,7 @@ DI bool save_best_solution(typename fj_t<i_t, f_t>::climber_data_t::view_t& fj)
 
       if (*fj.best_excess == 0) { *fj.saved_solution_objective = *fj.incumbent_objective; }
     }
-    cuopt_func_call((check_variable_feasibility<i_t, f_t>(fj, false)));
+    cuopt_func_call(check_variable_feasibility<i_t, f_t>(fj, false));
     for (i_t i = threadIdx.x; i < fj.pb.n_variables; i += blockDim.x) {
       fj.best_assignment[i] = fj.incumbent_assignment[i];
     }
@@ -499,7 +500,7 @@ DI bool save_best_solution(typename fj_t<i_t, f_t>::climber_data_t::view_t& fj)
       *fj.weighted_violation_score <= *fj.max_cstr_weight * fj.pb.tolerances.absolute_tolerance,
       "Violated constraint and score mismatch");
     bool check_integer = fj.settings->mode != fj_mode_t::ROUNDING;
-    cuopt_func_call((check_feasibility<i_t, f_t>(fj, check_integer)));
+    cuopt_func_call(check_feasibility<i_t, f_t>(fj, check_integer));
   }
   // return whether it is an improving local minimum
   return improving;
@@ -591,9 +592,12 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
 
   // update the assignment and objective proper
   if (FIRST_THREAD) {
-    f_t new_val = fj.incumbent_assignment[var_idx] + fj.jump_move_delta[var_idx];
+    auto bounds = fj.pb.variable_bounds[var_idx];
+    f_t new_val = std::clamp(fj.incumbent_assignment[var_idx] + fj.jump_move_delta[var_idx],
+                             get_lower(bounds),
+                             get_upper(bounds));
 
-    cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, new_val),
+    cuopt_assert(new_val >= get_lower(bounds) && new_val <= get_upper(bounds),
                  "assignment not within bounds");
     cuopt_assert(isfinite(new_val), "assignment is not finite");
 
@@ -619,7 +623,6 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
       }
     }
 
-    auto bounds          = fj.pb.variable_bounds[var_idx];
     i_t var_range        = get_upper(bounds) - get_lower(bounds);
     double delta_rel_err = fabs(fj.jump_move_delta[var_idx]) / var_range;
     if (delta_rel_err < fj.settings->parameters.small_move_tabu_threshold) {
@@ -1031,6 +1034,17 @@ __global__ void compute_mtm_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t
 }
 
 template <typename i_t, typename f_t>
+DI f_t clamp_move_delta(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
+                        i_t variable,
+                        f_t delta)
+{
+  const f_t old_value = fj.incumbent_assignment[variable];
+  const auto bounds   = fj.pb.variable_bounds[variable];
+  const f_t new_value = std::clamp(old_value + delta, get_lower(bounds), get_upper(bounds));
+  return new_value - old_value;
+}
+
+template <typename i_t, typename f_t>
 __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
 {
   // in a graph mode, we run multiple iterations and we want to stop when break condition is reached
@@ -1108,8 +1122,10 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
     *fj.candidate_variables.set_size = 0;
     *fj.selected_var                 = selected_var;
     if (selected_var != std::numeric_limits<i_t>::max()) {
+      auto bounds = fj.pb.variable_bounds[selected_var];
+      fj.jump_move_delta[selected_var] =
+        clamp_move_delta<i_t, f_t>(fj, selected_var, fj.jump_move_delta[selected_var]);
 #if FJ_SINGLE_STEP
-      auto bounds          = fj.pb.variable_bounds[selected_var];
       i_t var_range        = get_upper(bounds) - get_lower(bounds);
       double delta_rel_err = fabs(fj.jump_move_delta[selected_var]) / var_range * 100;
       DEVICE_LOG_INFO(
@@ -1283,7 +1299,6 @@ template <typename i_t, typename f_t>
 __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
 {
   raft::random::PCGenerator rng(fj.settings->seed + *fj.iterations, 0, 0);
-  __shared__ typename fj_t<i_t, f_t>::move_score_t shmem[2 * raft::WarpSize];
   if (*fj.break_condition) return;
 
   // did we reach a local minimum?
@@ -1354,7 +1369,7 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
       }
 
       if (FIRST_THREAD) {
-        fj.jump_move_delta[selected] = delta;
+        fj.jump_move_delta[selected] = clamp_move_delta<i_t, f_t>(fj, selected, delta);
         *fj.selected_var             = selected;
         auto bounds                  = fj.pb.variable_bounds[*fj.selected_var];
         DEVICE_LOG_TRACE("selected_var: %d bounds [%.4g/%.4g], delta %g, old val %g\n",
@@ -1428,7 +1443,7 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
       cuopt_assert(fj.pb.check_variable_within_bounds(
                      best_var, fj.incumbent_assignment[best_var] + best_delta),
                    "assignment not within bounds");
-      fj.jump_move_delta[best_var] = best_delta;
+      fj.jump_move_delta[best_var] = clamp_move_delta<i_t, f_t>(fj, best_var, best_delta);
     }
   }
 }
@@ -1439,10 +1454,10 @@ template <typename i_t, typename f_t>
 void launch_load_balancing_prepare_iteration(dim3 grid,
                                              dim3 blocks,
                                              void** kernel_args,
-                                             rmm::cuda_stream_view stream)
+                                             cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
-    (void*)load_balancing_prepare_iteration<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)load_balancing_prepare_iteration<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1457,10 +1472,10 @@ template <typename i_t, typename f_t>
 void launch_update_assignment_kernel(dim3 grid,
                                      dim3 blocks,
                                      void** kernel_args,
-                                     rmm::cuda_stream_view stream)
+                                     cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_assignment_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)update_assignment_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
@@ -1531,7 +1546,7 @@ template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
 void launch_compute_mtm_moves_kernel(dim3 grid,
                                      dim3 blocks,
                                      void** kernel_args,
-                                     rmm::cuda_stream_view stream)
+                                     cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(
     cudaLaunchCooperativeKernel((void*)compute_mtm_moves_kernel<i_t, f_t, move_type, is_binary_pb>,
@@ -1539,27 +1554,27 @@ void launch_compute_mtm_moves_kernel(dim3 grid,
                                 blocks,
                                 kernel_args,
                                 0,
-                                stream));
+                                stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_load_balancing_sanity_checks(dim3 grid,
                                          dim3 blocks,
                                          void** kernel_args,
-                                         rmm::cuda_stream_view stream)
+                                         cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
-    (void*)load_balancing_sanity_checks<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)load_balancing_sanity_checks<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_handle_local_minimum_kernel(dim3 grid,
                                         dim3 blocks,
                                         void** kernel_args,
-                                        rmm::cuda_stream_view stream)
+                                        cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
-    (void*)handle_local_minimum_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)handle_local_minimum_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1574,110 +1589,134 @@ template <typename i_t, typename f_t>
 void launch_update_changed_constraints_kernel(dim3 grid,
                                               dim3 blocks,
                                               void** kernel_args,
-                                              rmm::cuda_stream_view stream)
+                                              cuda::stream_ref stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_changed_constraints_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_update_lift_moves_kernel(dim3 grid,
                                      dim3 blocks,
                                      void** kernel_args,
-                                     rmm::cuda_stream_view stream)
+                                     cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_lift_moves_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)update_lift_moves_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_update_breakthrough_moves_kernel(dim3 grid,
                                              dim3 blocks,
                                              void** kernel_args,
-                                             rmm::cuda_stream_view stream)
+                                             cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_breakthrough_moves_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)update_breakthrough_moves_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_select_variable_kernel(dim3 grid,
                                    dim3 blocks,
                                    void** kernel_args,
-                                   rmm::cuda_stream_view stream)
+                                   cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)select_variable_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)select_variable_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_init_lhs_and_violation(dim3 grid,
                                    dim3 blocks,
                                    void** kernel_args,
-                                   rmm::cuda_stream_view stream)
+                                   cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)init_lhs_and_violation<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)init_lhs_and_violation<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_update_best_solution_kernel(dim3 grid,
                                         dim3 blocks,
                                         void** kernel_args,
-                                        rmm::cuda_stream_view stream)
+                                        cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_best_solution_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)update_best_solution_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_load_balancing_compute_workid_mappings(dim3 grid,
                                                    dim3 blocks,
                                                    void** kernel_args,
-                                                   rmm::cuda_stream_view stream)
+                                                   cuda::stream_ref stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_compute_workid_mappings<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_compute_workid_mappings<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_load_balancing_init_cstr_bounds_csr(dim3 grid,
                                                 dim3 blocks,
                                                 void** kernel_args,
-                                                rmm::cuda_stream_view stream)
+                                                cuda::stream_ref stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_init_cstr_bounds_csr<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_init_cstr_bounds_csr<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_load_balancing_compute_scores_binary(dim3 grid,
                                                  dim3 blocks,
                                                  void** kernel_args,
-                                                 rmm::cuda_stream_view stream)
+                                                 cuda::stream_ref stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_compute_scores_binary<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_compute_scores_binary<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_load_balancing_mtm_compute_candidates(dim3 grid,
                                                   dim3 blocks,
                                                   void** kernel_args,
-                                                  rmm::cuda_stream_view stream)
+                                                  cuda::stream_ref stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_mtm_compute_candidates<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_mtm_compute_candidates<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
 void launch_load_balancing_mtm_compute_scores(dim3 grid,
                                               dim3 blocks,
                                               void** kernel_args,
-                                              rmm::cuda_stream_view stream)
+                                              cuda::stream_ref stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_mtm_compute_scores<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_mtm_compute_scores<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 // to save from compilation time, separate those and instantiate separately rather being part of a
@@ -1734,11 +1773,11 @@ void launch_load_balancing_mtm_compute_scores(dim3 grid,
   template __global__ void select_variable_kernel<int, F_TYPE>(                                    \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                                        \
   template void launch_load_balancing_prepare_iteration<int, F_TYPE>(                              \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template std::pair<dim3, dim3> get_launch_dims_update_assignment_kernel<int, F_TYPE>(            \
     int TPB, const raft::handle_t* handle_ptr);                                                    \
   template void launch_update_assignment_kernel<int, F_TYPE>(                                      \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template std::pair<dim3, dim3>                                                                   \
   get_launch_dims_compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, false>(      \
     int TPB, const raft::handle_t* handle_ptr);                                                    \
@@ -1763,37 +1802,37 @@ void launch_load_balancing_mtm_compute_scores(dim3 grid,
   template std::pair<dim3, dim3> get_launch_dims_load_balancing_prepare_iteration<int, F_TYPE>(    \
     int TPB, const raft::handle_t* handle_ptr);                                                    \
   template void launch_compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, false>( \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, true>(  \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_load_balancing_sanity_checks<int, F_TYPE>(                                  \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_handle_local_minimum_kernel<int, F_TYPE>(                                   \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template std::pair<dim3, dim3> get_launch_dims_update_changed_constraints_kernel<int, F_TYPE>(   \
     int TPB, const raft::handle_t* handle_ptr);                                                    \
   template void launch_update_changed_constraints_kernel<int, F_TYPE>(                             \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_update_lift_moves_kernel<int, F_TYPE>(                                      \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_update_breakthrough_moves_kernel<int, F_TYPE>(                              \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_select_variable_kernel<int, F_TYPE>(                                        \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_init_lhs_and_violation<int, F_TYPE>(                                        \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_update_best_solution_kernel<int, F_TYPE>(                                   \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_load_balancing_compute_workid_mappings<int, F_TYPE>(                        \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_load_balancing_init_cstr_bounds_csr<int, F_TYPE>(                           \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_load_balancing_compute_scores_binary<int, F_TYPE>(                          \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_load_balancing_mtm_compute_candidates<int, F_TYPE>(                         \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);                     \
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);                          \
   template void launch_load_balancing_mtm_compute_scores<int, F_TYPE>(                             \
-    dim3 grid, dim3 blocks, void** kernel_args, rmm::cuda_stream_view stream);
+    dim3 grid, dim3 blocks, void** kernel_args, cuda::stream_ref stream);
 
 #if MIP_INSTANTIATE_FLOAT
 CUOPT_INSTANTIATE(float)

@@ -16,13 +16,13 @@
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
 
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 bounds_repair_t<i_t, f_t>::bounds_repair_t(const problem_t<i_t, f_t>& pb,
-                                           bound_presolve_t<i_t, f_t>& bound_presolve_)
+                                           bound_presolve_t<i_t, f_t>& bound_presolve_,
+                                           uint64_t seed)
   : bound_presolve(bound_presolve_),
     candidates(pb.handle_ptr),
     best_bounds(pb.handle_ptr),
@@ -31,7 +31,7 @@ bounds_repair_t<i_t, f_t>::bounds_repair_t(const problem_t<i_t, f_t>& pb,
     violated_constraints(0, pb.handle_ptr->get_stream()),
     violated_cstr_map(0, pb.handle_ptr->get_stream()),
     total_vio(pb.handle_ptr->get_stream()),
-    gen(cuopt::seed_generator::get_seed()),
+    gen(seed),
     cycle_vector(MAX_CYCLE_SEQUENCE, -1)
 {
 }
@@ -254,14 +254,14 @@ void bounds_repair_t<i_t, f_t>::compute_damages(problem_t<i_t, f_t>& problem, i_
   CUOPT_LOG_TRACE("Bounds repair: Computing damanges!");
   // TODO check performance, we can apply load balancing here
   const i_t TPB = 256;
-  compute_damages_kernel<i_t, f_t><<<n_candidates, TPB, 0, handle_ptr->get_stream()>>>(
+  compute_damages_kernel<i_t, f_t><<<n_candidates, TPB, 0, handle_ptr->get_stream().get()>>>(
     problem.view(),
     candidates.view(),
     make_span(cstr_violations_up),
     make_span(cstr_violations_down),
     make_span(bound_presolve.upd.min_activity),
     make_span(bound_presolve.upd.max_activity));
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   auto sort_iterator = thrust::make_zip_iterator(
     thrust::make_tuple(candidates.cstr_delta.data(), candidates.damage.data()));
   // sort the best moves so that we can filter

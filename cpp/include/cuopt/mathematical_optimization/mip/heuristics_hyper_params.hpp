@@ -40,7 +40,7 @@ struct mip_heuristics_hyper_params_t {
   i_t enabled_recombiners                = 15;      // bitmask: 1=BP 2=FP 4=LS 8=SubMIP
   i_t cycle_detection_length             = 30;      // FP assignment cycle ring buffer
   f_t relaxed_lp_time_limit              = 1.0;     // base relaxed LP time cap in heuristics
-  f_t related_vars_time_limit            = 30.0;    // time for related-variable structure build
+  f_t related_vars_time_limit            = 2.0;     // time for related-variable structure build
 };
 
 }  // namespace cuopt::mathematical_optimization

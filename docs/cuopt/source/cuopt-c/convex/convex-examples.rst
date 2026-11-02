@@ -466,3 +466,23 @@ output below, ``x1..x5`` are ``a, b, s, p, q`` in column order:
    x5 = 1.414214
 
    Solver completed successfully!
+
+
+Solving an LP on Multiple GPUs
+------------------------------
+
+Multi-GPU PDLP shards an LP across GPUs. Set the method to PDLP and ``CUOPT_NUM_GPUS`` to ``-1`` (all visible GPUs) or to a value greater than 1 before calling ``cuOptSolve``. This helps most on large LPs, or LPs that do not fit in the memory of a single GPU. It is not supported for QP, QCQP or SOCP problems, and it needs at least 2 visible GPUs to spread the work. Add the following to the LP example above, after creating the solver settings:
+
+.. code-block:: c
+
+   // Use PDLP and all GPUs visible to the process
+   status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_PDLP);
+   status = cuOptSetIntegerParameter(settings, CUOPT_NUM_GPUS, -1);
+
+   // Optional: how the problem is split across GPUs
+   // (CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO, _KAMINPAR or _ROUND_ROBIN)
+   status = cuOptSetIntegerParameter(settings,
+                                     CUOPT_MULTIGPU_PDLP_PARTITIONER,
+                                     CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO);
+
+Check ``status`` against ``CUOPT_SUCCESS`` after each call, as the example above does.

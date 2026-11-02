@@ -9,6 +9,7 @@
 
 #include <cuopt/export.hpp>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <span>
@@ -67,10 +68,19 @@ struct pdlp_warm_start_data_t {
 
   // Copy constructor using the view version for the cython_solver
   pdlp_warm_start_data_t(const pdlp_warm_start_data_view_t<i_t, f_t>& other,
-                         rmm::cuda_stream_view stream_view);
+                         cuda::stream_ref stream_view);
 
   // Copy constructor for when copying the solver_settings object in the PDLP object
   pdlp_warm_start_data_t(const pdlp_warm_start_data_t<i_t, f_t>& other);
+  /**
+   * @brief Move warm-start state without copying its device buffers.
+   *
+   * Transfers ownership of the device vectors and preserves the solver metadata.
+   * The device vectors in other are left empty.
+   *
+   * @param[in,out] other Warm-start state whose device-buffer ownership is transferred.
+   */
+  pdlp_warm_start_data_t(pdlp_warm_start_data_t&& other) noexcept            = default;
   pdlp_warm_start_data_t& operator=(pdlp_warm_start_data_t&& other) noexcept = default;
 
   // Check if warmstart data is populated (same sentinel check as release/26.02)

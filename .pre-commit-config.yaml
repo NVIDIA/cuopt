@@ -51,7 +51,7 @@ repos:
         types_or: [file]
         args: ['-fallback-style=none', '-style=file', '-i']
   - repo: https://github.com/rapidsai/dependency-file-generator
-    rev: v1.20.0
+    rev: v1.22.0
     hooks:
       - id: rapids-dependency-file-generator
         args: ["--clean", "--warn-all", "--strict"]
@@ -72,8 +72,9 @@ repos:
             ^helmchart/cuopt-server/templates
           )
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v1.6.0
+    rev: v1.7.0
     hooks:
+      - id: verify-dependencies
       - id: verify-copyright
         args: [--fix, --spdx]
         files: |

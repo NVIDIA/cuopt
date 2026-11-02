@@ -13,6 +13,15 @@
 
 namespace cuopt::mathematical_optimization {
 
+template <typename f_t>
+bool all_finite(const std::vector<f_t>& in)
+{
+  for (f_t value : in) {
+    if (!std::isfinite(value)) { return false; }
+  }
+  return true;
+}
+
 // Computes || x ||_inf = max_j | x |_j
 template <typename i_t, typename f_t, typename Allocator>
 f_t vector_norm_inf(const std::vector<f_t, Allocator>& x)

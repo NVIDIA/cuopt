@@ -6,8 +6,6 @@ context:
   version: ${{ env.get("RAPIDS_PACKAGE_VERSION") }}
   minor_version: ${{ (version | split("."))[:2] | join(".") }}
   datetime_string: '${{ env.get("RAPIDS_DATETIME_STRING") }}'
-  py_version: ${{ env.get("RAPIDS_PY_VERSION") }}
-  py_buildstring: ${{ py_version | version_to_buildstring }}
   head_rev: '${{ git.head_rev(".")[:8] }}'
 
 package:
@@ -18,19 +16,22 @@ source:
   path: ../../..
 
 build:
-  string: py${{ py_buildstring }}_${{ datetime_string }}_${{ head_rev }}
+  noarch: python
+  string: ${{ datetime_string }}_${{ head_rev }}
   script:
     content: |
       ./build.sh cuopt_sh_client
+    env:
+      RAPIDS_CUDA_VERSION: ${{ env.get("RAPIDS_CUDA_VERSION") }}
 
 requirements:
   host:
     - pip
-    - python-gil =${{ py_version }}
+    - python >=3.12
     - setuptools>=77.0.0
   run:
-    - msgpack-python =1.2.1
-    - python
+    - msgpack-python =1.2.3
+    - python >=3.12
     - requests
 
 tests:

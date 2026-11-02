@@ -7,13 +7,15 @@
 
 #pragma once
 
-#include <mip_heuristics/presolve/load_balanced_bounds_presolve.cuh>
 #include <mip_heuristics/problem/load_balanced_problem.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
+#include <presolve/load_balanced_bounds_presolve.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 #include "bounds_repair.cuh"
+
+#include <cstdint>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -40,7 +42,7 @@ struct lb_bounds_t {
 template <typename i_t, typename f_t>
 class lb_bounds_repair_t {
  public:
-  lb_bounds_repair_t(const raft::handle_t* handle_ptr);
+  lb_bounds_repair_t(const raft::handle_t* handle_ptr, uint64_t seed);
   void resize(const load_balanced_problem_t<i_t, f_t>& problem);
   void reset();
   std::tuple<f_t, i_t> get_ii_violation(

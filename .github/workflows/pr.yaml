@@ -23,11 +23,19 @@ jobs:
       - checks
       - conda-cpp-build
       - conda-cpp-tests
+      - java-build
+      - java-static-build-matrix
+      - java-static-build
+      - java-static-test
       - conda-python-build
       - conda-python-tests
       - docs-build
+      - docs-build-matrix
       - multi-gpu-cpp-tests
       - wheel-build-libcuopt
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
       - wheel-build-cuopt
       - wheel-tests-cuopt
       - wheel-build-cuopt-server
@@ -49,6 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
+      libcuopt_client_filter: ${{ steps.set-filters.outputs.libcuopt_client_filter }}
+      cuopt_filter: ${{ steps.set-filters.outputs.cuopt_filter }}
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
       cuopt_server_test_filter: ${{ steps.set-filters.outputs.cuopt_server_test_filter }}
       cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
@@ -57,6 +67,9 @@ jobs:
         id: set-filters
         run: |
           echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
+          # One build per arch: the client has no CUDA dimension.
+          echo "libcuopt_client_filter=group_by(.ARCH) | map(max_by([(.CUDA_VER|split(\".\")|map(tonumber)), (.PY_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
+          echo "cuopt_filter=group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(\".\") | map(tonumber)))" >> $GITHUB_OUTPUT
           echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_server_test_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER | split(\".\") | map(tonumber) | .[0]) | map(max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
@@ -77,7 +90,9 @@ jobs:
           - '**'
           - '!.ai/**'
           - '!.clang-format'
+          - '!.claude-plugin/**'
           - '!.coderabbit.yaml'
+          - '!.cursor-plugin/**'
           - '!.gitattributes'
           - '!.github/.ai/**'
           - '!.github/.coderabbit_review_guide.md'
@@ -94,10 +109,12 @@ jobs:
           - '!.github/workflows/build_images.yaml'
           - '!.github/workflows/build_test_publish_images.yaml'
           - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/inactivity_reminder.yaml'
-          - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/kitmaker_portal.yaml'
+          - '!.github/workflows/multi_gpu_cpp_test.yaml'
+          - '!.github/workflows/nightly-summary.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
+          - '!.github/workflows/self_hosted_service_test.yaml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -105,6 +122,8 @@ jobs:
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
           - '!.yamllint.yaml'
+          - '!agents/**'
+          - '!ci/utils/pr_test_summary.py'
           - '!codecov.yml'
           - '!AGENTS.md'
           - '!CHANGELOG.md'
@@ -113,6 +132,8 @@ jobs:
           - '!README.md'
           - '!SECURITY.md'
           - '!ci/build_wheel*.sh'
+          - '!ci/build_java.sh'
+          - '!ci/build_java_static.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
@@ -120,14 +141,19 @@ jobs:
           - '!ci/run_ctests.sh'
           - '!ci/run-vale.sh'
           - '!ci/test_cpp*.sh'
+          - '!ci/test_java.sh'
           - '!ci/test_notebooks.sh'
           - '!ci/test_python.sh'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
           - '!ci/thirdparty-testing/**'
           - '!container-builder/**'
+          - '!cpp/tests/**'
+          - '!gemini-extension.json'
           - '!helmchart/**'
+          - '!java/**'
           - '!ngc/**'
+          - '!skills/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
@@ -156,10 +182,11 @@ jobs:
           - '!.github/workflows/build_images.yaml'
           - '!.github/workflows/build_test_publish_images.yaml'
           - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/inactivity_reminder.yaml'
-          - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/kitmaker_portal.yaml'
+          - '!.github/workflows/nightly-summary.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
+          - '!.github/workflows/self_hosted_service_test.yaml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -167,6 +194,7 @@ jobs:
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
           - '!.yamllint.yaml'
+          - '!ci/utils/pr_test_summary.py'
           - '!codecov.yml'
           - '!AGENTS.md'
           - '!CONTRIBUTING.md'
@@ -175,6 +203,8 @@ jobs:
           - '!SECURITY.md'
           - '!agents/**'
           - '!ci/build_docs.sh'
+          - '!ci/build_java.sh'
+          - '!ci/build_java_static.sh'
           - '!ci/build_python.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
@@ -182,6 +212,7 @@ jobs:
           - '!ci/release/**'
           - '!ci/run-vale.sh'
           - '!ci/test_python.sh'
+          - '!ci/test_java.sh'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
           - '!ci/thirdparty-testing/**'
@@ -192,6 +223,7 @@ jobs:
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
+          - '!java/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!python/**'
@@ -205,6 +237,13 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
+        test_java:
+          - 'java/**'
+          - 'ci/build_java.sh'
+          - 'ci/build_java_static.sh'
+          - 'ci/test_java.sh'
+          - 'dependencies.yaml'
+          - '.github/workflows/pr.yaml'
         test_python_conda:
           - '**'
           - '!**/*.md'
@@ -229,10 +268,12 @@ jobs:
           - '!.github/workflows/build_images.yaml'
           - '!.github/workflows/build_test_publish_images.yaml'
           - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/inactivity_reminder.yaml'
-          - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/kitmaker_portal.yaml'
+          - '!.github/workflows/multi_gpu_cpp_test.yaml'
+          - '!.github/workflows/nightly-summary.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
+          - '!.github/workflows/self_hosted_service_test.yaml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -240,6 +281,9 @@ jobs:
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
           - '!.yamllint.yaml'
+          - '!ci/run_ctests.sh'
+          - '!ci/test_cpp*.sh'
+          - '!ci/utils/pr_test_summary.py'
           - '!codecov.yml'
           - '!AGENTS.md'
           - '!CONTRIBUTING.md'
@@ -248,21 +292,26 @@ jobs:
           - '!SECURITY.md'
           - '!agents/**'
           - '!ci/build_docs.sh'
+          - '!ci/build_java.sh'
+          - '!ci/build_java_static.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/run-vale.sh'
           - '!ci/test_self_hosted_service.sh'
+          - '!ci/test_java.sh'
           - '!ci/test_wheel*.sh'
           - '!ci/thirdparty-testing/**'
           - '!ci/utils/sync_skills_version.sh'
           - '!ci/utils/validate_skills.sh'
           - '!container-builder/**'
+          - '!cpp/tests/**'
           - '!docs/**'
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
+          - '!java/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
@@ -299,8 +348,9 @@ jobs:
           - '!.github/workflows/build_images.yaml'
           - '!.github/workflows/build_test_publish_images.yaml'
           - '!.github/workflows/cloud_ci.yaml'
-          - '!.github/workflows/inactivity_reminder.yaml'
-          - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/kitmaker_portal.yaml'
+          - '!.github/workflows/multi_gpu_cpp_test.yaml'
+          - '!.github/workflows/nightly-summary.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
@@ -310,6 +360,9 @@ jobs:
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
           - '!.yamllint.yaml'
+          - '!ci/test_cpp*.sh'
+          - '!ci/test_wheel_split_packages.sh'
+          - '!ci/utils/pr_test_summary.py'
           - '!codecov.yml'
           - '!AGENTS.md'
           - '!CONTRIBUTING.md'
@@ -320,20 +373,25 @@ jobs:
           - '!ci/build_cpp.sh'
           - '!ci/build_docs.sh'
           - '!ci/build_python.sh'
+          - '!ci/build_java.sh'
+          - '!ci/build_java_static.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/run_ctests.sh'
           - '!ci/run-vale.sh'
           - '!ci/test_python.sh'
+          - '!ci/test_java.sh'
           - '!ci/thirdparty-testing/**'
           - '!ci/utils/sync_skills_version.sh'
           - '!ci/utils/validate_skills.sh'
           - '!conda/**'
           - '!container-builder/**'
+          - '!cpp/tests/**'
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
+          - '!java/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
@@ -355,9 +413,10 @@ jobs:
       ignored_pr_jobs: "pr-test-summary"
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
-    # Consumed by conda-cpp-tests, conda-python-build, and (transitively) docs-build.
+    # Consumed by C++, Java, Python, and docs jobs.
     if: >-
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     permissions:
@@ -372,6 +431,7 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_cpp.sh
+      matrix_type: cuda-13-4-pr
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files]
     permissions:
@@ -385,6 +445,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
+      matrix_type: cuda-13-4-pr,pull-request
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -404,6 +465,7 @@ jobs:
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
+    secrets: inherit # zizmor: ignore[secrets-inherit]
   conda-python-build:
     needs: [build-details, conda-cpp-build, changed-files]
     # Consumed by conda-python-tests and docs-build.
@@ -422,6 +484,9 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_python.sh
+      # Build a conda package for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
+      matrix_type: cuda-13-4-pr
   conda-python-tests:
     needs: [conda-python-build, changed-files]
     permissions:
@@ -436,8 +501,17 @@ jobs:
       build_type: pull-request
       run_codecov: false
       script: ci/test_python.sh
+      matrix_type: cuda-13-4-pr,pull-request
+  docs-build-matrix:
+    permissions:
+      contents: read
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    with:
+      build_type: pull-request
+      matrix_name: docs-build
+      matrix_type: cuda-13-4-pr
   docs-build:
-    needs: [conda-python-build, changed-files]
+    needs: [docs-build-matrix, conda-python-build, changed-files]
     permissions:
       actions: read
       contents: read
@@ -446,17 +520,192 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.docs-build-matrix.outputs.matrix) }}
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    with:
+      build_type: pull-request
+      node_type: "gpu-${{ matrix.GPU }}-${{ matrix.DRIVER }}-1"
+      arch: "${{ matrix.ARCH }}"
+      file_to_upload: "docs/cuopt/build/html/"
+      artifact-name: "cuopt_docs"
+      container_image: "rapidsai/ci-conda:26.12-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
+      script: "ci/build_docs.sh"
+  # Compiles libcuopt from source (one self-contained classifier JAR per CUDA major and
+  # architecture), so this does not need conda-cpp-build. See #1817.
+  java-static-build-matrix:
+    needs: changed-files
+    permissions:
+      contents: read
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    with:
+      build_type: pull-request
+      matrix_name: conda-cpp-build
+      matrix_filter: 'map(. + {CUDA_MAJOR: (.CUDA_VER | split(".") | .[0])}) | unique_by([.ARCH, .CUDA_MAJOR])'
+      matrix_type: cuda-13-4-nightly
+
+  java-static-build:
+    needs: [java-static-build-matrix, changed-files]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    with:
+      build_type: pull-request
+      node_type: "cpu16"
+      arch: ${{ matrix.ARCH }}
+      # ci-wheel (Rocky 8) rather than ci-conda: gcc-toolset-14 on Rocky 8 produces a libstdc++
+      # ABI requirement the RAPIDS-supported platforms can actually satisfy, unlike ci-conda's
+      # gcc_linux-64 conda package -- the same fix cuDF applied in rapidsai/cudf#23766 after
+      # hitting this in production (rapidsai/cudf#23753). See setup_java_static_env.sh.
+      #
+      # Must be CUDA-version-pinned, not the bare "26.10-latest" tag: custom-job.yaml has no
+      # per-matrix env passthrough, so an untagged image would leave RAPIDS_CUDA_VERSION at
+      # that image's single baked-in default for every matrix entry.
+      # ci/build_java_static.sh reads it to pick the CUDA toolkit, so every "cuN" classifier
+      # JAR would actually be built against the same CUDA version and just mislabeled. Matches
+      # the pattern java-static-test (test.yaml) already uses for this image family.
+      container_image: "rapidsai/ci-wheel:26.12-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
+      script: "ci/build_java_static.sh"
+      artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
+      file_to_upload: "java/cuopt/classifier-jars/"
+
+  # Runs the full Java suite against each classifier JAR on a GPU, with no libcuopt installed,
+  # so a JAR that loads but computes wrong answers fails here rather than at a user.
+  java-static-test:
+    needs: [java-static-build, java-static-build-matrix]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
+    with:
+      build_type: pull-request
+      node_type: "gpu-l4-latest-1"
+      arch: ${{ matrix.ARCH }}
+      # A plain CUDA-devel + dnf environment rather than rapidsai/ci-conda: the packaged JAR
+      # only needs a JDK, Maven and the CUDA runtime (libcublas/libcusparse, already in this
+      # image) to test, and a fresh `conda create` every run was slow enough that concurrent
+      # matrix jobs' cold Maven Central resolution reliably lined up and triggered 429s.
+      container_image: "rapidsai/ci-wheel:26.12-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
+      script: "ci/test_java_static.sh"
+      # Surefire fork-crash diagnostics (dumpstream/hs_err files) are also printed inline by
+      # the script on failure, but keep the raw reports downloadable too -- the JVM sometimes
+      # crashes without a clean dumpstream, and per-matrix-entry artifacts survive independently
+      # of how much of the console log GitHub keeps.
+      artifact-name: "cuopt_java_static_test_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
+      file_to_upload: "java/cuopt/target/surefire-reports/"
+
+  java-build:
+    needs: [conda-cpp-build, changed-files]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
       node_type: "gpu-l4-latest-1"
       arch: "amd64"
-      file_to_upload: "docs/cuopt/build/html/"
-      artifact-name: "cuopt_docs"
-      container_image: "rapidsai/ci-conda:26.10-latest"
-      script: "ci/build_docs.sh"
-  wheel-build-libcuopt:
+      container_image: "rapidsai/ci-conda:26.12-latest"
+      script: "ci/test_java.sh"
+      artifact-name: "cuopt-java"
+      file_to_upload: "java/cuopt/target/"
+  wheel-build-libcuopt-client:
     needs: [build-details, compute-matrix-filters, changed-files]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    with:
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_client_filter }}
+      package-type: cpp
+      package-name: libcuopt_client
+      # The wheel name carries no CUDA suffix, so neither should the artifact.
+      append-cuda-suffix: false
+      build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      script: ci/build_wheel_libcuopt_client.sh
+      matrix_type: cuda-13-4-pr
+  wheel-build-libcuopt-mathopt:
+    needs: [build-details, compute-matrix-filters, changed-files, wheel-build-libcuopt-client]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    with:
+      # Same filter as libcuopt: every arch and CUDA version, latest Python only.
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
+      package-type: cpp
+      package-name: libcuopt_mathopt
+      build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      script: ci/build_wheel_libcuopt_mathopt.sh
+      matrix_type: cuda-13-4-pr
+  wheel-build-libcuopt-routing:
+    needs: [build-details, compute-matrix-filters, changed-files, wheel-build-libcuopt-client]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    with:
+      # Same filter as libcuopt: every arch and CUDA version, latest Python only.
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
+      package-type: cpp
+      package-name: libcuopt_routing
+      build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      script: ci/build_wheel_libcuopt_routing.sh
+      matrix_type: cuda-13-4-pr
+  wheel-build-libcuopt:
+    needs:
+      - build-details
+      - compute-matrix-filters
+      - changed-files
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read
@@ -474,8 +723,16 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt.sh
+      matrix_type: cuda-13-4-pr
   wheel-build-cuopt:
-    needs: [build-details, wheel-build-libcuopt, compute-matrix-filters, changed-files]
+    needs:
+      - build-details
+      - wheel-build-libcuopt
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
+      - compute-matrix-filters
+      - changed-files
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read
@@ -491,6 +748,9 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+      # Build a wheel for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_filter }}
+      matrix_type: cuda-13-4-pr
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-sh-client, changed-files]
     permissions:
@@ -504,6 +764,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
+      matrix_type: cuda-13-4-pr,pull-request
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -531,6 +792,7 @@ jobs:
       pure-wheel: true
       # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
+      matrix_type: cuda-13-4-pr
   wheel-build-cuopt-sh-client:
     needs: [build-details, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
@@ -552,6 +814,7 @@ jobs:
       pure-wheel: true
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_sh_client_filter }}
+      matrix_type: cuda-13-4-pr
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files, compute-matrix-filters]
     permissions:
@@ -566,6 +829,7 @@ jobs:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_test_filter }}
+      matrix_type: cuda-13-4-pr,pull-request
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -587,6 +851,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
+      matrix_type: cuda-13-4-pr,pull-request
   pr-test-summary:
     name: "PR test summary (non-blocking)"
     needs:
