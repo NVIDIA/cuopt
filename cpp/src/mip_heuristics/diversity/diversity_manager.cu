@@ -296,9 +296,12 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
     add_original_space_solution(
       rmm::device_uvector<f_t>(*context.settings.initial_solutions[sol_idx], stream), sol_idx);
   }
-  for (size_t k = 0; k < context.papilo_model_user_incumbents.size(); ++k) {
+  // Best last, so it goes first and a stop only drops the weaker ones.
+  const auto& papilo_incumbents = context.papilo_model_user_incumbents;
+  for (size_t k = papilo_incumbents.size(); k-- > 0;) {
     if (timer.check_time_limit()) { return; }
-    add_original_space_solution(cuopt::device_copy(context.papilo_model_user_incumbents[k], stream),
+    if (k + 1 < papilo_incumbents.size() && context.preempt_heuristic_solver_.load()) { return; }
+    add_original_space_solution(cuopt::device_copy(papilo_incumbents[k], stream),
                                 context.settings.initial_solutions.size() + k);
   }
 }
