@@ -161,7 +161,7 @@ Please install conda if you don't have it already. You can install [miniforge](h
 # create the conda environment (assuming in base `cuopt` directory)
 # note: cuOpt currently doesn't support `channel_priority: strict`;
 # use `channel_priority: flexible` instead
-mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-133_arch-$(uname -m).yaml
+mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-134_arch-$(uname -m).yaml
 # activate the environment
 mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env
 ```

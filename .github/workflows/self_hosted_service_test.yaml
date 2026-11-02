@@ -6,6 +6,10 @@ name: Test self-hosted service on local-setup
 on:
   workflow_call:
     inputs:
+      matrix_type:
+        default: "auto"
+        required: false
+        type: string
       repo:
         type: string
       branch:
@@ -48,6 +52,7 @@ jobs:
     with:
       build_type: ${{ inputs.build_type }}
       matrix_name: wheels-test
+      matrix_type: ${{ inputs.matrix_type }}
       # AMD64, latest CUDA within latest Python
       matrix_filter: map(select(.ARCH == "amd64")) | group_by(.PY_VER) | map(max_by(.CUDA_VER | split(".") | map(tonumber))) | [max_by(.PY_VER | split(".") | map(tonumber))]
   cuopt-service:

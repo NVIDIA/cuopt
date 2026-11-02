@@ -599,7 +599,7 @@ TEST(Lns, PresolveIncumbentIsHandedToMainPopulationOnce)
   std::vector<mip::solution_t<int, double>> solutions;
   dm.add_user_given_solutions(solutions);
   EXPECT_TRUE(solutions.empty());
-  context.initial_incumbent_from_papilo_model = true;
+  context.papilo_model_user_incumbents = {{1, 0}};
   dm.add_user_given_solutions(solutions);
   ASSERT_EQ(solutions.size(), 1);
   EXPECT_TRUE(solutions[0].get_feasible());
