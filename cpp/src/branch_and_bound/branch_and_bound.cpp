@@ -1686,8 +1686,11 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
       if (lp_settings.time_limit <= 0.0) { return dual_status_t::TIME_LIMIT; }
 
       if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
-        if (!worker->domain.propagate_objective(
-              worker->Arow, worker->var_types, settings_, worker->leaf_problem, cutoff)) {
+        if (!worker->domain.propagate_objective(worker->Arow,
+                                                worker->var_types,
+                                                settings_,
+                                                worker->leaf_problem,
+                                                lp_settings.cut_off)) {
           return dual_status_t::CUTOFF;
         }
       }
