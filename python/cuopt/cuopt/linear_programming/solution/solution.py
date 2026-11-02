@@ -279,6 +279,10 @@ class Solution:
         * ``>=``: ``lhs - rhs`` (surplus; non-negative if feasible)
         * ``==``: ``rhs - lhs`` (residual; near zero if feasible)
 
+        When the constraints were set with lower and upper bounds, a row with
+        two different finite bounds has slack equal to the distance to the
+        nearer bound.
+
         Quadratic constraints are not included. Returns None when the values
         could not be computed, for example when the solver returned no primal
         solution.
