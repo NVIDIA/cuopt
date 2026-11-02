@@ -47,10 +47,9 @@ node_status_t diving_worker_t<i_t, f_t>::classify_node(
 }
 
 template <typename i_t, typename f_t>
-void diving_worker_t<i_t, f_t>::dive_with(
-  const lp_problem_t<i_t, f_t>& original_lp,
-  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-  const branch_and_bound_stats_t<i_t, f_t>& solver_stats)
+void diving_worker_t<i_t, f_t>::dive(const lp_problem_t<i_t, f_t>& original_lp,
+                                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                     const branch_and_bound_stats_t<i_t, f_t>& solver_stats)
 {
   raft::common::nvtx::range scope("BB::diving_thread");
   if (this->orbital_fixing) { this->orbital_fixing->disable(); }
@@ -149,7 +148,7 @@ void diving_worker_t<i_t, f_t>::dive_with(
     } else {
       this->recompute_basis = false;
 
-      auto [var, dir] = select_branch_variable(node_ptr, fractional, settings);
+      auto [var, dir] = select_branch_variable(fractional, settings);
       dive_tree.branch(node_ptr,
                        var,
                        this->leaf_solution.x[var],
@@ -184,9 +183,7 @@ void diving_worker_t<i_t, f_t>::dive_with(
 
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> diving_worker_t<i_t, f_t>::select_branch_variable(
-  mip_node_t<i_t, f_t>* node_ptr,
-  const std::vector<i_t>& fractional,
-  const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+  const std::vector<i_t>& fractional, const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
 {
   logger_t log;
   log.log                      = false;
