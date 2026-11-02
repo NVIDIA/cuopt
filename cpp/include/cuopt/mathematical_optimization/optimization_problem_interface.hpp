@@ -53,6 +53,25 @@ inline file_format_t file_format_from_path(const std::string& path)
     path);
 }
 
+/**
+ * @brief Pick the dump file format for solver settings such as
+ * `user_problem_file` and `presolve_file`.
+ *
+ * A `.lp` suffix (case-insensitive) selects LP; any other path is written as
+ * MPS, preserving the behavior these settings had before LP output existed.
+ *
+ * @param[in] path Output file path.
+ * @return The inferred file format.
+ */
+inline file_format_t dump_file_format_from_path(const std::string& path)
+{
+  std::string lower(path);
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return lower.ends_with(".lp") ? file_format_t::lp : file_format_t::mps;
+}
+
 template <typename i_t, typename f_t>
 class optimization_problem_t;
 template <typename i_t, typename f_t>

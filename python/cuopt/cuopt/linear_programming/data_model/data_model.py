@@ -821,7 +821,7 @@ class DataModel(data_model_wrapper.DataModel):
         """Write the problem to a file, dispatching on extension.
 
         Dispatches to the MPS/QPS or LP writer based on the filename suffix
-        (case-insensitive), matching :func:`cuopt.linear_programming.io.parser.Read`:
+        (case-insensitive), matching :func:`cuopt.linear_programming.io.Read`:
 
         - ``.mps``, ``.qps`` → MPS writer
         - ``.lp`` → LP writer

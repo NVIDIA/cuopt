@@ -2069,7 +2069,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_file(settings.user_problem_file,
-                               file_format_from_path(settings.user_problem_file));
+                               dump_file_format_from_path(settings.user_problem_file));
     }
     simplex::user_problem_t<i_t, f_t> dual_simplex_problem(op_problem.get_handle_ptr());
     if (reuse_from_cache) {
@@ -2461,12 +2461,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_file(settings.user_problem_file,
-                               file_format_from_path(settings.user_problem_file));
+                               dump_file_format_from_path(settings.user_problem_file));
     }
     if (run_presolve && settings.presolve_file != "") {
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
       result->reduced_problem.write_to_file(settings.presolve_file,
-                                            file_format_from_path(settings.presolve_file));
+                                            dump_file_format_from_path(settings.presolve_file));
     }
 
     // problem owns the presolved device data. Release the staging buffers after
