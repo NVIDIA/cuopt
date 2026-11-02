@@ -408,7 +408,6 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       is_feasible_on_presolved || is_feasible_on_original, solver.get_solver_stats(), false);
 
     // Write back the (possibly updated) incumbent from the papilo-phase callback.
-    if (solver.context.flush_early_incumbent) { solver.context.flush_early_incumbent(); }
     initial_upper_bound          = solver.context.initial_upper_bound;
     initial_incumbent_assignment = solver.context.initial_incumbent_assignment;
 

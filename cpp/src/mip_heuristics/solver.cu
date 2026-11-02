@@ -194,9 +194,33 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                 error_type_t::RuntimeError,
                 "preprocess_problem should be called before running the solver");
 
+  auto stop_early_heuristics = [this]() {
+    if (context.early_cpufj_ptr) { context.early_cpufj_ptr->request_stop(); }
+    if (context.early_structural_ptr) { context.early_structural_ptr->request_stop(); }
+    if (context.early_cpufj_ptr) {
+      context.early_cpufj_ptr->stop();
+      if (context.early_cpufj_ptr->solution_found()) {
+        CUOPT_LOG_DEBUG("Early CPUFJ found incumbent with user-space objective %g during presolve",
+                        context.early_cpufj_ptr->get_best_user_objective());
+      }
+    }
+
+    if (context.early_structural_ptr) {
+      context.early_structural_ptr->stop();
+      if (context.early_structural_ptr->solution_found()) {
+        CUOPT_LOG_DEBUG(
+          "Early structural heuristic found incumbent with user-space objective %g "
+          "during presolve",
+          context.early_structural_ptr->get_best_user_objective());
+      }
+    }
+    if (context.flush_early_incumbent) { context.flush_early_incumbent(); }
+  };
+
   diversity_manager_t<i_t, f_t> dm(context);
   if (context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem fully reduced in presolve");
+    stop_early_heuristics();
     sol.set_problem_fully_reduced();
     context.solution_publication.publish_if_better(
       context.problem_ptr, sol.get_host_assignment(), sol.get_objective());
@@ -216,26 +240,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   bool presolve_success = run_presolve ? dm.run_presolve(presolve_time_limit, timer_) : true;
 
   // Stop early CPUFJ after cuopt presolve (probing cache) but before main solve
-  if (context.early_cpufj_ptr) { context.early_cpufj_ptr->request_stop(); }
-  if (context.early_structural_ptr) { context.early_structural_ptr->request_stop(); }
-  if (context.early_cpufj_ptr) {
-    context.early_cpufj_ptr->stop();
-    if (context.early_cpufj_ptr->solution_found()) {
-      CUOPT_LOG_DEBUG("Early CPUFJ found incumbent with user-space objective %g during presolve",
-                      context.early_cpufj_ptr->get_best_user_objective());
-    }
-  }
-
-  if (context.early_structural_ptr) {
-    context.early_structural_ptr->stop();
-    if (context.early_structural_ptr->solution_found()) {
-      CUOPT_LOG_DEBUG(
-        "Early structural heuristic found incumbent with user-space objective %g "
-        "during presolve",
-        context.early_structural_ptr->get_best_user_objective());
-    }
-  }
-  if (context.flush_early_incumbent) { context.flush_early_incumbent(); }
+  stop_early_heuristics();
 
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
