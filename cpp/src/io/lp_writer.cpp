@@ -116,12 +116,22 @@ void expect_valid_lp_name(const std::string& name, const char* kind)
                      max_name_length);
 }
 
-// Names are all-or-nothing: if any entry is missing, every entry is generated
-// as '<prefix><index>' so generated names can never collide with given ones.
-bool has_all_names(const std::vector<std::string>& names, size_t count)
+// Returns `stem`, or `stem_<n>` for the smallest n >= 1, such that `base + suffix`
+// is unused for every suffix (a range row is written under two suffixed names).
+std::string unused_name(const std::unordered_set<std::string>& used,
+                        const std::string& stem,
+                        const std::vector<std::string>& suffixes)
 {
-  return names.size() == count &&
-         std::none_of(names.begin(), names.end(), [](const auto& n) { return n.empty(); });
+  auto is_free = [&](const std::string& base) {
+    return std::none_of(suffixes.begin(), suffixes.end(), [&](const std::string& suffix) {
+      return used.count(base + suffix) > 0;
+    });
+  };
+  if (is_free(stem)) { return stem; }
+  for (size_t n = 1;; ++n) {
+    std::string base = stem + "_" + std::to_string(n);
+    if (is_free(base)) { return base; }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -251,21 +261,24 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
   std::vector<char> var_types(n_variables, 'C');
   if (!types_span.empty()) { std::copy(types_span.begin(), types_span.end(), var_types.begin()); }
 
+  // Given names are validated and reserved first; each unnamed variable then gets
+  // 'C<j>', suffixed if a given name already took it.
+  static const std::vector<std::string> plain_name{""};
   std::vector<std::string> var_names(n_variables);
-  if (has_all_names(var_names_ref, n_variables)) {
-    std::unordered_set<std::string> seen;
-    for (i_t j = 0; j < n_variables; ++j) {
-      expect_valid_lp_name(var_names_ref[j], "variable");
-      mps_parser_expects(seen.insert(var_names_ref[j]).second,
-                         error_type_t::ValidationError,
-                         "LP writer: duplicate variable name '%s'",
-                         var_names_ref[j].c_str());
-      var_names[j] = var_names_ref[j];
-    }
-  } else {
-    for (i_t j = 0; j < n_variables; ++j) {
-      var_names[j] = "C" + std::to_string(j);
-    }
+  std::unordered_set<std::string> used_var_names;
+  for (i_t j = 0; j < n_variables; ++j) {
+    if (static_cast<size_t>(j) >= var_names_ref.size() || var_names_ref[j].empty()) { continue; }
+    expect_valid_lp_name(var_names_ref[j], "variable");
+    mps_parser_expects(used_var_names.insert(var_names_ref[j]).second,
+                       error_type_t::ValidationError,
+                       "LP writer: duplicate variable name '%s'",
+                       var_names_ref[j].c_str());
+    var_names[j] = var_names_ref[j];
+  }
+  for (i_t j = 0; j < n_variables; ++j) {
+    if (!var_names[j].empty()) { continue; }
+    var_names[j] = unused_name(used_var_names, "C" + std::to_string(j), plain_name);
+    used_var_names.insert(var_names[j]);
   }
   auto var_name = [&](i_t j) -> const std::string& { return var_names[j]; };
 
@@ -347,39 +360,62 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
            (std::isinf(hi) && hi > 0 && !std::isinf(lo)) || is_range_row(k);
   };
 
+  static const std::vector<std::string> range_names{"_lo", "_up"};
+  auto written_suffixes = [&](i_t k) -> const std::vector<std::string>& {
+    return is_range_row(k) ? range_names : plain_name;
+  };
+
   const size_t n_quadratic = quadratic_constraints.size();
   std::vector<std::string> row_names(n_constraints);
   std::vector<std::string> qc_names(n_quadratic);
-  const bool all_rows_named =
-    has_all_names(row_names_ref, n_constraints) &&
-    std::none_of(quadratic_constraints.begin(), quadratic_constraints.end(), [](const auto& qc) {
-      return qc.constraint_row_name.empty();
-    });
   for (i_t k = 0; k < n_constraints; ++k) {
-    row_names[k] = all_rows_named ? row_names_ref[k] : "R" + std::to_string(k);
+    if (static_cast<size_t>(k) < row_names_ref.size()) { row_names[k] = row_names_ref[k]; }
   }
   for (size_t q = 0; q < n_quadratic; ++q) {
-    qc_names[q] = all_rows_named ? quadratic_constraints[q].constraint_row_name
-                                 : "R" + std::to_string(n_constraints + q);
+    qc_names[q] = quadratic_constraints[q].constraint_row_name;
   }
+  std::string obj_name = problem.get_objective_name();
 
   std::unordered_set<std::string> used_row_names;
-  auto claim_row_name = [&](const std::string& name) {
-    mps_parser_expects(used_row_names.insert(name).second,
-                       error_type_t::ValidationError,
-                       "LP writer: duplicate constraint name '%s'",
-                       name.c_str());
-  };
-  for (i_t k = 0; k < n_constraints; ++k) {
-    if (all_rows_named) { expect_valid_lp_name(row_names[k], "constraint"); }
-    if (!is_written_row(k)) { continue; }
-    if (is_range_row(k)) {
-      claim_row_name(row_names[k] + "_lo");
-      claim_row_name(row_names[k] + "_up");
-    } else {
-      claim_row_name(row_names[k]);
+  auto claim_row_name = [&](const std::string& base, const std::vector<std::string>& suffixes) {
+    for (const auto& suffix : suffixes) {
+      const std::string name = base + suffix;
+      mps_parser_expects(used_row_names.insert(name).second,
+                         error_type_t::ValidationError,
+                         "LP writer: duplicate constraint name '%s'",
+                         name.c_str());
     }
+  };
+
+  // Given names are validated and reserved first, then unnamed rows get 'R<k>'
+  // and an unnamed objective gets 'obj', each suffixed if already taken.
+  for (i_t k = 0; k < n_constraints; ++k) {
+    if (row_names[k].empty()) { continue; }
+    expect_valid_lp_name(row_names[k], "constraint");
+    if (is_written_row(k)) { claim_row_name(row_names[k], written_suffixes(k)); }
   }
+  for (size_t q = 0; q < n_quadratic; ++q) {
+    if (qc_names[q].empty()) { continue; }
+    expect_valid_lp_name(qc_names[q], "constraint");
+    claim_row_name(qc_names[q], plain_name);
+  }
+  if (!obj_name.empty()) {
+    expect_valid_lp_name(obj_name, "objective");
+    claim_row_name(obj_name, plain_name);
+  }
+
+  for (i_t k = 0; k < n_constraints; ++k) {
+    if (!row_names[k].empty() || !is_written_row(k)) { continue; }
+    row_names[k] = unused_name(used_row_names, "R" + std::to_string(k), written_suffixes(k));
+    claim_row_name(row_names[k], written_suffixes(k));
+  }
+  for (size_t q = 0; q < n_quadratic; ++q) {
+    if (!qc_names[q].empty()) { continue; }
+    qc_names[q] = unused_name(used_row_names, "R" + std::to_string(n_constraints + q), plain_name);
+    claim_row_name(qc_names[q], plain_name);
+  }
+  if (obj_name.empty()) { obj_name = unused_name(used_row_names, "obj", plain_name); }
+
   for (size_t q = 0; q < n_quadratic; ++q) {
     const char row_type = quadratic_constraints[q].constraint_row_type;
     mps_parser_expects(row_type == 'L' || row_type == 'G',
@@ -387,19 +423,6 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
                        "Quadratic constraint '%s' has unsupported row type '%c'",
                        qc_names[q].c_str(),
                        row_type);
-    if (all_rows_named) { expect_valid_lp_name(qc_names[q], "constraint"); }
-    claim_row_name(qc_names[q]);
-  }
-
-  std::string obj_name = problem.get_objective_name();
-  if (obj_name.empty()) {
-    obj_name = "obj";
-    for (int suffix = 1; used_row_names.count(obj_name) > 0; ++suffix) {
-      obj_name = "obj_" + std::to_string(suffix);
-    }
-  } else {
-    expect_valid_lp_name(obj_name, "objective");
-    claim_row_name(obj_name);
   }
 
   std::ofstream lp_file(lp_file_path);
