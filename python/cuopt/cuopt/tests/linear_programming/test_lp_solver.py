@@ -484,6 +484,55 @@ def test_check_data_model_validity():
     solver.Solve(data_model_obj)
 
 
+def _solve_with_constraint_bounds(
+    A_values, A_indices, A_offsets, c, row_lower, row_upper
+):
+    dm = data_model.DataModel()
+    dm.set_csr_constraint_matrix(
+        np.array(A_values, dtype=np.float64),
+        np.array(A_indices, dtype=np.int32),
+        np.array(A_offsets, dtype=np.int32),
+    )
+    dm.set_objective_coefficients(np.array(c, dtype=np.float64))
+    dm.set_variable_lower_bounds(np.zeros(len(c)))
+    dm.set_variable_upper_bounds(np.full(len(c), np.inf))
+    dm.set_constraint_lower_bounds(np.array(row_lower, dtype=np.float64))
+    dm.set_constraint_upper_bounds(np.array(row_upper, dtype=np.float64))
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    return solver.Solve(dm, settings)
+
+
+def test_slack_with_constraint_lower_upper_bounds():
+    # Minimize x subject to x >= 1, rows given only as lower/upper bounds.
+    solution = _solve_with_constraint_bounds(
+        [1.0], [0], [0, 1], [1.0], [1.0], [np.inf]
+    )
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_slack() == pytest.approx([0.0], abs=1e-4)
+
+
+def test_slack_with_constraint_bounds_all_row_kinds():
+    # Minimize x + y, optimum x = y = 1, with one row of each kind:
+    #   x + y >= 2        (lower bound only)
+    #   x <= 3            (upper bound only)
+    #   x - y == 0        (equal bounds)
+    #   0.5 <= y <= 4     (ranged)
+    solution = _solve_with_constraint_bounds(
+        [1.0, 1.0, 1.0, 1.0, -1.0, 1.0],
+        [0, 1, 0, 0, 1, 1],
+        [0, 2, 3, 5, 6],
+        [1.0, 1.0],
+        [2.0, -np.inf, 0.0, 0.5],
+        [np.inf, 3.0, 0.0, 4.0],
+    )
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_slack() == pytest.approx(
+        [0.0, 2.0, 0.0, 0.5], abs=1e-4
+    )
+
+
 def test_parse_var_names():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
