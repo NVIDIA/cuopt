@@ -1668,6 +1668,8 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
             cuopt_static
             OpenMP::OpenMP_CXX
             OpenMP::OpenMP_CUDA
+            PRIVATE
+            argparse::argparse
     )
     target_include_directories(solve_CPUFJ
             PRIVATE
