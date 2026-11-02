@@ -504,15 +504,6 @@ def _solve_with_constraint_bounds(
     return solver.Solve(dm, settings)
 
 
-def test_slack_with_constraint_lower_upper_bounds():
-    # Minimize x subject to x >= 1, rows given only as lower/upper bounds.
-    solution = _solve_with_constraint_bounds(
-        [1.0], [0], [0, 1], [1.0], [1.0], [np.inf]
-    )
-    assert solution.get_termination_status() == LPTerminationStatus.Optimal
-    assert solution.get_slack() == pytest.approx([0.0], abs=1e-4)
-
-
 def test_slack_with_constraint_bounds_all_row_kinds():
     # Minimize x + y, optimum x = y = 1, with one row of each kind:
     #   x + y >= 2        (lower bound only)
