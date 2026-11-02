@@ -72,20 +72,17 @@ bool is_name_start_char(char c)
   }
 }
 
-bool is_name_char(char c)
-{
-  return is_name_start_char(c) || (c >= '0' && c <= '9') || c == '.';
-}
+bool is_name_char(char c) { return is_name_start_char(c) || (c >= '0' && c <= '9') || c == '.'; }
 
 // Section headers and bound keywords recognized by read_lp and other LP readers.
 // A name equal to one of these (case-insensitively) is read as the keyword.
 bool is_lp_keyword(const std::string& name)
 {
   static const std::unordered_set<std::string> keywords{
-    "minimize", "minimum",  "min",      "maximize", "maximum",  "max",  "subject",
-    "such",     "st",       "st.",      "s.t.",     "bounds",   "bound", "generals",
-    "general",  "gen",      "integer",  "integers", "binaries", "binary", "bin",
-    "semi",     "semis",    "sos",      "end",      "free",     "inf",  "infinity"};
+    "minimize", "minimum", "min",     "maximize", "maximum",  "max",    "subject",
+    "such",     "st",      "st.",     "s.t.",     "bounds",   "bound",  "generals",
+    "general",  "gen",     "integer", "integers", "binaries", "binary", "bin",
+    "semi",     "semis",   "sos",     "end",      "free",     "inf",    "infinity"};
   std::string lower(name);
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
