@@ -62,7 +62,7 @@ rapids-logger "Run gtests"
 # Temporarily skip gRPC server tests that cancel active or queued jobs.
 GRPC_JOB_CANCEL_FILTER="-DefaultServerTests.CancelNonexistentJob:DefaultServerTests.IncumbentCallbackCancelsSolve:DefaultServerTests.CancelRunningJob:DefaultServerTests.DeleteQueuedJobPreventsRun:DefaultServerTests.DeleteRunningJobCancelsWorker:ErrorRecoveryTests.SigintDuringRunningJobShutsDownPromptly"
 run_step_with_timeout "gtests (run_ctests.sh)" 90m "" \
-  ./ci/run_ctests.sh --gtest_filter="${GRPC_JOB_CANCEL_FILTER}"
+  env GTEST_FILTER="${GRPC_JOB_CANCEL_FILTER}" ./ci/run_ctests.sh
 
 rapids-logger "Generate nightly test report"
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
