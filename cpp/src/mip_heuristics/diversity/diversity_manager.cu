@@ -296,9 +296,10 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
     add_original_space_solution(
       rmm::device_uvector<f_t>(*context.settings.initial_solutions[sol_idx], stream), sol_idx);
   }
-  if (context.initial_incumbent_from_papilo_model && !timer.check_time_limit()) {
-    add_original_space_solution(cuopt::device_copy(context.initial_incumbent_assignment, stream),
-                                context.settings.initial_solutions.size());
+  for (size_t k = 0; k < context.papilo_model_user_incumbents.size(); ++k) {
+    if (timer.check_time_limit()) { return; }
+    add_original_space_solution(cuopt::device_copy(context.papilo_model_user_incumbents[k], stream),
+                                context.settings.initial_solutions.size() + k);
   }
 }
 

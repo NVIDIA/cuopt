@@ -114,6 +114,9 @@ static void invoke_solution_callbacks(
   }
 }
 
+// Early incumbent pools only accept improvements, so evicting the oldest always keeps the best.
+constexpr size_t max_early_incumbents = 5;
+
 static bool any_get_solution_callback(
   const std::vector<internals::base_solution_callback_t*>& mip_callbacks)
 {
@@ -275,7 +278,6 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     // Must outlive early_cpufj/early_structural below, whose destructors join the tasks.
     std::mutex papilo_callback_mutex;
     f_t papilo_best_solver_obj = std::numeric_limits<f_t>::infinity();
-    std::vector<f_t> papilo_pending_assignment;
 
     std::unique_ptr<mip::early_cpufj_t<i_t, f_t>> early_cpufj;
     std::unique_ptr<mip::early_structural_t<i_t, f_t>> early_structural;
@@ -287,22 +289,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       auto mip_callbacks                   = settings.get_mip_callbacks();
       const bool has_get_solution_callback = any_get_solution_callback(mip_callbacks);
       f_t no_bound = problem.presolve_data.objective_scaling_factor >= 0 ? (f_t)-1e20 : (f_t)1e20;
-      const i_t papilo_num_original_vars   = problem.get_papilo_original_num_variables();
-      solver.context.flush_early_incumbent = [presolver_ptr,
-                                              papilo_num_original_vars,
-                                              ctx_ptr = &solver.context,
-                                              &papilo_callback_mutex,
-                                              &papilo_pending_assignment]() {
-        std::lock_guard<std::mutex> lock(papilo_callback_mutex);
-        if (papilo_pending_assignment.empty()) { return; }
-        presolver_ptr->uncrush_primal_solution(papilo_pending_assignment,
-                                               ctx_ptr->initial_incumbent_assignment);
-        cuopt_assert(
-          ctx_ptr->initial_incumbent_assignment.size() == (size_t)papilo_num_original_vars,
-          "Size mismatch");
-        ctx_ptr->initial_incumbent_from_papilo_model = true;
-        papilo_pending_assignment.clear();
-      };
+      const i_t papilo_num_original_vars = problem.get_papilo_original_num_variables();
       auto incumbent_callback =
         [presolver_ptr,
          mip_callbacks,
@@ -318,31 +305,26 @@ mip_solution_t<i_t, f_t> run_mip_solver(
          papilo_num_original_vars,
          &papilo_callback_mutex,
          &papilo_best_solver_obj,
-         &papilo_pending_assignment,
          &timer](f_t solver_obj,
                  f_t user_obj,
                  const std::vector<f_t>& assignment,
                  const char* heuristic_name) {
           std::lock_guard<std::mutex> lock(papilo_callback_mutex);
           if (solver_obj >= papilo_best_solver_obj) { return; }
-          papilo_best_solver_obj       = solver_obj;
-          ctx_ptr->initial_upper_bound = user_obj;
+          papilo_best_solver_obj = solver_obj;
+          auto& incumbents       = ctx_ptr->papilo_model_incumbents;
+          if (incumbents.size() == max_early_incumbents) { incumbents.pop_front(); }
+          incumbents.push_back({user_obj, assignment});
           CUOPT_LOG_INFO(
             "New solution from early primal heuristics (%s). Objective %+.6e. Time %.3f",
             heuristic_name,
             user_obj,
             timer.elapsed_time());
-          if (!has_get_solution_callback) {
-            papilo_pending_assignment = assignment;
-            return;
-          }
+          if (!has_get_solution_callback) { return; }
 
-          papilo_pending_assignment.clear();
           std::vector<f_t> user_assignment;
           presolver_ptr->uncrush_primal_solution(assignment, user_assignment);
           cuopt_assert(user_assignment.size() == (size_t)papilo_num_original_vars, "Size mismatch");
-          ctx_ptr->initial_incumbent_assignment        = user_assignment;
-          ctx_ptr->initial_incumbent_from_papilo_model = true;
           invoke_solution_callbacks(mip_callbacks,
                                     has_semi_continuous_callback_translation,
                                     semi_continuous_original_num_variables,
@@ -533,8 +515,6 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       f_t user_obj;
       std::vector<f_t> assignment;
     };
-    // Every entry improves on the previous one, so evicting the oldest always keeps the best.
-    constexpr size_t max_early_incumbents = 5;
     std::deque<early_incumbent_entry_t> early_incumbent_pool;
 
     // Track best incumbent found during presolve (shared across CPU and GPU FJ).

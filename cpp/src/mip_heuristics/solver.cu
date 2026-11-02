@@ -214,7 +214,18 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
           context.early_structural_ptr->get_best_user_objective());
       }
     }
-    if (context.flush_early_incumbent) { context.flush_early_incumbent(); }
+
+    auto& incumbents = context.papilo_model_incumbents;
+    if (incumbents.empty()) { return; }
+    for (const auto& incumbent : incumbents) {
+      std::vector<f_t> user_assignment;
+      context.problem_ptr->presolve_data.papilo_uncrush_assignment(incumbent.assignment,
+                                                                   user_assignment);
+      context.papilo_model_user_incumbents.push_back(std::move(user_assignment));
+    }
+    context.initial_upper_bound          = incumbents.back().user_obj;
+    context.initial_incumbent_assignment = context.papilo_model_user_incumbents.back();
+    incumbents.clear();
   };
 
   diversity_manager_t<i_t, f_t> dm(context);
