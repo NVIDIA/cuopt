@@ -899,5 +899,6 @@ jobs:
         SCCACHE_DIST_FALLBACK_TO_LOCAL_COMPILE=false
       build_command: |
         sccache --zero-stats;
-        build-all -j0 -DBUILD_MIP_BENCHMARKS=ON -DBUILD_LP_BENCHMARKS=ON --verbose 2>&1 | tee telemetry-artifacts/build.log;
-        sccache --show-adv-stats | tee telemetry-artifacts/sccache-stats.txt;
+        build-cuopt-cpp -j0 -DBUILD_MIP_BENCHMARKS=ON -DBUILD_LP_BENCHMARKS=ON --verbose;
+        build-all -j0 --verbose;
+        sccache --show-adv-stats;
