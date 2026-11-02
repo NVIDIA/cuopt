@@ -360,8 +360,20 @@ cdef object _slack_from_data_model(object data_model_obj,
     offsets = np.ascontiguousarray(offsets, dtype=np.int32)
     primal = np.ascontiguousarray(primal_solution, dtype=np.float64)
 
-    # A DataModel carries the rows either as rhs + row types or as lower and
-    # upper bounds. Only the representation that was set has m entries.
+    # A DataModel carries the rows either as lower and upper bounds or as rhs
+    # and row types, and the bounds take priority when both are set. Only a
+    # representation that was set has m entries.
+    lower = np.asarray(dm.get_constraint_lower_bounds(), dtype=np.float64)
+    upper = np.asarray(dm.get_constraint_upper_bounds(), dtype=np.float64)
+    if len(lower) == m and len(upper) == m:
+        # Distance to the nearest finite bound, which matches the LE and GE
+        # definitions for one-sided rows; equality rows keep ``rhs - lhs``.
+        lhs = _compute_row_activity_csr(values, indices, offsets, primal)
+        slack = np.minimum(lhs - lower, upper - lhs)
+        is_equality = lower == upper
+        slack[is_equality] = lower[is_equality] - lhs[is_equality]
+        return slack
+
     rhs = dm.get_constraint_bounds()
     sense = dm.get_row_types()
     if len(rhs) == m and len(sense) == m:
@@ -374,18 +386,7 @@ cdef object _slack_from_data_model(object data_model_obj,
             primal,
         )
 
-    lower = np.asarray(dm.get_constraint_lower_bounds(), dtype=np.float64)
-    upper = np.asarray(dm.get_constraint_upper_bounds(), dtype=np.float64)
-    if len(lower) != m or len(upper) != m:
-        return None
-
-    # Distance to the nearest finite bound, which matches the LE and GE
-    # definitions for one-sided rows; equality rows keep ``rhs - lhs``.
-    lhs = _compute_row_activity_csr(values, indices, offsets, primal)
-    slack = np.minimum(lhs - lower, upper - lhs)
-    is_equality = lower == upper
-    slack[is_equality] = lower[is_equality] - lhs[is_equality]
-    return slack
+    return None
 
 
 cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
