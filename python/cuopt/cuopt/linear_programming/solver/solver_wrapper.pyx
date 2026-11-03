@@ -6,8 +6,6 @@
 # distutils: language = c++
 # cython: embedsignature = True
 # cython: language_level = 3
-# cython: boundscheck=False
-# cython: wraparound=False
 # cython: cdivision=True
 
 from pylibraft.common.handle cimport *
