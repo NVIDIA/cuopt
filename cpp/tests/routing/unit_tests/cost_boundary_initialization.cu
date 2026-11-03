@@ -59,12 +59,14 @@ void test_cost_boundaries_reset()
   data_model.add_cost_matrix(d_cost_matrix.data());
   data_model.set_order_locations(d_order_locations.data());
 
-  // Keep the host sources alive until the stream has consumed the asynchronous copies.
-  std::vector<int> pickups    = is_pdp ? std::vector<int>{0} : std::vector<int>{};
-  std::vector<int> deliveries = is_pdp ? std::vector<int>{1} : std::vector<int>{};
-  auto d_pickups              = cuopt::device_copy(pickups, stream);
-  auto d_deliveries           = cuopt::device_copy(deliveries, stream);
+  // Function scope, so the host sources outlive the asynchronous copies below.
+  const std::vector<int> pickups{0};
+  const std::vector<int> deliveries{1};
+  rmm::device_uvector<int> d_pickups(0, stream);
+  rmm::device_uvector<int> d_deliveries(0, stream);
   if constexpr (is_pdp) {
+    d_pickups    = cuopt::device_copy(pickups, stream);
+    d_deliveries = cuopt::device_copy(deliveries, stream);
     data_model.set_pickup_delivery_pairs(d_pickups.data(), d_deliveries.data());
   }
 
