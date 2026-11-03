@@ -234,7 +234,8 @@ jobs:
           - '!utilities/**'
         # Narrower than test_cpp: the C++ test jobs are gated on test_cpp AND their own group.
         # Each group is '**' minus the paths that cannot affect that job, so an unknown or
-        # shared file (utilities, grpc, CMake, ci) still runs both.
+        # shared file (utilities, grpc, CMake, ci) still runs both. The routing headers the gRPC
+        # client includes (cpu_routing_problem.hpp, solver_settings.hpp) stay shared.
         test_cpp_routing:
           - '**'
           - '!cpp/include/cuopt/linear_programming/**'
@@ -258,6 +259,20 @@ jobs:
           - '!cpp/tests/mip/**'
           - '!cpp/tests/qp/**'
           - '!cpp/tests/socp/**'
+        test_cpp_mathopt:
+          - '**'
+          - '!cpp/include/cuopt/routing/assignment.hpp'
+          - '!cpp/include/cuopt/routing/cython/**'
+          - '!cpp/include/cuopt/routing/data_model_view.hpp'
+          - '!cpp/include/cuopt/routing/distance_engine/**'
+          - '!cpp/include/cuopt/routing/routing_structures.hpp'
+          - '!cpp/include/cuopt/routing/solve.hpp'
+          - '!cpp/src/distance/**'
+          - '!cpp/src/grpc/routing/**'
+          - '!cpp/src/routing/**'
+          - '!cpp/tests/distance_engine/**'
+          - '!cpp/tests/examples/routing/**'
+          - '!cpp/tests/routing/**'
         test_java:
           - 'java/**'
           - 'ci/build_java.sh'
@@ -460,7 +475,9 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp &&
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp_mathopt
     with:
       build_type: pull-request
       script: ci/test_cpp_mathopt.sh
