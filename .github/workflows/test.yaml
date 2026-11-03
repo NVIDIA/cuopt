@@ -66,7 +66,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_python.sh
-      matrix_type: nightly
+      matrix_type: python-3-15-nightly,nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -151,7 +151,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_cuopt.sh
-      matrix_type: nightly
+      matrix_type: python-3-15-nightly,nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -174,7 +174,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_cuopt_server.sh
-      matrix_type: nightly
+      matrix_type: python-3-15-nightly,nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -219,7 +219,7 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_split_packages.sh
       matrix_filter: 'map(select(.ARCH == "amd64")) | sort_by(.CUDA_VER, .PY_VER) | [last]'
-      matrix_type: nightly
+      matrix_type: python-3-15-nightly,nightly
 
   conda-notebook-tests:
     permissions:
