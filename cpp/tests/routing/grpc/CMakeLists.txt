@@ -118,7 +118,7 @@ install(
 )
 
 # VRP over gRPC against a real cuopt_grpc_server. It shares the server fixture with
-# GRPC_INTEGRATION_TEST and is labelled routing so the routing job owns it.
+# GRPC_MATHOPT_INTEGRATION_TEST and is labelled routing so the routing job owns it.
 add_executable(GRPC_ROUTING_INTEGRATION_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/grpc_routing_integration_test.cpp
     "${CUOPT_SOURCE_DIR}/src/grpc/grpc_service_mapper.cpp"

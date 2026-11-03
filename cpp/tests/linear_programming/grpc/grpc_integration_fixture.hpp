@@ -7,7 +7,7 @@
  * @file grpc_integration_fixture.hpp
  * @brief Server-process and base fixture shared by the gRPC integration test binaries
  *
- * Used by GRPC_INTEGRATION_TEST (LP/MIP) and GRPC_ROUTING_INTEGRATION_TEST (VRP).
+ * Used by GRPC_MATHOPT_INTEGRATION_TEST (LP/MIP) and GRPC_ROUTING_INTEGRATION_TEST (VRP).
  */
 
 #pragma once
@@ -63,7 +63,7 @@ using cuopt::mathematical_optimization::testing::GrpcTestLogCapture;
 
 namespace grpc_integration_fixture {
 
-// GRPC_INTEGRATION_TEST
+// GRPC_MATHOPT_INTEGRATION_TEST
 //   `-- cuopt_grpc_server parent (pid_, leads process group pgid_ == pid_)
 //         `-- GPU worker (inherits pgid_)
 //

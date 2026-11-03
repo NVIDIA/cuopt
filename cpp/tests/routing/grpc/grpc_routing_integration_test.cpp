@@ -7,7 +7,7 @@
  * @file grpc_routing_integration_test.cpp
  * @brief VRP over gRPC against a real cuopt_grpc_server
  *
- * Split out of GRPC_INTEGRATION_TEST so the routing job owns the end-to-end routing
+ * Split out of GRPC_MATHOPT_INTEGRATION_TEST so the routing job owns the end-to-end routing
  * mappers while the LP/MIP integration suite stays with the mathopt job. Shares the
  * server fixture with it through grpc_integration_fixture.hpp.
  *

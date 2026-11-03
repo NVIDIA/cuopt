@@ -4,7 +4,7 @@
  */
 
 /**
- * @file grpc_integration_test.cpp
+ * @file grpc_mathopt_integration_test.cpp
  * @brief Integration tests for gRPC client-server communication
  *
  * Tests are organized into shared-server fixtures to minimize server startup overhead.
