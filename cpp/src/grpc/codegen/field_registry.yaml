@@ -1195,144 +1195,143 @@ mip_settings:
       field_num: 34
       optional: true
 
-    # MIP heuristic hyper-parameters (nested: settings.heuristic_params.<field>)
-    # Tuning knobs for MIP GPU heuristics; see mip_heuristics_hyper_params_t
-    # in cpp/include/cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp.
+    # MIP heuristic hyper-parameters (settings.mip_hyper_params.<member>)
+    # Tuning knobs for MIP GPU heuristics and presolve; see mip_hyper_params_t
+    # in cpp/include/cuopt/mathematical_optimization/mip/mip_hyper_params.hpp.
+    # The C++ members carry a `heuristic_`/`presolve_` prefix that the wire
+    # field names predate, so each entry sets `member` explicitly.
     # All fields carry non-zero defaults on the C++ side, so they are declared
     # `optional` in the proto: a client that omits any of them gets the C++
     # default rather than the proto3 wire zero (0).
     # These are internal tuning knobs with no user-facing documentation page;
     # the descriptions below are taken from the declaring comments in
-    # heuristics_hyper_params.hpp rather than from docs/.
-  - heuristic_params:
-    - population_size:
-        param_name: mip_hyper_heuristic_population_size
-        description: Maximum number of solutions held in the solution pool.
-        default: "32"
-        field_num: 35
-        type: int32
-        optional: true
-    - num_cpufj_threads:
-        param_name: mip_hyper_heuristic_num_cpufj_threads
-        description: Number of parallel CPU Feasibility Jump climbers.
-        default: "8"
-        field_num: 36
-        type: int32
-        optional: true
+    # mip_hyper_params.hpp rather than from docs/.
+  - population_size:
+      member: mip_hyper_params.heuristic_population_size
+      param_name: mip_hyper_heuristic_population_size
+      description: Maximum number of solutions held in the solution pool.
+      default: "32"
+      field_num: 35
+      type: int32
+      optional: true
+  - num_cpufj_threads:
+      member: mip_hyper_params.heuristic_num_cpufj_threads
+      param_name: mip_hyper_heuristic_num_cpufj_threads
+      description: Number of parallel CPU Feasibility Jump climbers.
+      default: "8"
+      field_num: 36
+      type: int32
+      optional: true
     # 37 and 38 held presolve_time_ratio and presolve_max_time, removed when
     # presolve stopped taking a wall budget. Do not reuse: an older client
     # still sends them on those numbers.
-    - root_lp_time_ratio:
-        param_name: mip_hyper_heuristic_root_lp_time_ratio
-        description: Fraction of the total time budget given to the root LP.
-        default: "0.1"
-        field_num: 39
-        optional: true
-    - root_lp_max_time:
-        param_name: mip_hyper_heuristic_root_lp_max_time
-        description: Hard cap in seconds on the root LP solve.
-        default: "15.0"
-        field_num: 40
-        optional: true
-    - rins_time_limit:
-        param_name: mip_hyper_heuristic_rins_time_limit
-        description: Per-call time budget in seconds for the RINS sub-MIP.
-        default: "3.0"
-        field_num: 41
-        optional: true
-    - rins_max_time_limit:
-        param_name: mip_hyper_heuristic_rins_max_time_limit
-        description: >-
-          Ceiling in seconds on the adaptive RINS time budget.
-        default: "20.0"
-        field_num: 42
-        optional: true
-    - rins_fix_rate:
-        param_name: mip_hyper_heuristic_rins_fix_rate
-        description: Fraction of variables RINS fixes before solving the sub-MIP.
-        default: "0.5"
-        field_num: 43
-        optional: true
-    - stagnation_trigger:
-        param_name: mip_hyper_heuristic_stagnation_trigger
-        description: >-
-          Number of Feasibility Pump loops without improvement before
-          recombination is triggered.
-        default: "3"
-        field_num: 44
-        type: int32
-        optional: true
-    - max_iterations_without_improvement:
-        param_name: mip_hyper_heuristic_max_iterations_without_improvement
-        description: Depth of the diversity step taken after stagnation.
-        default: "8"
-        field_num: 45
-        type: int32
-        optional: true
-    - initial_infeasibility_weight:
-        param_name: mip_hyper_heuristic_initial_infeasibility_weight
-        description: Seed value for the constraint violation penalty.
-        default: "1000.0"
-        field_num: 46
-        optional: true
-    - n_of_minimums_for_exit:
-        param_name: mip_hyper_heuristic_n_of_minimums_for_exit
-        description: >-
-          Number of local minima after which the Feasibility Jump baseline
-          exits.
-        default: "7000"
-        field_num: 47
-        type: int32
-        optional: true
-    - enabled_recombiners:
-        param_name: mip_hyper_heuristic_enabled_recombiners
-        description: >-
-          Bitmask of enabled recombiners: 1 bound propagation, 2 feasibility
-          pump, 4 line-segment recombination, 8 sub-MIP. (Bit 4 is the
-          `LINE_SEGMENT` recombiner specifically, not the solver's general
-          local search.)
-        default: "15 (all enabled)"
-        field_num: 48
-        type: int32
-        optional: true
-    - cycle_detection_length:
-        param_name: mip_hyper_heuristic_cycle_detection_length
-        description: >-
-          Size of the ring buffer used to detect Feasibility Pump assignment
-          cycles.
-        default: "30"
-        field_num: 49
-        type: int32
-        optional: true
-    - relaxed_lp_time_limit:
-        param_name: mip_hyper_heuristic_relaxed_lp_time_limit
-        description: >-
-          Base time cap in seconds for relaxed LP solves inside the heuristics.
-        default: "1.0"
-        field_num: 50
-        optional: true
-    - related_vars_time_limit:
-        param_name: mip_hyper_heuristic_related_vars_time_limit
-        description: >-
-          Time in seconds allowed for building the related-variable structure.
-        default: "2.0"
-        field_num: 51
-        optional: true
-    - presolve_max_rounds:
-        param_name: mip_hyper_heuristic_presolve_max_rounds
-        description: >-
-          Cap on Papilo presolve rounds. A value <= 0 removes the cap entirely.
-        default: "-1 (no override)"
-        field_num: 53
-        type: int32
-        optional: true
-    - papilo_probing_max_badgesize:
-        param_name: mip_hyper_heuristic_papilo_probing_max_badgesize
-        description: Ceiling on Papilo's probing.minbadgesize.
-        default: "-1 (no override)"
-        field_num: 54
-        type: int32
-        optional: true
+  - root_lp_time_ratio:
+      member: mip_hyper_params.heuristic_root_lp_time_ratio
+      param_name: mip_hyper_heuristic_root_lp_time_ratio
+      description: Fraction of the total time budget given to the root LP.
+      default: "0.1"
+      field_num: 39
+      optional: true
+  - root_lp_max_time:
+      member: mip_hyper_params.heuristic_root_lp_max_time
+      param_name: mip_hyper_heuristic_root_lp_max_time
+      description: Hard cap in seconds on the root LP solve.
+      default: "15.0"
+      field_num: 40
+      optional: true
+    # 41, 42 and 43 held rins_time_limit, rins_max_time_limit and
+    # rins_fix_rate, removed with the GPU RINS heuristic. Do not reuse: an
+    # older client still sends them on those numbers.
+  - stagnation_trigger:
+      member: mip_hyper_params.heuristic_stagnation_trigger
+      param_name: mip_hyper_heuristic_stagnation_trigger
+      description: >-
+        Number of Feasibility Pump loops without improvement before
+        recombination is triggered.
+      default: "3"
+      field_num: 44
+      type: int32
+      optional: true
+  - max_iterations_without_improvement:
+      member: mip_hyper_params.heuristic_max_iterations_without_improvement
+      param_name: mip_hyper_heuristic_max_iterations_without_improvement
+      description: Depth of the diversity step taken after stagnation.
+      default: "8"
+      field_num: 45
+      type: int32
+      optional: true
+  - initial_infeasibility_weight:
+      member: mip_hyper_params.heuristic_initial_infeasibility_weight
+      param_name: mip_hyper_heuristic_initial_infeasibility_weight
+      description: Seed value for the constraint violation penalty.
+      default: "1000.0"
+      field_num: 46
+      optional: true
+  - n_of_minimums_for_exit:
+      member: mip_hyper_params.heuristic_n_of_minimums_for_exit
+      param_name: mip_hyper_heuristic_n_of_minimums_for_exit
+      description: >-
+        Number of local minima after which the Feasibility Jump baseline
+        exits.
+      default: "7000"
+      field_num: 47
+      type: int32
+      optional: true
+  - enabled_recombiners:
+      member: mip_hyper_params.heuristic_enabled_recombiners
+      param_name: mip_hyper_heuristic_enabled_recombiners
+      description: >-
+        Bitmask of enabled recombiners: 1 bound propagation, 2 feasibility
+        pump, 4 line-segment recombination, 8 sub-MIP. (Bit 4 is the
+        `LINE_SEGMENT` recombiner specifically, not the solver's general
+        local search.)
+      default: "15 (all enabled)"
+      field_num: 48
+      type: int32
+      optional: true
+  - cycle_detection_length:
+      member: mip_hyper_params.heuristic_cycle_detection_length
+      param_name: mip_hyper_heuristic_cycle_detection_length
+      description: >-
+        Size of the ring buffer used to detect Feasibility Pump assignment
+        cycles.
+      default: "30"
+      field_num: 49
+      type: int32
+      optional: true
+  - relaxed_lp_time_limit:
+      member: mip_hyper_params.heuristic_relaxed_lp_time_limit
+      param_name: mip_hyper_heuristic_relaxed_lp_time_limit
+      description: >-
+        Base time cap in seconds for relaxed LP solves inside the heuristics.
+      default: "1.0"
+      field_num: 50
+      optional: true
+  - related_vars_time_limit:
+      member: mip_hyper_params.heuristic_related_vars_time_limit
+      param_name: mip_hyper_heuristic_related_vars_time_limit
+      description: >-
+        Time in seconds allowed for building the related-variable structure.
+      default: "2.0"
+      field_num: 51
+      optional: true
+  - presolve_max_rounds:
+      member: mip_hyper_params.presolve_max_rounds
+      param_name: mip_hyper_heuristic_presolve_max_rounds
+      description: >-
+        Cap on Papilo presolve rounds. A value <= 0 removes the cap entirely.
+      default: "-1 (no override)"
+      field_num: 53
+      type: int32
+      optional: true
+  - papilo_probing_max_badgesize:
+      member: mip_hyper_params.presolve_papilo_probing_max_badgesize
+      param_name: mip_hyper_heuristic_papilo_probing_max_badgesize
+      description: Ceiling on Papilo's probing.minbadgesize.
+      default: "-1 (no override)"
+      field_num: 54
+      type: int32
+      optional: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Optimization Problem (cpu_optimization_problem_t)

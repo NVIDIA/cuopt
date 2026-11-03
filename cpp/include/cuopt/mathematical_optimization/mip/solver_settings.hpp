@@ -12,10 +12,7 @@
 
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/export.hpp>
-#include <cuopt/mathematical_optimization/mip/branch_and_bound_hyper_params.hpp>
-#include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
-#include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
-#include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/mip_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
@@ -171,22 +168,6 @@ class mip_solver_settings_t {
    */
   bool probing{true};
   /**
-   * @brief Enable the block bounded-variable-elimination step of cuOpt's MIP presolve.
-   *
-   * Runs after trivial_presolve and eliminates blocks of functionally-determined binary auxiliary
-   * variables discovered via the probing-cache implication closure, re-encoding each block's
-   * projected relation as certified prime-implicate clauses. Requires the probing-cache step; a
-   * no-op when no certified reduction exists.
-   */
-  bool block_bve{true};
-  /**
-   * @brief Enable the indicator-strengthening step of presolve (MIP only).
-   *
-   * Runs before Papilo and only when the higher-level presolve is enabled. It appends implied
-   * indicator rows and lifts capacity rows by the indicator that bounds all of their members.
-   */
-  bool indicator_strengthening{true};
-  /**
    * @brief Determinism mode for MIP solver.
    *
    * Controls the determinism behavior of the MIP solver:
@@ -210,10 +191,7 @@ class mip_solver_settings_t {
   // TODO check with Akif and Alice
   pdlp::pdlp_hyper_params_t hyper_params;
 
-  mip::heuristics_hyper_params_t<i_t, f_t> heuristic_params;
-  mip::diving_hyper_params_t<i_t, f_t> diving_params;
-  mip::submip_hyper_params_t<i_t, f_t> submip_params;
-  mip::branch_and_bound_hyper_params_t<i_t, f_t> branch_and_bound_params;
+  mip::mip_hyper_params_t<i_t, f_t> mip_hyper_params;
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;

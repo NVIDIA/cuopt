@@ -7,9 +7,7 @@
 
 #pragma once
 
-#include <cuopt/mathematical_optimization/mip/branch_and_bound_hyper_params.hpp>
-#include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
-#include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/mip_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <dual_simplex/logger.hpp>
@@ -247,8 +245,8 @@ struct simplex_solver_settings_t {
   // >1 - set as the iteration limit in dual simplex
   i_t strong_branching_simplex_iteration_limit;
 
-  mip::diving_hyper_params_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
-  mip::branch_and_bound_hyper_params_t<i_t, f_t> branch_and_bound_settings;
+  // Settings for B&B, diving and the recursive sub-MIP
+  mip::mip_hyper_params_t<i_t, f_t> mip_hyper_params;
 
   // Settings for the reliability branching.
   // - -1: automatic
@@ -259,9 +257,6 @@ struct simplex_solver_settings_t {
   i_t inside_mip;  // 0 if outside MIP, 1 if inside MIP at root node, 2 if inside MIP at leaf node
   i_t inside_submip;     // 0 if in regular MIP solve, 1 if in sub-MIP solve
   i_t inside_root_node;  // 1 if this is running during the root node, 0 otherwise
-
-  // Settings for the recursive sub-MIP
-  mip::submip_hyper_params_t<i_t, f_t> submip_settings;
 
   std::function<void(std::vector<f_t>&, f_t)> solution_callback;
   std::function<void()> heuristic_preemption_callback;

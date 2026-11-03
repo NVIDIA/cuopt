@@ -113,12 +113,9 @@
 #define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_ROUNDS "mip_hyper_heuristic_presolve_max_rounds"
 #define CUOPT_MIP_HYPER_HEURISTIC_PAPILO_PROBING_MAX_BADGESIZE \
   "mip_hyper_heuristic_papilo_probing_max_badgesize"
-#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO  "mip_hyper_heuristic_root_lp_time_ratio"
-#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME    "mip_hyper_heuristic_root_lp_max_time"
-#define CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT     "mip_hyper_heuristic_rins_time_limit"
-#define CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT "mip_hyper_heuristic_rins_max_time_limit"
-#define CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE       "mip_hyper_heuristic_rins_fix_rate"
-#define CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER  "mip_hyper_heuristic_stagnation_trigger"
+#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO "mip_hyper_heuristic_root_lp_time_ratio"
+#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME   "mip_hyper_heuristic_root_lp_max_time"
+#define CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER "mip_hyper_heuristic_stagnation_trigger"
 #define CUOPT_MIP_HYPER_HEURISTIC_MAX_ITERS_WITHOUT_IMPROVEMENT \
   "mip_hyper_heuristic_max_iterations_without_improvement"
 #define CUOPT_MIP_HYPER_HEURISTIC_INITIAL_INFEASIBILITY_WEIGHT \

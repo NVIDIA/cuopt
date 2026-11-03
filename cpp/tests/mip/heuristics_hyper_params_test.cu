@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/mip_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <gtest/gtest.h>
@@ -39,9 +39,9 @@ TEST_F(HeuristicsHyperParamsTest, DumpedFileIsAllCommentedOut)
 
   // Loading the commented-out dump should leave struct defaults unchanged
   settings_t reloaded;
-  reloaded.get_mip_settings().heuristic_params.population_size = 9999;
+  reloaded.get_mip_settings().mip_hyper_params.heuristic_population_size = 9999;
   reloaded.load_parameters_from_file(tmp_path);
-  EXPECT_EQ(reloaded.get_mip_settings().heuristic_params.population_size, 9999);
+  EXPECT_EQ(reloaded.get_mip_settings().mip_hyper_params.heuristic_population_size, 9999);
 }
 
 TEST_F(HeuristicsHyperParamsTest, DumpedFileIsParseable)
@@ -61,9 +61,6 @@ TEST_F(HeuristicsHyperParamsTest, CustomValuesRoundTrip)
     f << "mip_hyper_heuristic_num_cpufj_threads = 4\n";
     f << "mip_hyper_heuristic_root_lp_time_ratio = 0.05\n";
     f << "mip_hyper_heuristic_root_lp_max_time = 30\n";
-    f << "mip_hyper_heuristic_rins_time_limit = 5\n";
-    f << "mip_hyper_heuristic_rins_max_time_limit = 40\n";
-    f << "mip_hyper_heuristic_rins_fix_rate = 0.7\n";
     f << "mip_hyper_heuristic_stagnation_trigger = 5\n";
     f << "mip_hyper_heuristic_max_iterations_without_improvement = 12\n";
     f << "mip_hyper_heuristic_initial_infeasibility_weight = 500\n";
@@ -76,23 +73,20 @@ TEST_F(HeuristicsHyperParamsTest, CustomValuesRoundTrip)
 
   settings_t settings;
   settings.load_parameters_from_file(tmp_path);
-  const auto& hp = settings.get_mip_settings().heuristic_params;
+  const auto& hp = settings.get_mip_settings().mip_hyper_params;
 
-  EXPECT_EQ(hp.population_size, 64);
-  EXPECT_EQ(hp.num_cpufj_threads, 4);
-  EXPECT_DOUBLE_EQ(hp.root_lp_time_ratio, 0.05);
-  EXPECT_DOUBLE_EQ(hp.root_lp_max_time, 30.0);
-  EXPECT_DOUBLE_EQ(hp.rins_time_limit, 5.0);
-  EXPECT_DOUBLE_EQ(hp.rins_max_time_limit, 40.0);
-  EXPECT_DOUBLE_EQ(hp.rins_fix_rate, 0.7);
-  EXPECT_EQ(hp.stagnation_trigger, 5);
-  EXPECT_EQ(hp.max_iterations_without_improvement, 12);
-  EXPECT_DOUBLE_EQ(hp.initial_infeasibility_weight, 500.0);
-  EXPECT_EQ(hp.n_of_minimums_for_exit, 10000);
-  EXPECT_EQ(hp.enabled_recombiners, 5);
-  EXPECT_EQ(hp.cycle_detection_length, 50);
-  EXPECT_DOUBLE_EQ(hp.relaxed_lp_time_limit, 2.0);
-  EXPECT_DOUBLE_EQ(hp.related_vars_time_limit, 60.0);
+  EXPECT_EQ(hp.heuristic_population_size, 64);
+  EXPECT_EQ(hp.heuristic_num_cpufj_threads, 4);
+  EXPECT_DOUBLE_EQ(hp.heuristic_root_lp_time_ratio, 0.05);
+  EXPECT_DOUBLE_EQ(hp.heuristic_root_lp_max_time, 30.0);
+  EXPECT_EQ(hp.heuristic_stagnation_trigger, 5);
+  EXPECT_EQ(hp.heuristic_max_iterations_without_improvement, 12);
+  EXPECT_DOUBLE_EQ(hp.heuristic_initial_infeasibility_weight, 500.0);
+  EXPECT_EQ(hp.heuristic_n_of_minimums_for_exit, 10000);
+  EXPECT_EQ(hp.heuristic_enabled_recombiners, 5);
+  EXPECT_EQ(hp.heuristic_cycle_detection_length, 50);
+  EXPECT_DOUBLE_EQ(hp.heuristic_relaxed_lp_time_limit, 2.0);
+  EXPECT_DOUBLE_EQ(hp.heuristic_related_vars_time_limit, 60.0);
 }
 
 TEST_F(HeuristicsHyperParamsTest, PartialConfigKeepsDefaults)
@@ -100,22 +94,23 @@ TEST_F(HeuristicsHyperParamsTest, PartialConfigKeepsDefaults)
   {
     std::ofstream f(tmp_path);
     f << "mip_hyper_heuristic_population_size = 128\n";
-    f << "mip_hyper_heuristic_rins_fix_rate = 0.3\n";
+    f << "mip_hyper_heuristic_root_lp_time_ratio = 0.3\n";
   }
 
   settings_t settings;
   settings.load_parameters_from_file(tmp_path);
-  const auto& hp = settings.get_mip_settings().heuristic_params;
+  const auto& hp = settings.get_mip_settings().mip_hyper_params;
 
-  EXPECT_EQ(hp.population_size, 128);
-  EXPECT_DOUBLE_EQ(hp.rins_fix_rate, 0.3);
+  EXPECT_EQ(hp.heuristic_population_size, 128);
+  EXPECT_DOUBLE_EQ(hp.heuristic_root_lp_time_ratio, 0.3);
 
-  mip::heuristics_hyper_params_t<int, double> defaults;
-  EXPECT_EQ(hp.num_cpufj_threads, defaults.num_cpufj_threads);
-  EXPECT_DOUBLE_EQ(hp.root_lp_time_ratio, defaults.root_lp_time_ratio);
-  EXPECT_EQ(hp.n_of_minimums_for_exit, defaults.n_of_minimums_for_exit);
-  EXPECT_EQ(hp.enabled_recombiners, defaults.enabled_recombiners);
-  EXPECT_DOUBLE_EQ(hp.related_vars_time_limit, defaults.related_vars_time_limit);
+  mip::mip_hyper_params_t<int, double> defaults;
+  EXPECT_EQ(hp.heuristic_num_cpufj_threads, defaults.heuristic_num_cpufj_threads);
+  EXPECT_DOUBLE_EQ(hp.heuristic_root_lp_max_time, defaults.heuristic_root_lp_max_time);
+  EXPECT_EQ(hp.heuristic_n_of_minimums_for_exit, defaults.heuristic_n_of_minimums_for_exit);
+  EXPECT_EQ(hp.heuristic_enabled_recombiners, defaults.heuristic_enabled_recombiners);
+  EXPECT_DOUBLE_EQ(hp.heuristic_related_vars_time_limit,
+                   defaults.heuristic_related_vars_time_limit);
 }
 
 TEST_F(HeuristicsHyperParamsTest, CommentsAndBlankLinesIgnored)
@@ -131,7 +126,7 @@ TEST_F(HeuristicsHyperParamsTest, CommentsAndBlankLinesIgnored)
 
   settings_t settings;
   settings.load_parameters_from_file(tmp_path);
-  EXPECT_EQ(settings.get_mip_settings().heuristic_params.population_size, 42);
+  EXPECT_EQ(settings.get_mip_settings().mip_hyper_params.heuristic_population_size, 42);
 }
 
 TEST_F(HeuristicsHyperParamsTest, UnknownKeyThrows)
@@ -178,7 +173,7 @@ TEST_F(HeuristicsHyperParamsTest, TrailingJunkFloatThrows)
 {
   {
     std::ofstream f(tmp_path);
-    f << "mip_hyper_heuristic_rins_fix_rate = 0.5abc\n";
+    f << "mip_hyper_heuristic_root_lp_time_ratio = 0.5abc\n";
   }
   settings_t settings;
   EXPECT_THROW(settings.load_parameters_from_file(tmp_path), cuopt::logic_error);
@@ -198,7 +193,7 @@ TEST_F(HeuristicsHyperParamsTest, RangeViolationFixRateThrows)
 {
   {
     std::ofstream f(tmp_path);
-    f << "mip_hyper_heuristic_rins_fix_rate = 2.0\n";
+    f << "mip_hyper_submip_min_fixrate = 2.0\n";
   }
   settings_t settings;
   EXPECT_THROW(settings.load_parameters_from_file(tmp_path), cuopt::logic_error);
@@ -227,7 +222,7 @@ TEST_F(HeuristicsHyperParamsTest, IndentedCommentAndWhitespaceLinesIgnored)
   }
   settings_t settings;
   settings.load_parameters_from_file(tmp_path);
-  EXPECT_EQ(settings.get_mip_settings().heuristic_params.population_size, 99);
+  EXPECT_EQ(settings.get_mip_settings().mip_hyper_params.heuristic_population_size, 99);
 }
 
 TEST_F(HeuristicsHyperParamsTest, MixedSolverAndHyperParamsFromFile)
@@ -239,7 +234,7 @@ TEST_F(HeuristicsHyperParamsTest, MixedSolverAndHyperParamsFromFile)
   }
   settings_t settings;
   settings.load_parameters_from_file(tmp_path);
-  EXPECT_EQ(settings.get_mip_settings().heuristic_params.population_size, 100);
+  EXPECT_EQ(settings.get_mip_settings().mip_hyper_params.heuristic_population_size, 100);
   EXPECT_DOUBLE_EQ(settings.get_mip_settings().time_limit, 42.0);
 }
 
