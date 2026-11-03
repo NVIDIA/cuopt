@@ -2166,8 +2166,6 @@ TEST(pdlp_class, warm_start_stable3_not_supported)
   EXPECT_EQ(solution2.get_termination_status(), pdlp_termination_status_t::NoTermination);
 }
 
-// A concurrent solve won by another method halts PDLP before its first step, and the returned
-// solution still carries PDLP's warm start. That warm start must hold defined values.
 TEST(pdlp_class, warm_start_defined_when_halted_before_first_step)
 {
   const raft::handle_t handle_{};

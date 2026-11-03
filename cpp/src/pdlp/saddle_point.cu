@@ -57,9 +57,7 @@ saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handl
                                 handle_ptr->get_stream().get()));
   RAFT_CUDA_TRY(cudaMemsetAsync(
     dual_gradient_.data(), 0, sizeof(f_t) * dual_gradient_.size(), handle_ptr->get_stream().get()));
-  // A concurrent halt can stop PDLP before the first step's SpMV writes current AtY, and the
-  // returned warm start includes it. Zero is A^T y for the default all-0 dual, and a warm start
-  // taken before the first step has AtY recomputed by that step anyway.
+  // A concurrent halt can return a warm start before the first SpMV writes current AtY
   RAFT_CUDA_TRY(cudaMemsetAsync(
     current_AtY_.data(), 0, sizeof(f_t) * current_AtY_.size(), handle_ptr->get_stream().get()));
 
