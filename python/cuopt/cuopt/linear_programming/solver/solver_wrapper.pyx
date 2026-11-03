@@ -375,11 +375,13 @@ cdef object _slack_from_data_model(object data_model_obj,
         return slack
 
     rhs = dm.get_constraint_bounds()
-    sense = dm.get_row_types()
+    # The setter stores one int8 code per row, so a plain ``str`` such as
+    # "GL" keeps its length (np.asarray(..., dtype="S1") would truncate it).
+    sense = dm.get_ascii_row_types()
     if len(rhs) == m and len(sense) == m:
         return _compute_slack_csr(
             np.ascontiguousarray(rhs, dtype=np.float64),
-            np.ascontiguousarray(sense, dtype="S1"),
+            np.ascontiguousarray(sense, dtype=np.int8),
             values,
             indices,
             offsets,
