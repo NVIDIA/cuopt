@@ -13,6 +13,7 @@
 #   CTEST_DIR        - CMake build tree containing CTestTestfile.cmake
 #                     (default: cpp/build/latest)
 #   RAPIDS_TESTS_DIR - directory for test results
+#   GTEST_OUTPUT     - gtest XML output (default: xml:${RAPIDS_TESTS_DIR}/)
 
 set -euo pipefail
 
@@ -40,6 +41,7 @@ fi
 
 RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${repo_dir}/test-results}"
 mkdir -p "${RAPIDS_TESTS_DIR}"
+export GTEST_OUTPUT="${GTEST_OUTPUT:-xml:${RAPIDS_TESTS_DIR}/}"
 ctest_junit="${RAPIDS_TESTS_DIR}/ctest.xml"
 
 echo "Running ctest from ${ctest_dir}"

@@ -55,7 +55,7 @@ source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/crash_helpers.sh"
 
 
 # Run gtests from libcuopt-tests package
-# XML output and retry logic handled by run_ctests.sh
+# XML output handled by run_ctests.sh
 export RAPIDS_TESTS_DIR
 
 rapids-logger "Run gtests"
