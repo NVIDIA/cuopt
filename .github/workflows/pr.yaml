@@ -423,7 +423,7 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_cpp.sh
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files]
     permissions:
@@ -437,7 +437,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
-      matrix_type: cuda-13-4-pr,pull-request
+      matrix_type: pull-request
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -478,7 +478,7 @@ jobs:
       script: ci/build_python.sh
       # Build a conda package for each CUDA x ARCH x minimum supported Python version
       matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   conda-python-tests:
     needs: [conda-python-build, changed-files]
     permissions:
@@ -493,7 +493,7 @@ jobs:
       build_type: pull-request
       run_codecov: false
       script: ci/test_python.sh
-      matrix_type: cuda-13-4-pr,pull-request
+      matrix_type: pull-request
   docs-build-matrix:
     permissions:
       contents: read
@@ -501,7 +501,7 @@ jobs:
     with:
       build_type: pull-request
       matrix_name: docs-build
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   docs-build:
     needs: [docs-build-matrix, conda-python-build, changed-files]
     permissions:
@@ -538,7 +538,7 @@ jobs:
       build_type: pull-request
       matrix_name: conda-cpp-build
       matrix_filter: 'map(. + {CUDA_MAJOR: (.CUDA_VER | split(".") | .[0])}) | unique_by([.ARCH, .CUDA_MAJOR])'
-      matrix_type: cuda-13-4-nightly
+      matrix_type: pull-request
 
   java-static-build:
     needs: [java-static-build-matrix, changed-files]
@@ -649,7 +649,7 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt_client.sh
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   wheel-build-libcuopt-mathopt:
     needs: [build-details, compute-matrix-filters, changed-files, wheel-build-libcuopt-client]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
@@ -669,7 +669,7 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt_mathopt.sh
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   wheel-build-libcuopt-routing:
     needs: [build-details, compute-matrix-filters, changed-files, wheel-build-libcuopt-client]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
@@ -689,7 +689,7 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt_routing.sh
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   wheel-build-libcuopt:
     needs:
       - build-details
@@ -715,7 +715,7 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt.sh
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   wheel-build-cuopt:
     needs:
       - build-details
@@ -742,7 +742,7 @@ jobs:
       package-type: python
       # Build a wheel for each CUDA x ARCH x minimum supported Python version
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_filter }}
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-sh-client, changed-files]
     permissions:
@@ -756,7 +756,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
-      matrix_type: cuda-13-4-pr,pull-request
+      matrix_type: pull-request
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -784,7 +784,7 @@ jobs:
       pure-wheel: true
       # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   wheel-build-cuopt-sh-client:
     needs: [build-details, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
@@ -806,7 +806,7 @@ jobs:
       pure-wheel: true
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_sh_client_filter }}
-      matrix_type: cuda-13-4-pr
+      matrix_type: pull-request
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files, compute-matrix-filters]
     permissions:
@@ -821,7 +821,7 @@ jobs:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_test_filter }}
-      matrix_type: cuda-13-4-pr,pull-request
+      matrix_type: pull-request
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -843,7 +843,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
-      matrix_type: cuda-13-4-pr,pull-request
+      matrix_type: pull-request
   pr-test-summary:
     name: "PR test summary (non-blocking)"
     needs:
