@@ -17,7 +17,6 @@ namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 bool branch_and_bound_worker_t<i_t, f_t>::apply_symmetry_reductions(
-  const simplex::lp_problem_t<i_t, f_t>& original_lp,
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
   mip_node_t<i_t, f_t>* node_ptr,
   branch_and_bound_stats_t<i_t, f_t>& stats)
@@ -28,7 +27,7 @@ bool branch_and_bound_worker_t<i_t, f_t>::apply_symmetry_reductions(
   if (orbital_fixing != nullptr && !orbital_fixing->disabled()) {
     i_t prev_fix  = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
     i_t conflicts = orbital_fixing->orbital_fixing(
-      symmetry_ptr, settings, node_ptr, leaf_problem, original_lp.lower, original_lp.upper, domain);
+      symmetry_ptr, settings, node_ptr, leaf_problem, root_lp.lower, root_lp.upper, domain);
     i_t new_fix = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
     if (new_fix > prev_fix) {
       ++stats.orbital_fixing_nodes;
@@ -57,7 +56,6 @@ bool branch_and_bound_worker_t<i_t, f_t>::apply_symmetry_reductions(
 
 template <typename i_t, typename f_t>
 simplex::dual_status_t branch_and_bound_worker_t<i_t, f_t>::solve_node_lp(
-  const simplex::lp_problem_t<i_t, f_t>& original_lp,
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
   mip_node_t<i_t, f_t>* node_ptr,
   branch_and_bound_stats_t<i_t, f_t>& stats,
@@ -69,17 +67,16 @@ simplex::dual_status_t branch_and_bound_worker_t<i_t, f_t>::solve_node_lp(
   raft::common::nvtx::range scope("BB::solve_node");
 #ifdef DEBUG_BRANCHING
   i_t num_integer_variables = 0;
-  for (i_t j = 0; j < original_lp.num_cols; j++) {
+  for (i_t j = 0; j < root_lp.num_cols; j++) {
     if (var_types[j] == simplex::variable_type_t::INTEGER) { num_integer_variables++; }
   }
   if (node_ptr->depth > num_integer_variables) {
-    std::vector<i_t> branched_variables(original_lp.num_cols, 0);
-    std::vector<f_t> branched_lower(original_lp.num_cols, std::numeric_limits<f_t>::quiet_NaN());
-    std::vector<f_t> branched_upper(original_lp.num_cols, std::numeric_limits<f_t>::quiet_NaN());
+    std::vector<i_t> branched_variables(root_lp.num_cols, 0);
+    std::vector<f_t> branched_lower(root_lp.num_cols, std::numeric_limits<f_t>::quiet_NaN());
+    std::vector<f_t> branched_upper(root_lp.num_cols, std::numeric_limits<f_t>::quiet_NaN());
     mip_node_t<i_t, f_t>* parent = node_ptr->parent;
     while (parent != nullptr) {
-      if (original_lp.lower[parent->branch_var] != 0.0 ||
-          original_lp.upper[parent->branch_var] != 1.0) {
+      if (root_lp.lower[parent->branch_var] != 0.0 || root_lp.upper[parent->branch_var] != 1.0) {
         break;
       }
       if (branched_variables[parent->branch_var] == 1) {
@@ -146,7 +143,7 @@ simplex::dual_status_t branch_and_bound_worker_t<i_t, f_t>::solve_node_lp(
   }
 
   if (feasible) {
-    feasible = apply_symmetry_reductions(original_lp, settings, node_ptr, stats);
+    feasible = apply_symmetry_reductions(settings, node_ptr, stats);
 
     if (feasible) {
       lp_settings.time_limit = settings.time_limit - toc(start_time);

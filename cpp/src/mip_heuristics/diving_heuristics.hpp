@@ -64,9 +64,8 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     }
   }
 
-  void dive(const simplex::lp_problem_t<i_t, f_t>& original_lp,
-            const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-            const branch_and_bound_stats_t<i_t, f_t>& solver_stats);
+  void dive(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+            const branch_and_bound_stats_t<i_t, f_t>& bnb_stats);
 
   // Classify the node after solving its LP relaxation. HAS_CHILDREN means the node is fractional
   // and within the cutoff; the caller is responsible for branching.

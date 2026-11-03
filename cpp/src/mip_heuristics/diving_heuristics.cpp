@@ -47,9 +47,8 @@ node_status_t diving_worker_t<i_t, f_t>::classify_node(
 }
 
 template <typename i_t, typename f_t>
-void diving_worker_t<i_t, f_t>::dive(const lp_problem_t<i_t, f_t>& original_lp,
-                                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                                     const branch_and_bound_stats_t<i_t, f_t>& solver_stats)
+void diving_worker_t<i_t, f_t>::dive(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                     const branch_and_bound_stats_t<i_t, f_t>& bnb_stats)
 {
   raft::common::nvtx::range scope("BB::diving_thread");
   if (this->orbital_fixing) { this->orbital_fixing->disable(); }
@@ -60,9 +59,10 @@ void diving_worker_t<i_t, f_t>::dive(const lp_problem_t<i_t, f_t>& original_lp,
   const i_t backtrack_limit   = settings.diving_settings.backtrack_limit;
   this->recompute_basis       = true;
 
-  bool is_start_feasible = this->rebuild_bounds_from_stack(original_lp, settings);
+  bool is_start_feasible = this->rebuild_bounds_from_stack(settings);
   if (!is_start_feasible) { return; }
 
+  branch_and_bound_t<i_t, f_t>* bnb_ptr = this->branch_and_bound_ptr;
   search_tree_t<i_t, f_t> dive_tree(std::move(this->start_node));
 
   // Since we are perform a DFS with a limit amount of backtracking, the
@@ -72,14 +72,14 @@ void diving_worker_t<i_t, f_t>::dive(const lp_problem_t<i_t, f_t>& original_lp,
   stack.push_front(&dive_tree.root);
 
   branch_and_bound_stats_t<i_t, f_t> dive_stats;
-  f_t lower_bound = this->branch_and_bound_ptr->get_lower_bound();
-  f_t upper_bound = this->branch_and_bound_ptr->get_upper_bound();
+  f_t lower_bound = bnb_ptr->get_lower_bound();
+  f_t upper_bound = bnb_ptr->get_upper_bound();
   f_t user_obj    = compute_user_objective(this->leaf_problem, upper_bound);
   f_t user_lower  = compute_user_objective(this->leaf_problem, lower_bound);
   f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t abs_gap     = compute_user_abs_gap(this->leaf_problem, upper_bound, lower_bound);
 
-  while (stack.size() > 0 && !this->branch_and_bound_ptr->has_solver_stopped() &&
+  while (stack.size() > 0 && !bnb_ptr->has_solver_stopped() &&
          rel_gap > settings.relative_mip_gap_tol && abs_gap > settings.absolute_mip_gap_tol &&
          !settings.received_halt_signal()) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
@@ -97,10 +97,10 @@ void diving_worker_t<i_t, f_t>::dive(const lp_problem_t<i_t, f_t>& original_lp,
       continue;
     }
 
-    if (toc(solver_stats.start_time) > settings.time_limit) { break; }
+    if (toc(bnb_stats.start_time) > settings.time_limit) { break; }
     if (dive_stats.nodes_explored >= diving_node_limit) { break; }
 
-    int64_t bnb_lp_iters = solver_stats.total_simplex_iters;
+    int64_t bnb_lp_iters = bnb_stats.total_simplex_iters;
     f_t factor           = settings.diving_settings.iteration_limit_factor;
     int64_t offset       = settings.diving_settings.iteration_limit_offset;
     int64_t max_iter     = offset + factor * bnb_lp_iters - dive_stats.total_simplex_iters;
@@ -109,14 +109,8 @@ void diving_worker_t<i_t, f_t>::dive(const lp_problem_t<i_t, f_t>& original_lp,
     decompress_vstatus(node_ptr->packed_vstatus, this->leaf_problem.num_cols, this->leaf_vstatus);
     assert(this->leaf_vstatus.size() == this->leaf_problem.num_cols);
 
-    simplex::dual_status_t lp_status = this->solve_node_lp(original_lp,
-                                                           settings,
-                                                           node_ptr,
-                                                           dive_stats,
-                                                           log,
-                                                           max_iter,
-                                                           solver_stats.start_time,
-                                                           upper_bound);
+    simplex::dual_status_t lp_status = this->solve_node_lp(
+      settings, node_ptr, dive_stats, log, max_iter, bnb_stats.start_time, upper_bound);
     ++dive_stats.nodes_explored;
 
     if (lp_status == simplex::dual_status_t::TIME_LIMIT) { break; }
@@ -129,11 +123,11 @@ void diving_worker_t<i_t, f_t>::dive(const lp_problem_t<i_t, f_t>& original_lp,
     node_status_t node_status =
       classify_node(node_ptr, lp_status, upper_bound, settings, fractional, leaf_obj);
     if (node_status == node_status_t::INTEGER_FEASIBLE) {
-      this->branch_and_bound_ptr->set_solution_from_worker(this->leaf_problem,
-                                                           leaf_obj,
-                                                           this->leaf_solution.x,
-                                                           node_ptr->depth,
-                                                           this->search_strategy);
+      bnb_ptr->set_solution_from_worker(this->leaf_problem,
+                                        leaf_obj,
+                                        this->leaf_solution.x,
+                                        node_ptr->depth,
+                                        this->search_strategy);
     }
 
     if (node_status != node_status_t::HAS_CHILDREN) {
@@ -172,8 +166,8 @@ void diving_worker_t<i_t, f_t>::dive(const lp_problem_t<i_t, f_t>& original_lp,
       stack.pop_back();
     }
 
-    lower_bound = this->branch_and_bound_ptr->get_lower_bound();
-    upper_bound = this->branch_and_bound_ptr->get_upper_bound();
+    lower_bound = bnb_ptr->get_lower_bound();
+    upper_bound = bnb_ptr->get_upper_bound();
     user_obj    = compute_user_objective(this->leaf_problem, upper_bound);
     user_lower  = compute_user_objective(this->leaf_problem, lower_bound);
     rel_gap     = user_relative_gap(user_obj, user_lower);

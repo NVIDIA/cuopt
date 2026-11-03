@@ -98,6 +98,9 @@ class branch_and_bound_worker_t {
 
   bool recompute_basis = true;
 
+  // The solver's `original_lp_`, which the cut passes modify. Not read inside the root node.
+  const simplex::lp_problem_t<i_t, f_t>& root_lp;
+
   // During the cut passes, this values can change. So we save a copy on root_heuristics
   // and point these attributes to it. During normal exploration, this is set
   // to the final values from the root node.
@@ -144,6 +147,7 @@ class branch_and_bound_worker_t {
       basis_factors(original_lp.num_rows, settings.refactor_frequency),
       basic_list(original_lp.num_rows),
       rng{seed_gen.next_u64(), seed_gen.generate_stream()},
+      root_lp(original_lp),
       root_solution(root_solution),
       root_edge_norm(root_edge_norm),
       var_types(var_type),
@@ -167,14 +171,13 @@ class branch_and_bound_worker_t {
   }
 
   // Set variable bounds based on the bound changes stack.
-  bool rebuild_bounds_from_stack(const simplex::lp_problem_t<i_t, f_t>& original_lp,
-                                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+  bool rebuild_bounds_from_stack(const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
     if (!settings.inside_root_node && search_strategy != search_strategy_t::RENS &&
         search_strategy != search_strategy_t::RINS &&
         search_strategy != search_strategy_t::MUTATION) {
-      leaf_problem.lower = original_lp.lower;
-      leaf_problem.upper = original_lp.upper;
+      leaf_problem.lower = root_lp.lower;
+      leaf_problem.upper = root_lp.upper;
       domain.apply_stack(leaf_problem.lower, leaf_problem.upper);
     }
 
@@ -190,13 +193,11 @@ class branch_and_bound_worker_t {
   // settings_.symmetry == 2, lexical reduction) to the current node.
   // Tightens leaf_problem bounds and updates stats. Returns false
   // if lexical reduction proves the node infeasible.
-  bool apply_symmetry_reductions(const simplex::lp_problem_t<i_t, f_t>& original_lp,
-                                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  bool apply_symmetry_reductions(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                  mip_node_t<i_t, f_t>* node_ptr,
                                  branch_and_bound_stats_t<i_t, f_t>& stats);
 
-  simplex::dual_status_t solve_node_lp(const simplex::lp_problem_t<i_t, f_t>& original_lp,
-                                       const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  simplex::dual_status_t solve_node_lp(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                        mip_node_t<i_t, f_t>* node_ptr,
                                        branch_and_bound_stats_t<i_t, f_t>& stats,
                                        simplex::logger_t& log,

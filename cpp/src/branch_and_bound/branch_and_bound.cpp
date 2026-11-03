@@ -1290,8 +1290,9 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
       status = node_status_t::INTEGER_FEASIBLE;
 
     } else if (node_ptr->lower_bound <= upper_bound + abs_fathom_tol) {
-      auto [branch_var, dir] = policy.select_branch_variable(leaf_fractional, leaf_solution.x);
-      round_dir              = dir;
+      auto [branch_var, dir] =
+        policy.select_branch_variable(node_ptr, leaf_fractional, leaf_solution.x);
+      round_dir = dir;
 
       assert(worker->leaf_vstatus.size() == leaf_problem.num_cols);
       assert(branch_var >= 0);
@@ -1363,7 +1364,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     worker->domain.clear();
   }
 
-  bool is_start_feasible = worker->rebuild_bounds_from_stack(original_lp_, settings_);
+  bool is_start_feasible = worker->rebuild_bounds_from_stack(settings_);
   if (!is_start_feasible) {
     start_node->lower_bound = inf;
     search_tree_.graphviz_node(settings_.log, start_node, "infeasible", inf);
@@ -1481,8 +1482,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
     simplex_solver_settings_t lp_settings = settings_;
     lp_settings.concurrent_halt           = &node_concurrent_halt_;
-    dual_status_t lp_status               = worker->solve_node_lp(original_lp_,
-                                                    lp_settings,
+    dual_status_t lp_status               = worker->solve_node_lp(lp_settings,
                                                     node_ptr,
                                                     exploration_stats_,
                                                     settings_.log,
@@ -1805,7 +1805,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 #pragma omp task affinity(*diving_worker) priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) \
   firstprivate(diving_worker)
   {
-    diving_worker->dive(original_lp_, settings_, exploration_stats_);
+    diving_worker->dive(settings_, exploration_stats_);
     diving_worker_pool_.return_worker_to_pool(diving_worker);
   }
 
@@ -1913,7 +1913,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     simplex_solver_settings_t<i_t, f_t> dfs_settings = submip_settings;
     dfs_settings.diving_settings.backtrack_limit     = settings_.submip_settings.dfs_max_backtrack;
     worker->domain.clear();
-    worker->dive(original_lp_, dfs_settings, exploration_stats_);
+    worker->dive(dfs_settings, exploration_stats_);
     return;
   }
 
@@ -2661,8 +2661,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
       break;
     }
 
-    dual_status_t lp_status = worker->solve_node_lp(original_lp_,
-                                                    submip_settings,
+    dual_status_t lp_status = worker->solve_node_lp(submip_settings,
                                                     &node,
                                                     stats,
                                                     log,
@@ -2955,7 +2954,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
         dive_settings.concurrent_halt                     = &current_heuristic->halt_;
         dive_settings.inside_root_node                    = true;
         dive_settings.diving_settings.backtrack_limit     = 1;
-        worker->dive(original_lp_, dive_settings, exploration_stats_);
+        worker->dive(dive_settings, exploration_stats_);
         --(*worker_count);
         --current_heuristic->active_workers_;
       }
@@ -4848,7 +4847,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
     feasible = worker.update_variable_bounds(node_ptr, settings_);
   } else {
     node_ptr->rebuild_variable_bounds(worker.domain);
-    feasible = worker.rebuild_bounds_from_stack(original_lp_, settings_);
+    feasible = worker.rebuild_bounds_from_stack(settings_);
   }
 
   const bool is_cutoff =

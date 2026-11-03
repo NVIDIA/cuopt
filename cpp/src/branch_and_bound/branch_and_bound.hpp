@@ -180,7 +180,11 @@ class branch_and_bound_t {
 
   bool has_solver_space_incumbent() const { return incumbent_.has_incumbent; }
 
-  bool has_solver_stopped() const { return solver_status_ != mip_status_t::UNSET || !is_running_; }
+  bool has_solver_stopped() const
+  {
+    return solver_status_ != mip_status_t::UNSET || !is_running_ ||
+           node_concurrent_halt_.load(std::memory_order::acquire);
+  }
 
   // Repair a low-quality solution from the heuristics.
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
