@@ -549,6 +549,30 @@ def test_slack_prefers_constraint_bounds_over_rhs_and_row_types():
     assert solution.get_slack() == pytest.approx([0.0], abs=1e-4)
 
 
+def test_slack_with_row_types_given_as_str():
+    # Row types passed as a plain str keep one code per row, so the slack of
+    # every row is computed. Minimize x + y with x >= 1 and x + y >= 0.5:
+    # the optimum is x = 1, y = 0, so the first row is tight and the second
+    # has slack 0.5.
+    dm = data_model.DataModel()
+    dm.set_csr_constraint_matrix(
+        np.array([1.0, 1.0, 1.0]),
+        np.array([0, 0, 1], dtype=np.int32),
+        np.array([0, 1, 3], dtype=np.int32),
+    )
+    dm.set_objective_coefficients(np.array([1.0, 1.0]))
+    dm.set_variable_lower_bounds(np.zeros(2))
+    dm.set_variable_upper_bounds(np.full(2, np.inf))
+    dm.set_constraint_bounds(np.array([1.0, 0.5]))
+    dm.set_row_types("GG")
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    solution = solver.Solve(dm, settings)
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_slack() == pytest.approx([0.0, 0.5], abs=1e-4)
+
+
 def test_parse_var_names():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
