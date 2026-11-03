@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include <mip_heuristics/presolve/bounds_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
+#include <presolve/bounds_presolve.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 

@@ -70,7 +70,6 @@
 #define CUOPT_MIP_INTEGRALITY_TOLERANCE             "mip_integrality_tolerance"
 #define CUOPT_MIP_ABSOLUTE_GAP                      "mip_absolute_gap"
 #define CUOPT_MIP_RELATIVE_GAP                      "mip_relative_gap"
-#define CUOPT_MIP_HEURISTICS_ONLY                   "mip_heuristics_only"
 #define CUOPT_MIP_SCALING                           "mip_scaling"
 #define CUOPT_MIP_PRESOLVE                          "mip_presolve"
 #define CUOPT_MIP_SYMMETRY                          "mip_symmetry"

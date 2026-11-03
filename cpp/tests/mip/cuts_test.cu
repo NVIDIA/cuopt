@@ -15,8 +15,8 @@
 #include <cuts/cuts.hpp>
 #include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
+#include <presolve/conflict_graph/clique_table.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -2188,6 +2188,180 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
 
     EXPECT_GT(generated_cuts, 0);
   }
+}
+
+// Same single-node flow as create_small_single_node_flow_problem, written as the reversed side of
+// an equality carrying a coefficient below the flow-cover drop tolerance on a wide continuous z:
+//
+//   y0 + y1 - y2 - 1e-7 z <= 4,  0 <= z <= 1e4
+//
+// Dropping the z term must move 1e-7 * 1e4 onto the right-hand side, giving the relaxation of
+// create_single_node_flow_shifted_rhs_problem.
+io::mps_data_model_t<int, double> create_single_node_flow_equality_with_tiny_coefficient_problem()
+{
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 x2 + 0 y0 + 0 y1 + 0 y2 + 0 z
+Subject To
+  c1: - y0 - y1 + y2 + 0.0000001 z = -4
+  c2: -3 x0 + y0 <= 0
+  c3: -6 x1 + y1 <= 0
+  c4: -3 x2 + y2 <= 0
+Bounds
+  0 <= y0 <= 3
+  0 <= y1 <= 6
+  0 <= y2 <= 3
+  0 <= z <= 10000
+Binaries
+  x0
+  x1
+  x2
+End
+)LP");
+}
+
+io::mps_data_model_t<int, double> create_single_node_flow_shifted_rhs_problem()
+{
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 x2 + 0 y0 + 0 y1 + 0 y2
+Subject To
+  c1: y0 + y1 - y2 <= 4.001
+  c2: -3 x0 + y0 <= 0
+  c3: -6 x1 + y1 <= 0
+  c4: -3 x2 + y2 <= 0
+Bounds
+  0 <= y0 <= 3
+  0 <= y1 <= 6
+  0 <= y2 <= 3
+Binaries
+  x0
+  x1
+  x2
+End
+)LP");
+}
+
+void set_slack_values(const flow_cover_test_problem_t& test_problem, std::vector<double>& point)
+{
+  const auto& A = test_problem.lp.A;
+  for (int slack : test_problem.new_slacks) {
+    cuopt_assert(A.col_start[slack + 1] - A.col_start[slack] == 1, "");
+    const int row         = A.i[A.col_start[slack]];
+    const double coeff    = A.x[A.col_start[slack]];
+    double other_activity = 0.0;
+    for (int p = test_problem.Arow.row_start[row]; p < test_problem.Arow.row_start[row + 1]; p++) {
+      const int j = test_problem.Arow.j[p];
+      if (j != slack) { other_activity += test_problem.Arow.x[p] * point[j]; }
+    }
+    point[slack] = (test_problem.lp.rhs[row] - other_activity) / coeff;
+  }
+}
+
+std::vector<std::pair<mip::flow_cover_row_t<int>, mip::inequality_t<int, double>>>
+generate_flow_cover_cuts_at(flow_cover_test_problem_t& test_problem,
+                            const std::vector<double>& xstar)
+{
+  mip::flow_cover_generation_t<int, double> generator(
+    test_problem.lp, test_problem.settings, test_problem.Arow, test_problem.new_slacks);
+  mip::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
+                                                      test_problem.settings,
+                                                      test_problem.var_types,
+                                                      test_problem.Arow,
+                                                      test_problem.new_slacks);
+  generator.preprocess_cut_pass(test_problem.lp, variable_bounds, test_problem.var_types, xstar);
+
+  std::vector<std::pair<mip::flow_cover_row_t<int>, mip::inequality_t<int, double>>> cuts;
+  for (const auto& flow_cover_row : generator.get_constraints()) {
+    mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
+    const int status = generator.generate_cut(test_problem.lp,
+                                              test_problem.settings,
+                                              test_problem.Arow,
+                                              variable_bounds,
+                                              test_problem.var_types,
+                                              xstar,
+                                              flow_cover_row,
+                                              cut);
+    if (status == 0) { cuts.emplace_back(flow_cover_row, cut); }
+  }
+  return cuts;
+}
+
+TEST(cuts, flow_cover_tiny_coefficient_drop_shifts_reversed_equality_rhs)
+{
+  constexpr int flow_row         = 0;
+  constexpr int num_flow_columns = 6;
+  constexpr int z_col            = 6;
+  constexpr double z_upper       = 1e4;
+
+  auto tiny_problem =
+    build_flow_cover_test_problem(create_single_node_flow_equality_with_tiny_coefficient_problem());
+  auto shifted_problem =
+    build_flow_cover_test_problem(create_single_node_flow_shifted_rhs_problem());
+
+  bool row_has_tiny_z = false;
+  for (int p = tiny_problem.Arow.row_start[flow_row]; p < tiny_problem.Arow.row_start[flow_row + 1];
+       p++) {
+    if (tiny_problem.Arow.j[p] == z_col) {
+      row_has_tiny_z = std::abs(tiny_problem.Arow.x[p] - 1e-7) <= 1e-15;
+    }
+  }
+  ASSERT_TRUE(row_has_tiny_z);
+
+  std::vector<double> tiny_xstar = single_node_flow_fractional_solution(tiny_problem.lp.num_cols);
+  set_slack_values(tiny_problem, tiny_xstar);
+  std::vector<double> shifted_xstar =
+    single_node_flow_fractional_solution(shifted_problem.lp.num_cols);
+  set_slack_values(shifted_problem, shifted_xstar);
+
+  const auto tiny_cuts    = generate_flow_cover_cuts_at(tiny_problem, tiny_xstar);
+  const auto shifted_cuts = generate_flow_cover_cuts_at(shifted_problem, shifted_xstar);
+
+  const mip::inequality_t<int, double>* reference_cut = nullptr;
+  for (const auto& [flow_cover_row, cut] : shifted_cuts) {
+    if (flow_cover_row.row == flow_row && !flow_cover_row.reverse) { reference_cut = &cut; }
+  }
+  ASSERT_NE(reference_cut, nullptr);
+
+  std::vector<double> reference_coefficients(num_flow_columns, 0.0);
+  for (size_t k = 0; k < reference_cut->size(); k++) {
+    ASSERT_LT(reference_cut->index(k), num_flow_columns);
+    reference_coefficients[reference_cut->index(k)] = reference_cut->coeff(k);
+  }
+
+  // Feasible points with z at its upper bound, on the face y0 + y1 - y2 = 4.001.
+  const std::vector<std::vector<double>> shifted_feasible_points = {
+    {1, 1, 1, 3, 1.001, 0, z_upper},
+    {1, 1, 0, 3, 1.001, 0, z_upper},
+    {0, 1, 0, 0, 4.001, 0, z_upper},
+    {1, 1, 1, 3, 4.001, 3, z_upper},
+    {0, 1, 1, 0, 6, 1.999, z_upper},
+    {1, 1, 1, 1.001, 6, 3, z_upper},
+  };
+
+  int reversed_cuts = 0;
+  for (const auto& [flow_cover_row, cut] : tiny_cuts) {
+    if (flow_cover_row.row != flow_row || !flow_cover_row.reverse) { continue; }
+    reversed_cuts++;
+
+    std::vector<double> coefficients(num_flow_columns, 0.0);
+    for (size_t k = 0; k < cut.size(); k++) {
+      ASSERT_LT(cut.index(k), num_flow_columns) << "unexpected column " << cut.index(k);
+      coefficients[cut.index(k)] = cut.coeff(k);
+    }
+    for (int j = 0; j < num_flow_columns; j++) {
+      EXPECT_NEAR(coefficients[j], reference_coefficients[j], 1e-9) << "column " << j;
+    }
+    EXPECT_NEAR(cut.rhs, reference_cut->rhs, 1e-9);
+
+    for (const auto& flow_point : shifted_feasible_points) {
+      std::vector<double> point(tiny_problem.lp.num_cols, 0.0);
+      std::copy(flow_point.begin(), flow_point.end(), point.begin());
+      set_slack_values(tiny_problem, point);
+      expect_single_node_flow_cut_valid_at_point(cut, point, "shifted feasible point");
+    }
+  }
+  EXPECT_GT(reversed_cuts, 0);
 }
 
 }  // namespace cuopt::mathematical_optimization::test

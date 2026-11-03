@@ -10,8 +10,8 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
-#include <mip_heuristics/presolve/gf2_presolve.hpp>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <presolve/gf2_presolve.hpp>
+#include <presolve/third_party_presolve.hpp>
 
 #include <raft/core/handle.hpp>
 

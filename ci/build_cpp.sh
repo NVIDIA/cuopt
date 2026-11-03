@@ -6,8 +6,6 @@
 
 set -euo pipefail
 
-source "$(dirname "${BASH_SOURCE[0]}")/install_rattler_build.sh"
-
 source rapids-configure-sccache
 
 source rapids-datetime-string

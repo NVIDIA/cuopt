@@ -24,7 +24,7 @@ on:
         description: 'JSON array of architectures to build for'
       cuda_ver:
         type: string
-        default: '["12.9.0", "13.3.0"]'
+        default: '["12.9.0", "13.4.3"]'
         description: 'JSON array of CUDA versions to build for'
       python_ver:
         type: string
@@ -150,20 +150,11 @@ jobs:
           registry: "nvcr.io"
           username: "$oauthtoken"
           password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
-      - name: Trim CUDA and Python versions
-        id: trim
-        env:
-          CUDA_VER: ${{ matrix.CUDA_VER }}
-          PYTHON_VER: ${{ matrix.PYTHON_VER }}
-        run: |
-          echo "CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-          echo "PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
       - name: Create multiarch manifest
         shell: bash
         env:
           CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
-          CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
-          PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
+          CUDA_VER: ${{ matrix.CUDA_VER }}
           IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
           BUILD_TYPE: ${{ inputs.build_type }}
         run: bash ci/docker/create_multiarch_manifest.sh

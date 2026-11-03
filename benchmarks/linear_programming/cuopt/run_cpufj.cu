@@ -9,14 +9,14 @@
 
 #include <mip_heuristics/feasibility_jump/cpu/tuning.hpp>
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
-#include <mip_heuristics/presolve/bounds_presolve.cuh>
-#include <mip_heuristics/presolve/presolve_budget_policy.hpp>
-#include <mip_heuristics/presolve/probing_cache.cuh>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver_context.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <presolve/bounds_presolve.cuh>
+#include <presolve/presolve_budget_policy.hpp>
+#include <presolve/probing_cache.cuh>
+#include <presolve/trivial_presolve.cuh>
 
 #include <math_optimization/solution_writer.hpp>
 

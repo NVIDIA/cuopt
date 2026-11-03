@@ -152,6 +152,20 @@ void compute_dual_residual(const lp_problem_t<i_t, f_t>& lp,
   matrix_transpose_vector_multiply(lp.A, 1.0, y, 1.0, residual);
 }
 
+// L2 norms of the primal residual b - A x and of the dual residual above.
+template <typename i_t, typename f_t>
+void compute_l2_residuals(const lp_problem_t<i_t, f_t>& lp,
+                          const lp_solution_t<i_t, f_t>& solution,
+                          f_t& l2_primal_residual,
+                          f_t& l2_dual_residual)
+{
+  std::vector<f_t> residual = lp.rhs;
+  matrix_vector_multiply(lp.A, 1.0, solution.x, -1.0, residual);
+  l2_primal_residual = vector_norm2<i_t, f_t>(residual);
+  compute_dual_residual(lp, solution.x, solution.y, solution.z, residual);
+  l2_dual_residual = vector_norm2<i_t, f_t>(residual);
+}
+
 lp_status_t map_primal_status_to_lp_status(primal_status_t status)
 {
   switch (status) {
@@ -993,7 +1007,25 @@ lp_status_t solve_linear_program_with_barrier(
     crossover_status_t crossover_status = crossover(
       original_lp, barrier_settings, lp_solution, start_time, crossover_solution, vstatus);
     settings.log.printf("Crossover status: %d\n", crossover_status);
-    if (crossover_status == crossover_status_t::OPTIMAL) { barrier_status = lp_status_t::OPTIMAL; }
+    if (crossover_status == crossover_status_t::OPTIMAL) {
+      barrier_status = lp_status_t::OPTIMAL;
+      // Return the crossover vertex, not the barrier point crossover started from. original_lp is
+      // the primal problem here (also when barrier solved the dual) with the artificial columns
+      // appended after the user columns, so it uncrushes like the barrier solution above.
+      uncrush_primal_solution(user_problem, original_lp, crossover_solution.x, solution.x);
+      uncrush_dual_solution(user_problem,
+                            original_lp,
+                            crossover_solution.y,
+                            crossover_solution.z,
+                            solution.y,
+                            solution.z);
+      solution.objective      = compute_objective(original_lp, crossover_solution.x);
+      solution.user_objective = compute_user_objective(original_lp, solution.objective);
+      // Residuals of the returned vertex; crossover does not set them and the barrier residuals
+      // copied above belong to the interior point.
+      compute_l2_residuals(
+        original_lp, crossover_solution, solution.l2_primal_residual, solution.l2_dual_residual);
+    }
   }
   return barrier_status;
 }
@@ -1072,16 +1104,8 @@ lp_status_t solve_linear_program_with_primal(const user_problem_t<i_t, f_t>& use
     lp_solution.objective      = compute_objective(lp, lp_solution.x);
     lp_solution.user_objective = compute_user_objective(lp, lp_solution.objective);
 
-    std::vector<f_t> residual = lp.rhs;
-    matrix_vector_multiply(lp.A, 1.0, lp_solution.x, -1.0, residual);
-    lp_solution.l2_primal_residual = vector_norm2<i_t, f_t>(residual);
-
-    std::vector<f_t> dual_residual = lp_solution.z;
-    for (i_t j = 0; j < lp.num_cols; ++j) {
-      dual_residual[j] -= lp.objective[j];
-    }
-    matrix_transpose_vector_multiply(lp.A, 1.0, lp_solution.y, 1.0, dual_residual);
-    lp_solution.l2_dual_residual = vector_norm2<i_t, f_t>(dual_residual);
+    compute_l2_residuals(
+      lp, lp_solution, lp_solution.l2_primal_residual, lp_solution.l2_dual_residual);
 
     std::vector<f_t> unscaled_x(lp.num_cols);
     std::vector<f_t> unscaled_y(lp.num_rows);

@@ -59,22 +59,20 @@ TEST(ServerTest, TestSampleLP)
 
 class MILPTestParams
   : public testing::TestWithParam<
-      std::tuple<bool, int, bool, cuopt::mathematical_optimization::mip_termination_status_t>> {};
+      std::tuple<bool, int, cuopt::mathematical_optimization::mip_termination_status_t>> {};
 
 TEST_P(MILPTestParams, TestSampleMILP)
 {
   bool maximize                    = std::get<0>(GetParam());
   int scaling                      = std::get<1>(GetParam());
-  bool heuristics_only             = std::get<2>(GetParam());
-  auto expected_termination_status = std::get<3>(GetParam());
+  auto expected_termination_status = std::get<2>(GetParam());
 
   raft::handle_t handle;
   auto problem = create_std_milp_problem(maximize);
 
   cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings{};
-  settings.time_limit      = 5;
-  settings.mip_scaling     = scaling;
-  settings.heuristics_only = heuristics_only;
+  settings.time_limit  = 5;
+  settings.mip_scaling = scaling;
 
   auto result = cuopt::mathematical_optimization::solve_mip(&handle, problem, settings);
 
@@ -87,19 +85,15 @@ INSTANTIATE_TEST_SUITE_P(
   testing::Values(
     std::make_tuple(true,
                     CUOPT_MIP_SCALING_ON,
-                    true,
-                    cuopt::mathematical_optimization::mip_termination_status_t::FeasibleFound),
+                    cuopt::mathematical_optimization::mip_termination_status_t::Optimal),
     std::make_tuple(false,
                     CUOPT_MIP_SCALING_ON,
-                    false,
                     cuopt::mathematical_optimization::mip_termination_status_t::Optimal),
     std::make_tuple(true,
                     CUOPT_MIP_SCALING_OFF,
-                    true,
-                    cuopt::mathematical_optimization::mip_termination_status_t::FeasibleFound),
+                    cuopt::mathematical_optimization::mip_termination_status_t::Optimal),
     std::make_tuple(false,
                     CUOPT_MIP_SCALING_OFF,
-                    false,
                     cuopt::mathematical_optimization::mip_termination_status_t::Optimal)));
 
 }  // namespace cuopt::mathematical_optimization::test

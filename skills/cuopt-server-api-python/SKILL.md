@@ -56,9 +56,9 @@ docker run --gpus all -d -p 8000:8000 -e CUOPT_SERVER_PORT=8000 \
   nvidia/cuopt:latest-cu13
 ```
 
-Use `latest-cu12` or `latest-cu13` to match your driver's CUDA major version (`latest-cu13-ubi10` for a UBI10 base). Prefer these over the CUDA+Python-specific tags such as `latest-cuda12.9-py3.13` — those track a single Python line and go stale when it stops receiving builds.
+Use `latest-cu12` or `latest-cu13` to match your driver's CUDA major version (`latest-cu13-ubi10` for a UBI10 base).
 
-For production, pin rather than float: `latest-*` tags are mutable and can silently move to a different image. Use a full release tag (`nvidia/cuopt:<release>-cuda<cuda>-py<python>`) or an immutable digest (`nvidia/cuopt@sha256:<digest>`). Check the `nvidia/cuopt` registry for available tags.
+For production, pin rather than float: `latest-*` tags are mutable and can silently move to a different image. Use a full release tag (`nvidia/cuopt:<release>-cu<cuda-major>`) or an immutable digest (`nvidia/cuopt@sha256:<digest>`). Check the `nvidia/cuopt` registry for available tags.
 
 ## Verify
 
