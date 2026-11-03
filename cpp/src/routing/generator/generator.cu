@@ -8,6 +8,7 @@
 #include "generator.hpp"
 #include "generator_utils.cuh"
 
+#include <thrust/fill.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/reduce.h>
 #include <thrust/shuffle.h>
@@ -207,8 +208,8 @@ coordinates_t<f_t> generate_coordinates(raft::handle_t& handle,
   auto depot_y = depot_x;
 
   // Update depot to be in the center.
-  raft::copy(v_x_pos.data(), &depot_x, 1, handle.get_stream());
-  raft::copy(v_y_pos.data(), &depot_y, 1, handle.get_stream());
+  thrust::fill_n(handle.get_thrust_policy(), v_x_pos.begin(), 1, depot_x);
+  thrust::fill_n(handle.get_thrust_policy(), v_y_pos.begin(), 1, depot_y);
   return std::make_tuple(std::move(v_x_pos), std::move(v_y_pos));
 }
 

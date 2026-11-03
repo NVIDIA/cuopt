@@ -33,6 +33,7 @@
 #include <thrust/binary_search.h>
 #include <thrust/copy.h>
 #include <thrust/count.h>
+#include <thrust/fill.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
@@ -466,7 +467,7 @@ void csr_to_csc_transpose(const i_t* csr_offsets,
   raft::copy(&last_ptr, csc_offsets + (n_cols - 1), 1, stream);
   handle_ptr->sync_stream();
   i_t total_nnz = last_ptr + last_count;
-  raft::copy(csc_offsets + n_cols, &total_nnz, 1, stream);
+  thrust::fill_n(handle_ptr->get_thrust_policy(), csc_offsets + n_cols, 1, total_nnz);
 
   // Scatter values
   rmm::device_uvector<i_t> next_pos(n_cols, stream);
