@@ -229,14 +229,19 @@ class Solution:
             "num_simplex_iterations": num_simplex_iterations,
         }
 
-    def __repr__(self):
-        text = (
+    def __repr__(self) -> str:
+        if self.error_status != ErrorStatus.Success:
+            text = (
+                f"Solution(status={self.termination_status.name}, "
+                f"error={ErrorStatus(self.error_status).name})"
+            )
+            if self.error_message:
+                text += f"\n{self.error_message}"
+            return text
+        return (
             f"Solution(status={self.termination_status.name}, "
             f"objective={self.primal_objective})"
         )
-        if self.error_status != ErrorStatus.Success and self.error_message:
-            text += f"\n{self.error_message}"
-        return text
 
     __str__ = __repr__
 
