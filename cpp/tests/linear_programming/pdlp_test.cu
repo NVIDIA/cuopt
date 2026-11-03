@@ -1276,7 +1276,9 @@ TEST(pdlp_class, batch_per_constraint_residual_stable3)
 
   // Mock a batch of size 2
   solver_settings.fixed_batch_size = batch_size;
-  auto batch_sol                   = solve_lp<int, double>(&handle, op_problem, solver_settings);
+  // solve_lp(const handle*, mps, settings) is now solve_lp<i_t, index_t, f_t>; let CTAD deduce
+  // all three from the arguments so this call site stays signature-neutral.
+  auto batch_sol = solve_lp(&handle, op_problem, solver_settings);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
 
   const auto& statuses = batch_sol.get_terminations_status();

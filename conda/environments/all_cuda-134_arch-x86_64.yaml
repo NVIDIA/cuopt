@@ -17,7 +17,7 @@ dependencies:
 - cuda-nvcc
 - cuda-nvtx-dev
 - cuda-sanitizer-api
-- cuda-version=13.3
+- cuda-version=13.4
 - cudf==26.12.*,>=0.0.0a0
 - cupy>=14.0.1,!=14.1.0
 - cxx-compiler
@@ -40,7 +40,7 @@ dependencies:
 - librmm==26.12.*,>=0.0.0a0
 - make
 - msgpack-numpy==0.4.8
-- msgpack-python==1.2.1
+- msgpack-python==1.2.3
 - myst-parser
 - nccl >=2.19
 - ninja
@@ -82,4 +82,4 @@ dependencies:
 - pip:
   - nvidia-sphinx-theme
   - swagger-plugin-for-sphinx
-name: all_cuda-133_arch-x86_64
+name: all_cuda-134_arch-x86_64

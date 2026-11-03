@@ -79,4 +79,37 @@ final class NativeTestSupport {
         exited, "CUDA driver check timed out after " + NVIDIA_SMI_TIMEOUT_SECONDS + "s");
     Assumptions.assumeTrue(exitCode == 0, "CUDA driver is unavailable");
   }
+
+  static SolverSettings quiet() {
+    return new SolverSettings()
+        .setSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, false)
+        .setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 20.0);
+  }
+
+  static Problem tinyLP() {
+    Problem problem = new Problem("tiny");
+    Variable x0 = problem.addVariable(0, Double.POSITIVE_INFINITY, 1.0, VariableType.CONTINUOUS, "x0");
+    Variable x1 = problem.addVariable(0, Double.POSITIVE_INFINITY, 1.0, VariableType.CONTINUOUS, "x1");
+    problem.addConstraint(LinearExpression.of(x0).plus(x1).ge(1.0), "c0");
+    problem.setObjective(LinearExpression.of(x0).plus(x1), ObjectiveSense.MINIMIZE);
+    return problem;
+  }
+
+  /**
+   * A knapsack large enough that presolve cannot close it, so the MIP search runs and reports
+   * incumbents.
+   */
+  static Problem knapsack(int items) {
+    Problem problem = new Problem("knapsack");
+    LinearExpression weight = new LinearExpression();
+    LinearExpression value = new LinearExpression();
+    for (int i = 0; i < items; i++) {
+      Variable item = problem.addVariable(0, 1, 0, VariableType.INTEGER, "i" + i);
+      weight = weight.plus(item, 7 + (i * 13) % 29);
+      value = value.plus(item, 11 + (i * 17) % 31);
+    }
+    problem.addConstraint(weight.le(items * 9.0), "capacity");
+    problem.setObjective(value, ObjectiveSense.MAXIMIZE);
+    return problem;
+  }
 }
