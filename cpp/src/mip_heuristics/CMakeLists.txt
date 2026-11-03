@@ -25,6 +25,7 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/multi_armed_bandit.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/population.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/relaxed_lp/relaxed_lp.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/lns/lns.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/local_search.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/bounds_repair.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/constraint_prop.cu

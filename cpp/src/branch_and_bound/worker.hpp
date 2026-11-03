@@ -297,29 +297,4 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   i_t next_heuristic;
 };
 
-struct submip_stats_t {
-  omp_atomic_t<int> total_success             = 0;
-  omp_atomic_t<double> success_fixrate_sum    = 0;
-  omp_atomic_t<int> total_infeasible          = 0;
-  omp_atomic_t<double> infeasible_fixrate_sum = 0;
-  omp_atomic_t<int> total_calls               = 0;
-  omp_atomic_t<int> total_empty               = 0;
-
-  void save_success(double fixrate)
-  {
-    ++total_success;
-    success_fixrate_sum += fixrate;
-  }
-
-  void save_infeasible(double fixrate)
-  {
-    ++total_infeasible;
-    infeasible_fixrate_sum += fixrate;
-  }
-
-  void save_empty() { ++total_empty; }
-  double average_infeasible_fixrate() const { return infeasible_fixrate_sum / total_infeasible; }
-  double average_success_fixrate() const { return success_fixrate_sum / total_success; }
-};
-
 }  // namespace cuopt::mathematical_optimization::mip
