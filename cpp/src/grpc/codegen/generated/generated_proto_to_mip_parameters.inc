@@ -23,7 +23,6 @@
   if (pb_settings.has_log_to_console()) {
     settings.set_parameter("log_to_console", pb_settings.log_to_console());
   }
-  settings.set_parameter("mip_heuristics_only", pb_settings.heuristics_only());
   if (pb_settings.has_num_cpu_threads()) {
     settings.set_parameter("num_cpu_threads", static_cast<i_t>(pb_settings.num_cpu_threads()));
   }

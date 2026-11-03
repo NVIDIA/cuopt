@@ -33,6 +33,12 @@
  * reserve more. Every lane holds its own host copy and an OMP task for the whole of presolve. */
 #define CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS 4
 
+/* @brief Upper bound on the early CPUFJ portfolio, whatever the team size. Each lane keeps a
+ * per-lane host state that grows with the problem (several GB on very large instances), and the
+ * lanes run alongside Papilo, which competes with them for memory bandwidth. Beyond 16 lanes the
+ * portfolio gains little while Papilo slows down roughly linearly with the lane count. */
+#define CUOPT_MIP_EARLY_CPUFJ_MAX_LANES 16
+
 /* @brief Maximum Papilo arena concurrency, including the calling solver thread. */
 #define CUOPT_MIP_PAPILO_THREAD_LIMIT 4
 

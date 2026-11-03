@@ -79,6 +79,10 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     std::string upload_id     = generate_job_id();
     const auto& header        = request->problem_header();
     uint32_t problem_category = header.header().problem_category();
+    if (problem_category == cuopt::remote::VRP) {
+      return Status(StatusCode::INVALID_ARGUMENT,
+                    "Chunked VRP upload requires StartChunkedUploadV2");
+    }
 
     if (config.verbose) {
       SERVER_LOG_DEBUG("[gRPC] StartChunkedUpload upload_id=%s problem_category=%u",
@@ -103,6 +107,74 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     response->set_upload_id(upload_id);
     response->set_max_message_bytes(server_max_message_bytes());
 
+    return Status::OK;
+  }
+
+  Status StartChunkedUploadV2(ServerContext* context,
+                              const cuopt::remote::StartChunkedUploadV2Request* request,
+                              cuopt::remote::StartChunkedUploadResponse* response) override
+  {
+    (void)context;
+
+    std::string upload_id = generate_job_id();
+    const auto& job       = request->job();
+    uint32_t problem_category;
+    if (job.has_lp_request()) {
+      problem_category = cuopt::remote::LP;
+      if (cuopt::mathematical_optimization::inline_chunked_arrays_present(
+            job.lp_request().problem())) {
+        return Status(StatusCode::INVALID_ARGUMENT,
+                      "Chunked upload header must leave numeric arrays empty");
+      }
+    } else if (job.has_mip_request()) {
+      problem_category = cuopt::remote::MIP;
+      if (cuopt::mathematical_optimization::inline_chunked_arrays_present(
+            job.mip_request().problem())) {
+        return Status(StatusCode::INVALID_ARGUMENT,
+                      "Chunked upload header must leave numeric arrays empty");
+      }
+    } else if (job.has_vrp_request()) {
+      problem_category    = cuopt::remote::VRP;
+      const auto& problem = job.vrp_request().problem();
+      for (const auto& matrix : problem.cost_matrices()) {
+        if (!matrix.values().empty()) {
+          return Status(StatusCode::INVALID_ARGUMENT,
+                        "Chunked VRP header must leave matrix values empty");
+        }
+      }
+      for (const auto& matrix : problem.transit_time_matrices()) {
+        if (!matrix.values().empty()) {
+          return Status(StatusCode::INVALID_ARGUMENT,
+                        "Chunked VRP header must leave matrix values empty");
+        }
+      }
+    } else {
+      return Status(StatusCode::INVALID_ARGUMENT, "No problem data provided");
+    }
+
+    if (config.verbose) {
+      SERVER_LOG_DEBUG("[gRPC] StartChunkedUploadV2 upload_id=%s problem_category=%u",
+                       upload_id.c_str(),
+                       problem_category);
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(chunked_uploads_mutex);
+      if (chunked_uploads.size() >= kMaxChunkedSessions) {
+        return Status(StatusCode::RESOURCE_EXHAUSTED,
+                      "Too many concurrent chunked upload sessions (limit " +
+                        std::to_string(kMaxChunkedSessions) + ")");
+      }
+      auto& state            = chunked_uploads[upload_id];
+      state.problem_category = problem_category;
+      state.unified          = true;
+      state.job              = job;
+      state.total_chunks     = 0;
+      state.last_activity    = std::chrono::steady_clock::now();
+    }
+
+    response->set_upload_id(upload_id);
+    response->set_max_message_bytes(server_max_message_bytes());
     return Status::OK;
   }
 
@@ -256,7 +328,12 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // Package the header and chunks for the dispatch thread. Field metadata
     // was only needed for validation during SendArrayChunk and can be dropped.
     PendingChunkedUpload pending;
-    pending.header = std::move(state.header);
+    pending.unified = state.unified;
+    if (state.unified) {
+      pending.job = std::move(state.job);
+    } else {
+      pending.header = std::move(state.header);
+    }
     pending.chunks = std::move(state.chunks);
     state.field_meta.clear();
     state.container_field_meta.clear();
@@ -276,9 +353,11 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     response->set_message("Job submitted via chunked arrays");
 
     if (config.verbose) {
-      SERVER_LOG_DEBUG("[gRPC] FinishChunkedUpload enqueued job: %s (type=%s)",
-                       job_id.c_str(),
-                       state.problem_category == cuopt::remote::MIP ? "MIP" : "LP");
+      const char* type_str = state.problem_category == cuopt::remote::MIP
+                               ? "MIP"
+                               : (state.problem_category == cuopt::remote::VRP ? "VRP" : "LP");
+      SERVER_LOG_DEBUG(
+        "[gRPC] FinishChunkedUpload enqueued job: %s (type=%s)", job_id.c_str(), type_str);
     }
 
     return Status::OK;
@@ -419,6 +498,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     }
 
     response->mutable_header()->CopyFrom(state.result_header);
+    const auto problem_category = state.problem_category;
 
     std::string download_id = generate_job_id();
     response->set_download_id(download_id);
@@ -441,9 +521,75 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
         job_id.c_str(),
         download_id.c_str(),
         response->header().arrays_size(),
-        state.problem_category);
+        problem_category);
     }
 
+    return Status::OK;
+  }
+
+  Status StartChunkedDownloadV2(ServerContext* context,
+                                const cuopt::remote::StartChunkedDownloadRequest* request,
+                                cuopt::remote::StartChunkedDownloadV2Response* response) override
+  {
+    std::string job_id = request->job_id();
+
+    ChunkedDownloadState state;
+    {
+      std::lock_guard<std::mutex> lock(tracker_mutex);
+      auto it = job_tracker.find(job_id);
+      if (it == job_tracker.end()) {
+        return Status(StatusCode::NOT_FOUND, "Job not found: " + job_id);
+      }
+      if (it->second.status != JobStatus::COMPLETED) {
+        return Status(StatusCode::FAILED_PRECONDITION, "Result not ready for job: " + job_id);
+      }
+      state.problem_category = it->second.problem_category;
+      state.created          = std::chrono::steady_clock::now();
+      state.result_header    = it->second.result_header;
+      state.raw_arrays       = it->second.result_arrays;
+    }
+
+    auto* result = response->mutable_result();
+    result->set_status(cuopt::remote::SUCCESS);
+    const auto problem_category = state.problem_category;
+    if (problem_category == cuopt::remote::VRP || state.result_header.is_vrp()) {
+      *result->mutable_routing_solution() = state.result_header.routing_solution();
+    } else if (problem_category == cuopt::remote::MIP) {
+      cuopt::mathematical_optimization::copy_mip_result_scalars(state.result_header,
+                                                                result->mutable_mip_solution());
+    } else {
+      cuopt::mathematical_optimization::copy_lp_result_scalars(state.result_header,
+                                                               result->mutable_lp_solution());
+    }
+    for (const auto& desc : state.result_header.arrays()) {
+      *response->add_arrays() = desc;
+    }
+
+    std::string download_id = generate_job_id();
+    response->set_download_id(download_id);
+    response->set_max_message_bytes(server_max_message_bytes());
+
+    {
+      std::lock_guard<std::mutex> lock(chunked_downloads_mutex);
+      if (chunked_downloads.size() >= kMaxChunkedSessions) {
+        return Status(StatusCode::RESOURCE_EXHAUSTED,
+                      "Too many concurrent chunked download sessions (limit " +
+                        std::to_string(kMaxChunkedSessions) + ")");
+      }
+      chunked_downloads[download_id] = std::move(state);
+    }
+
+    if (config.verbose) {
+      SERVER_LOG_DEBUG(
+        "[gRPC] StartChunkedDownloadV2: CHUNKED response for job %s, download_id=%s, arrays=%d, "
+        "problem_category=%u",
+        job_id.c_str(),
+        download_id.c_str(),
+        response->arrays_size(),
+        problem_category);
+    }
+
+    (void)context;
     return Status::OK;
   }
 

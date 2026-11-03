@@ -1064,13 +1064,10 @@ TEST_F(DefaultServerTests, SolveMIPBlocking)
 // server across the suite, and the cancel and delete tests below kill workers; a job
 // submitted after them can sit in QUEUED forever (#1716). This test is about the routing
 // mappers, not about recovering from a killed worker, so it should not run in their wake.
-TEST_F(DefaultServerTests, SolveVRP)
+// Four locations on a line, depot at 0, one vehicle. Any correct solver serves all
+// three orders, so the assertions do not depend on a particular route ordering.
+cuopt::routing::cpu_routing_problem_t make_line_vrp_problem()
 {
-  auto client = create_client();
-  ASSERT_NE(client, nullptr);
-
-  // Four locations on a line, depot at 0, one vehicle. Any correct solver serves all
-  // three orders, so the assertions do not depend on a particular route ordering.
   constexpr int32_t kLocations = 4;
   cuopt::routing::cpu_routing_problem_t problem;
   problem.num_locations = kLocations;
@@ -1088,7 +1085,12 @@ TEST_F(DefaultServerTests, SolveVRP)
   problem.cost_matrices.push_back(std::move(cost));
   problem.vehicle_start_locations.assign(problem.fleet_size, 0);
   problem.vehicle_return_locations.assign(problem.fleet_size, 0);
+  return problem;
+}
 
+void solve_vrp_and_expect_served(grpc_client_t* client,
+                                 const cuopt::routing::cpu_routing_problem_t& problem)
+{
   cuopt::routing::solver_settings_t<int, float> settings;
   settings.set_time_limit(10.0f);
 
@@ -1118,6 +1120,13 @@ TEST_F(DefaultServerTests, SolveVRP)
   EXPECT_EQ(solution.route.size(), solution.truck_id.size());
   EXPECT_TRUE(solution.unserviced_nodes.empty())
     << solution.unserviced_nodes.size() << " orders left unserved";
+}
+
+TEST_F(DefaultServerTests, SolveVRP)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+  solve_vrp_and_expect_served(client.get(), make_line_vrp_problem());
 }
 #endif
 
@@ -2144,6 +2153,33 @@ TEST_F(PathSelectionTests, ChunkedUploadLPWithPathLogging)
     << log_capture.get_server_logs();
 }
 
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+// Chunked upload for VRP: the cost matrix is split across container ArrayChunks, and the
+// server logs must show the chunked path was used (a unary submit would still solve).
+TEST_F(PathSelectionTests, ChunkedUploadVRPWithPathLogging)
+{
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(server_log_path());
+  log_capture.mark_test_start();
+
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunk_size_bytes              = 8;
+  config.chunked_array_threshold_bytes = 0;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+  solve_vrp_and_expect_served(client.get(), make_line_vrp_problem());
+
+  EXPECT_TRUE(log_capture.wait_for_server_log("[Worker] IPC path: CHUNKED", 5000))
+    << "Expected CHUNKED path in server log.\nServer log:\n"
+    << log_capture.get_server_logs();
+  EXPECT_TRUE(log_capture.server_log_contains("FinishChunkedUpload: CHUNKED path"))
+    << "Expected FinishChunkedUpload log.\nServer log:\n"
+    << log_capture.get_server_logs();
+}
+#endif
+
 // Chunked upload + chunked result download for MIP.
 // 50v-10-free-bound.mps has 2013 variables, so the solution array is 16104
 // bytes and exceeds the 12288-byte message limit.
@@ -2184,7 +2220,7 @@ TEST_F(PathSelectionTests, ChunkedUploadAndChunkedDownloadMIP)
     << log_capture.get_client_logs();
 
   // Server should log CHUNKED response
-  EXPECT_TRUE(log_capture.wait_for_server_log("StartChunkedDownload: CHUNKED response", 5000))
+  EXPECT_TRUE(log_capture.wait_for_server_log("StartChunkedDownloadV2: CHUNKED response", 5000))
     << "Expected chunked download path in server log.\nServer log:\n"
     << log_capture.get_server_logs();
 }
@@ -2955,6 +2991,58 @@ TEST_F(ChunkValidationTests, AcceptsValidChunk)
   std::string data(80, '\x42');
   auto status = send_chunk(uid, cuopt::remote::FIELD_C, 0, 10, data);
   EXPECT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(ChunkValidationTests, LegacyUploadRejectsVrp)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadRequest req;
+  req.mutable_problem_header()->mutable_header()->set_problem_category(cuopt::remote::VRP);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUpload(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsMissingProblem)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsNonemptyLpArray)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_lp_request()->mutable_problem()->add_c(1.0);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsNonemptyVrpMatrix)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_vrp_request()->mutable_problem()->add_cost_matrices()->add_values(
+    1.0f);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2AcceptsEmptyLpHeader)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_lp_request()->mutable_header()->set_problem_category(
+    cuopt::remote::LP);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_TRUE(status.ok()) << status.error_message();
+  EXPECT_FALSE(resp.upload_id().empty());
 }
 
 }  // anonymous namespace

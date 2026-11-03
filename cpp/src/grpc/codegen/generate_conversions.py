@@ -107,6 +107,8 @@ SIZE_ESTIMATOR_BODY_DOC = """\
 
 def write_file(path, content):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    # Exactly one trailing newline, matching pre-commit end-of-file-fixer.
+    content = content.rstrip("\n") + "\n"
     with open(path, "w") as f:
         f.write(content)
     print(f"  wrote {path}")
@@ -334,6 +336,8 @@ def _array_wire_type_comment(f):
     comment used in the generated proto enums (e.g. ArrayFieldId, nested
     repeated_messages ArrayId enums).
     """
+    if f.get("wire_comment"):
+        return f["wire_comment"]
     ftype = f.get("type", "repeated double")
     size = _default_element_size(f)
     if "double" in ftype:
@@ -1322,8 +1326,11 @@ def generate_array_field_id_enum(registry):
     """
     obj = registry.get("optimization_problem", {})
     rows = []
-    for entry in obj.get("arrays", []):
-        f = parse_field(entry)
+    array_fields = [parse_field(entry) for entry in obj.get("arrays", [])]
+    import routing_codegen
+
+    array_fields.extend(routing_codegen.top_level_array_fields(registry))
+    for f in array_fields:
         afnum = f.get("array_id")
         if afnum is None:
             continue
@@ -1367,12 +1374,25 @@ def generate_array_field_element_size_inc(registry):
         for afid in cases_by_size[size]:
             lines.append(f"      case cuopt::remote::{afid}:")
         lines.append(f"        return {size};")
+    import routing_codegen
+
+    routing_cases = {}
+    for f in routing_codegen.top_level_array_fields(registry):
+        afid = _field_array_id_name(f)
+        routing_cases.setdefault(_default_element_size(f), []).append(afid)
+    for size in sorted(routing_cases.keys()):
+        for afid in routing_cases[size]:
+            lines.append(f"      case cuopt::remote::{afid}:")
+        lines.append(f"        return {size};")
     lines.append("    }")
     lines.append("    return -1;")
     lines.append("  }")
 
     rm_entries = list(_iter_repeated_messages(obj))
-    if rm_entries:
+    import routing_codegen
+
+    routing_groups = routing_codegen.routing_container_groups(registry)
+    if rm_entries or routing_groups:
         lines.append("  switch (container_field_num) {")
         for name, body in rm_entries:
             cfn = body["field_num"]
@@ -1391,6 +1411,14 @@ def generate_array_field_element_size_inc(registry):
                     lines.append(
                         f"        case {aid}: return {size};  // {fname}"
                     )
+            lines.append("      }")
+            lines.append("      return -1;")
+            lines.append("    }")
+        for cfn, label, arrays in routing_groups:
+            lines.append(f"    case {cfn}: {{  // {label}")
+            lines.append("      switch (field_id) {")
+            for aid, fname, size in arrays:
+                lines.append(f"        case {aid}: return {size};  // {fname}")
             lines.append("      }")
             lines.append("      return -1;")
             lines.append("    }")
@@ -1435,6 +1463,8 @@ def _settings_field_is_parameter(f):
 
 def generate_settings_message_proto(registry, message_name, obj):
     lines = []
+    for name, num in (obj.get("reserved_fields") or {}).items():
+        lines.append((num, f'  reserved {num};\n  reserved "{name}";'))
     # A parameter map replaces per-parameter proto fields. Typed fields that
     # set_parameter() accepts stay on the wire and are deprecated. A field
     # with param_name null, and embeds such as warm start, stay normal fields.
@@ -2203,8 +2233,15 @@ def _gen_chunked_to_solution(registry, obj_name, obj, indent="  "):
 # ============================================================================
 
 
-def _gen_problem_to_proto(registry, indent="  "):
-    """Generate body of map_problem_to_proto()."""
+def _gen_problem_to_proto(registry, indent="  ", include_arrays=True):
+    """Generate body of map_problem_to_proto().
+
+    Both flag values write an OptimizationProblem. include_arrays=True
+    builds a unary message when size limits allow. include_arrays=False
+    builds the unified chunked header from the same scalars and
+    repeated-message shells, with every top-level array omitted, so
+    variable_names and row_names travel as ArrayChunks.
+    """
     obj = registry.get("optimization_problem", {})
     ind = indent
     lines = []
@@ -2227,7 +2264,13 @@ def _gen_problem_to_proto(registry, indent="  "):
 
     lines.append("")
 
+    if not include_arrays:
+        lines.append(f"{ind}// Top-level arrays travel as ArrayChunks.")
+        lines.append("")
+
     for entry in obj.get("arrays", []):
+        if not include_arrays:
+            continue
         f = parse_field(entry)
         name = f["name"]
         pname = _proto_cpp_name(name)
@@ -2269,27 +2312,32 @@ def _gen_problem_to_proto(registry, indent="  "):
             )
             lines.append(f"{ind}}}")
 
-    # Setter groups
-    for gname, gdef in setter_groups.items():
-        fields = [
-            _find_problem_field(obj, fn) for fn in gdef.get("fields", [])
-        ]
-        for f in fields:
-            if f is None:
-                continue
-            pname = _proto_cpp_name(f["name"])
-            getter = _default_problem_getter(f, is_scalar=False)
-            ftype = f.get("type", "repeated double")
-            cast = _array_element_cast(ftype)
-            lines.append(f"{ind}{{")
-            lines.append(f"{ind}  auto _{f['name']} = cpu_problem.{getter};")
-            lines.append(
-                f"{ind}  for (const auto& v : _{f['name']}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
-            )
-            lines.append(f"{ind}}}")
+    # Setter groups. These are top-level numeric arrays, so the chunked header
+    # omits them.
+    if include_arrays:
+        for gname, gdef in setter_groups.items():
+            fields = [
+                _find_problem_field(obj, fn) for fn in gdef.get("fields", [])
+            ]
+            for f in fields:
+                if f is None:
+                    continue
+                pname = _proto_cpp_name(f["name"])
+                getter = _default_problem_getter(f, is_scalar=False)
+                ftype = f.get("type", "repeated double")
+                cast = _array_element_cast(ftype)
+                lines.append(f"{ind}{{")
+                lines.append(
+                    f"{ind}  auto _{f['name']} = cpu_problem.{getter};"
+                )
+                lines.append(
+                    f"{ind}  for (const auto& v : _{f['name']}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
+                )
+                lines.append(f"{ind}}}")
 
-    # repeated_messages — emit per-entry encode loop (unary path: scalars and
-    # arrays both go inline into the nested proto message).
+    # repeated_messages — the unary path inlines scalars and arrays. The
+    # unified chunked header keeps the per-entry scalars and sends the
+    # per-entry arrays as container-keyed ArrayChunks.
     for name, body in _iter_repeated_messages(obj):
         presence = body.get("presence_check")
         getter = body.get("getter")
@@ -2315,9 +2363,17 @@ def _gen_problem_to_proto(registry, indent="  "):
             else:
                 lines.append(f"{ind}    pb_entry->set_{sp}(_entry.{member});")
         for f in _repeated_message_arrays(body):
+            ftype = f.get("type", "repeated double")
+            if not include_arrays and ftype != "repeated string":
+                continue
             ap = _proto_cpp_name(f["name"])
             member = f.get("member", f["name"])
-            ftype = f.get("type", "repeated double")
+            if ftype == "repeated string":
+                lines.append(
+                    f"{ind}    for (const auto& v : _entry.{member}) "
+                    f"pb_entry->add_{ap}(v);"
+                )
+                continue
             cast = _array_element_cast(ftype) or "double"
             lines.append(
                 f"{ind}    for (const auto& v : _entry.{member}) "
@@ -2329,8 +2385,42 @@ def _gen_problem_to_proto(registry, indent="  "):
     return "\n".join(lines)
 
 
-def _gen_proto_to_problem(registry, indent="  "):
-    """Generate body of map_proto_to_problem()."""
+def _gen_problem_scalars_from_proto(registry, indent="  "):
+    """Scalar assignments shared by unary and chunked problem decode.
+
+    The caller binds `pb_problem` to either OptimizationProblem or
+    ChunkedProblemHeader. Those messages expose the same scalar accessors.
+    Optional registry fields must be `optional` on both protos so an absent
+    value keeps the C++ default.
+    """
+    obj = registry.get("optimization_problem", {})
+    ind = indent
+    lines = []
+    for entry in obj.get("scalars", []):
+        f = parse_field(entry)
+        pname = _proto_cpp_name(f["name"])
+        setter = _default_problem_setter(f)
+        has_check = f"pb_problem.has_{pname}()" if f.get("optional") else None
+        lines.extend(
+            emit_scalar_from_proto_assign(
+                lambda v, s=setter: f"cpu_problem.{s}({v});",
+                f"pb_problem.{pname}()",
+                f,
+                registry,
+                ind,
+                has_check=has_check,
+            )
+        )
+    return lines
+
+
+def _gen_proto_arrays_to_problem(registry, indent="  "):
+    """Inline array body of unary map_proto_to_problem().
+
+    Required arrays are applied even when empty. That is correct for a
+    complete unary OptimizationProblem and wrong for a chunked header whose
+    arrays arrive separately, so the chunked overload does not include this.
+    """
     obj = registry.get("optimization_problem", {})
     ind = indent
     lines = []
@@ -2339,22 +2429,6 @@ def _gen_proto_to_problem(registry, indent="  "):
     for gdef in setter_groups.values():
         for fname in gdef.get("fields", []):
             grouped_fields.add(fname)
-    for entry in obj.get("scalars", []):
-        f = parse_field(entry)
-        pname = _proto_cpp_name(f["name"])
-        setter = _default_problem_setter(f)
-        lines.extend(
-            emit_scalar_from_proto_assign(
-                lambda v, s=setter: f"cpu_problem.{s}({v});",
-                f"pb_problem.{pname}()",
-                f,
-                registry,
-                ind,
-                has_check=f"pb_problem.has_{pname}()",
-            )
-        )
-
-    lines.append("")
 
     # Setter groups — guard on the structural sentinel (offsets). For CSR-style
     # groups, offsets is non-empty even when nnz=0; using values/indices as the
@@ -2718,31 +2792,15 @@ def _gen_populate_chunked_header(registry, solver_type, indent="  "):
 
 
 def _gen_chunked_header_to_problem(registry, indent="  "):
-    """Generate body of map_chunked_header_to_problem()."""
+    """Legacy ChunkedProblemHeader string arrays.
+
+    Scalars come from generated_problem_scalars_from_proto.inc. Variable and
+    row names stay inline on this header; the unified path sends them as
+    ArrayChunks instead.
+    """
     obj = registry.get("optimization_problem", {})
     ind = indent
     lines = []
-
-    # `ChunkedProblemHeader` is hand-written (see cuopt_remote_service.proto).
-    # Fields marked optional in the registry must also be declared optional in
-    # that message so the chunked path can preserve non-zero C++ defaults.
-    for entry in obj.get("scalars", []):
-        f = parse_field(entry)
-        pname = _proto_cpp_name(f["name"])
-        setter = _default_problem_setter(f)
-        has_check = f"header.has_{pname}()" if f.get("optional") else None
-        lines.extend(
-            emit_scalar_from_proto_assign(
-                lambda v, s=setter: f"cpu_problem.{s}({v});",
-                f"header.{pname}()",
-                f,
-                registry,
-                ind,
-                has_check=has_check,
-            )
-        )
-
-    lines.append("")
 
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
@@ -2771,7 +2829,15 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
     for gdef in setter_groups.values():
         for fname in gdef.get("fields", []):
             grouped_fields.add(fname)
-    lines.append(f"{ind}map_chunked_header_to_problem(header, cpu_problem);")
+    lines.append(
+        f"{ind}// Caller maps scalars first and binds `chunked_scalars` to the"
+    )
+    lines.append(
+        f"{ind}// message that holds per-entry scalars (ChunkedProblemHeader or"
+    )
+    lines.append(
+        f"{ind}// OptimizationProblem). Numeric arrays come from `arrays`."
+    )
     lines.append("")
 
     # Lambda helpers
@@ -3059,9 +3125,11 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
                     f"'cpp_inner_type' for chunked decode"
                 )
             lines.append("")
-            lines.append(f"{ind}if (header.{name}_size() > 0) {{")
+            lines.append(f"{ind}if (chunked_scalars.{name}_size() > 0) {{")
             lines.append(f"{ind}  std::vector<{cpp_inner}> _entries;")
-            lines.append(f"{ind}  _entries.reserve(header.{name}_size());")
+            lines.append(
+                f"{ind}  _entries.reserve(chunked_scalars.{name}_size());"
+            )
             if name == "quadratic_constraints":
                 # One scratch for the whole batch: canonicalization reuses its buffers instead
                 # of allocating a fresh set per constraint.
@@ -3069,10 +3137,10 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
                     f"{ind}  io::coo_canonicalization_scratch_t<i_t, f_t> _qc_scratch;"
                 )
             lines.append(
-                f"{ind}  for (int32_t _ci = 0; _ci < header.{name}_size(); ++_ci) {{"
+                f"{ind}  for (int32_t _ci = 0; _ci < chunked_scalars.{name}_size(); ++_ci) {{"
             )
             lines.append(
-                f"{ind}    const auto& pb_entry = header.{name}(_ci);"
+                f"{ind}    const auto& pb_entry = chunked_scalars.{name}(_ci);"
             )
             lines.append(f"{ind}    {cpp_inner} _entry;")
             for f in _repeated_message_scalars(body):
@@ -3475,6 +3543,9 @@ def _validate_registry_uniqueness(registry):
             problem.get("arrays", []), "array_id"
         )
     ]
+    import routing_codegen
+
+    afid_pairs.extend(routing_codegen.routing_array_field_id_pairs(registry))
     _check_unique("ArrayFieldId", afid_pairs, errors)
 
     # `optional: true` is meaningful for any proto3 settings field whose C++
@@ -3525,6 +3596,10 @@ def _validate_registry_uniqueness(registry):
                     f"value {zero_desc} -- add optional: true or fix "
                     "default:"
                 )
+
+    import routing_codegen
+
+    routing_codegen.validate_routing(registry, errors)
 
     if errors:
         raise ValueError(
@@ -3972,6 +4047,7 @@ def auto_assign_field_numbers(data):
         fields = section.get("fields", [])
         lo, hi = FIELD_NUM_RANGES[section_key]
         existing = _collect_settings_field_nums(fields)
+        existing.update((section.get("reserved_fields") or {}).values())
         # Reserve tags used by embedded submessages so auto-numbering won't
         # collide with them.
         existing |= _embed_field_nums(section)
@@ -4184,8 +4260,20 @@ def main():
             HEADER + _gen_problem_to_proto(registry) + "\n",
         )
         write_file(
-            os.path.join(outdir, "generated_proto_to_problem.inc"),
-            HEADER + _gen_proto_to_problem(registry) + "\n",
+            os.path.join(outdir, "generated_problem_scalars_to_proto.inc"),
+            HEADER
+            + _gen_problem_to_proto(registry, include_arrays=False)
+            + "\n",
+        )
+        write_file(
+            os.path.join(outdir, "generated_problem_scalars_from_proto.inc"),
+            HEADER
+            + "\n".join(_gen_problem_scalars_from_proto(registry))
+            + "\n",
+        )
+        write_file(
+            os.path.join(outdir, "generated_proto_arrays_to_problem.inc"),
+            HEADER + _gen_proto_arrays_to_problem(registry) + "\n",
         )
         write_file(
             os.path.join(outdir, "generated_estimate_problem_size.inc"),
@@ -4221,6 +4309,10 @@ def main():
             os.path.join(outdir, "cuopt_mcp_schema.json"),
             generate_mcp_schema(registry),
         )
+
+    import routing_codegen
+
+    routing_codegen.emit_routing(registry, outdir, HEADER, write_file)
 
     print(f"\nDone! Generated {len(os.listdir(outdir))} files in: {outdir}")
 

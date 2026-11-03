@@ -1,6 +1,6 @@
 # gRPC Server Behavior
 
-NVIDIA cuOpt's **`cuopt_grpc_server`** uses one **main process** (gRPC front end, job tracking, background threads) and **worker processes** that run GPU solves. That layout gives isolation between jobs and optional parallelism when you set multiple workers. LP/MIP jobs can use chunked transfer for a problem or result larger than one gRPC message, and they can stream solver logs. A routing job is sent and returned as a single message, and the routing client does not stream logs.
+NVIDIA cuOpt's **`cuopt_grpc_server`** uses one **main process** (gRPC front end, job tracking, background threads) and **worker processes** that run GPU solves. That layout gives isolation between jobs and optional parallelism when you set multiple workers. LP/MIP jobs can use chunked transfer for a problem or result larger than one gRPC message, and they can stream solver logs. A routing upload larger than one message sends its matrices as chunks. A routing result is one message at this time. The default 256 MiB message size is large enough for any likely routing result. The routing client does not stream logs.
 
 Implementation details (IPC layout, C++ source map, chunked transfer internals) live in the contributor reference: **`cpp/docs/grpc-server-architecture.md`** in the NVIDIA cuOpt repository.
 
@@ -10,7 +10,7 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 
 ## Job Lifecycle (Summary)
 
-**Submit** → the server assigns a job id and queues work. **Process** → a worker pulls the problem, solves on the GPU, and streams the result back. **Retrieve** → the client uses status and result RPCs. An LP/MIP result larger than the gRPC message limit uses chunked download. A routing result is one message. See [gRPC API (reference)](api.rst) for RPC names.
+**Submit** → the server assigns a job id and queues work. **Process** → a worker pulls the problem, solves on the GPU, and streams the result back. **Retrieve** → the client uses status and result RPCs. LP/MIP problems and results can use chunked transfer. A routing upload can chunk its matrices, and a routing result is one message at this time. The default 256 MiB message size is large enough for any likely routing result. See [gRPC API (reference)](api.rst) for RPC names.
 
 ## Job States
 

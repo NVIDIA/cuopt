@@ -393,8 +393,11 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
         // state before both, so it stays on its own.
         if (lift_companion.var_idx < 0) {
           collect_move_batch(*fj_cpu, move, batch_moves);
-          for (const auto& batched : batch_moves)
+          // A colour class can hold millions of moves, each of which may report an incumbent.
+          for (const auto& batched : batch_moves) {
+            if (fj_cpu->halted || fj_cpu->preemption_flag.load(std::memory_order_relaxed)) break;
             apply_move(*fj_cpu, batched.var_idx, batched.value, false);
+          }
         }
         apply_move(*fj_cpu, move.var_idx, move.value, false);
         if (lift_companion.var_idx >= 0) {

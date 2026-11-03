@@ -318,18 +318,6 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
 // Small utility helpers
 // ---------------------------------------------------------------------------
 
-// Reset every field in a job slot so it can be reused by the next submission.
-static void reset_job_slot(JobQueueEntry& job)
-{
-  job.worker_pid   = 0;
-  job.worker_index = -1;
-  job.data_sent    = false;
-  job.is_chunked   = false;
-  job.ready        = false;
-  job.claimed      = false;
-  job.cancelled    = false;
-}
-
 // Log pipe throughput when config.verbose is enabled.
 static void log_pipe_throughput(const char* phase,
                                 int64_t total_bytes,
@@ -411,21 +399,63 @@ static void store_simple_result(const std::string& job_id,
 // Stage functions called from the worker_process main loop
 // ---------------------------------------------------------------------------
 
-// Atomically claim the first ready-but-unclaimed job slot, stamping it with
-// this worker's PID and index.  Returns the slot index, or -1 if none found.
+// Atomically claim the oldest ready-but-unclaimed job by enqueue_seq.
 static int claim_job_slot(int worker_id)
 {
-  for (size_t i = 0; i < MAX_JOBS; ++i) {
-    if (job_queue[i].ready && !job_queue[i].claimed) {
-      bool expected = false;
-      if (job_queue[i].claimed.compare_exchange_strong(expected, true)) {
-        job_queue[i].worker_pid   = getpid();
-        job_queue[i].worker_index = worker_id;
-        return static_cast<int>(i);
-      }
+  return claim_ready_job_slot(job_queue, MAX_JOBS, worker_id, getpid());
+}
+
+// Unified chunked upload: the pipe header is a SubmitJobRequest with numeric
+// arrays empty. Array bytes use the same framing as the legacy header.
+static bool read_unified_chunked_from_pipe(int read_fd, DeserializedJob& dj)
+{
+  cuopt::remote::SubmitJobRequest request;
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>
+    container_arrays;
+  if (!read_chunked_request_from_pipe(read_fd, request, arrays, container_arrays)) { return false; }
+
+  try {
+    if (request.has_lp_request()) {
+      const auto& req = request.lp_request();
+      SERVER_LOG_INFO("[Worker] IPC path: CHUNKED unified LP (%zu arrays, %zu container arrays)",
+                      arrays.size(),
+                      container_arrays.size());
+      cuopt::mathematical_optimization::map_proto_to_problem(
+        req.problem(), arrays, container_arrays, dj.problem);
+      if (!apply_lp_job_settings(dj, req.settings())) { return false; }
+    } else if (request.has_mip_request()) {
+      const auto& req = request.mip_request();
+      SERVER_LOG_INFO("[Worker] IPC path: CHUNKED unified MIP (%zu arrays, %zu container arrays)",
+                      arrays.size(),
+                      container_arrays.size());
+      cuopt::mathematical_optimization::map_proto_to_problem(
+        req.problem(), arrays, container_arrays, dj.problem);
+      map_proto_to_mip_settings(req.settings(), dj.settings);
+      if (!apply_job_parameters(dj, req.settings())) { return false; }
+      dj.enable_incumbents    = req.has_enable_incumbents() ? req.enable_incumbents() : true;
+      dj.enable_set_incumbent = req.has_enable_set_incumbent() ? req.enable_set_incumbent() : false;
+    } else if (request.has_vrp_request()) {
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+      const auto& req = request.vrp_request();
+      SERVER_LOG_INFO("[Worker] IPC path: CHUNKED VRP (%zu container arrays)",
+                      container_arrays.size());
+      map_proto_to_routing_problem(req.problem(), dj.routing_problem, arrays, container_arrays);
+      map_proto_to_routing_settings(req.settings(), dj.routing_settings);
+      dj.is_vrp = true;
+#else
+      SERVER_LOG_ERROR("[Worker] VRP request received but this build has no routing support");
+      return false;
+#endif
+    } else {
+      dj.error_message = "Unified chunked upload has no problem";
+      return false;
     }
+  } catch (const std::exception& e) {
+    dj.error_message = e.what();
+    return false;
   }
-  return -1;
+  return true;
 }
 
 // Deserialize the problem from the worker's pipe.  Handles both chunked and
@@ -439,10 +469,16 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
 
   auto pipe_recv_t0 = std::chrono::steady_clock::now();
 
+  if (is_chunked_job && job.unified_header.load()) {
+    if (!read_unified_chunked_from_pipe(read_fd, dj)) { return; }
+    dj.success = true;
+    return;
+  }
+
   if (is_chunked_job) {
-    // Chunked path: LP/MIP only for now (VRP is unary-only in this POC).
     if (job.problem_category == cuopt::remote::VRP) {
-      SERVER_LOG_ERROR("[Worker] Chunked VRP upload is not supported");
+      SERVER_LOG_ERROR("[Worker] Chunked VRP requires the unified header");
+      dj.error_message = "Chunked VRP requires the unified header";
       return;
     }
     // Chunked path: the server wrote a ChunkedProblemHeader followed by

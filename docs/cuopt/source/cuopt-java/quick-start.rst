@@ -42,7 +42,7 @@ no ``cuopt.native.dir`` is required:
    <dependency>
      <groupId>com.nvidia.cuopt</groupId>
      <artifactId>cuopt</artifactId>
-     <version>26.10.0-SNAPSHOT</version>
+     <version>26.12.0-SNAPSHOT</version>
      <classifier>cuda12</classifier>
    </dependency>
 

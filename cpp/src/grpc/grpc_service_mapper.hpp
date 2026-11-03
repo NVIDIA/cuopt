@@ -46,6 +46,29 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
   bool enable_set_incumbent = false);
 
 /**
+ * @brief Build the unified chunked-upload header for an LP problem.
+ *
+ * Same request as build_lp_submit_request, with problem arrays left empty.
+ * Array payloads are sent separately as ArrayChunks.
+ */
+template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_chunked_lp_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem, solver_settings_t<i_t, f_t>& settings);
+
+/**
+ * @brief Build the unified chunked-upload header for a MIP problem.
+ *
+ * Same request as build_mip_submit_request, with problem arrays left empty.
+ * Array payloads are sent separately as ArrayChunks.
+ */
+template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_chunked_mip_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+  solver_settings_t<i_t, f_t>& settings,
+  bool enable_incumbents    = false,
+  bool enable_set_incumbent = false);
+
+/**
  * @brief Build a gRPC StatusRequest.
  *
  * Simple helper to create a status check request.

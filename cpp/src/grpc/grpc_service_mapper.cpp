@@ -19,7 +19,8 @@ namespace cuopt::mathematical_optimization {
 template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_lp_submit_request(
   const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
-  const pdlp_solver_settings_t<i_t, f_t>& settings)
+  const pdlp_solver_settings_t<i_t, f_t>& settings,
+  bool header_only)
 {
   cuopt::remote::SubmitJobRequest submit_request;
 
@@ -31,8 +32,12 @@ cuopt::remote::SubmitJobRequest build_lp_submit_request(
   header->set_version(1);
   header->set_problem_category(cuopt::remote::LP);
 
-  // Map problem data to protobuf
-  map_problem_to_proto(cpu_problem, lp_request->mutable_problem());
+  // Map problem data to protobuf. The chunked header leaves arrays empty.
+  if (header_only) {
+    map_problem_scalars_to_proto(cpu_problem, lp_request->mutable_problem());
+  } else {
+    map_problem_to_proto(cpu_problem, lp_request->mutable_problem());
+  }
 
   // Warm start only. set_parameter() values are added by the caller.
   map_pdlp_client_settings_to_proto(settings, lp_request->mutable_settings());
@@ -44,7 +49,17 @@ template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_lp_submit_request(
   const cpu_optimization_problem_t<i_t, f_t>& cpu_problem, solver_settings_t<i_t, f_t>& settings)
 {
-  auto submit_request = build_lp_submit_request(cpu_problem, settings.get_pdlp_settings());
+  auto submit_request = build_lp_submit_request(cpu_problem, settings.get_pdlp_settings(), false);
+  append_solver_parameters(
+    settings, submit_request.mutable_lp_request()->mutable_settings()->mutable_parameters());
+  return submit_request;
+}
+
+template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_chunked_lp_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem, solver_settings_t<i_t, f_t>& settings)
+{
+  auto submit_request = build_lp_submit_request(cpu_problem, settings.get_pdlp_settings(), true);
   append_solver_parameters(
     settings, submit_request.mutable_lp_request()->mutable_settings()->mutable_parameters());
   return submit_request;
@@ -55,7 +70,8 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
   const mip_solver_settings_t<i_t, f_t>& settings,
   bool enable_incumbents,
-  bool enable_set_incumbent)
+  bool enable_set_incumbent,
+  bool header_only)
 {
   cuopt::remote::SubmitJobRequest submit_request;
 
@@ -67,8 +83,12 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
   header->set_version(1);
   header->set_problem_category(cuopt::remote::MIP);
 
-  // Map problem data to protobuf
-  map_problem_to_proto(cpu_problem, mip_request->mutable_problem());
+  // Map problem data to protobuf. The chunked header leaves arrays empty.
+  if (header_only) {
+    map_problem_scalars_to_proto(cpu_problem, mip_request->mutable_problem());
+  } else {
+    map_problem_to_proto(cpu_problem, mip_request->mutable_problem());
+  }
 
   // presolve_absolute_tolerance only. set_parameter() values are added by the caller.
   map_mip_client_settings_to_proto(settings, mip_request->mutable_settings());
@@ -87,7 +107,21 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
   bool enable_set_incumbent)
 {
   auto submit_request = build_mip_submit_request(
-    cpu_problem, settings.get_mip_settings(), enable_incumbents, enable_set_incumbent);
+    cpu_problem, settings.get_mip_settings(), enable_incumbents, enable_set_incumbent, false);
+  append_solver_parameters(
+    settings, submit_request.mutable_mip_request()->mutable_settings()->mutable_parameters());
+  return submit_request;
+}
+
+template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_chunked_mip_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+  solver_settings_t<i_t, f_t>& settings,
+  bool enable_incumbents,
+  bool enable_set_incumbent)
+{
+  auto submit_request = build_mip_submit_request(
+    cpu_problem, settings.get_mip_settings(), enable_incumbents, enable_set_incumbent, true);
   append_solver_parameters(
     settings, submit_request.mutable_mip_request()->mutable_settings()->mutable_parameters());
   return submit_request;
@@ -98,7 +132,15 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
 template cuopt::remote::SubmitJobRequest build_lp_submit_request(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   solver_settings_t<int32_t, float>& settings);
+template cuopt::remote::SubmitJobRequest build_chunked_lp_submit_request(
+  const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
+  solver_settings_t<int32_t, float>& settings);
 template cuopt::remote::SubmitJobRequest build_mip_submit_request(
+  const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
+  solver_settings_t<int32_t, float>& settings,
+  bool enable_incumbents,
+  bool enable_set_incumbent);
+template cuopt::remote::SubmitJobRequest build_chunked_mip_submit_request(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   solver_settings_t<int32_t, float>& settings,
   bool enable_incumbents,
@@ -109,7 +151,15 @@ template cuopt::remote::SubmitJobRequest build_mip_submit_request(
 template cuopt::remote::SubmitJobRequest build_lp_submit_request(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   solver_settings_t<int32_t, double>& settings);
+template cuopt::remote::SubmitJobRequest build_chunked_lp_submit_request(
+  const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
+  solver_settings_t<int32_t, double>& settings);
 template cuopt::remote::SubmitJobRequest build_mip_submit_request(
+  const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
+  solver_settings_t<int32_t, double>& settings,
+  bool enable_incumbents,
+  bool enable_set_incumbent);
+template cuopt::remote::SubmitJobRequest build_chunked_mip_submit_request(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   solver_settings_t<int32_t, double>& settings,
   bool enable_incumbents,
