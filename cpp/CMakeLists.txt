@@ -299,6 +299,8 @@ FetchContent_Declare(
         GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
         GIT_TAG "178364c774210a2c049e38b7a5a03a3f83eec2f7"
         GIT_PROGRESS TRUE
+        PATCH_COMMAND git -C <SOURCE_DIR> apply
+                      "${CMAKE_CURRENT_SOURCE_DIR}/patches/papilo_skip_unchanged_coeff.patch"
         EXCLUDE_FROM_ALL
         SYSTEM
 )

@@ -1,0 +1,14 @@
+diff --git a/src/papilo/core/SparseStorage.hpp b/src/papilo/core/SparseStorage.hpp
+index 6f7b4a9f..8f6470b7 100644
+--- a/src/papilo/core/SparseStorage.hpp
++++ b/src/papilo/core/SparseStorage.hpp
+@@ -283,7 +283,8 @@ class SparseStorage
+          if( columns[i] == col )
+          {
+             REAL newval = mergeVals( values[i], getVal( it ) );
+-            coeffChanged( row, col, values[i], newval );
++            if( newval != values[i] )
++               coeffChanged( row, col, values[i], newval );
+
+             if( newval != 0.0 )
+             {
