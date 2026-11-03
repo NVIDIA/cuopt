@@ -117,6 +117,59 @@ install(
     EXCLUDE_FROM_ALL
 )
 
+# VRP over gRPC against a real cuopt_grpc_server. It shares the server fixture with
+# GRPC_INTEGRATION_TEST and is labelled routing so the routing job owns it.
+add_executable(GRPC_ROUTING_INTEGRATION_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/grpc_routing_integration_test.cpp
+    "${CUOPT_SOURCE_DIR}/src/grpc/grpc_service_mapper.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client_env.cpp"
+)
+
+target_include_directories(GRPC_ROUTING_INTEGRATION_TEST
+    PRIVATE
+    "${CUOPT_SOURCE_DIR}/include"
+    "${CUOPT_SOURCE_DIR}/src"
+    "${CUOPT_SOURCE_DIR}/src/grpc"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client"
+    "${CUOPT_TEST_DIR}"
+    "${CUOPT_TEST_DIR}/linear_programming/grpc"  # shared server fixture and log capture
+    "${CMAKE_BINARY_DIR}"
+)
+
+target_link_libraries(GRPC_ROUTING_INTEGRATION_TEST
+    PRIVATE
+    cuopt_static
+    GTest::gmock
+    GTest::gmock_main
+    gRPC::grpc++
+    protobuf::libprotobuf
+)
+
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(GRPC_ROUTING_INTEGRATION_TEST PRIVATE -Wl,--enable-new-dtags)
+endif()
+
+add_dependencies(GRPC_ROUTING_INTEGRATION_TEST cuopt_grpc_server)
+
+rapids_test_add(
+    NAME GRPC_ROUTING_INTEGRATION_TEST
+    COMMAND ${CMAKE_COMMAND} -E env
+        "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
+        $<TARGET_FILE:GRPC_ROUTING_INTEGRATION_TEST>
+    INSTALL_COMPONENT_SET testing
+    INSTALL_TARGET GRPC_ROUTING_INTEGRATION_TEST
+)
+set_tests_properties(GRPC_ROUTING_INTEGRATION_TEST PROPERTIES LABELS "routing")
+install_test_labels(GRPC_ROUTING_INTEGRATION_TEST routing)
+
+install(
+    TARGETS GRPC_ROUTING_INTEGRATION_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)
+
 install(
     TARGETS GRPC_VRP_TEST_DRIVER
     COMPONENT testing
