@@ -19,7 +19,7 @@
 #include <cuopt/routing/cpu_routing_problem.hpp>
 #include <cuopt/routing/solver_settings.hpp>
 
-#include "grpc_integration_fixture.hpp"
+#include "utilities/grpc/grpc_integration_fixture.hpp"
 
 #include <chrono>
 #include <cstdlib>
