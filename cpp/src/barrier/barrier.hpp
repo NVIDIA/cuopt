@@ -116,11 +116,7 @@ class barrier_solver_t {
                              rmm::device_uvector<f_t> const& d_v,
                              rmm::device_uvector<f_t> const& d_z,
                              iteration_data_t<i_t, f_t>& data);
-  std::pair<f_t, f_t> compute_nonnegative_step_length_pair(iteration_data_t<i_t, f_t>& data,
-                                                           const rmm::device_uvector<f_t>& x1,
-                                                           const rmm::device_uvector<f_t>& dx1,
-                                                           const rmm::device_uvector<f_t>& x2,
-                                                           const rmm::device_uvector<f_t>& dx2);
+  void max_step_lengths_async(iteration_data_t<i_t, f_t>& data);
   i_t gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
                                    f_t& dual_perturb,
                                    f_t& primal_perturb,
