@@ -491,6 +491,8 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
+          # ctest drives ci/run_ctests.sh
+          - cmake>=4.0
           - cuda-sanitizer-api
           - *pyyaml
   test_cpp_cuopt:

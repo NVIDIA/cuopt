@@ -2,10 +2,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Run gtests with per-test-case retry for flaky detection.
+# Run the cuOpt gtests through CTest, with per-test-case retry for flaky detection.
+#
+# Tests, labels and environment come from the CTestTestfile.cmake installed with the
+# libcuopt-tests package (or the build tree). Each test runs in its own `ctest` call so a
+# failure can be retried per gtest case.
 #
 # Features:
-#   - Runs each gtest binary and collects JUnit XML results
+#   - Selects tests by CTest label (CUOPT_CPP_TEST_GROUP: all, routing or mathopt)
+#   - Collects JUnit XML results
 #   - On failure, parses XML to find failing test cases and retries them individually
 #   - Produces separate XML files per retry so nightly_report.py can classify flaky tests
 #   - Detects segfaults (signal 11) and isolates crashing tests
@@ -14,6 +19,9 @@
 #   GTEST_OUTPUT      - gtest XML output prefix (set by test_cpp.sh)
 #   GTEST_MAX_RETRIES - max retries per failing test case (default: 2)
 #   RAPIDS_TESTS_DIR  - directory for test results
+#   CUOPT_CPP_TEST_GROUP - all (default), routing (label "routing") or mathopt (everything else)
+#
+# Arguments: only --gtest_filter=<filter> is supported (passed to every test as GTEST_FILTER).
 #   CUOPT_CPP_TEST_GROUP - which binaries to run: all (default), routing
 #                          (binaries labeled "routing" in cpp/tests) or mathopt
 #                          (everything else, including unlabeled binaries)
@@ -25,20 +33,27 @@ SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # shellcheck source=ci/utils/crash_helpers.sh
 source "${SCRIPT_DIR}/utils/crash_helpers.sh"
 
-# Support customizing the gtests' install location
+# Support customizing the tests' install location
 # First, try the installed location (CI/conda environments)
-installed_test_location="${INSTALL_PREFIX:-${CONDA_PREFIX:-/usr}}/bin/gtests/libcuopt/"
+installed_test_location="${INSTALL_PREFIX:-${CONDA_PREFIX:-/usr}}/bin/gtests/libcuopt"
 # Fall back to the build directory (devcontainer environments)
-devcontainers_test_location="${SCRIPT_DIR}/../cpp/build/latest/gtests/libcuopt/"
+devcontainers_build_dir="${SCRIPT_DIR}/../cpp/build/latest"
 
-if [[ -d "${installed_test_location}" ]]; then
+if [[ -f "${installed_test_location}/CTestTestfile.cmake" ]]; then
+    CTEST_DIR="${installed_test_location}"
     GTEST_DIR="${installed_test_location}"
-elif [[ -d "${devcontainers_test_location}" ]]; then
-    GTEST_DIR="${devcontainers_test_location}"
+elif [[ -f "${devcontainers_build_dir}/CTestTestfile.cmake" ]]; then
+    CTEST_DIR="${devcontainers_build_dir}"
+    GTEST_DIR="${devcontainers_build_dir}/gtests/libcuopt"
 else
-    echo "Error: Test location not found. Searched:" >&2
+    echo "Error: CTestTestfile.cmake not found. Searched:" >&2
     echo "  - ${installed_test_location}" >&2
-    echo "  - ${devcontainers_test_location}" >&2
+    echo "  - ${devcontainers_build_dir}" >&2
+    exit 1
+fi
+
+if ! command -v ctest > /dev/null; then
+    echo "Error: ctest not found on PATH (install cmake in the test environment)" >&2
     exit 1
 fi
 
@@ -86,6 +101,44 @@ write_binary_crash_marker() {
         "Process terminated by ${sig} mid-run. gtest did not emit a JUnit XML because RUN_ALL_TESTS() did not complete; inspect the run log for [FAILED] / stack-trace lines that preceded the crash."
 }
 
+# Run one test through ctest and return a process-style exit code.
+# The installed tests run behind rapids-cmake's run_gpu_test.cmake, so ctest only reports
+# "Failed"; the child's real exit status or signal is recovered from its output.
+# Args: <test_name> <xml_file>
+run_ctest_test() {
+    local test_name="$1"
+    local xml_file="$2"
+    local log
+    log=$(mktemp)
+    rm -f "${xml_file}"
+
+    local ctest_rc=0
+    set +o pipefail
+    GTEST_OUTPUT="xml:${xml_file}" ctest --test-dir "${CTEST_DIR}" \
+        -R "^${test_name}\$" --no-tests=error --timeout 0 --verbose 2>&1 | tee "${log}"
+    ctest_rc=${PIPESTATUS[0]}
+    set -o pipefail
+
+    local rc=0
+    if [ "${ctest_rc}" -ne 0 ]; then
+        if grep -q "Segmentation fault" "${log}"; then rc=139
+        elif grep -q "Subprocess aborted" "${log}"; then rc=134
+        elif grep -q "Illegal instruction" "${log}"; then rc=132
+        elif grep -q "Bus error" "${log}"; then rc=135
+        elif grep -q "Floating-point exception" "${log}"; then rc=136
+        elif grep -q "Subprocess killed" "${log}"; then rc=137
+        elif grep -q "Interrupt" "${log}"; then rc=130
+        elif grep -q "Timeout" "${log}"; then rc=124
+        else
+            rc=$(sed -n 's/.*Child return code: \([0-9]\+\).*/\1/p' "${log}" | tail -n 1)
+            rc="${rc:-1}"
+            [ "${rc}" -eq 0 ] && rc=1
+        fi
+    fi
+    rm -f "${log}"
+    return "${rc}"
+}
+
 run_gtest_with_retry() {
     local gt="$1"
     shift
@@ -95,9 +148,9 @@ run_gtest_with_retry() {
 
     echo "Running gtest ${test_name}"
 
-    # First run — full binary
+    # First run — full binary, through CTest
     local rc=0
-    "${gt}" --gtest_output="xml:${xml_file}" "$@" || rc=$?
+    run_ctest_test "${test_name}" "${xml_file}" || rc=$?
 
     if [ "${rc}" -eq 0 ]; then
         return 0
@@ -221,25 +274,35 @@ case "${CUOPT_CPP_TEST_GROUP}" in
     *) echo "Error: invalid CUOPT_CPP_TEST_GROUP '${CUOPT_CPP_TEST_GROUP}'" >&2; exit 1 ;;
 esac
 
-# <BINARY>.labels is installed next to each labeled binary (see ConfigureTest).
-has_label() {
-    [[ -f "$1.labels" ]] && grep -qx "$2" "$1.labels"
-}
-
-NUM_RUN=0
-for gt in "${GTEST_DIR}"/*_TEST; do
-    is_routing=false
-    has_label "${gt}" routing && is_routing=true
-    if [[ "${CUOPT_CPP_TEST_GROUP}" == "routing" && "${is_routing}" == false ]] ||
-       [[ "${CUOPT_CPP_TEST_GROUP}" == "mathopt" && "${is_routing}" == true ]]; then
-        continue
-    fi
-    NUM_RUN=$((NUM_RUN + 1))
-    run_gtest_with_retry "${gt}" "$@" || true
+# GTEST_FILTER is read by every gtest binary, including the direct retry runs below.
+for arg in "$@"; do
+    case "${arg}" in
+        --gtest_filter=*) export GTEST_FILTER="${arg#--gtest_filter=}" ;;
+        *) echo "Error: unsupported argument '${arg}' (only --gtest_filter=... is supported)" >&2; exit 1 ;;
+    esac
 done
 
+case "${CUOPT_CPP_TEST_GROUP}" in
+    routing) CTEST_SELECT=(-L '^routing$') ;;
+    mathopt) CTEST_SELECT=(-LE '^routing$') ;;
+    *) CTEST_SELECT=() ;;
+esac
+
+# --no-tests=error makes an empty group fail instead of passing.
+if ! TEST_LIST=$(ctest --test-dir "${CTEST_DIR}" -N "${CTEST_SELECT[@]}" --no-tests=error); then
+    echo "Error: no tests selected for group '${CUOPT_CPP_TEST_GROUP}' in ${CTEST_DIR}" >&2
+    exit 1
+fi
+
+NUM_RUN=0
+while read -r test_name; do
+    [[ -z "${test_name}" || "${test_name}" == generate_resource_spec ]] && continue
+    NUM_RUN=$((NUM_RUN + 1))
+    run_gtest_with_retry "${GTEST_DIR}/${test_name}" || true
+done < <(sed -n 's/^ *Test *#[0-9]*: //p' <<< "${TEST_LIST}")
+
 if [ "${NUM_RUN}" -eq 0 ]; then
-    echo "Error: no gtest binaries selected for group '${CUOPT_CPP_TEST_GROUP}' in ${GTEST_DIR}" >&2
+    echo "Error: no tests selected for group '${CUOPT_CPP_TEST_GROUP}' in ${CTEST_DIR}" >&2
     OVERALL_RC=1
 fi
 
