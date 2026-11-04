@@ -83,7 +83,7 @@ cuopt_int_t test_simple_qp()
   // 0 is the coefficient of the linear term on y
   cuopt_float_t linear_objective_coefficients[] = {0.0, 0.0};
 
-  // Quadratic objective matrix in coordinate (triplet) format
+  // Quadratic objective matrix in COO format
   // From the objective function: minimize x^2 + y^2
   // 1 is the coefficient of the quadratic term on x^2
   // 1 is the coefficient of the quadratic term on y^2
