@@ -14,6 +14,9 @@
 #   GTEST_OUTPUT      - gtest XML output prefix (set by test_cpp.sh)
 #   GTEST_MAX_RETRIES - max retries per failing test case (default: 2)
 #   RAPIDS_TESTS_DIR  - directory for test results
+#   CUOPT_CPP_TEST_GROUP - which binaries to run: all (default), routing
+#                          (binaries labeled "routing" in cpp/tests) or mathopt
+#                          (everything else, including unlabeled binaries)
 
 set -euo pipefail
 
@@ -212,9 +215,33 @@ run_gtest_with_retry() {
     return 0
 }
 
+CUOPT_CPP_TEST_GROUP="${CUOPT_CPP_TEST_GROUP:-all}"
+case "${CUOPT_CPP_TEST_GROUP}" in
+    all | routing | mathopt) ;;
+    *) echo "Error: invalid CUOPT_CPP_TEST_GROUP '${CUOPT_CPP_TEST_GROUP}'" >&2; exit 1 ;;
+esac
+
+# <BINARY>.labels is installed next to each labeled binary (see ConfigureTest).
+has_label() {
+    [[ -f "$1.labels" ]] && grep -qx "$2" "$1.labels"
+}
+
+NUM_RUN=0
 for gt in "${GTEST_DIR}"/*_TEST; do
+    is_routing=false
+    has_label "${gt}" routing && is_routing=true
+    if [[ "${CUOPT_CPP_TEST_GROUP}" == "routing" && "${is_routing}" == false ]] ||
+       [[ "${CUOPT_CPP_TEST_GROUP}" == "mathopt" && "${is_routing}" == true ]]; then
+        continue
+    fi
+    NUM_RUN=$((NUM_RUN + 1))
     run_gtest_with_retry "${gt}" "$@" || true
 done
+
+if [ "${NUM_RUN}" -eq 0 ]; then
+    echo "Error: no gtest binaries selected for group '${CUOPT_CPP_TEST_GROUP}' in ${GTEST_DIR}" >&2
+    OVERALL_RC=1
+fi
 
 # Final summary so failures are easy to spot in the raw run log.
 # nightly_report.py also produces a structured report from the XML files,
