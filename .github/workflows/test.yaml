@@ -42,7 +42,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_cpp.sh
-      matrix_type: cuda-13-4-nightly,nightly
+      matrix_type: nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -66,7 +66,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_python.sh
-      matrix_type: cuda-13-4-nightly,nightly
+      matrix_type: nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -104,7 +104,7 @@ jobs:
       build_type: ${{ inputs.build_type }}
       matrix_name: conda-cpp-build
       matrix_filter: 'map(. + {CUDA_MAJOR: (.CUDA_VER | split(".") | .[0])}) | unique_by([.ARCH, .CUDA_MAJOR])'
-      matrix_type: cuda-13-4-nightly
+      matrix_type: nightly
 
   # Runs the full Java suite against each classifier JAR build.yaml's java-static-build produced,
   # on a GPU, with no libcuopt installed, so a JAR that loads but computes wrong answers fails
@@ -151,7 +151,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_cuopt.sh
-      matrix_type: cuda-13-4-nightly,nightly
+      matrix_type: nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -174,7 +174,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_cuopt_server.sh
-      matrix_type: cuda-13-4-nightly,nightly
+      matrix_type: nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -201,7 +201,7 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_conda_split_packages.sh
       matrix_filter: 'map(select(.ARCH == "amd64")) | sort_by(.CUDA_VER, .PY_VER) | [last]'
-      matrix_type: cuda-13-4-nightly,nightly
+      matrix_type: nightly
 
   wheel-split-package-tests:
     if: ${{ inputs.build_type == 'nightly' }}
@@ -219,7 +219,7 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_split_packages.sh
       matrix_filter: 'map(select(.ARCH == "amd64")) | sort_by(.CUDA_VER, .PY_VER) | [last]'
-      matrix_type: cuda-13-4-nightly,nightly
+      matrix_type: nightly
 
   conda-notebook-tests:
     permissions:
