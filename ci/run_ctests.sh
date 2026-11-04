@@ -265,6 +265,9 @@ case "${CUOPT_CPP_TEST_GROUP}" in
     *) echo "Error: invalid CUOPT_CPP_TEST_GROUP '${CUOPT_CPP_TEST_GROUP}'" >&2; exit 1 ;;
 esac
 
+# ctest runs tests from the test directory; some read data relative to CUOPT_HOME.
+export CUOPT_HOME="${CUOPT_HOME:-$(realpath "${SCRIPT_DIR}/..")}"
+
 for arg in "$@"; do
     case "${arg}" in
         --gtest_filter=*) export GTEST_FILTER="${arg#--gtest_filter=}" ;;
@@ -278,10 +281,10 @@ case "${CUOPT_CPP_TEST_GROUP}" in
     *) CTEST_SELECT=() ;;
 esac
 
-# Names of the tests matching the given ctest selection.
+# Names of the enabled tests matching the given ctest selection.
 list_tests() {
     ctest --test-dir "${CTEST_DIR}" -N "$@" | sed -n 's/^ *Test *#[0-9]*: //p' |
-        grep -vx generate_resource_spec || true
+        grep -v -e '^generate_resource_spec$' -e ' (Disabled)$' || true
 }
 
 # Unlabeled tests would silently land in mathopt, so require a group label.
