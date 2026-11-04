@@ -118,11 +118,7 @@ run_ctest_test() {
     if [ "${ctest_rc}" -ne 0 ]; then
         if grep -Eiq "Segmentation fault|SegFault" "${log}"; then rc=139
         elif grep -Eiq "Subprocess aborted|Child aborted" "${log}"; then rc=134
-        elif grep -Eiq "Illegal instruction|Exception: Illegal" "${log}"; then rc=132
-        elif grep -Eiq "Bus error" "${log}"; then rc=135
-        elif grep -Eiq "Floating-point exception|Exception: Numerical" "${log}"; then rc=136
         elif grep -Eiq "Subprocess killed" "${log}"; then rc=137
-        elif grep -Eiq "Exception: Interrupt|Subprocess interrupted" "${log}"; then rc=130
         elif grep -Eq "\(Timeout\)|\*\*\*Timeout" "${log}"; then rc=124
         else
             rc=$(sed -n 's/.*Child return code: \([0-9]\+\).*/\1/p' "${log}" | tail -n 1)
@@ -282,31 +278,29 @@ case "${CUOPT_CPP_TEST_GROUP}" in
     *) CTEST_SELECT=() ;;
 esac
 
+# Names of the tests matching the given ctest selection.
+list_tests() {
+    ctest --test-dir "${CTEST_DIR}" -N "$@" | sed -n 's/^ *Test *#[0-9]*: //p' |
+        grep -vx generate_resource_spec || true
+}
+
 # Unlabeled tests would silently land in mathopt, so require a group label.
-UNLABELED=$(ctest --test-dir "${CTEST_DIR}" -N -LE '^(routing|numopt)$' |
-    sed -n 's/^ *Test *#[0-9]*: //p' | grep -vx generate_resource_spec || true)
+UNLABELED=$(list_tests -LE '^(routing|numopt)$')
 if [[ -n "${UNLABELED}" ]]; then
     echo "Error: tests without a routing or numopt label (set LABELS in CMake):" >&2
     echo "${UNLABELED}" | sed 's/^/  - /' >&2
     exit 1
 fi
 
-if ! TEST_LIST=$(ctest --test-dir "${CTEST_DIR}" -N "${CTEST_SELECT[@]}" --no-tests=error); then
+TEST_LIST=$(list_tests ${CTEST_SELECT[@]+"${CTEST_SELECT[@]}"})
+if [[ -z "${TEST_LIST}" ]]; then
     echo "Error: no tests selected for group '${CUOPT_CPP_TEST_GROUP}' in ${CTEST_DIR}" >&2
     exit 1
 fi
 
-NUM_RUN=0
 while read -r test_name; do
-    [[ -z "${test_name}" || "${test_name}" == generate_resource_spec ]] && continue
-    NUM_RUN=$((NUM_RUN + 1))
     run_gtest_with_retry "${GTEST_DIR}/${test_name}" || true
-done < <(sed -n 's/^ *Test *#[0-9]*: //p' <<< "${TEST_LIST}")
-
-if [ "${NUM_RUN}" -eq 0 ]; then
-    echo "Error: no tests selected for group '${CUOPT_CPP_TEST_GROUP}' in ${CTEST_DIR}" >&2
-    OVERALL_RC=1
-fi
+done <<< "${TEST_LIST}"
 
 # Final summary so failures are easy to spot in the raw run log.
 # nightly_report.py also produces a structured report from the XML files,
