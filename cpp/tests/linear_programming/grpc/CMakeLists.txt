@@ -112,13 +112,12 @@ endif()
 
 add_dependencies(GRPC_WORKER_SPAWN_TEST cuopt_grpc_server)
 
-add_test(
-    NAME GRPC_WORKER_SPAWN_TEST
-    COMMAND ${CMAKE_COMMAND} -E env
-        "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
-        $<TARGET_FILE:GRPC_WORKER_SPAWN_TEST>
-)
-set_tests_properties(GRPC_WORKER_SPAWN_TEST PROPERTIES LABELS "numopt")
+rapids_test_add(NAME GRPC_WORKER_SPAWN_TEST COMMAND GRPC_WORKER_SPAWN_TEST INSTALL_COMPONENT_SET testing)
+# ENVIRONMENT (not `cmake -E env`) so the installed CTestTestfile.cmake does not embed the build
+# environment's cmake path; the server path is remapped to its installed location.
+set_tests_properties(GRPC_WORKER_SPAWN_TEST PROPERTIES
+    LABELS "numopt"
+    ENVIRONMENT "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>")
 
 install(
     TARGETS GRPC_WORKER_SPAWN_TEST
@@ -194,17 +193,10 @@ endif()
 # Integration tests need the server binary to be built first
 add_dependencies(GRPC_INTEGRATION_TEST cuopt_grpc_server)
 
-rapids_test_add(
-    NAME GRPC_INTEGRATION_TEST
-    COMMAND ${CMAKE_COMMAND} -E env
-        "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
-        $<TARGET_FILE:GRPC_INTEGRATION_TEST>
-    # The COMMAND's first token is cmake itself, not the test target, so
-    # rapids_test_add can't infer what to install -- name it explicitly.
-    INSTALL_COMPONENT_SET testing
-    INSTALL_TARGET GRPC_INTEGRATION_TEST
-)
-set_tests_properties(GRPC_INTEGRATION_TEST PROPERTIES LABELS "numopt")
+rapids_test_add(NAME GRPC_INTEGRATION_TEST COMMAND GRPC_INTEGRATION_TEST INSTALL_COMPONENT_SET testing)
+set_tests_properties(GRPC_INTEGRATION_TEST PROPERTIES
+    LABELS "numopt"
+    ENVIRONMENT "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>")
 
 install(
     TARGETS GRPC_INTEGRATION_TEST

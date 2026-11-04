@@ -72,25 +72,10 @@ endif()
 set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ################################################################ ------------------------------------------------------------------
-# install_test_labels(TEST_NAME label1 [label2 ...])
-#
-# Installs a <TEST_NAME>.labels marker next to the test binary so ci/run_ctests.sh can select
-# tests by label. Use it for tests whose LABELS are set outside ConfigureTest.
-function(install_test_labels TEST_NAME)
-    string(REPLACE ";" "\n" _labels_text "${ARGN}")
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${TEST_NAME}.labels" "${_labels_text}\n")
-    install(
-        FILES "${CMAKE_CURRENT_BINARY_DIR}/${TEST_NAME}.labels"
-        COMPONENT testing
-        DESTINATION bin/gtests/libcuopt
-        EXCLUDE_FROM_ALL
-    )
-endfunction()
-
-# ################################################################ ------------------------------------------------------------------
 # ConfigureTest(NAME source1.cu source2.cu [STATIC_LIB] [LABELS label1 label2 ...])
 #
-# LABELS sets CTest labels for selective local test execution via `ctest -L <label>`.
+# LABELS (routing or numopt) select the CI test group via ci/run_ctests.sh. Tests registered outside
+# ConfigureTest must use rapids_test_add, or they are missing from the installed package.
 # STATIC_LIB links cuopt_static instead of cuopt (for tests needing internal symbols).
 function(ConfigureTest CMAKE_TEST_NAME)
     cmake_parse_arguments(CT "STATIC_LIB" "" "LABELS" ${ARGN})
@@ -142,7 +127,6 @@ function(ConfigureTest CMAKE_TEST_NAME)
     rapids_test_add(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME} INSTALL_COMPONENT_SET testing)
     if(CT_LABELS)
         set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES LABELS "${CT_LABELS}")
-        install_test_labels(${CMAKE_TEST_NAME} ${CT_LABELS})
     endif()
     install(
         TARGETS ${CMAKE_TEST_NAME}
