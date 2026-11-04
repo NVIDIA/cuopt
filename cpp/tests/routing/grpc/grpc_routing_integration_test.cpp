@@ -5,11 +5,7 @@
 
 /**
  * @file grpc_routing_integration_test.cpp
- * @brief VRP over gRPC against a real cuopt_grpc_server
- *
- * Split out of GRPC_MATHOPT_INTEGRATION_TEST so the routing job owns the end-to-end routing
- * mappers while the LP/MIP integration suite stays with the mathopt job. Shares the
- * server fixture with it through grpc_integration_fixture.hpp.
+ * @brief VRP over gRPC against a real cuopt_grpc_server (routing group)
  *
  * Environment variables:
  *   CUOPT_GRPC_SERVER_PATH - Path to cuopt_grpc_server binary
@@ -63,12 +59,7 @@ class GrpcRoutingServerTests : public GrpcIntegrationTestBase {
 std::unique_ptr<ServerProcess> GrpcRoutingServerTests::s_server_;
 int GrpcRoutingServerTests::s_port_ = 0;
 
-// VRP over gRPC, in the same shape as the LP and MIP cases above: submit a problem,
-// poll to completion, fetch the solution and check it. This is the only routing case in
-// this suite, and it is the end-to-end exercise of the routing mappers -- the problem and
-// settings on the way in, the solution on the way back.
-// Four locations on a line, depot at 0, one vehicle. Any correct solver serves all
-// three orders, so the assertions do not depend on a particular route ordering.
+// Four locations on a line, depot at 0, one vehicle: any correct route serves every order.
 cuopt::routing::cpu_routing_problem_t make_line_vrp_problem()
 {
   constexpr int32_t kLocations = 4;

@@ -232,11 +232,9 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
-        # Narrower than test_cpp: the C++ test jobs are gated on test_cpp AND their own group.
-        # Each group is '**' minus the paths that cannot affect that job, so an unknown or
-        # shared file (utilities, grpc, CMake, ci) still runs both. The routing headers the gRPC
-        # client includes (cpu_routing_problem.hpp, solver_settings.hpp) stay shared, as does
-        # cpp/src/grpc/routing (GRPC_CLIENT_TEST in the mathopt job exercises submit_vrp).
+        # Each C++ test job runs when test_cpp and its own group match. A group is '**' minus
+        # the paths that cannot affect that job, so shared or unknown files run both. The gRPC
+        # code (including cpp/src/grpc/routing, used by GRPC_CLIENT_TEST) stays shared.
         test_cpp_routing:
           - '**'
           - '!cpp/include/cuopt/linear_programming/**'
