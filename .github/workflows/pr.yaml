@@ -42,6 +42,7 @@ jobs:
       - wheel-tests-cuopt-server
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
+      - devcontainer
     permissions:
       contents: read
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
@@ -82,6 +83,9 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
     with:
       files_yaml: |
+        build_devcontainer:
+          - '.devcontainer/**'
+          - '!.devcontainer/**/*.md'
         build_docs:
           - '**'
           - '!.ai/**'
@@ -114,6 +118,7 @@ jobs:
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
+          - '!.devcontainer/**'
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
           - '!.yamllint.yaml'
@@ -185,6 +190,7 @@ jobs:
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
+          - '!.devcontainer/**'
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
           - '!.yamllint.yaml'
@@ -271,6 +277,7 @@ jobs:
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
+          - '!.devcontainer/**'
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
           - '!.yamllint.yaml'
@@ -349,6 +356,7 @@ jobs:
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
+          - '!.devcontainer/**'
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
           - '!.yamllint.yaml'
@@ -866,3 +874,31 @@ jobs:
       - run: python3 ci/utils/pr_test_summary.py
         env:
           GH_TOKEN: ${{ github.token }}
+  devcontainer:
+    needs: changed-files
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).build_devcontainer ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/build-in-devcontainer.yaml@main
+    with:
+      arch: '["amd64", "arm64"]'
+      cuda: '["13.4"]'
+      node_type: "cpu8"
+      env: |
+        SCCACHE_DIST_MAX_RETRIES=inf
+        SCCACHE_SERVER_LOG=sccache=debug
+        SCCACHE_DIST_FALLBACK_TO_LOCAL_COMPILE=false
+      build_command: |
+        sccache --zero-stats;
+        build-cuopt-cpp -j0 -DBUILD_MIP_BENCHMARKS=ON -DBUILD_LP_BENCHMARKS=ON --verbose;
+        build-all -j0 --verbose;
+        sccache --show-adv-stats;

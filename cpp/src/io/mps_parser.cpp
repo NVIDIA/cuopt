@@ -1014,8 +1014,8 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
       variable_upper_bounds[i] = 1;
     }
     if (variable_lower_bounds[i] > variable_upper_bounds[i]) {
-      printf("WARNING: Variable %d has crossing bounds: %f > %f\n",
-             i,
+      printf("WARNING: Variable %lld has crossing bounds: %f > %f\n",
+             static_cast<long long>(i),
              variable_lower_bounds[i],
              variable_upper_bounds[i]);
     }

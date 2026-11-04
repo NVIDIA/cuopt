@@ -5,6 +5,7 @@
 
 # Add CLI end-to-end test
 ConfigureTest(CLI_TEST test_cli.cpp LABELS numopt)
+set_tests_properties(CLI_TEST PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:cuopt_cli>")
 
 # Add console-log-callback unit tests
 ConfigureTest(CONSOLE_LOG_CALLBACK_TEST test_console_log_callback.cpp LABELS numopt)

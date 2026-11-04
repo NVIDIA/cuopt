@@ -374,7 +374,9 @@ i_t csr_matrix_t<i_t, f_t>::append_rows(const csr_matrix_t<i_t, f_t>& C)
   const i_t old_nz = this->row_start[old_m];
   const i_t C_row  = C.m;
   if (C.n > n) {
-    printf("append_rows error: C.n %d n %d\n", C.n, n);
+    printf("append_rows error: C.n %lld n %lld\n",
+           static_cast<long long>(C.n),
+           static_cast<long long>(n));
     return -1;
   }
   const i_t C_nz   = C.row_start[C_row];
@@ -442,23 +444,38 @@ void csc_matrix_t<i_t, f_t>::print_matrix(FILE* fid) const
   for (i_t j = 0; j < this->n; ++j) {
     i_t p2 = this->col_start[j + 1];
     for (i_t p = this->col_start[j]; p < p2; ++p) {
-      fprintf(fid, "%d %d %.16e;\n", this->i[p] + 1, j + 1, this->x[p]);
+      fprintf(fid,
+              "%lld %lld %.16e;\n",
+              static_cast<long long>(this->i[p] + 1),
+              static_cast<long long>(j + 1),
+              this->x[p]);
     }
   }
   fprintf(fid, "];\n");
-  fprintf(fid, "A = sparse(ijx(:, 1), ijx(:, 2), ijx(:, 3), %d, %d);\n", this->m, this->n);
+  fprintf(fid,
+          "A = sparse(ijx(:, 1), ijx(:, 2), ijx(:, 3), %lld, %lld);\n",
+          static_cast<long long>(this->m),
+          static_cast<long long>(this->n));
 }
 
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::write_matrix_market(FILE* fid) const
 {
   fprintf(fid, "%%%%MatrixMarket matrix coordinate real general\n");
-  fprintf(fid, "%d %d %d\n", this->m, this->n, this->col_start[this->n]);
+  fprintf(fid,
+          "%lld %lld %lld\n",
+          static_cast<long long>(this->m),
+          static_cast<long long>(this->n),
+          static_cast<long long>(this->col_start[this->n]));
   for (i_t j = 0; j < this->n; ++j) {
     const i_t col_beg = this->col_start[j];
     const i_t col_end = this->col_start[j + 1];
     for (i_t p = col_beg; p < col_end; ++p) {
-      fprintf(fid, "%d %d %.16e\n", this->i[p] + 1, j + 1, this->x[p]);
+      fprintf(fid,
+              "%lld %lld %.16e\n",
+              static_cast<long long>(this->i[p] + 1),
+              static_cast<long long>(j + 1),
+              this->x[p]);
     }
   }
 }
@@ -644,11 +661,16 @@ i_t csr_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
     for (i_t p = row_start; p < row_end; ++p) {
       const i_t j = this->j[p];
       if (j < 0 || j >= this->n) {
-        printf("CSR Error: column index %d not in range [0, %d)\n", j, this->n);
+        printf("CSR Error: column index %lld not in range [0, %lld)\n",
+               static_cast<long long>(j),
+               static_cast<long long>(this->n));
         return -1;
       }
       if (col_marker[j] == i) {
-        printf("CSR Error (%s) : repeated column index %d in row %d\n", matrix_name.c_str(), j, i);
+        printf("CSR Error (%s) : repeated column index %lld in row %lld\n",
+               matrix_name.c_str(),
+               static_cast<long long>(j),
+               static_cast<long long>(i));
         return -1;
       }
       col_marker[j] = i;
