@@ -884,8 +884,12 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-          sparse-checkout: ci/utils/pr_test_summary.py
+          sparse-checkout: |
+            ci/utils/pr_test_summary.py
+            ci/tests/test_pr_test_summary.py
           sparse-checkout-cone-mode: false
+      - name: Test PR summary error handling
+        run: python3 -m unittest discover -s ci/tests -p test_pr_test_summary.py
       - run: python3 ci/utils/pr_test_summary.py
         env:
           GH_TOKEN: ${{ github.token }}
