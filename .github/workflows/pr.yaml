@@ -235,7 +235,8 @@ jobs:
         # Narrower than test_cpp: the C++ test jobs are gated on test_cpp AND their own group.
         # Each group is '**' minus the paths that cannot affect that job, so an unknown or
         # shared file (utilities, grpc, CMake, ci) still runs both. The routing headers the gRPC
-        # client includes (cpu_routing_problem.hpp, solver_settings.hpp) stay shared.
+        # client includes (cpu_routing_problem.hpp, solver_settings.hpp) stay shared, as does
+        # cpp/src/grpc/routing (GRPC_CLIENT_TEST in the mathopt job exercises submit_vrp).
         test_cpp_routing:
           - '**'
           - '!cpp/include/cuopt/linear_programming/**'
@@ -249,7 +250,9 @@ jobs:
           - '!cpp/src/math_optimization/**'
           - '!cpp/src/mip_heuristics/**'
           - '!cpp/src/pdlp/**'
+          - '!cpp/src/presolve/**'
           - '!cpp/tests/dual_simplex/**'
+          - '!cpp/tests/internal/**'
           - '!cpp/tests/linear_programming/c_api_tests/**'
           - '!cpp/tests/linear_programming/experimental_mps_fast/**'
           - '!cpp/tests/linear_programming/unit_tests/**'
@@ -268,7 +271,6 @@ jobs:
           - '!cpp/include/cuopt/routing/routing_structures.hpp'
           - '!cpp/include/cuopt/routing/solve.hpp'
           - '!cpp/src/distance/**'
-          - '!cpp/src/grpc/routing/**'
           - '!cpp/src/routing/**'
           - '!cpp/tests/distance_engine/**'
           - '!cpp/tests/examples/routing/**'

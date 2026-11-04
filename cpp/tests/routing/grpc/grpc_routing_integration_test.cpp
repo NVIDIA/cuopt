@@ -106,7 +106,10 @@ void solve_vrp_and_expect_served(grpc_client_t* client,
     auto status = client->check_status(submit_result.job_id);
     ASSERT_TRUE(status.success) << status.error_message;
     final_status = status.status;
-    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED) break;
+    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED ||
+        final_status == job_status_t::CANCELLED) {
+      break;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
   ASSERT_EQ(final_status, job_status_t::COMPLETED)
