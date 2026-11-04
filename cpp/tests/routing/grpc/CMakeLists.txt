@@ -67,7 +67,6 @@ endif()
 rapids_test_add(NAME GRPC_ROUTING_PROBLEM_MAPPER_TEST COMMAND GRPC_ROUTING_PROBLEM_MAPPER_TEST
                  INSTALL_COMPONENT_SET testing)
 set_tests_properties(GRPC_ROUTING_PROBLEM_MAPPER_TEST PROPERTIES LABELS "routing")
-install_test_labels(GRPC_ROUTING_PROBLEM_MAPPER_TEST routing)
 
 # Settings mapper round-trip (no running server). This mapper reads
 # routing::solver_settings_t, so it covers the host-only accessors that build into
@@ -101,7 +100,6 @@ endif()
 rapids_test_add(NAME GRPC_ROUTING_SETTINGS_MAPPER_TEST COMMAND GRPC_ROUTING_SETTINGS_MAPPER_TEST
                  INSTALL_COMPONENT_SET testing)
 set_tests_properties(GRPC_ROUTING_SETTINGS_MAPPER_TEST PROPERTIES LABELS "routing")
-install_test_labels(GRPC_ROUTING_SETTINGS_MAPPER_TEST routing)
 
 install(
     TARGETS GRPC_ROUTING_SETTINGS_MAPPER_TEST
@@ -151,16 +149,10 @@ endif()
 
 add_dependencies(GRPC_ROUTING_INTEGRATION_TEST cuopt_grpc_server)
 
-rapids_test_add(
-    NAME GRPC_ROUTING_INTEGRATION_TEST
-    COMMAND ${CMAKE_COMMAND} -E env
-        "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
-        $<TARGET_FILE:GRPC_ROUTING_INTEGRATION_TEST>
-    INSTALL_COMPONENT_SET testing
-    INSTALL_TARGET GRPC_ROUTING_INTEGRATION_TEST
-)
-set_tests_properties(GRPC_ROUTING_INTEGRATION_TEST PROPERTIES LABELS "routing")
-install_test_labels(GRPC_ROUTING_INTEGRATION_TEST routing)
+rapids_test_add(NAME GRPC_ROUTING_INTEGRATION_TEST COMMAND GRPC_ROUTING_INTEGRATION_TEST INSTALL_COMPONENT_SET testing)
+set_tests_properties(GRPC_ROUTING_INTEGRATION_TEST PROPERTIES
+    LABELS "routing"
+    ENVIRONMENT "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>")
 
 install(
     TARGETS GRPC_ROUTING_INTEGRATION_TEST
