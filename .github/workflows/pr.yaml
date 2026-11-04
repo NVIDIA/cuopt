@@ -232,8 +232,6 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
-        # Each group is '**' minus the paths that cannot affect that job, so shared or unknown
-        # files run both. Keep cpp/src/grpc/** shared: GRPC_CLIENT_TEST (mathopt) covers submit_vrp.
         test_cpp_routing:
           - '**'
           - '!cpp/include/cuopt/linear_programming/**'
