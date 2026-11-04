@@ -97,9 +97,7 @@ write_binary_crash_marker() {
         "Process terminated by ${sig} mid-run. gtest did not emit a JUnit XML because RUN_ALL_TESTS() did not complete; inspect the run log for [FAILED] / stack-trace lines that preceded the crash."
 }
 
-# Run one test through ctest; returns the test's exit code.
-# ctest reports only "Failed" for installed tests, so recover the code from its output.
-# Args: <test_name> <xml_file> [gtest_filter]
+# ctest only reports "Failed", so recover the exit code from its output.
 run_ctest_test() {
     local test_name="$1"
     local xml_file="$2"
