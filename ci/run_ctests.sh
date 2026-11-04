@@ -2,14 +2,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Run the cuOpt gtests through CTest, with per-test-case retry for flaky detection.
-#
-# Tests, labels and environment come from the CTestTestfile.cmake installed with the
-# libcuopt-tests package (or the build tree). Each test runs in its own `ctest` call so a
-# failure can be retried per gtest case.
+# Run gtests through ctest, with per-test-case retry for flaky detection.
 #
 # Features:
-#   - Selects tests by CTest label (CUOPT_CPP_TEST_GROUP: all, routing or mathopt)
+#   - Selects tests by ctest label (CUOPT_CPP_TEST_GROUP)
 #   - Collects JUnit XML results
 #   - On failure, parses XML to find failing test cases and retries them individually
 #   - Produces separate XML files per retry so nightly_report.py can classify flaky tests
@@ -19,9 +15,9 @@
 #   GTEST_OUTPUT      - gtest XML output prefix (set by test_cpp.sh)
 #   GTEST_MAX_RETRIES - max retries per failing test case (default: 2)
 #   RAPIDS_TESTS_DIR  - directory for test results
-#   CUOPT_CPP_TEST_GROUP - all (default), routing (label "routing") or mathopt (everything else)
+#   CUOPT_CPP_TEST_GROUP - all (default), routing or mathopt
 #
-# Arguments: only --gtest_filter=<filter> is supported (passed to every test as GTEST_FILTER).
+# Only --gtest_filter=<filter> is accepted as an argument.
 #   CUOPT_CPP_TEST_GROUP - which binaries to run: all (default), routing
 #                          (binaries labeled "routing" in cpp/tests) or mathopt
 #                          (everything else, including unlabeled binaries)
@@ -101,34 +97,35 @@ write_binary_crash_marker() {
         "Process terminated by ${sig} mid-run. gtest did not emit a JUnit XML because RUN_ALL_TESTS() did not complete; inspect the run log for [FAILED] / stack-trace lines that preceded the crash."
 }
 
-# Run one test through ctest and return a process-style exit code.
-# The installed tests run behind rapids-cmake's run_gpu_test.cmake, so ctest only reports
-# "Failed"; the child's real exit status or signal is recovered from its output.
-# Args: <test_name> <xml_file>
+# Run one test through ctest; returns the test's exit code.
+# ctest reports only "Failed" for installed tests, so recover the code from its output.
+# Args: <test_name> <xml_file> [gtest_filter]
 run_ctest_test() {
     local test_name="$1"
     local xml_file="$2"
     local log
     log=$(mktemp)
+    local -a filter_env=()
+    [[ -n "${3:-}" ]] && filter_env=(GTEST_FILTER="$3")
     rm -f "${xml_file}"
 
     local ctest_rc=0
     set +o pipefail
-    GTEST_OUTPUT="xml:${xml_file}" ctest --test-dir "${CTEST_DIR}" \
+    env ${filter_env[@]+"${filter_env[@]}"} GTEST_OUTPUT="xml:${xml_file}" ctest --test-dir "${CTEST_DIR}" \
         -R "^${test_name}\$" --no-tests=error --timeout 0 --verbose 2>&1 | tee "${log}"
     ctest_rc=${PIPESTATUS[0]}
     set -o pipefail
 
     local rc=0
     if [ "${ctest_rc}" -ne 0 ]; then
-        if grep -q "Segmentation fault" "${log}"; then rc=139
-        elif grep -q "Subprocess aborted" "${log}"; then rc=134
-        elif grep -q "Illegal instruction" "${log}"; then rc=132
-        elif grep -q "Bus error" "${log}"; then rc=135
-        elif grep -q "Floating-point exception" "${log}"; then rc=136
-        elif grep -q "Subprocess killed" "${log}"; then rc=137
-        elif grep -q "Interrupt" "${log}"; then rc=130
-        elif grep -q "Timeout" "${log}"; then rc=124
+        if grep -Eiq "Segmentation fault|SegFault" "${log}"; then rc=139
+        elif grep -Eiq "Subprocess aborted|Child aborted" "${log}"; then rc=134
+        elif grep -Eiq "Illegal instruction|Exception: Illegal" "${log}"; then rc=132
+        elif grep -Eiq "Bus error" "${log}"; then rc=135
+        elif grep -Eiq "Floating-point exception|Exception: Numerical" "${log}"; then rc=136
+        elif grep -Eiq "Subprocess killed" "${log}"; then rc=137
+        elif grep -Eiq "Exception: Interrupt|Subprocess interrupted" "${log}"; then rc=130
+        elif grep -Eq "\(Timeout\)|\*\*\*Timeout" "${log}"; then rc=124
         else
             rc=$(sed -n 's/.*Child return code: \([0-9]\+\).*/\1/p' "${log}" | tail -n 1)
             rc="${rc:-1}"
@@ -183,7 +180,7 @@ run_gtest_with_retry() {
         # plus any that failed. Only retry those, not the ones that passed.
         echo "INFO: Finding tests that need retry in ${test_name}"
         local all_tests
-        all_tests=$("${gt}" --gtest_list_tests "$@" 2>/dev/null \
+        all_tests=$("${gt}" --gtest_list_tests 2>/dev/null \
             | python3 "${JUNIT_HELPERS}" gtest-list || echo "")
 
         # Extract tests that already passed from partial XML
@@ -237,7 +234,7 @@ run_gtest_with_retry() {
             echo "  Retry ${attempt}/${GTEST_MAX_RETRIES}: ${tc}"
 
             local retry_rc=0
-            "${gt}" --gtest_filter="${tc}" --gtest_output="xml:${retry_xml}" "$@" || retry_rc=$?
+            run_ctest_test "${test_name}" "${retry_xml}" "${tc}" || retry_rc=$?
 
             if [ "${retry_rc}" -eq 0 ]; then
                 echo "  FLAKY: ${tc} passed on retry ${attempt}"
@@ -274,7 +271,6 @@ case "${CUOPT_CPP_TEST_GROUP}" in
     *) echo "Error: invalid CUOPT_CPP_TEST_GROUP '${CUOPT_CPP_TEST_GROUP}'" >&2; exit 1 ;;
 esac
 
-# GTEST_FILTER is read by every gtest binary, including the direct retry runs below.
 for arg in "$@"; do
     case "${arg}" in
         --gtest_filter=*) export GTEST_FILTER="${arg#--gtest_filter=}" ;;
@@ -288,8 +284,7 @@ case "${CUOPT_CPP_TEST_GROUP}" in
     *) CTEST_SELECT=() ;;
 esac
 
-# Every test must carry a group label: an unlabeled routing test would otherwise run in the
-# mathopt group and be skipped on routing-only PRs. Add new labels to the regex below.
+# Unlabeled tests would silently land in mathopt, so require a group label.
 UNLABELED=$(ctest --test-dir "${CTEST_DIR}" -N -LE '^(routing|numopt)$' |
     sed -n 's/^ *Test *#[0-9]*: //p' | grep -vx generate_resource_spec || true)
 if [[ -n "${UNLABELED}" ]]; then
@@ -298,7 +293,6 @@ if [[ -n "${UNLABELED}" ]]; then
     exit 1
 fi
 
-# --no-tests=error makes an empty group fail instead of passing.
 if ! TEST_LIST=$(ctest --test-dir "${CTEST_DIR}" -N "${CTEST_SELECT[@]}" --no-tests=error); then
     echo "Error: no tests selected for group '${CUOPT_CPP_TEST_GROUP}' in ${CTEST_DIR}" >&2
     exit 1
