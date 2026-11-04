@@ -288,6 +288,16 @@ case "${CUOPT_CPP_TEST_GROUP}" in
     *) CTEST_SELECT=() ;;
 esac
 
+# Every test must carry a group label: an unlabeled routing test would otherwise run in the
+# mathopt group and be skipped on routing-only PRs. Add new labels to the regex below.
+UNLABELED=$(ctest --test-dir "${CTEST_DIR}" -N -LE '^(routing|numopt)$' |
+    sed -n 's/^ *Test *#[0-9]*: //p' | grep -vx generate_resource_spec || true)
+if [[ -n "${UNLABELED}" ]]; then
+    echo "Error: tests without a routing or numopt label (set LABELS in CMake):" >&2
+    echo "${UNLABELED}" | sed 's/^/  - /' >&2
+    exit 1
+fi
+
 # --no-tests=error makes an empty group fail instead of passing.
 if ! TEST_LIST=$(ctest --test-dir "${CTEST_DIR}" -N "${CTEST_SELECT[@]}" --no-tests=error); then
     echo "Error: no tests selected for group '${CUOPT_CPP_TEST_GROUP}' in ${CTEST_DIR}" >&2
