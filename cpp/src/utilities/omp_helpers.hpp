@@ -24,12 +24,46 @@ std::pair<i_t, i_t> calculate_index_range(i_t k, double total, double n)
 }  // namespace cuopt
 
 #ifdef _OPENMP
-
 #include <omp.h>
+#else
+#include <mutex>
+#endif
 #include <memory>
 #include <utility>
 
 namespace cuopt {
+
+#ifndef _OPENMP
+class omp_mutex_t {
+ public:
+  omp_mutex_t() : mutex(new std::mutex()) { }
+
+  omp_mutex_t(const omp_mutex_t&) = delete;
+
+  omp_mutex_t(omp_mutex_t&& other) { *this = std::move(other); }
+
+  omp_mutex_t& operator=(const omp_mutex_t&) = delete;
+
+  omp_mutex_t& operator=(omp_mutex_t&& other)
+  {
+    if (&other != this) {
+      mutex = std::move(other.mutex);
+    }
+    return *this;
+  }
+
+  void lock() { mutex->lock(); }
+
+  void unlock() { mutex->unlock(); }
+
+  bool try_lock() { return mutex->try_lock(); }
+
+ private:
+  std::unique_ptr<std::mutex> mutex;
+};
+#endif  // !_OPENMP
+
+#ifdef _OPENMP
 
 // Wrapper of omp_lock_t. Optionally, you can provide a hint as defined in
 // https://www.openmp.org/spec-html/5.1/openmpse39.html#x224-2570003.9
@@ -67,6 +101,7 @@ class omp_mutex_t {
  private:
   std::unique_ptr<omp_lock_t> mutex;
 };
+#endif  // _OPENMP
 
 // Empty class with the same methods as `omp_mutex_t`. This is mainly used for cleanly disabling
 // the `omp_mutex_t` via type alias (`lock` and `unlock` are replaced by NOOPs).
