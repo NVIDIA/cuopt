@@ -326,6 +326,7 @@ jobs:
           - '!cpp/tests/dual_simplex/**'
           - '!cpp/tests/internal/**'
           - '!cpp/tests/linear_programming/c_api_tests/**'
+          - '!cpp/tests/linear_programming/grpc/**'
           - '!cpp/tests/linear_programming/experimental_mps_fast/**'
           - '!cpp/tests/linear_programming/unit_tests/**'
           - '!cpp/tests/linear_programming/utilities/**'
