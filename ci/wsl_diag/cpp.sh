@@ -25,30 +25,27 @@ df -h /dev/shm
 nvidia-smi
 nvidia-smi -q | grep -iE -A3 "driver model|virtualization mode|performance state|clocks event reasons|^    Clocks$" || true
 
-rapids-logger "Latency probe"
-python -I "${DIAG_DIR}/latency.py" 0 || true
-set +e
+rapids-logger "Latency probes (cudaSetDeviceFlags 0=auto 1=spin 2=yield 4=blocking)"
+for f in 0 1 2 4; do python -I "${DIAG_DIR}/latency.py" "$f" || true; done
 
 ./datasets/mip/download_miplib_test_dataset.sh > /dev/null
 ./datasets/linear_programming/download_pdlp_test_dataset.sh > /dev/null
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 pushd "${RAPIDS_DATASET_ROOT_DIR}" > /dev/null
-./get_test_data.sh > /dev/null 2>&1
+./get_test_data.sh > /dev/null
 popd > /dev/null
 
 G="${CONDA_PREFIX}/bin/gtests/libcuopt"
 run() {
   rapids-logger "$*"
   local t0=$SECONDS
-  "$@" 2>&1 | grep -E '^\[ *(RUN|OK|FAILED|PASSED) *\]|Failure|Which is|actual|presolve time|scaling completed|thread budget|Time limit|NCCL (WARN|INFO)|ncclComm|CUDA|error' || true
+  "$@" 2>&1 | grep -E '^\[ *(RUN|OK|FAILED|PASSED) *\]|Failure|Which is|actual|presolve time|scaling completed|thread budget|Time limit|NCCL (WARN|INFO (Init|cuMem|NET|ncclCommInitAll|Bootstrap|Using))|ncclComm|CUDA|error' || true
   echo "elapsed: $((SECONDS - t0)) s"
 }
 run "${G}/NUMOPT_INTERNAL_TEST" --gtest_filter='termination_status.gf2*:termination_status.crossing*:cuts.test_cuts_1:Population.ExternalQueueDrain*'
 run "${G}/ROUTING_UNIT_TEST" --gtest_filter='prize_collection.*'
 NCCL_DEBUG=INFO run "${G}/C_API_TEST" --gtest_filter='c_api.multi_gpu*'
 NCCL_DEBUG=WARN NCCL_CUMEM_ENABLE=0 run "${G}/C_API_TEST" --gtest_filter='c_api.multi_gpu*'
-NCCL_DEBUG=WARN NCCL_CUMEM_ENABLE=0 NCCL_SHM_DISABLE=1 run "${G}/C_API_TEST" --gtest_filter='c_api.multi_gpu*'
-NCCL_DEBUG=WARN NCCL_RUNTIME_CONNECT=0 run "${G}/C_API_TEST" --gtest_filter='c_api.multi_gpu*'
 run "${G}/INCUMBENT_CALLBACK_TEST" --gtest_filter='mip_solve.incumbent_get_set_callback_test'
 exit 0

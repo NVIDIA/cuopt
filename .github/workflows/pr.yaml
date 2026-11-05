@@ -27,4 +27,17 @@ jobs:
       build_type: pull-request
       script: ci/wsl_diag/cpp.sh
       matrix_type: pull-request,wsl-pr
-      matrix_filter: 'map(select(.OS == "wsl"))'
+      matrix_filter: 'map(select(.GPU == "rtxpro6000" and (.CUDA_VER | startswith("13.0")) and .PY_VER == "3.12"))'
+  wheel-tests-cuopt:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
+    with:
+      build_type: pull-request
+      script: ci/wsl_diag/wheel.sh
+      matrix_type: pull-request,wsl-pr
+      matrix_filter: 'map(select(.GPU == "h100" and (.CUDA_VER | startswith("13.4"))))'
