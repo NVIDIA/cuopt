@@ -248,6 +248,16 @@ Multi-GPU PDLP Partitioner
 graph partitioner, better balanced shards at the cost of extra partitioning time), or ``2``
 RoundRobin (no partitioning graph built).
 
+mPDLP nnz-weight coefficient
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MPDLP_PARTITION_NNZ_WEIGHT`` is a knob balancing the importance of the nnz
+repartition vs the row/col repartition in multi-GPU PDLP. Each bipartite-graph node (a
+constraint row or a variable column) is labeled with weight ``1 + alpha * nnz``, where
+``alpha`` is the value of this parameter and ``nnz`` is the row- or column-nnz. The higher
+the value, the more weight is given to the nnz repartition; ``alpha = 0`` makes KaMinPar
+balance raw row/col count across shards. The default is ``1.0``.
+
 Infeasibility Detection
 ^^^^^^^^^^^^^^^^^^^^^^^^
 

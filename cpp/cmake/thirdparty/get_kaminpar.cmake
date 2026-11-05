@@ -58,6 +58,12 @@ function(find_and_configure_kaminpar)
             "KAMINPAR_ENABLE_TBB_MALLOC OFF"
             # Large LP constraint graphs can exceed 2^31 directed edges.
             "KAMINPAR_64BIT_EDGE_IDS ON"
+            # Nnz-aware partitioning labels each node with its row/column nnz,
+            # so the sum of node weights across the bipartite graph is 2*nnz
+            # (= number of directed edges). The default int32 NodeWeight would
+            # overflow for the same large-LP regime that already motivates
+            # KAMINPAR_64BIT_EDGE_IDS, so widen weights too.
+            "KAMINPAR_64BIT_WEIGHTS ON"
             "INSTALL_KAMINPAR OFF"
             # Build KaMinPar as a STATIC library that is embedded into libcuopt.so (linked
             # by file in cpp/CMakeLists.txt). The wheel build configures with

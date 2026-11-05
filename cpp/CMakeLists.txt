@@ -1064,7 +1064,10 @@ target_link_libraries(cuopt_mathopt_objs
 # must stay in sync with get_kaminpar.cmake or the prebuilt archive's ABI mismatches.
 target_include_directories(cuopt_mathopt_objs SYSTEM PRIVATE
         $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
-target_compile_definitions(cuopt_mathopt_objs PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
+target_compile_definitions(cuopt_mathopt_objs PRIVATE
+        TBB_PREVIEW_GLOBAL_CONTROL
+        KAMINPAR_64BIT_EDGE_IDS
+        KAMINPAR_64BIT_WEIGHTS)
 if (TARGET KaMinPar)
     add_dependencies(cuopt_mathopt_objs KaMinPar)
 endif ()

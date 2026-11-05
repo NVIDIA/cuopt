@@ -361,6 +361,9 @@ class pdlp_solver_settings_t {
   // Which graph partitioner multi-GPU PDLP uses. See
   // multigpu_pdlp_partitioner_t for the meaning of each value.
   multigpu_pdlp_partitioner_t multigpu_pdlp_partitioner{multigpu_pdlp_partitioner_t::Auto};
+  // Knob balancing the importance of the nnz repartition vs the row/col repartition in mPDLP.
+  // The higher the value, the more weight is given to the nnz repartition.
+  f_t mpdlp_partition_nnz_weight{f_t(1.0)};
   method_t method{method_t::Concurrent};
   // At or above this reduced NNZ, skip concurrent CPU solvers and enable DEFAULT column reduction
   // on compatible PDLP paths. -1 disables both automatic decisions.
