@@ -515,7 +515,6 @@ struct bound_value_gradient {
   {
     f_t lower = get_lower(bounds);
     f_t upper = get_upper(bounds);
-    if (value > f_t(0) && value < f_t(0)) { return 0; }
     return value > f_t(0) ? lower : upper;
   }
 };

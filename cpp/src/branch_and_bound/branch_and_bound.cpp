@@ -3439,7 +3439,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 
     for (i_t k = 0; k < num_diving_workers; ++k) {
       i_t j = root_heuristics.next_diving_type_ % diving_heuristics.size();
-      root_heuristics.next_diving_type_ = j + 1 % diving_heuristics.size();
+      root_heuristics.next_diving_type_ = (j + 1) % diving_heuristics.size();
       search_strategy_t strategy        = diving_heuristics[j];
 
       diving_worker_t<i_t, f_t>* worker = current_heuristic->create_diving_worker(

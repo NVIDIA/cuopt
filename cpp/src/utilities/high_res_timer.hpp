@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -53,7 +53,7 @@ class HighResTimer {
       return (static_cast<double>(it->second.second) / (1000000.0 * it->second.first));
     } else {
       std::stringstream ss;
-      ss << "ERROR: timing label: " << label << "not found.";
+      ss << "ERROR: timing label: " << label << " not found.";
 
       throw std::runtime_error(ss.str());
     }

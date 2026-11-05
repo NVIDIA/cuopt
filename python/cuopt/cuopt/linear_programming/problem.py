@@ -2274,7 +2274,7 @@ class Problem:
 
     def get_incumbent_values(self, solution, vars):
         warnings.warn(
-            "This function is deprecated and will be removed."
+            "This function is deprecated and will be removed. "
             "Please use getIncumbentValues instead.",
             DeprecationWarning,
         )
@@ -2301,7 +2301,7 @@ class Problem:
 
     def get_pdlp_warm_start_data(self):
         warnings.warn(
-            "This function is deprecated and will be removed."
+            "This function is deprecated and will be removed. "
             "Please use getWarmstartData instead.",
             DeprecationWarning,
         )
@@ -2522,7 +2522,7 @@ class Problem:
 
     def getQcsr(self):
         warnings.warn(
-            "This function is deprecated and will be removed."
+            "This function is deprecated and will be removed. "
             "Please use getQCSR instead.",
             DeprecationWarning,
         )

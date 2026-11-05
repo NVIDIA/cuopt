@@ -94,7 +94,7 @@ class dense_matrix_t {
                           dense_vector_t<i_t, f_t>& y) const
   {
     if (static_cast<i_t>(x.size()) != m) {
-      printf("dense_matrix_t::transpose_multiply: x.size() != n\n");
+      printf("dense_matrix_t::transpose_multiply: x.size() != m\n");
       exit(1);
     }
     for (i_t j = 0; j < n; j++) {
@@ -127,7 +127,7 @@ class dense_matrix_t {
     // Y is q x p
     // Y <- alpha * A' * X + beta * Y
     if (X.n != Y.n) {
-      printf("dense_matrix_t::transpose_matrix_multiply: X.m != Y.m\n");
+      printf("dense_matrix_t::transpose_matrix_multiply: X.n != Y.n\n");
       exit(1);
     }
     if (X.m != m) {
