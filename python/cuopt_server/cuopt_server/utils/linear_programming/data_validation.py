@@ -80,6 +80,11 @@ def validate_variable_bounds(LP_data):
                     False,
                     "Size of variable upper bounds must be same as variable lower bounds",  # noqa
                 )
+            if not len(variable_bounds.upper_bounds) == len(coeff):
+                return (
+                    False,
+                    "Size of variable bounds must be same as size of objective coefficients",  # noqa
+                )
         elif variable_bounds.upper_bounds is not None:
             if not len(variable_bounds.upper_bounds) == len(coeff):
                 return (
