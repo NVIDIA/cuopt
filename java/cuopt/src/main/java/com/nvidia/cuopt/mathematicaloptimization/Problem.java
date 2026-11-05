@@ -225,14 +225,11 @@ public final class Problem implements AutoCloseable {
     }
     String[] variableNames = new String[variables.size()];
     for (Variable variable : variables) {
-      String variableName = variable.getVariableName();
-      variableNames[variable.getIndex()] =
-          variableName.isEmpty() ? "C" + variable.getIndex() : variableName;
+      variableNames[variable.getIndex()] = variable.getVariableName();
     }
     String[] rowNames = new String[matrixBuild.linearConstraints.size()];
     for (int i = 0; i < matrixBuild.linearConstraints.size(); i++) {
-      String rowName = matrixBuild.linearConstraints.get(i).getConstraintName();
-      rowNames[i] = rowName.isEmpty() ? "R" + i : rowName;
+      rowNames[i] = matrixBuild.linearConstraints.get(i).getConstraintName();
     }
     nativeProblem.setVariableNames(variableNames).setRowNames(rowNames).setProblemName(name);
     return nativeProblem;

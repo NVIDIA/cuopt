@@ -259,6 +259,37 @@ TEST(mps_writer_op, write_to_mps_nonsymmetric_Q_quadobj_matches_Q_plus_Q_transpo
   }
 }
 
+TEST(mps_writer_op, write_to_mps_empty_names_get_unique_defaults)
+{
+  // Empty names are treated like missing ones, and a default never collides with a user name.
+  double const inf = std::numeric_limits<double>::infinity();
+  raft::handle_t handle;
+  auto op = optimization_problem_t<int, double>(&handle);
+  std::vector<double> values  = {1.0, 1.0, 1.0};
+  std::vector<int> indices    = {0, 1, 2};
+  std::vector<int> offsets    = {0, 1, 2, 3};
+  std::vector<double> c       = {1.0, 1.0, 1.0};
+  std::vector<double> lb      = {0.0, 0.0, 0.0};
+  std::vector<double> ub      = {inf, inf, inf};
+  std::vector<double> row_lb  = {1.0, 1.0, 1.0};
+  std::vector<double> row_ub  = {inf, inf, inf};
+  op.set_csr_constraint_matrix(
+    values.data(), values.size(), indices.data(), indices.size(), offsets.data(), offsets.size());
+  op.set_objective_coefficients(c.data(), c.size());
+  op.set_variable_lower_bounds(lb.data(), lb.size());
+  op.set_variable_upper_bounds(ub.data(), ub.size());
+  op.set_constraint_lower_bounds(row_lb.data(), row_lb.size());
+  op.set_constraint_upper_bounds(row_ub.data(), row_ub.size());
+  op.set_variable_names({"", "C0", ""});
+  op.set_row_names({"R1", "", ""});
+  std::string const path = std::string(::testing::TempDir()) + "empty_names_unique_defaults.mps";
+  temp_mps_file_guard_t guard(path);
+  op.write_to_mps(path);
+  auto parsed = io::read_mps<int, double>(path);
+  EXPECT_EQ(parsed.get_variable_names(), (std::vector<std::string>{"C0_", "C0", "C2"}));
+  EXPECT_EQ(parsed.get_row_names(), (std::vector<std::string>{"R1", "R1_", "R2"}));
+}
+
 class MpsWriterBoundsTest : public ::testing::TestWithParam<std::tuple<bool, bool>> {};
 
 TEST_P(MpsWriterBoundsTest, constraint_bounds_round_trip)

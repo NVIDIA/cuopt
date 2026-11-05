@@ -240,19 +240,32 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
   if (problem_.get_sense()) { mps_file << "OBJSENSE\n MAXIMIZE\n"; }
 
-  // Unnamed quadratic constraints get QC<q>, made unique against every other row name so the
-  // reader cannot mistake one for another row or the objective.
+  // Missing or empty names fall back to R<k> / C<j> / QC<q>. A fallback is made unique against
+  // every other row (or column) name so the reader cannot mistake one for another or for the
+  // objective, e.g. a user row that is already called "R1".
+  std::vector<std::string> linear_row_names(static_cast<size_t>(n_constraints));
   std::vector<std::string> quadratic_row_names(quadratic_constraints.size());
   {
     std::unordered_set<std::string> used_names;
     used_names.insert(problem_.get_objective_name().empty() ? "OBJ"
                                                             : problem_.get_objective_name());
-    for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
-      used_names.insert(k < problem_.get_row_names().size() ? problem_.get_row_names()[k]
-                                                            : "R" + std::to_string(k));
+    for (size_t k = 0; k < linear_row_names.size(); ++k) {
+      if (k < problem_.get_row_names().size() && !problem_.get_row_names()[k].empty()) {
+        linear_row_names[k] = problem_.get_row_names()[k];
+        used_names.insert(linear_row_names[k]);
+      }
     }
     for (const auto& qc : quadratic_constraints) {
       if (!qc.constraint_row_name.empty()) { used_names.insert(qc.constraint_row_name); }
+    }
+    for (size_t k = 0; k < linear_row_names.size(); ++k) {
+      if (!linear_row_names[k].empty()) { continue; }
+      std::string name = "R" + std::to_string(k);
+      while (used_names.count(name) != 0) {
+        name += "_";
+      }
+      used_names.insert(name);
+      linear_row_names[k] = std::move(name);
     }
     for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
       std::string name = quadratic_constraints[q].constraint_row_name;
@@ -266,6 +279,25 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
       quadratic_row_names[q] = std::move(name);
     }
   }
+  std::vector<std::string> column_names(static_cast<size_t>(n_variables));
+  {
+    std::unordered_set<std::string> used_names;
+    for (size_t j = 0; j < column_names.size(); ++j) {
+      if (j < problem_.get_variable_names().size() && !problem_.get_variable_names()[j].empty()) {
+        column_names[j] = problem_.get_variable_names()[j];
+        used_names.insert(column_names[j]);
+      }
+    }
+    for (size_t j = 0; j < column_names.size(); ++j) {
+      if (!column_names[j].empty()) { continue; }
+      std::string name = "C" + std::to_string(j);
+      while (used_names.count(name) != 0) {
+        name += "_";
+      }
+      used_names.insert(name);
+      column_names[j] = std::move(name);
+    }
+  }
 
   // ROWS section
   mps_file << "ROWS\n";
@@ -273,8 +305,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
            << (problem_.get_objective_name().empty() ? "OBJ" : problem_.get_objective_name())
            << "\n";
   for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
-    std::string row_name =
-      k < problem_.get_row_names().size() ? problem_.get_row_names()[k] : "R" + std::to_string(k);
+    const std::string& row_name = linear_row_names[k];
     char const type =
       linear_row_type_from_bounds(constraint_lower_bounds[k], constraint_upper_bounds[k]);
     mps_file << " " << type << "  " << row_name << "\n";
@@ -345,9 +376,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     auto& orphan_vars = is_integral ? orphan_integer_vars : orphan_continuous_vars;
     if (is_integral) mps_file << "    MARK0001  'MARKER'                 'INTORG'\n";
     for (auto& var_id : orphan_vars) {
-      std::string col_name = var_id < problem_.get_variable_names().size()
-                               ? problem_.get_variable_names()[var_id]
-                               : "C" + std::to_string(var_id);
+      const std::string& col_name = column_names[var_id];
       // Write that column even if it is orphan as has a zero objective coefficient.
       // Some tools require variables to be declared in "COLUMNS" before any "BOUNDS" statements.
       mps_file << "    " << col_name << " "
@@ -355,16 +384,12 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
                << " " << objective_coefficients[var_id] << "\n";
     }
     for (auto& [var_id, nnzs] : col_map) {
-      std::string col_name = var_id < problem_.get_variable_names().size()
-                               ? problem_.get_variable_names()[var_id]
-                               : "C" + std::to_string(var_id);
+      const std::string& col_name = column_names[var_id];
       for (auto& nnz : nnzs) {
         std::string row_name;
         if (nnz.first < static_cast<size_t>(n_constraints)) {
           // Linear rows: do not use row-name count here—names are optional; row id is 0..m-1.
-          row_name = nnz.first < problem_.get_row_names().size()
-                       ? problem_.get_row_names()[nnz.first]
-                       : "R" + std::to_string(nnz.first);
+          row_name = linear_row_names[nnz.first];
         } else if (nnz.first < static_cast<size_t>(n_constraints) + quadratic_constraints.size()) {
           const size_t q = nnz.first - static_cast<size_t>(n_constraints);
           row_name       = quadratic_row_names[q];
@@ -386,8 +411,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   // RHS section
   mps_file << "RHS\n";
   for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
-    std::string row_name =
-      k < problem_.get_row_names().size() ? problem_.get_row_names()[k] : "R" + std::to_string(k);
+    const std::string& row_name = linear_row_names[k];
     // Match the sense emitted in ROWS, including L rows with a finite range.
     char const type =
       linear_row_type_from_bounds(constraint_lower_bounds[k], constraint_upper_bounds[k]);
@@ -420,8 +444,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
         mps_file << "RANGES\n";
         has_ranges = true;
       }
-      std::string row_name =
-        i < problem_.get_row_names().size() ? problem_.get_row_names()[i] : "R" + std::to_string(i);
+      const std::string& row_name = linear_row_names[i];
       mps_file << "    RNG1      " << row_name << " "
                << (constraint_upper_bounds[i] - constraint_lower_bounds[i]) << "\n";
     }
@@ -430,9 +453,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   // BOUNDS section
   mps_file << "BOUNDS\n";
   for (size_t j = 0; j < (size_t)n_variables; j++) {
-    std::string col_name        = j < problem_.get_variable_names().size()
-                                    ? problem_.get_variable_names()[j]
-                                    : "C" + std::to_string(j);
+    const std::string& col_name = column_names[j];
     std::string lower_bound_str = variable_types[j] == 'I' ? "LI" : "LO";
     std::string upper_bound_str = variable_types[j] == 'I' ? "UI" : "UP";
 
@@ -500,8 +521,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
       // Write upper triangular entries from symmetric H
       for (i_t i = 0; i < n_rows; ++i) {
-        std::string row_name = static_cast<size_t>(i) < problem_.get_variable_names().size()
-                                 ? problem_.get_variable_names()[i]
+        std::string row_name = static_cast<size_t>(i) < column_names.size()
+                                 ? column_names[i]
                                  : "C" + std::to_string(i);
 
         for (i_t p = H_offsets[i]; p < H_offsets[i + 1]; ++p) {
@@ -510,9 +531,9 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
           // Only write upper triangular (i <= j)
           if (i <= j && v != f_t(0)) {
-            std::string col_name = static_cast<size_t>(j) < problem_.get_variable_names().size()
-                                     ? problem_.get_variable_names()[j]
-                                     : "C" + std::to_string(j);
+            std::string col_name = static_cast<size_t>(j) < column_names.size()
+                                 ? column_names[j]
+                                 : "C" + std::to_string(j);
             mps_file << "    " << row_name << " " << col_name << " " << v << "\n";
           }
         }
@@ -533,12 +554,12 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
         const i_t i              = qc_canon.rows[p];
         const i_t j              = qc_canon.cols[p];
         f_t v                    = qc_canon.vals[p];
-        std::string row_var_name = static_cast<size_t>(i) < problem_.get_variable_names().size()
-                                     ? problem_.get_variable_names()[i]
-                                     : "C" + std::to_string(i);
-        std::string col_var_name = static_cast<size_t>(j) < problem_.get_variable_names().size()
-                                     ? problem_.get_variable_names()[j]
-                                     : "C" + std::to_string(j);
+        std::string row_var_name = static_cast<size_t>(i) < column_names.size()
+                                 ? column_names[i]
+                                 : "C" + std::to_string(i);
+        std::string col_var_name = static_cast<size_t>(j) < column_names.size()
+                                 ? column_names[j]
+                                 : "C" + std::to_string(j);
         if (v != 0) {
           if (i != j) {
             // MPS QCMATRIX uses symmetric halves for cross terms.
