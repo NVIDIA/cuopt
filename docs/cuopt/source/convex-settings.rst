@@ -467,6 +467,7 @@ Barrier Iterative Refinement
 
 * ``0`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF``): Disable iterative refinement.
 * ``1`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON``): Enable iterative refinement.
+* ``2`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO``): Start without iterative refinement and enable it once the iterate nears convergence.
 
 Barrier Step Scale
 ^^^^^^^^^^^^^^^^^^^

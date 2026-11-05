@@ -949,8 +949,8 @@ class iteration_data_t {
   {
     // Dense-column ADAT solves do not use iterative refinement. A cached solve may
     // enable refinement later, but the selected linear system's dimensions stay fixed.
-    if (settings_.barrier_iterative_refinement && (use_augmented || n_dense_columns == 0) &&
-        !gmres_workspace_) {
+    if (settings_.barrier_iterative_refinement != CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF &&
+        (use_augmented || n_dense_columns == 0) && !gmres_workspace_) {
       gmres_workspace_.emplace(use_augmented ? augmented_system_size(A.n, A.m) : A.m, stream_view_);
     }
   }
@@ -2312,6 +2312,21 @@ class iteration_data_t {
   f_t complementarity_residual_norm_save;
 
   bool use_high_accuracy_ir = false;
+  auto_iterative_refinement_t<i_t, f_t> auto_ir;
+
+  bool auto_refinement() const
+  {
+    return settings_.barrier_iterative_refinement == CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO;
+  }
+
+  // Whether KKT solves are refined: always when on, in automatic mode once auto_ir switched on.
+  bool refine_kkt_solves() const
+  {
+    if (settings_.barrier_iterative_refinement == CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF) {
+      return false;
+    }
+    return !auto_refinement() || auto_ir.on();
+  }
 
   dense_vector_t<i_t, f_t> diag;
   pinned_dense_vector_t<i_t, f_t> inv_diag;
@@ -2697,7 +2712,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       }
     } op(data);
 
-    if (settings.barrier_iterative_refinement) {
+    if (data.refine_kkt_solves()) {
       const f_t ir_tol =
         (data.has_sparse_cones() || data.use_high_accuracy_ir) ? f_t(1e-12) : f_t(1e-8);
       iterative_refinement<i_t, f_t, op_t>(op, rhs, soln, ir_tol);
@@ -3291,7 +3306,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         data_.chol->solve(b, x);
       }
     } op(data);
-    if (settings.barrier_iterative_refinement) {
+    if (data.refine_kkt_solves()) {
       raft::common::nvtx::range fun_scope("Barrier: iterative_refinement");
       const f_t ir_tol =
         (data.has_sparse_cones() || data.use_high_accuracy_ir) ? f_t(1e-12) : f_t(1e-8);
@@ -3362,7 +3377,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       // GMRES can handle large, potentially ill-conditioned systems better than simple Richardson
       // or classical iterative refinement, at the potential cost of higher computational work and
       // memory. This is only used on the pure Schur-complement (n_dense_columns == 0).
-      if (settings.barrier_iterative_refinement && data.n_dense_columns == 0) {
+      if (data.refine_kkt_solves() && data.n_dense_columns == 0) {
         struct adat_op_t {
           adat_op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
           iteration_data_t<i_t, f_t>& data_;
@@ -4536,6 +4551,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
       settings.log.printf("Adaptive regularization enabled\n");
     }
 
+    // Refinement state is per solve; a cached iteration_data still holds the previous solve's.
+    data.auto_ir = auto_iterative_refinement_t<i_t, f_t>{};
+
     i_t initial_status = initial_point(data);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
@@ -4884,6 +4902,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
                          data.cusparse_view_,
                          solution);
         return lp_status_t::OPTIMAL;
+      }
+
+      if (data.auto_refinement()) {
+        data.auto_ir.update(settings,
+                            relative_primal_residual,
+                            relative_dual_residual,
+                            relative_complementarity_residual,
+                            std::min(step_primal, step_dual));
       }
 
       // Check if the solution is getting worse

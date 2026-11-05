@@ -323,7 +323,7 @@ class pdlp_solver_settings_t {
   f_t barrier_initial_point_safeguard{10.0};
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
-  bool barrier_iterative_refinement{true};
+  i_t barrier_iterative_refinement{CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON};  // 0 off, 1 on, 2 auto
   i_t barrier_adaptive_regularization{-1};  // -1 automatic, 0 disabled, 1 enabled
   // Initial regularization for the barrier method's augmented KKT system, applied to the first
   // factorization only (adaptive regularization, if enabled, still scales it up/down on later

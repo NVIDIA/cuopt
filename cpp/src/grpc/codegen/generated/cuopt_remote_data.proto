@@ -212,7 +212,7 @@ message PDLPSolverSettings {
   bool save_best_primal_so_far = 28 [deprecated = true];
   bool first_primal_feasible = 29 [deprecated = true];
   optional int32 pdlp_precision = 30 [deprecated = true];
-  optional bool barrier_iterative_refinement = 31 [deprecated = true];
+  optional int32 barrier_iterative_refinement = 31 [deprecated = true];
   optional double barrier_step_scale = 32 [deprecated = true];
   optional int32 postsolve_info = 33 [deprecated = true];
   optional int32 barrier_adaptive_regularization = 34 [deprecated = true];
