@@ -451,7 +451,7 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_readProblemWithFormat
 {
   const auto filename = get_string(env, path);
   auto problem = std::make_unique<cuopt::mathematical_optimization::problem_and_stream_view_t>(
-    cuopt::mathematical_optimization::get_memory_backend_type());
+    cuopt::mathematical_optimization::memory_backend_t::CPU);
   try {
     auto data_model = cuopt::mathematical_optimization::io::read<int, double>(
       filename, static_cast<bool>(fixed_mps_format));
@@ -616,6 +616,68 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_registerMIPSetSolutio
   remember_callback_context(handle, context);
 }
 
+// Same arguments, checks and result as cuOptCreateProblem, but the problem lives in CPU memory.
+// cuOptCreateProblem asks for the GPU backend whenever a device is present, and a GPU problem
+// keeps only the symmetrized quadratic objective. A CPU problem keeps what was set and is
+// converted to a GPU problem inside the solve.
+cuopt_int_t create_cpu_problem(cuopt_int_t num_constraints,
+                               cuopt_int_t num_variables,
+                               cuopt_int_t objective_sense,
+                               cuopt_float_t objective_offset,
+                               const std::vector<cuopt_float_t>& objective,
+                               const std::vector<cuopt_int_t>& row_offsets,
+                               const std::vector<cuopt_int_t>& column_indices,
+                               const std::vector<cuopt_float_t>& values,
+                               const std::vector<char>& constraint_sense,
+                               const std::vector<cuopt_float_t>& rhs,
+                               const std::vector<cuopt_float_t>& lower_bounds,
+                               const std::vector<cuopt_float_t>& upper_bounds,
+                               const std::vector<char>& variable_types,
+                               cuOptOptimizationProblem* problem_ptr)
+{
+  using cuopt::mathematical_optimization::char_to_var_type;
+  using cuopt::mathematical_optimization::is_valid_public_var_type_code;
+  using cuopt::mathematical_optimization::memory_backend_t;
+  using cuopt::mathematical_optimization::problem_and_stream_view_t;
+  using cuopt::mathematical_optimization::var_t;
+
+  if (objective.data() == nullptr || row_offsets.data() == nullptr ||
+      column_indices.data() == nullptr || values.data() == nullptr ||
+      constraint_sense.data() == nullptr || rhs.data() == nullptr ||
+      lower_bounds.data() == nullptr || upper_bounds.data() == nullptr ||
+      variable_types.data() == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  for (cuopt_int_t j = 0; j < num_variables; ++j) {
+    if (!is_valid_public_var_type_code(variable_types[j])) { return CUOPT_INVALID_ARGUMENT; }
+  }
+
+  auto view = std::make_unique<problem_and_stream_view_t>(memory_backend_t::CPU);
+  try {
+    auto* problem = view->get_problem();
+    problem->set_maximize(objective_sense == CUOPT_MAXIMIZE);
+    problem->set_objective_offset(objective_offset);
+    problem->set_objective_coefficients(objective.data(), num_variables);
+    const cuopt_int_t nnz = row_offsets[num_constraints];
+    problem->set_csr_constraint_matrix(
+      values.data(), nnz, column_indices.data(), nnz, row_offsets.data(), num_constraints + 1);
+    problem->set_row_types(constraint_sense.data(), num_constraints);
+    problem->set_constraint_bounds(rhs.data(), num_constraints);
+    problem->set_variable_lower_bounds(lower_bounds.data(), num_variables);
+    problem->set_variable_upper_bounds(upper_bounds.data(), num_variables);
+    std::vector<var_t> types(static_cast<size_t>(num_variables));
+    for (cuopt_int_t j = 0; j < num_variables; ++j) {
+      types[j] = char_to_var_type(variable_types[j]);
+    }
+    problem->set_variable_types(types.data(), num_variables);
+  } catch (const std::exception&) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  remember_jni_owned_problem(view.get());
+  *problem_ptr = reinterpret_cast<cuOptOptimizationProblem>(view.release());
+  return CUOPT_SUCCESS;
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_createProblem(
   JNIEnv* env,
@@ -645,19 +707,19 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_createProblem(
   const auto types                 = get_byte_array(env, variable_types);
   cuOptOptimizationProblem problem = nullptr;
   if (!check_status(env,
-                    cuOptCreateProblem(num_constraints,
+                    create_cpu_problem(num_constraints,
                                        num_variables,
                                        objective_sense,
                                        static_cast<cuopt_float_t>(objective_offset),
-                                       obj.data(),
-                                       rows.data(),
-                                       cols.data(),
-                                       coeffs.data(),
-                                       senses.data(),
-                                       rhs_values.data(),
-                                       lbs.data(),
-                                       ubs.data(),
-                                       types.data(),
+                                       obj,
+                                       rows,
+                                       cols,
+                                       coeffs,
+                                       senses,
+                                       rhs_values,
+                                       lbs,
+                                       ubs,
+                                       types,
                                        &problem),
                     "cuOptCreateProblem")) {
     return 0;
