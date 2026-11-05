@@ -521,9 +521,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
       // Write upper triangular entries from symmetric H
       for (i_t i = 0; i < n_rows; ++i) {
-        std::string row_name = static_cast<size_t>(i) < column_names.size()
-                                 ? column_names[i]
-                                 : "C" + std::to_string(i);
+        std::string row_name = column_names[i];
 
         for (i_t p = H_offsets[i]; p < H_offsets[i + 1]; ++p) {
           i_t j = H_indices[p];
@@ -531,9 +529,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
           // Only write upper triangular (i <= j)
           if (i <= j && v != f_t(0)) {
-            std::string col_name = static_cast<size_t>(j) < column_names.size()
-                                 ? column_names[j]
-                                 : "C" + std::to_string(j);
+            std::string col_name = column_names[j];
             mps_file << "    " << row_name << " " << col_name << " " << v << "\n";
           }
         }
@@ -554,12 +550,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
         const i_t i              = qc_canon.rows[p];
         const i_t j              = qc_canon.cols[p];
         f_t v                    = qc_canon.vals[p];
-        std::string row_var_name = static_cast<size_t>(i) < column_names.size()
-                                 ? column_names[i]
-                                 : "C" + std::to_string(i);
-        std::string col_var_name = static_cast<size_t>(j) < column_names.size()
-                                 ? column_names[j]
-                                 : "C" + std::to_string(j);
+        std::string row_var_name = column_names[i];
+        std::string col_var_name = column_names[j];
         if (v != 0) {
           if (i != j) {
             // MPS QCMATRIX uses symmetric halves for cross terms.

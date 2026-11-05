@@ -264,15 +264,15 @@ TEST(mps_writer_op, write_to_mps_empty_names_get_unique_defaults)
   // Empty names are treated like missing ones, and a default never collides with a user name.
   double const inf = std::numeric_limits<double>::infinity();
   raft::handle_t handle;
-  auto op = optimization_problem_t<int, double>(&handle);
-  std::vector<double> values  = {1.0, 1.0, 1.0};
-  std::vector<int> indices    = {0, 1, 2};
-  std::vector<int> offsets    = {0, 1, 2, 3};
-  std::vector<double> c       = {1.0, 1.0, 1.0};
-  std::vector<double> lb      = {0.0, 0.0, 0.0};
-  std::vector<double> ub      = {inf, inf, inf};
-  std::vector<double> row_lb  = {1.0, 1.0, 1.0};
-  std::vector<double> row_ub  = {inf, inf, inf};
+  auto op                    = optimization_problem_t<int, double>(&handle);
+  std::vector<double> values = {1.0, 1.0, 1.0};
+  std::vector<int> indices   = {0, 1, 2};
+  std::vector<int> offsets   = {0, 1, 2, 3};
+  std::vector<double> c      = {1.0, 1.0, 1.0};
+  std::vector<double> lb     = {0.0, 0.0, 0.0};
+  std::vector<double> ub     = {inf, inf, inf};
+  std::vector<double> row_lb = {1.0, 1.0, 1.0};
+  std::vector<double> row_ub = {inf, inf, inf};
   op.set_csr_constraint_matrix(
     values.data(), values.size(), indices.data(), indices.size(), offsets.data(), offsets.size());
   op.set_objective_coefficients(c.data(), c.size());
