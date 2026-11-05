@@ -6,16 +6,20 @@ package com.nvidia.cuopt.mathematicaloptimization;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 public final class Problem implements AutoCloseable {
   private final String name;
   private final List<Variable> variables = new ArrayList<>();
   private final List<Constraint> constraints = new ArrayList<>();
+    private final Set<Constraint> addedConstraints = Collections.newSetFromMap(new IdentityHashMap<>());
   private LinearExpression linearObjective = new LinearExpression();
   private QuadraticExpression quadraticObjective = null;
   private ObjectiveSense objectiveSense = ObjectiveSense.MINIMIZE;
@@ -59,10 +63,14 @@ public final class Problem implements AutoCloseable {
   }
 
   public Constraint addConstraint(Constraint constraint, String name) {
+      if (addedConstraints.contains(constraint)) {
+      throw new IllegalArgumentException("Constraint has already been added to this problem");
+    }
     requireOwnedVariables(constraint);
     constraint.setConstraintName(name);
     constraint.setIndex(constraints.size());
     constraints.add(constraint);
+    addedConstraints.add(constraint);
     resetSolvedValues();
     return constraint;
   }
