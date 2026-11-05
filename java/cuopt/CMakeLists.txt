@@ -73,7 +73,9 @@ endif()
 get_filename_component(CUOPT_CUDA_RUNTIME_DIR "${CUOPT_CUDART_LIBRARY}" DIRECTORY)
 
 add_library(cuopt_jni SHARED
-  src/main/native/cuopt_jni.cpp)
+  src/main/native/cuopt_jni.cpp
+  # EXPERIMENTAL: remote gRPC client bridge, see cuopt_grpc_jni.cpp's own header comment.
+  src/main/native/cuopt_grpc_jni.cpp)
 
 target_include_directories(cuopt_jni PRIVATE
   ${JNI_INCLUDE_DIRS}
