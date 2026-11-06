@@ -9,7 +9,7 @@
 
 #include "bounds_presolve.cuh"
 
-#include <dual_simplex/bounds_strengthening.hpp>
+#include <dual_simplex/domain.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
@@ -91,21 +91,13 @@ std::vector<f_t> call_host_bounds_strengthening(const optimization_problem_t<i_t
   csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
   lp_problem.A.to_compressed_row(Arow);
 
-  // convert_user_problem returns an equality-form LP. Empty row_sense makes
-  // bounds_strengthening_t use rhs as both lower and upper row bounds.
-  std::vector<char> row_sense;
-  simplex::bounds_strengthening_t<i_t, f_t> strengthening(lp_problem, Arow, row_sense, var_types);
-  std::vector<bool> bounds_changed(lp_problem.num_cols, false);
-  for (i_t idx : sc_indices) {
-    bounds_changed[idx] = true;
+  simplex::domain_t<i_t, f_t> domain;
+  if (!domain.propagate_from_variables(Arow, var_types, simplex_settings, lp_problem, sc_indices)) {
+    return op_problem.get_variable_upper_bounds_host();
   }
-  auto lower = lp_problem.lower;
-  auto upper = lp_problem.upper;
-  auto ok    = strengthening.bounds_strengthening(simplex_settings, bounds_changed, lower, upper);
-  if (!ok) { return op_problem.get_variable_upper_bounds_host(); }
 
-  upper.resize(user_problem.num_cols);
-  return upper;
+  lp_problem.upper.resize(user_problem.num_cols);
+  return lp_problem.upper;
 }
 
 }  // namespace

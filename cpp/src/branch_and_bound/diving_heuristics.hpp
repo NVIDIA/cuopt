@@ -12,7 +12,7 @@
 #include <branch_and_bound/pseudo_costs.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
-#include <dual_simplex/bounds_strengthening.hpp>
+#include <dual_simplex/domain.hpp>
 
 #include <vector>
 
