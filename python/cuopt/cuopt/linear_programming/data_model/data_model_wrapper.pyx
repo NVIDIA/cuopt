@@ -7,7 +7,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from .data_model cimport data_model_view_t, mps_data_model_t, write_mps
+from .data_model cimport data_model_view_t, mps_data_model_t, write_lp, write_mps
 
 import warnings
 
@@ -578,14 +578,29 @@ cdef class DataModel:
 
         c_data_model_view.set_quadratic_constraints(constraints)
 
-    def writeMPS(self, user_problem_file):
+    def _prepare_data_model_view_for_write(self):
         n_vars = self.get_variable_lower_bounds().shape[0]
-        if self.variable_types.shape[0] == 0 and n_vars > 0:
+        n_types = len(self.variable_types)
+        if n_types == 0 and n_vars > 0:
             self.variable_types = np.array(["C"] * n_vars, dtype="S1")
         else:
+            if n_types != 0 and n_types != n_vars:
+                raise ValueError(
+                    f"variable_types has {n_types} entries but the model has "
+                    f"{n_vars} variables; provide one type per variable or "
+                    "leave variable_types empty for all-continuous."
+                )
             self.variable_types = type_cast(
                 self.variable_types, "S1", "variable_types"
             )
         self.set_data_model_view()
+
+    def writeMPS(self, user_problem_file):
+        self._prepare_data_model_view_for_write()
         write_mps(self.c_data_model_view.get()[0],
                   user_problem_file.encode('utf-8'))
+
+    def _write_lp(self, user_problem_file):
+        self._prepare_data_model_view_for_write()
+        write_lp(self.c_data_model_view.get()[0],
+                 user_problem_file.encode('utf-8'))
