@@ -40,10 +40,7 @@ if command -v dnf &> /dev/null; then
         dnf -y install "libcudss1-static-cuda-12-1.0.*" "libcudss1-devel-cuda-12-1.0.*" "libcudss1-cuda-12-1.0.*"
         register_cudss_alternatives 12
     fi
-elif command -v apt-get &> /dev/null; then
-    apt-get update
-    apt-get install -y "libcudss-devel=1.0.*"
 else
-    echo "Neither dnf nor apt-get found. Cannot install cudss dependencies."
+    echo "dnf not found. Cannot install cudss dependencies."
     exit 1
 fi
