@@ -1067,6 +1067,9 @@ TEST_P(pslp_crush_warmstart, round_trip)
 
   sort_csr(op_problem);
   mip::third_party_presolve_t<int, double> presolver;
+  // This test is about crushing and warm starting. PSLP's LP fold can remove a whole problem
+  // (e.g. krka), which leaves nothing to warm start, so keep it off here.
+  presolver.set_pslp_lp_fold(false);
   auto result = presolver.apply_presolve_from_op_problem(op_problem,
                                                          problem_category_t::LP,
                                                          presolver_t::PSLP,
@@ -1085,47 +1088,6 @@ TEST_P(pslp_crush_warmstart, round_trip)
   settings.method                              = cuopt::mathematical_optimization::method_t::PDLP;
   settings.time_limit                          = 60.0;
   settings.hyper_params.do_curtis_reid_scaling = false;
-
-  // PSLP can presolve a problem away entirely (e.g. through its LP fold). There is nothing to
-  // warm start then, so check what solve_lp relies on instead: postsolving the empty solution
-  // gives an optimal point of the original problem, and crushing it back gives empty vectors.
-  if (n_red_vars == 0 && n_red_cons == 0) {
-    std::vector<double> x_orig, y_orig, rc_orig;
-    presolver.undo(x_orig, y_orig, rc_orig, problem_category_t::LP, false, true);
-    ASSERT_EQ((int)x_orig.size(), op_problem.get_n_variables());
-    ASSERT_EQ((int)y_orig.size(), op_problem.get_n_constraints());
-
-    constexpr double feas_tolerance = 1e-6;
-    check_variable_bounds(x_orig,
-                          op_problem.get_variable_lower_bounds_host(),
-                          op_problem.get_variable_upper_bounds_host(),
-                          feas_tolerance);
-    const auto row_lb = op_problem.get_constraint_lower_bounds_host();
-    const auto row_ub = op_problem.get_constraint_upper_bounds_host();
-    ASSERT_EQ((int)row_lb.size(), op_problem.get_n_constraints());
-    ASSERT_EQ((int)row_ub.size(), op_problem.get_n_constraints());
-    std::vector<double> residuals;
-    compute_constraint_residuals(op_problem.get_constraint_matrix_values_host(),
-                                 op_problem.get_constraint_matrix_indices_host(),
-                                 op_problem.get_constraint_matrix_offsets_host(),
-                                 x_orig,
-                                 residuals);
-    check_constraint_satisfaction(residuals, row_lb, row_ub, feas_tolerance);
-
-    auto reference = solve_lp(op_problem, settings);
-    ASSERT_EQ(reference.get_termination_status(), pdlp_termination_status_t::Optimal);
-    double ref_obj = reference.get_additional_termination_information().primal_objective;
-    double obj     = compute_objective(
-      op_problem.get_objective_coefficients_host(), x_orig, op_problem.get_objective_offset());
-    EXPECT_NEAR(obj, ref_obj, 1e-3 * (1.0 + std::abs(ref_obj)));
-
-    std::vector<double> x_crushed, y_crushed;
-    presolver.crush_primal_dual_solution_pslp(
-      result.reduced_problem, x_orig, y_orig, x_crushed, y_crushed);
-    EXPECT_TRUE(x_crushed.empty());
-    EXPECT_TRUE(y_crushed.empty());
-    return;
-  }
 
   auto cold_solution = solve_lp(result.reduced_problem, settings);
   ASSERT_EQ(cold_solution.get_termination_status(), pdlp_termination_status_t::Optimal);

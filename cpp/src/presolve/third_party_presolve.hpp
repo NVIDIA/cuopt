@@ -117,6 +117,8 @@ class third_party_presolve_t {
 
   void set_indicator_strengthening(bool enabled) { indicator_strengthening_ = enabled; }
   void set_dual_reductions(bool enabled) { dual_reductions_ = enabled; }
+  // PSLP's LP fold (on by default)
+  void set_pslp_lp_fold(bool enabled) { pslp_lp_fold_ = enabled; }
 
   // Apply the presolve on an simplex::user_problem in-place. Used in sub MIP and (in the future)
   // restarts.
@@ -246,6 +248,7 @@ class third_party_presolve_t {
   std::optional<std::unordered_set<std::string>> reduction_allowlist_{};
   bool indicator_strengthening_{true};
   bool dual_reductions_{true};
+  bool pslp_lp_fold_{true};
 };
 
 // Just for testing the conversion: user_problem -> Papilo problem -> user_problem.

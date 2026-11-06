@@ -850,6 +850,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
     Settings* settings = default_settings();
     settings->verbose  = false;
     settings->max_time = time_limit;
+    settings->lp_fold  = pslp_lp_fold_;
 
     auto start_time      = std::chrono::high_resolution_clock::now();
     Presolver* presolver = new_presolver(coefficients.data(),
