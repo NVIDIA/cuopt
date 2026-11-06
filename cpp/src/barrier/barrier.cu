@@ -2208,7 +2208,8 @@ class iteration_data_t {
       raft::device_span<f_t>(d_r1_.data(), n),
       raft::device_span<f_t>(d_aug_y_exp_.data(), p),
       raft::device_span<f_t>(d_aug_y_exp_orig_.data(), p),
-      linear_n);
+      linear_n,
+      beta);
     RAFT_CHECK_CUDA(stream_view_.get());
 
     // r1 <- D * x_1 + H x_1 on cone rows
