@@ -2046,7 +2046,8 @@ bool recover_dual_feasibility_after_repair(const lp_problem_t<i_t, f_t>& lp,
                                            const std::vector<i_t>& basic_list,
                                            const std::vector<i_t>& nonbasic_list,
                                            std::vector<variable_status_t>& vstatus,
-                                           const std::vector<f_t>& objective,
+                                           std::vector<f_t>& objective,
+                                           f_t& sum_perturb,
                                            std::vector<f_t>& cB,
                                            std::vector<f_t>& y,
                                            std::vector<f_t>& z,
@@ -2064,16 +2065,27 @@ bool recover_dual_feasibility_after_repair(const lp_problem_t<i_t, f_t>& lp,
     dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
   work_estimate += 3 * lp.num_cols;
   if (before <= settings.dual_tol) { return true; }
+  i_t num_shifted = 0;
   for (i_t j : nonbasic_list) {
-    if (!std::isfinite(lp.lower[j]) || !std::isfinite(lp.upper[j]) || lp.lower[j] == lp.upper[j]) {
-      continue;
-    }
-    if (vstatus[j] == variable_status_t::NONBASIC_LOWER && z[j] < -settings.dual_tol) {
-      vstatus[j] = variable_status_t::NONBASIC_UPPER;
-    } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER && z[j] > settings.dual_tol) {
-      vstatus[j] = variable_status_t::NONBASIC_LOWER;
+    if (std::abs(lp.lower[j] - lp.upper[j]) < settings.fixed_tol) { continue; }
+    if (std::isfinite(lp.lower[j]) && std::isfinite(lp.upper[j])) {
+      if (vstatus[j] == variable_status_t::NONBASIC_LOWER && z[j] < -settings.dual_tol) {
+        vstatus[j] = variable_status_t::NONBASIC_UPPER;
+      } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER && z[j] > settings.dual_tol) {
+        vstatus[j] = variable_status_t::NONBASIC_LOWER;
+      }
+    } else if ((lp.lower[j] > -inf && z[j] < -settings.tight_tol) ||
+               (lp.upper[j] < inf && z[j] > settings.tight_tol) ||
+               (lp.lower[j] == -inf && lp.upper[j] == inf && std::abs(z[j]) > settings.tight_tol)) {
+      // Shift the cost so that z_j = 0
+      const f_t old_perturbation = std::abs(objective[j] - lp.objective[j]);
+      objective[j] -= z[j];
+      z[j] = 0.0;
+      sum_perturb += std::abs(objective[j] - lp.objective[j]) - old_perturbation;
+      num_shifted++;
     }
   }
+  settings.log.debug("Shifted %d costs after basis repair\n", num_shifted);
   const f_t after =
     dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
   work_estimate += 8 * lp.num_cols;
@@ -3602,6 +3614,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                              nonbasic_list,
                                                              vstatus,
                                                              objective,
+                                                             sum_perturb,
                                                              c_basic,
                                                              y,
                                                              z,
@@ -3938,6 +3951,21 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                              farkas_constant);
         }
       }
+
+      i_t num_shifted = 0;
+      for (i_t j : nonbasic_list) {
+        if ((lp.upper[j] == inf && lp.lower[j] > -inf && z[j] < -settings.tight_tol) ||
+            (lp.lower[j] == -inf && lp.upper[j] < inf && z[j] > settings.tight_tol) ||
+            (lp.lower[j] == -inf && lp.upper[j] == inf && std::abs(z[j]) > settings.tight_tol)) {
+          const f_t old_perturbation = std::abs(objective[j] - lp.objective[j]);
+          objective[j] -= z[j];
+          z[j] = 0.0;
+          sum_perturb += std::abs(objective[j] - lp.objective[j]) - old_perturbation;
+          num_shifted++;
+        }
+      }
+      phase2_work_estimate += 3 * nonbasic_list.size();
+      settings.log.printf("Shifted %d costs\n", num_shifted);
 
       const f_t dual_infeas =
         phase2::dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
@@ -4304,6 +4332,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                            nonbasic_list,
                                                            vstatus,
                                                            objective,
+                                                           sum_perturb,
                                                            c_basic,
                                                            y,
                                                            z,
