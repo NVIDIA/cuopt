@@ -47,8 +47,8 @@
 #include <utilities/inline_lp_test_utils.hpp>
 #include "grpc_client.hpp"
 
-#include "grpc_integration_fixture.hpp"
-#include "grpc_test_log_capture.hpp"
+#include "utilities/grpc/grpc_integration_fixture.hpp"
+#include "utilities/grpc/grpc_test_log_capture.hpp"
 
 #include <cuopt_remote_service.grpc.pb.h>
 #include <grpcpp/generic/generic_stub.h>

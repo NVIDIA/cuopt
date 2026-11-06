@@ -130,7 +130,6 @@ target_include_directories(GRPC_ROUTING_INTEGRATION_TEST
     "${CUOPT_SOURCE_DIR}/src/grpc"
     "${CUOPT_SOURCE_DIR}/src/grpc/client"
     "${CUOPT_TEST_DIR}"
-    "${CUOPT_TEST_DIR}/linear_programming/grpc"  # shared server fixture and log capture
     "${CMAKE_BINARY_DIR}"
 )
 
