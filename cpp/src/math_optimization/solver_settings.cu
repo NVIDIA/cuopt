@@ -143,6 +143,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_CUT_MIN_ORTHOGONALITY, &mip_settings.cut_min_orthogonality, f_t(0.0), f_t(1.0), f_t(0.5)},
     {CUOPT_BARRIER_PRIMAL_REGULARIZATION, &pdlp_settings.barrier_primal_regularization, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0), "initial primal regularization for the augmented system; -1 automatic"},
     {CUOPT_BARRIER_DUAL_REGULARIZATION, &pdlp_settings.barrier_dual_regularization, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0), "initial dual regularization for the augmented system; -1 automatic"},
+    {CUOPT_BARRIER_ADAT_REGULARIZATION, &pdlp_settings.barrier_adat_regularization, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(0.0), "relative diagonal shift of the ADAT factorization for QPs; 0 (the default) disables"},
     {CUOPT_BARRIER_STEP_SCALE, &pdlp_settings.barrier_step_scale, f_t(0.5), f_t(0.9999), f_t(0.9)},
     {CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD, &pdlp_settings.barrier_initial_point_safeguard, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(10.0), "margin pushing the barrier initial iterate into the interior of the nonnegative orthant / SOC"},
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
@@ -242,6 +243,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_OFFSET, &mip_settings.submip_params.iteration_limit_offset, 0, std::numeric_limits<i_t>::max(), 10000, "base sub-MIP simplex-iteration limit for root heuristics"},
     {CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL, &mip_settings.submip_params.max_level, 0, std::numeric_limits<i_t>::max(), 10, "maximum sub-MIP recursion level"},
     {CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES, &pdlp_settings.barrier_presolve_bound_free_variables, -1, 1, -1, "Bound free variables during barrier presolve: -1 automatic (default behavior), 0 disabled, 1 enabled"},
+    {CUOPT_BARRIER_PRESOLVE_FIXED_VARIABLES, &pdlp_settings.barrier_presolve_fixed_variables, -1, 1, -1, "Remove variables with equal lower and upper bounds in barrier presolve: -1 automatic (on), 0 disabled, 1 enabled; never applied when the solve feeds or reuses a barrier cache"},
+    {CUOPT_BARRIER_PRESOLVE_SINGLETON_ROWS, &pdlp_settings.barrier_presolve_singleton_rows, -1, 1, -1, "Turn rows with a single variable into bounds in barrier presolve (requires barrier_presolve_fixed_variables): -1 automatic (on), 0 disabled, 1 enabled; never applied when the solve feeds or reuses a barrier cache"},
     {CUOPT_BARRIER_ADAPTIVE_REGULARIZATION, &pdlp_settings.barrier_adaptive_regularization, -1, 1, -1, "Adaptive regularization for barrier method: -1 automatic (default behavior), 0 disabled, 1 enabled"},
     // QCQP (barrier) scaling hyper-parameter
     {CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION, &pdlp_settings.qcqp_ruiz_equilibration, -1, 1, -1, "Ruiz equilibration for QCQP barrier scaling: -1 automatic (row/column imbalance heuristic), 0 disabled, 1 enabled"},

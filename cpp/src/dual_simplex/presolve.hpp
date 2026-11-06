@@ -203,6 +203,20 @@ struct free_variable_elimination_t {
   std::vector<f_t> factors;
 };
 
+// Row removed because it fixed or bounded a single variable. Indices refer to the problem before
+// presolve.
+template <typename i_t>
+struct singleton_row_t {
+  i_t row;
+  // The variable fixed or bounded by the row.
+  i_t variable;
+  // Zero-cost column singleton dropped with the row, or -1.
+  i_t slack;
+  // Whether the row supplied the variable's lower or upper bound.
+  bool sets_lower;
+  bool sets_upper;
+};
+
 template <typename i_t, typename f_t>
 struct presolve_info_t {
   // indices of variables in the original problem that remain in the presolved problem
@@ -241,6 +255,13 @@ struct presolve_info_t {
   std::vector<i_t> free_elimination_remaining_constraints;
   i_t free_elimination_num_variables{0};
   i_t free_elimination_num_constraints{0};
+
+  // Original indices of variables removed because their bounds were equal. Subset of
+  // removed_variables.
+  std::vector<i_t> fixed_variables;
+
+  // Rows removed because they fixed or bounded a single variable, in removal order.
+  std::vector<singleton_row_t<i_t>> singleton_rows;
 };
 
 template <typename i_t, typename f_t>

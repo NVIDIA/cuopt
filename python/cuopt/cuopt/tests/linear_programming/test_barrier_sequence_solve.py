@@ -179,7 +179,9 @@ def test_update_rhs_keeps_dropped_empty_row(capfd):
 
     first, log = _solve(model, settings, capfd)
     assert first.get_termination_reason() == "Optimal"
-    assert "empty rows" in log, "presolve did not drop the empty row"
+    assert "Presolve eliminated 1 constraints" in log, (
+        "presolve did not drop the empty row"
+    )
 
     rhs = [0.0, 4.0]
     model.update_rhs(np.asarray(rhs, dtype=np.float64))
@@ -329,7 +331,8 @@ def test_lp_barrier_update_rhs_reuses_cache(capfd):
     assert first.get_termination_reason() == "Optimal"
     assert REUSE_LOG not in log
     assert "Using PSLP presolver" not in log
-    assert "Handling 1 free variables directly" in log
+    # The free variable reaches the barrier unsplit.
+    assert "Free variables              : 1\n" in log
     assert "Folding:" not in log
 
     rhs = [6.0]

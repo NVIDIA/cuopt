@@ -555,6 +555,22 @@ bool is_cached_sequence_resolve(pdlp_solver_settings_t<i_t, f_t> const& settings
          settings.barrier_cache->transform() != nullptr;
 }
 
+// Fixed variables are removed during barrier presolve. Automatic (-1) choice resolves to 0 for a
+// sequence solve.
+template <typename i_t, typename f_t>
+i_t effective_fixed_variables(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return settings.sequence_solve ? 0 : settings.barrier_presolve_fixed_variables;
+}
+
+// Singleton rows are removed during barrier presolve. Automatic (-1) choice resolves to 0 for a
+// sequence solve.
+template <typename i_t, typename f_t>
+i_t effective_singleton_rows(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return settings.sequence_solve ? 0 : settings.barrier_presolve_singleton_rows;
+}
+
 template <typename i_t, typename f_t>
 std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_barrier(
   const simplex::user_problem_t<i_t, f_t>& user_problem,
@@ -587,6 +603,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.postsolve_info                        = settings.postsolve_info;
   barrier_settings.barrier_presolve_bound_free_variables = effective_bound_free_variables(settings);
   barrier_settings.barrier_eliminate_free_variables = effective_eliminate_free_variables(settings);
+  barrier_settings.barrier_presolve_fixed_variables = effective_fixed_variables(settings);
+  barrier_settings.barrier_presolve_singleton_rows  = effective_singleton_rows(settings);
   barrier_settings.barrier_initial_point_safeguard  = settings.barrier_initial_point_safeguard;
   barrier_settings.barrier                          = true;
   barrier_settings.barrier_presolve                 = true;
@@ -596,6 +614,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.barrier_adaptive_regularization  = settings.barrier_adaptive_regularization;
   barrier_settings.barrier_primal_regularization    = settings.barrier_primal_regularization;
   barrier_settings.barrier_dual_regularization      = settings.barrier_dual_regularization;
+  barrier_settings.barrier_adat_regularization      = settings.barrier_adat_regularization;
   barrier_settings.barrier_soc_threshold            = settings.barrier_soc_threshold;
   barrier_settings.barrier_step_scale               = settings.barrier_step_scale;
   barrier_settings.qcqp_ruiz_equilibration          = settings.qcqp_ruiz_equilibration;
@@ -848,6 +867,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
   fs.barrier_primal_regularization   = settings.barrier_primal_regularization;
   fs.barrier_dual_regularization     = settings.barrier_dual_regularization;
+  fs.barrier_adat_regularization     = settings.barrier_adat_regularization;
   fs.barrier_step_scale              = settings.barrier_step_scale;
   fs.pdlp_precision                  = pdlp_precision_t::DefaultPrecision;
   fs.method                          = method_t::PDLP;
