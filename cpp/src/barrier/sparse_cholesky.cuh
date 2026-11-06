@@ -357,7 +357,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudssConfigSet(solverConfig, CUDSS_CONFIG_MATCHING_ALG, &matching_alg, sizeof(matching_alg)),
       status,
       "cudssConfigSet for matching alg");
-    cudssPivotType_t pivot_type = CUDSS_PIVOT_NONE;
+    cudssPivotType_t pivot_type = CUDSS_PIVOT_DIAGONAL;
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssConfigSet(solverConfig, CUDSS_CONFIG_PIVOT_TYPE, &pivot_type, sizeof(pivot_type)),
       status,
