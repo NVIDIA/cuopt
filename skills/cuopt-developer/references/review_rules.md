@@ -11,6 +11,18 @@ during review.
 
 If neighbouring code in the same file does the opposite of a rule, ask which is intended.
 
+## Whole-PR review
+
+Before the line-by-line rules, look at the PR as a whole.
+
+- **Other parts affected.** Which other code, bindings, the server, docs, CI, packaging and
+  versions does this change touch or depend on? Does each need a matching change?
+- **One coherent change.** Read the full diff as a reviewer would. Does everything in it
+  belong, and do the code, comments and description agree?
+- **Reuse first.** Is there an existing utility or pattern for this? See Reuse and placement.
+- **Docs and tests cover it.** Do the docs, examples and tests cover the new and the changed
+  behaviour, including the other parts affected? See the Tests and Docs sections.
+
 ## Comments
 
 - **Describe the code as it is.** No history ("used to be", "previously", "fixes the
