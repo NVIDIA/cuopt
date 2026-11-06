@@ -312,10 +312,10 @@ TEST(lp_writer, names_ranges_and_empty_quadratic_row)
        }},
       {"NaN variable bound", [&](auto& m) { m.set_variable_upper_bounds(std::vector{nan, inf}); }},
       {"NaN row bound", [&](auto& m) { m.set_constraint_upper_bounds(std::vector{nan, 3.0}); }},
-      {"NaN quadratic coefficient",
+      {"inf quadratic coefficient",
        [&](auto& m) {
          m.append_quadratic_constraint(
-           3, "q2", 'L', {}, {}, 1.0, std::vector{nan}, std::vector{0}, std::vector{0});
+           3, "q2", 'L', {}, {}, 1.0, std::vector{inf}, std::vector{0}, std::vector{0});
        }},
     };
   for (const auto& [what, mutate] : non_finite) {
