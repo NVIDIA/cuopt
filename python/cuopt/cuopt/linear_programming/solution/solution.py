@@ -295,6 +295,8 @@ class Solution:
         * ``<=``: ``rhs - lhs`` (slack; non-negative if feasible)
         * ``>=``: ``lhs - rhs`` (surplus; non-negative if feasible)
         * ``==``: ``rhs - lhs`` (residual; near zero if feasible)
+        * ranged (two different finite bounds): distance to the nearer bound
+          (non-negative if feasible)
 
         Quadratic constraints are not included. Returns None when the values
         could not be computed, for example when the solver returned no primal
