@@ -351,7 +351,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       "cudssConfigSet for ir n steps");
 #endif
 
-    // cuDSS 1.0 chooses matching and pivoting automatically; turn both off.
+    // cuDSS 1.0 chooses matching and pivoting automatically; turn matching off and use diagonal
+    // pivoting.
     cudssMatchingAlg_t matching_alg = CUDSS_MATCHING_ALG_NONE;
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssConfigSet(solverConfig, CUDSS_CONFIG_MATCHING_ALG, &matching_alg, sizeof(matching_alg)),
