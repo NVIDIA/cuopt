@@ -70,7 +70,8 @@ TEST(barrier, fused_augmented_matvec_preserves_segments_and_free_variables)
                                     raft::device_span<double>(w + r1_offset, n),
                                     raft::device_span<double>(w + exp_offset, p),
                                     raft::device_span<double>(w + orig_offset, p),
-                                    linear_n);
+                                    linear_n,
+                                    1.0);
     RAFT_CUDA_TRY(cudaGetLastError());
     raft::copy(scratch.data(), w, scratch.size(), stream);
     stream.sync();
