@@ -457,7 +457,7 @@ void diversity_manager_t<i_t, f_t>::run_fp_alone()
 template <typename i_t, typename f_t>
 struct ls_cpufj_raii_guard_t {
   ls_cpufj_raii_guard_t(local_search_t<i_t, f_t>& ls) : ls(ls) {}
-  ~ls_cpufj_raii_guard_t() { ls.stop_cpufj_scratch_threads(); }
+  ~ls_cpufj_raii_guard_t() { ls.stop_cpufj_lns_improvement_thread(); }
   local_search_t<i_t, f_t>& ls;
 };
 
@@ -537,11 +537,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
   add_user_given_solutions(initial_sol_vector);
   population.add_solutions_from_vec(std::move(initial_sol_vector));
   if (check_b_b_preemption()) { return population.best_feasible(); }
-  // Run CPUFJ early to find quick initial solutions
-  ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
-  ls.start_cpufj_scratch_threads(population);
-  // Dedicated ruin-and-repair improvement worker on a spare thread; deepens the population's
-  // feasible incumbent without taking any thread away from feasibility discovery above.
+  ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // Stop the LNS worker on solve stop.
+  // Dedicated ruin-and-repair improvement worker on a spare thread.
   ls.start_cpufj_lns_improvement_thread(population);
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
@@ -691,7 +688,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
     lp_rounded_sol.round_nearest(rng());
     lp_rounded_sol.compute_feasibility();
     population.add_solution(std::move(lp_rounded_sol));
-    ls.start_cpufj_lptopt_scratch_threads(population);
   }
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
