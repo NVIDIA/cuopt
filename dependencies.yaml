@@ -7,7 +7,7 @@ files:
   all:
     output: conda
     matrix:
-      cuda: ["12.9", "13.3"]
+      cuda: ["12.9", "13.4"]
       arch: [x86_64, aarch64]
     includes:
       - build_common
@@ -941,6 +941,10 @@ dependencies:
               cuda: "13.3"
             packages:
               - cuda-version=13.3
+          - matrix:
+              cuda: "13.4"
+            packages:
+              - cuda-version=13.4
       - output_types: [requirements, constraints]
         matrices:
           # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
@@ -996,6 +1000,11 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - cuda-toolkit==13.3.*
+          - matrix:
+              cuda: "13.4"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit==13.4.*
   cuda:
     common:
       - output_types: [conda]
@@ -1029,7 +1038,7 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - &ctk_routing_cu13 cuda-toolkit[cublas,cudart,cusparse]==13.*
-              - &nvjitlink_cu13 nvidia-nvjitlink>=13.3,<14
+              - &nvjitlink_cu13 nvidia-nvjitlink>=13.4,<14
           # No cuda selector: this is what the pyproject file keys resolve against, and it
           # is what populates pyproject.toml in source control. use_cuda_wheels is named
           # explicitly so the entry still reads as a CUDA-wheel set.
