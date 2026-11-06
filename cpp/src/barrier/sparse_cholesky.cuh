@@ -321,7 +321,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       status,
       "cudssConfigSet for device count");
 
-#if CUDSS_VERSION_MAJOR >= 0 && CUDSS_VERSION_MINOR >= 7
+#if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 7)
     if (settings_.concurrent_halt != nullptr) {
       CUDSS_CALL_AND_CHECK_EXIT(cudssDataSet(handle,
                                              solverData,
