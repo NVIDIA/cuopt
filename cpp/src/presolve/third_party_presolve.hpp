@@ -117,7 +117,6 @@ class third_party_presolve_t {
 
   void set_indicator_strengthening(bool enabled) { indicator_strengthening_ = enabled; }
   void set_dual_reductions(bool enabled) { dual_reductions_ = enabled; }
-  // PSLP's LP fold (on by default)
   void set_pslp_lp_fold(bool enabled) { pslp_lp_fold_ = enabled; }
 
   // Apply the presolve on an simplex::user_problem in-place. Used in sub MIP and (in the future)
