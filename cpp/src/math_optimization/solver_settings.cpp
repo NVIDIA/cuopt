@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 namespace cuopt::mathematical_optimization {
 
@@ -76,6 +77,16 @@ bool string_to_bool(const std::string& value, bool& result)
     return false;
   }
 }
+
+// Removed parameters, accepted without effect.
+constexpr std::pair<const char*, double> deprecated_float_parameters[] = {
+  {CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT, 3.0},
+  {CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT, 20.0},
+  {CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE, 0.5},
+};
+constexpr std::pair<const char*, bool> deprecated_bool_parameters[] = {
+  {CUOPT_MIP_HEURISTICS_ONLY, false},
+};
 
 }  // namespace
 
@@ -148,6 +159,30 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
       found = true;
     }
   }
+
+  for (const auto& [deprecated_name, old_default] : deprecated_float_parameters) {
+    if (name != deprecated_name) { continue; }
+    f_t value_float;
+    if (!string_to_float<f_t>(value, value_float)) {
+      throw std::invalid_argument("Parameter " + name + " value " + value + " is not a float");
+    }
+    if (value_float != old_default) {
+      CUOPT_LOG_WARN("Parameter %s is deprecated and has no effect", name.c_str());
+    }
+    found = true;
+  }
+  for (const auto& [deprecated_name, old_default] : deprecated_bool_parameters) {
+    if (name != deprecated_name) { continue; }
+    bool value_bool;
+    if (!string_to_bool(value, value_bool)) {
+      throw std::invalid_argument("Parameter " + name + " value " + value +
+                                  " must be true or false");
+    }
+    if (value_bool != old_default) {
+      CUOPT_LOG_WARN("Parameter %s is deprecated and has no effect", name.c_str());
+    }
+    found = true;
+  }
   if (!found) { throw std::invalid_argument("Parameter " + name + " not found"); }
 }
 
@@ -186,6 +221,14 @@ void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value
         found = true;
       }
     }
+    for (const auto& [deprecated_name, old_default] : deprecated_float_parameters) {
+      if (name == deprecated_name) {
+        if (value != old_default) {
+          CUOPT_LOG_WARN("Parameter %s is deprecated and has no effect", name.c_str());
+        }
+        found = true;
+      }
+    }
   }
   if constexpr (std::is_same_v<T, bool>) {
     for (auto& param : bool_parameters) {
@@ -194,6 +237,14 @@ void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value
         if (!output) {
           CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value ? "true" : "false");
           output = true;
+        }
+        found = true;
+      }
+    }
+    for (const auto& [deprecated_name, old_default] : deprecated_bool_parameters) {
+      if (name == deprecated_name) {
+        if (value != old_default) {
+          CUOPT_LOG_WARN("Parameter %s is deprecated and has no effect", name.c_str());
         }
         found = true;
       }

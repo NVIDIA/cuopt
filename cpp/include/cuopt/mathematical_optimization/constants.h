@@ -189,6 +189,12 @@
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
+/* @brief Deprecated: accepted and ignored */
+#define CUOPT_MIP_HEURISTICS_ONLY                     "mip_heuristics_only"
+#define CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT     "mip_hyper_heuristic_rins_time_limit"
+#define CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT "mip_hyper_heuristic_rins_max_time_limit"
+#define CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE       "mip_hyper_heuristic_rins_fix_rate"
+
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
 #define CUOPT_MODE_DETERMINISTIC 1

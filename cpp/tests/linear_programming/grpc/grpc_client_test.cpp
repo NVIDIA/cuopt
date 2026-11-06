@@ -3066,6 +3066,18 @@ TEST(MapperRoundtrip, ParameterMapRejectsUnknownName)
   EXPECT_THROW(apply_parameter_overrides(settings, pb.parameters()), std::invalid_argument);
 }
 
+TEST(MapperRoundtrip, ParameterMapAcceptsDeprecatedNames)
+{
+  cuopt::remote::MIPSolverSettings pb;
+  (*pb.mutable_parameters())[CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT]     = "3.0";
+  (*pb.mutable_parameters())[CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT] = "20";
+  (*pb.mutable_parameters())[CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE]       = "0.9";
+  (*pb.mutable_parameters())[CUOPT_MIP_HEURISTICS_ONLY]                     = "false";
+
+  solver_settings_t<int32_t, double> settings;
+  EXPECT_NO_THROW(apply_parameter_overrides(settings, pb.parameters()));
+}
+
 TEST(MapperRoundtrip, ParameterMapRejectsOutOfRangeValue)
 {
   cuopt::remote::PDLPSolverSettings pb;
