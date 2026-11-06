@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -236,6 +237,93 @@ TEST(lp_writer, unnamed_constraints_get_generated_names)
             "Subject To\n"
             " R0: + 1 x + 1 y <= 5\n"
             "End\n");
+}
+
+TEST(lp_writer, names_ranges_and_empty_quadratic_row)
+{
+  const double inf = std::numeric_limits<double>::infinity();
+  // min x0 + x1 s.t. 1 <= x0 + x1 <= 5 (range), x0 - x1 <= 3, x1 + [ x0^2 - x0^2 ] <= 2.
+  auto make_model = [&](const std::vector<std::string>& var_names,
+                        const std::vector<std::string>& row_names) {
+    mps_data_model_t<int, double> model;
+    const std::vector<double> c{1.0, 1.0};
+    const std::vector<double> lb{0.0, 0.0};
+    const std::vector<double> ub{inf, inf};
+    const std::vector<double> A_values{1.0, 1.0, 1.0, -1.0};
+    const std::vector<int> A_indices{0, 1, 0, 1};
+    const std::vector<int> A_offsets{0, 2, 4};
+    const std::vector<double> clb{1.0, -inf};
+    const std::vector<double> cub{5.0, 3.0};
+    model.set_objective_coefficients(c);
+    model.set_variable_lower_bounds(lb);
+    model.set_variable_upper_bounds(ub);
+    model.set_variable_names(var_names);
+    model.set_csr_constraint_matrix(A_values, A_indices, A_offsets);
+    model.set_constraint_lower_bounds(clb);
+    model.set_constraint_upper_bounds(cub);
+    model.set_row_names(row_names);
+    const std::vector<double> q_lin_vals{1.0};
+    const std::vector<int> q_lin_idx{1};
+    const std::vector<double> q_vals{1.0, -1.0};
+    const std::vector<int> q_rows{0, 0};
+    const std::vector<int> q_cols{0, 0};
+    model.append_quadratic_constraint(
+      2, "q", 'L', q_lin_vals, q_lin_idx, 2.0, q_vals, q_rows, q_cols);
+    return model;
+  };
+
+  // The unnamed variable avoids the given name 'C0', the range row is split into
+  // '_lo'/'_up', and the cancelling quadratic row is written without a '[ ]' block.
+  const std::string out = write_lp_to_string(make_model({"", "C0"}, {"c", "d"}), "names_ranges");
+  EXPECT_EQ(out,
+            "Minimize\n"
+            " obj: + 1 C0_1 + 1 C0\n"
+            "Subject To\n"
+            " c_lo: + 1 C0_1 + 1 C0 >= 1\n"
+            " c_up: + 1 C0_1 + 1 C0 <= 5\n"
+            " d: + 1 C0_1 - 1 C0 <= 3\n"
+            " q: + 1 C0 <= 2\n"
+            "End\n");
+
+  // Reading back gives four linear rows: the split changes the row count and names.
+  const auto reread = read_lp_from_string<int, double>(out);
+  EXPECT_FALSE(reread.has_quadratic_constraints());
+  EXPECT_EQ(reread.get_row_names(), (std::vector<std::string>{"c_lo", "c_up", "d", "q"}));
+
+  // A given row 'c_lo' collides with the range row 'c' written as 'c_lo'.
+  EXPECT_ANY_THROW(write_lp_to_string(make_model({"x", "y"}, {"c", "c_lo"}), "range_clash"));
+
+  for (const std::string bad : {"2bad", "x+y", "bad name", ";v", "end"}) {
+    EXPECT_ANY_THROW(write_lp_to_string(make_model({bad, "y"}, {"c", "d"}), "bad_name"))
+      << "variable name '" << bad << "'";
+  }
+
+  // NaN anywhere, or an infinite coefficient or offset, is rejected.
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const std::vector<std::pair<const char*, std::function<void(mps_data_model_t<int, double>&)>>>
+    non_finite{
+      {"NaN objective", [&](auto& m) { m.set_objective_coefficients(std::vector{nan, 1.0}); }},
+      {"inf objective", [&](auto& m) { m.set_objective_coefficients(std::vector{inf, 1.0}); }},
+      {"inf offset", [&](auto& m) { m.set_objective_offset(inf); }},
+      {"NaN matrix value",
+       [&](auto& m) {
+         m.set_csr_constraint_matrix(std::vector{1.0, nan, 1.0, -1.0},
+                                     std::vector{0, 1, 0, 1},
+                                     std::vector{0, 2, 4});
+       }},
+      {"NaN variable bound", [&](auto& m) { m.set_variable_upper_bounds(std::vector{nan, inf}); }},
+      {"NaN row bound", [&](auto& m) { m.set_constraint_upper_bounds(std::vector{nan, 3.0}); }},
+      {"NaN quadratic coefficient",
+       [&](auto& m) {
+         m.append_quadratic_constraint(
+           3, "q2", 'L', {}, {}, 1.0, std::vector{nan}, std::vector{0}, std::vector{0});
+       }},
+    };
+  for (const auto& [what, mutate] : non_finite) {
+    auto model = make_model({"x", "y"}, {"c", "d"});
+    mutate(model);
+    EXPECT_ANY_THROW(write_lp_to_string(model, "non_finite")) << what;
+  }
 }
 
 TEST(lp_writer, mip_generals_binaries_exact_output)

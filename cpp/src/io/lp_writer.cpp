@@ -422,6 +422,39 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
                        row_type);
   }
 
+  // NaN has no LP representation, and coefficients must be finite; infinite
+  // bounds and right-hand sides are written as 'inf'.
+  auto expect_writable = [](const auto& values, bool allow_inf, const std::string& what) {
+    for (size_t i = 0; i < values.size(); ++i) {
+      const f_t v = values[i];
+      mps_parser_expects(!std::isnan(v) && (allow_inf || !std::isinf(v)),
+                         error_type_t::ValidationError,
+                         "LP writer: %s %zu is %s, which cannot be written to an LP file",
+                         what.c_str(),
+                         i,
+                         std::isnan(v) ? "NaN" : "infinite");
+    }
+  };
+  mps_parser_expects(std::isfinite(problem.get_objective_offset()),
+                     error_type_t::ValidationError,
+                     "LP writer: objective offset must be finite");
+  expect_writable(c, false, "objective coefficient");
+  expect_writable(A_values_span, false, "constraint matrix value");
+  expect_writable(var_lb, true, "variable lower bound");
+  expect_writable(var_ub, true, "variable upper bound");
+  expect_writable(clb, true, "constraint lower bound");
+  expect_writable(cub, true, "constraint upper bound");
+  if (problem.has_quadratic_objective()) {
+    expect_writable(problem.get_quadratic_objective_values(), false, "quadratic objective value");
+  }
+  for (size_t q = 0; q < n_quadratic; ++q) {
+    const auto& qc         = quadratic_constraints[q];
+    const std::string what = "quadratic constraint '" + qc_names[q] + "'";
+    expect_writable(qc.linear_values, false, what + " linear coefficient");
+    expect_writable(qc.vals, false, what + " quadratic coefficient");
+    expect_writable(std::vector<f_t>{qc.rhs_value}, true, what + " right-hand side");
+  }
+
   std::ofstream lp_file(lp_file_path);
   mps_parser_expects(lp_file.is_open(),
                      error_type_t::ValidationError,
@@ -463,7 +496,7 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
     // A constant objective term is written directly; read_lp folds it into
     // the objective offset.
     const f_t offset = problem.get_objective_offset();
-    if (std::isfinite(offset) && offset != f_t(0)) {
+    if (offset != f_t(0)) {
       lp_file << (offset < f_t(0) ? " - " : " + ") << fmt(std::abs(offset));
     }
 
@@ -580,6 +613,8 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
 
     canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, qc_scratch);
     // read_lp rejects an empty '[ ]' bracket, so only open it for a nonzero term.
+    // A row whose quadratic terms are empty or cancel is therefore written, and
+    // read back, as a linear row.
     const bool has_quad_terms =
       std::any_of(qc.vals.begin(), qc.vals.end(), [](f_t v) { return v != f_t(0); });
     if (has_quad_terms) {

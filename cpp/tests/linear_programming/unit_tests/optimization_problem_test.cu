@@ -39,6 +39,15 @@ TEST(file_format_from_path, supports_only_uncompressed_output)
   EXPECT_THROW(file_format_from_path("problem.unknown"), std::invalid_argument);
 }
 
+TEST(dump_file_format_from_path, lp_extension_else_mps)
+{
+  EXPECT_EQ(dump_file_format_from_path("problem.lp"), file_format_t::lp);
+  EXPECT_EQ(dump_file_format_from_path("problem.LP"), file_format_t::lp);
+  EXPECT_EQ(dump_file_format_from_path("problem.mps"), file_format_t::mps);
+  EXPECT_EQ(dump_file_format_from_path("problem.qps"), file_format_t::mps);
+  EXPECT_EQ(dump_file_format_from_path("bob"), file_format_t::mps);
+}
+
 cuopt::mathematical_optimization::io::mps_data_model_t<int, double> read_from_mps(
   const std::string& file, bool fixed_mps_format = true)
 {
