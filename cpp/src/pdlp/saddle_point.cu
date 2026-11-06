@@ -57,8 +57,11 @@ saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handl
                                 handle_ptr->get_stream().get()));
   RAFT_CUDA_TRY(cudaMemsetAsync(
     dual_gradient_.data(), 0, sizeof(f_t) * dual_gradient_.size(), handle_ptr->get_stream().get()));
+  // A concurrent halt can return a warm start before the first SpMV writes current AtY
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    current_AtY_.data(), 0, sizeof(f_t) * current_AtY_.size(), handle_ptr->get_stream().get()));
 
-  // No need to 0 init current/next AtY, they are directlty written as result of SpMV
+  // No need to 0 init next AtY, it is directly written as result of SpMV
 }
 
 template <typename i_t, typename f_t>
