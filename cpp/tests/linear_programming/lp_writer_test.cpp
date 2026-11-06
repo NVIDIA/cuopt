@@ -307,9 +307,8 @@ TEST(lp_writer, names_ranges_and_empty_quadratic_row)
       {"inf offset", [&](auto& m) { m.set_objective_offset(inf); }},
       {"NaN matrix value",
        [&](auto& m) {
-         m.set_csr_constraint_matrix(std::vector{1.0, nan, 1.0, -1.0},
-                                     std::vector{0, 1, 0, 1},
-                                     std::vector{0, 2, 4});
+         m.set_csr_constraint_matrix(
+           std::vector{1.0, nan, 1.0, -1.0}, std::vector{0, 1, 0, 1}, std::vector{0, 2, 4});
        }},
       {"NaN variable bound", [&](auto& m) { m.set_variable_upper_bounds(std::vector{nan, inf}); }},
       {"NaN row bound", [&](auto& m) { m.set_constraint_upper_bounds(std::vector{nan, 3.0}); }},

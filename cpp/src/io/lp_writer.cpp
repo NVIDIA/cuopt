@@ -496,9 +496,7 @@ void write_lp(const data_model_view_t<i_t, f_t>& problem, const std::string& lp_
     // A constant objective term is written directly; read_lp folds it into
     // the objective offset.
     const f_t offset = problem.get_objective_offset();
-    if (offset != f_t(0)) {
-      lp_file << (offset < f_t(0) ? " - " : " + ") << fmt(std::abs(offset));
-    }
+    if (offset != f_t(0)) { lp_file << (offset < f_t(0) ? " - " : " + ") << fmt(std::abs(offset)); }
 
     // Quadratic objective: build the symmetric Hessian H = Q + Q^T (matching
     // the MPS writer), then emit its upper triangle inside a '[ ... ] / 2'
