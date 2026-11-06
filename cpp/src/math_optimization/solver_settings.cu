@@ -123,6 +123,9 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
   // clang-format off
   // Float parameters
   float_parameters = {
+    {CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT, &deprecated_rins_time_limit, -std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity(), f_t(3.0), "deprecated; has no effect"},
+    {CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT, &deprecated_rins_max_time_limit, -std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity(), f_t(20.0), "deprecated; has no effect"},
+    {CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE, &deprecated_rins_fix_rate, -std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity(), f_t(0.5), "deprecated; has no effect"},
     {CUOPT_TIME_LIMIT, &mip_settings.time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
     {CUOPT_TIME_LIMIT, &pdlp_settings.time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
     {CUOPT_WORK_LIMIT, &mip_settings.work_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
