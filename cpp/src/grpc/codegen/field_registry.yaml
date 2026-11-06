@@ -748,16 +748,16 @@ pdlp_settings:
       optional: true
   - barrier_iterative_refinement:
       # Whether the barrier method runs iterative refinement after each solve
-      # (see cpp/src/barrier/barrier.cu). C++ default is `true`. Declared as
-      # proto3 `optional` so that a client which omits this field preserves
-      # the solver default; without `optional`, the proto3 wire zero (`false`)
-      # would silently overwrite the C++ default.
+      # (see cpp/src/barrier/barrier.cu). C++ default is 1 (on). Declared as proto3 `optional` so that a client
+      # which omits this field preserves the solver default; without
+      # `optional`, the proto3 wire zero (off) would silently overwrite the
+      # C++ default.
       description: >-
-        Barrier: whether iterative refinement runs after each barrier solve to
-        improve solution accuracy (see cpp/src/barrier/barrier.cu).
-      default: "true"
+        Barrier: iterative refinement of each KKT solve: 0 off, 1 on, 2
+        automatic (switched on once the iterate nears convergence).
+      default: "1 (on)"
       field_num: 31
-      type: bool
+      type: int32
       optional: true
   - barrier_adaptive_regularization:
       description: >-

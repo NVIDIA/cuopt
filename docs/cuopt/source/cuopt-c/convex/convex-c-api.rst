@@ -309,6 +309,7 @@ These constants are used to configure `CUOPT_BARRIER_ITERATIVE_REFINEMENT` via :
 
 .. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF
 .. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON
+.. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO
 
 
 Warm Start
