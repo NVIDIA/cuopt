@@ -374,7 +374,13 @@ bool flow_cover_generation_t<i_t, f_t>::normalize_row_side(
     const i_t j = row.index(k);
     if (is_slack_[j]) { continue; }
     const f_t coeff = negate_row ? -row.coeff(k) : row.coeff(k);
-    if (std::abs(coeff) <= coefficient_tol) { continue; }
+    if (std::abs(coeff) <= coefficient_tol) {
+      const f_t dropped_bound = coeff > 0.0 ? context.lp.lower[j] : context.lp.upper[j];
+      if (std::isfinite(dropped_bound)) {
+        b -= coeff * dropped_bound;
+        continue;
+      }
+    }
     if (flow_cover_is_zero_one_integer_variable(context, j)) {
       add_binary_coeff(j, coeff);
     } else {

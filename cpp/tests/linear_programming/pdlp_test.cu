@@ -2166,6 +2166,34 @@ TEST(pdlp_class, warm_start_stable3_not_supported)
   EXPECT_EQ(solution2.get_termination_status(), pdlp_termination_status_t::NoTermination);
 }
 
+TEST(pdlp_class, warm_start_defined_when_halted_before_first_step)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
+
+  auto settings      = pdlp_solver_settings_t<int, double>{};
+  settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
+  settings.presolver = presolver_t::None;
+
+  // Leave non-zero values in the memory pool for the halted solve to reuse
+  solve_lp(&handle_, op_problem, settings);
+
+  std::atomic<int> halt{1};
+  settings.concurrent_halt = &halt;
+
+  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
+  ASSERT_EQ(solution.get_termination_status(), pdlp_termination_status_t::ConcurrentLimit);
+
+  // No step was taken, so the dual is still zero and so is A^T y
+  const auto& warm_start = solution.get_pdlp_warm_start_data();
+  EXPECT_THAT(host_copy(warm_start.current_dual_solution_, handle_.get_stream()),
+              ::testing::Each(0.0));
+  EXPECT_THAT(host_copy(warm_start.current_ATY_, handle_.get_stream()), ::testing::Each(0.0));
+}
+
 TEST(pdlp_class, dual_postsolve_size)
 {
   const raft::handle_t handle_{};
