@@ -6,8 +6,6 @@
 # distutils: language = c++
 # cython: embedsignature = True
 # cython: language_level = 3
-# cython: boundscheck=False
-# cython: wraparound=False
 # cython: cdivision=True
 
 from pylibraft.common.handle cimport *
@@ -316,6 +314,26 @@ cdef object _compute_slack_csr(const double[::1] rhs,
     return np.asarray(out)
 
 
+cdef object _compute_row_activity_csr(const double[::1] values,
+                                      const int[::1] indices,
+                                      const int[::1] indptr,
+                                      const double[::1] primal_solution):
+    """Row activity ``A @ x`` for a CSR matrix."""
+    cdef Py_ssize_t m = indptr.shape[0] - 1
+    cdef Py_ssize_t i, k
+    cdef double lhs
+    cdef double[::1] out = np.empty(m, dtype=np.float64)
+
+    with nogil:
+        for i in range(m):
+            lhs = 0.0
+            for k in range(indptr[i], indptr[i + 1]):
+                lhs = lhs + values[k] * primal_solution[indices[k]]
+            out[i] = lhs
+
+    return np.asarray(out)
+
+
 cdef object _slack_from_data_model(object data_model_obj,
                                    object primal_solution):
     """Classical LE/GE slack/surplus (EQ residual) from the solved DataModel."""
@@ -330,14 +348,45 @@ cdef object _slack_from_data_model(object data_model_obj,
     if len(offsets) == 0:
         return np.empty(0, dtype=np.float64)
 
-    return _compute_slack_csr(
-        np.ascontiguousarray(dm.get_constraint_bounds(), dtype=np.float64),
-        np.ascontiguousarray(dm.get_row_types(), dtype="S1"),
-        np.ascontiguousarray(dm.get_constraint_matrix_values(), dtype=np.float64),
-        np.ascontiguousarray(dm.get_constraint_matrix_indices(), dtype=np.int32),
-        np.ascontiguousarray(offsets, dtype=np.int32),
-        np.ascontiguousarray(primal_solution, dtype=np.float64),
+    cdef Py_ssize_t m = len(offsets) - 1
+    values = np.ascontiguousarray(
+        dm.get_constraint_matrix_values(), dtype=np.float64
     )
+    indices = np.ascontiguousarray(
+        dm.get_constraint_matrix_indices(), dtype=np.int32
+    )
+    offsets = np.ascontiguousarray(offsets, dtype=np.int32)
+    primal = np.ascontiguousarray(primal_solution, dtype=np.float64)
+
+    # A DataModel carries the rows either as lower and upper bounds or as rhs
+    # and row types, and the bounds take priority when both are set. Only a
+    # representation that was set has m entries.
+    lower = np.asarray(dm.get_constraint_lower_bounds(), dtype=np.float64)
+    upper = np.asarray(dm.get_constraint_upper_bounds(), dtype=np.float64)
+    if len(lower) == m and len(upper) == m:
+        # Distance to the nearest finite bound, which matches the LE and GE
+        # definitions for one-sided rows; equality rows keep ``rhs - lhs``.
+        lhs = _compute_row_activity_csr(values, indices, offsets, primal)
+        slack = np.minimum(lhs - lower, upper - lhs)
+        is_equality = lower == upper
+        slack[is_equality] = lower[is_equality] - lhs[is_equality]
+        return slack
+
+    rhs = dm.get_constraint_bounds()
+    # The setter stores one int8 code per row, so a plain ``str`` such as
+    # "GL" keeps its length (np.asarray(..., dtype="S1") would truncate it).
+    sense = dm.get_ascii_row_types()
+    if len(rhs) == m and len(sense) == m:
+        return _compute_slack_csr(
+            np.ascontiguousarray(rhs, dtype=np.float64),
+            np.ascontiguousarray(sense, dtype=np.int8),
+            values,
+            indices,
+            offsets,
+            primal,
+        )
+
+    return None
 
 
 cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
