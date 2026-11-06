@@ -8,6 +8,7 @@
 #pragma once
 
 #include <barrier/second_order_cone_reduction.cuh>
+#include <linear_algebra/vector_math.cuh>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
@@ -1620,11 +1621,13 @@ void launch_cone_step_length(segmented_sum_t<i_t>& partitions,
  *   x + alpha dx in Q,  z + alpha dz in Q,  alpha <= alpha_max.
  */
 template <typename i_t, typename f_t>
-f_t compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
-                             raft::device_span<const f_t> dx,
-                             raft::device_span<const f_t> dz,
-                             f_t alpha_max,
-                             cuda::stream_ref stream)
+void compute_cone_step_length_async(cone_data_t<i_t, f_t>& cones,
+                                    raft::device_span<const f_t> dx,
+                                    raft::device_span<const f_t> dz,
+                                    f_t alpha_max,
+                                    raft::device_span<f_t> output,
+                                    reduction_workspace_t<f_t>& reductions,
+                                    cuda::stream_ref stream)
 {
   auto alpha_primal = cuopt::make_span(cones.scratch.step_alpha_primal);
   auto alpha_dual   = cuopt::make_span(cones.scratch.step_alpha_dual);
@@ -1635,15 +1638,16 @@ f_t compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
   launch_cone_step_length(cones.segmented_sum, x, dx, alpha_primal, large_sums, alpha_max, stream);
   launch_cone_step_length(cones.segmented_sum, z, dz, alpha_dual, large_sums, alpha_max, stream);
 
-  return thrust::transform_reduce(
-    rmm::exec_policy(stream),
+  reductions.transform_reduce_async(
     thrust::make_zip_iterator(alpha_primal.begin(), alpha_dual.begin()),
-    thrust::make_zip_iterator(alpha_primal.end(), alpha_dual.end()),
+    thrust::minimum<f_t>{},
     [] HD(const thrust::tuple<f_t, f_t>& t) -> f_t {
       return cuda::std::min(thrust::get<0>(t), thrust::get<1>(t));
     },
     alpha_max,
-    thrust::minimum<f_t>());
+    alpha_primal.size(),
+    output,
+    stream);
 }
 
 /**

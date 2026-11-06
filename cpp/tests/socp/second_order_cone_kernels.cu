@@ -356,12 +356,15 @@ TEST(second_order_cone_kernels, cone_step_length_many_small_one_sparse_medium_co
   launch_nt_scaling(cones, stream);
   launch_update_scaling_sparse(cones, stream);
 
-  const auto step_combined =
-    compute_cone_step_length(cones,
-                             raft::device_span<const double>(dx.data(), dx.size()),
-                             raft::device_span<const double>(dz.data(), dz.size()),
-                             1.0,
-                             stream);
+  reduction_workspace_t<double> reductions(stream);
+  compute_cone_step_length_async(cones,
+                                 raft::device_span<const double>(dx.data(), dx.size()),
+                                 raft::device_span<const double>(dz.data(), dz.size()),
+                                 1.0,
+                                 raft::device_span<double>(reductions.out.data(), 1),
+                                 reductions,
+                                 stream);
+  const auto step_combined = reductions.out.value(stream);
 
   EXPECT_GT(step_combined, 0.0);
   EXPECT_LE(step_combined, 1.0);
@@ -488,12 +491,15 @@ TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
   auto dz = cuopt::device_copy(dz_host, stream);
 
   cone_data_t<int, double> cones(cone_dimensions, cuopt::make_span(x), cuopt::make_span(z), stream);
-  const auto step_combined =
-    compute_cone_step_length(cones,
-                             raft::device_span<const double>(dx.data(), dx.size()),
-                             raft::device_span<const double>(dz.data(), dz.size()),
-                             alpha_max,
-                             stream);
+  reduction_workspace_t<double> reductions(stream);
+  compute_cone_step_length_async(cones,
+                                 raft::device_span<const double>(dx.data(), dx.size()),
+                                 raft::device_span<const double>(dz.data(), dz.size()),
+                                 alpha_max,
+                                 raft::device_span<double>(reductions.out.data(), 1),
+                                 reductions,
+                                 stream);
+  const auto step_combined = reductions.out.value(stream);
 
   const auto primal_per_cone = cuopt::host_copy(cones.scratch.step_alpha_primal, stream);
   const auto dual_per_cone   = cuopt::host_copy(cones.scratch.step_alpha_dual, stream);
