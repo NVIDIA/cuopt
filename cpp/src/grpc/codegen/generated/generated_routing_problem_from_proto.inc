@@ -359,29 +359,37 @@
         _out.earliest = _in.earliest();
         _out.latest = _in.latest();
         _out.duration = _in.duration();
-        const auto* _chunk = take_container(62, _flat, 0);
-        if (_chunk) {
-          decode_i32(*_chunk, _out.locations);
-        } else {
-          copy_repeated_to_vector(_in.locations(), _out.locations);
+        {
+          const auto* _chunk = take_container(62, _flat, 0);
+          if (_chunk) {
+            decode_i32(*_chunk, _out.locations);
+          } else {
+            copy_repeated_to_vector(_in.locations(), _out.locations);
+          }
         }
-        const auto* _chunk = take_container(62, _flat, 1);
-        if (_chunk) {
-          decode_u8(*_chunk, _out.load_window_active);
-        } else {
-          copy_u32_to_u8(_in.load_window_active(), _out.load_window_active);
+        {
+          const auto* _chunk = take_container(62, _flat, 1);
+          if (_chunk) {
+            decode_u8(*_chunk, _out.load_window_active);
+          } else {
+            copy_u32_to_u8(_in.load_window_active(), _out.load_window_active);
+          }
         }
-        const auto* _chunk = take_container(62, _flat, 2);
-        if (_chunk) {
-          decode_i32(*_chunk, _out.load_window_min);
-        } else {
-          copy_repeated_to_vector(_in.load_window_min(), _out.load_window_min);
+        {
+          const auto* _chunk = take_container(62, _flat, 2);
+          if (_chunk) {
+            decode_i32(*_chunk, _out.load_window_min);
+          } else {
+            copy_repeated_to_vector(_in.load_window_min(), _out.load_window_min);
+          }
         }
-        const auto* _chunk = take_container(62, _flat, 3);
-        if (_chunk) {
-          decode_i32(*_chunk, _out.load_window_max);
-        } else {
-          copy_repeated_to_vector(_in.load_window_max(), _out.load_window_max);
+        {
+          const auto* _chunk = take_container(62, _flat, 3);
+          if (_chunk) {
+            decode_i32(*_chunk, _out.load_window_max);
+          } else {
+            copy_repeated_to_vector(_in.load_window_max(), _out.load_window_max);
+          }
         }
         _breaks.push_back(std::move(_out));
       }
@@ -399,11 +407,13 @@
         _out.distance_min = _in.distance_min();
         _out.distance_max = _in.distance_max();
         _out.duration = _in.duration();
-        const auto* _chunk = take_container(63, _flat, 0);
-        if (_chunk) {
-          decode_i32(*_chunk, _out.locations);
-        } else {
-          copy_repeated_to_vector(_in.locations(), _out.locations);
+        {
+          const auto* _chunk = take_container(63, _flat, 0);
+          if (_chunk) {
+            decode_i32(*_chunk, _out.locations);
+          } else {
+            copy_repeated_to_vector(_in.locations(), _out.locations);
+          }
         }
         _breaks.push_back(std::move(_out));
       }

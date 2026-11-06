@@ -8,7 +8,7 @@
 #pragma once
 
 #include "routing/dimensions.cuh"
-#include "routing/routing_structures.hpp"
+#include <cuopt/routing/routing_structures.hpp>
 #include "routing/vehicle_info.hpp"
 
 #include <algorithm>

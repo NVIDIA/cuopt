@@ -13,6 +13,7 @@
 #include <rmm/exec_policy.hpp>
 #include <routing/structures.hpp>
 #include <routing/utilities/check_input.hpp>
+#include <utilities/copy_helpers.hpp>
 #include <unordered_set>
 
 #include <thrust/sort.h>

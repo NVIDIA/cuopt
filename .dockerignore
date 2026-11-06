@@ -1,0 +1,14 @@
+# Keep source-image build contexts small and prevent local artifacts from
+# changing a Docker build's cache key. Source files required by build.sh remain
+# included.
+.git
+.cuopt_env
+**/.pytest_cache
+**/__pycache__
+**/*.py[cod]
+**/build
+**/.ninja_deps
+**/.ninja_log
+**/CMakeCache.txt
+**/CMakeFiles
+datasets

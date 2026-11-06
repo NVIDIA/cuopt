@@ -361,8 +361,12 @@ else
         CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
         echo "Building for RAPIDS supported architectures..."
     else
-        CUOPT_CMAKE_CUDA_ARCHITECTURES="NATIVE"
-        echo "Building for the architecture of the GPU in the system..."
+        CUOPT_CMAKE_CUDA_ARCHITECTURES="${CUOPT_CMAKE_CUDA_ARCHITECTURES:-NATIVE}"
+        if [ "${CUOPT_CMAKE_CUDA_ARCHITECTURES}" = "NATIVE" ]; then
+            echo "Building for the architecture of the GPU in the system..."
+        else
+            echo "Building for CUDA architectures: ${CUOPT_CMAKE_CUDA_ARCHITECTURES}"
+        fi
     fi
 fi
 

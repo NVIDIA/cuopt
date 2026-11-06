@@ -736,18 +736,20 @@ def generate_routing_from_proto(registry):
         for f in _nested_fields(rec, "scalars"):
             lines.append(f"        _out.{f['member']} = _in.{f['name']}();")
         for f in _nested_fields(rec, "arrays"):
+            lines.append("        {")
             lines.append(
-                f"        const auto* _chunk = take_container({rec['field_num']}, _flat, {f['array_id']});"
+                f"          const auto* _chunk = take_container({rec['field_num']}, _flat, {f['array_id']});"
             )
-            lines.append("        if (_chunk) {")
+            lines.append("          if (_chunk) {")
             lines.append(
-                f"          {_decode_fn(f)}(*_chunk, _out.{f['member']});"
+                f"            {_decode_fn(f)}(*_chunk, _out.{f['member']});"
             )
-            lines.append("        } else {")
+            lines.append("          } else {")
             for stmt in _cpp_copy_from_proto(
                 f, f"_in.{f['name']}()", f"_out.{f['member']}"
             ):
-                lines.append("        " + stmt)
+                lines.append("          " + stmt)
+            lines.append("          }")
             lines.append("        }")
         lines.append("        _breaks.push_back(std::move(_out));")
         lines.append("      }")

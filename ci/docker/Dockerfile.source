@@ -1,0 +1,106 @@
+# syntax=docker/dockerfile:1.7
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Build a runnable cuOpt image from the checked-out source tree.
+# Unlike Dockerfile, this image does not install released wheels, so it
+# includes local source changes (for example, a routing feature under development).
+#
+# The CUDA image tag and conda environment must describe the same CUDA
+# major and minor release.
+# For CUDA 12.9, pass both CUDA_DEVEL_IMAGE/CUDA_RUNTIME_IMAGE and CUDA_ENV=129.
+
+ARG CUDA_DEVEL_IMAGE=nvidia/cuda:13.3.0-devel-ubuntu24.04
+ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:13.3.0-runtime-ubuntu24.04
+ARG CUDA_ENV=133
+
+FROM mambaorg/micromamba:2.4.0 AS micromamba
+
+FROM source AS source-tree
+
+FROM ${CUDA_DEVEL_IMAGE} AS build
+
+ARG CUDA_ENV
+ARG TARGETARCH
+ARG PARALLEL_LEVEL=1
+# NVIDIA H100 is compute capability 9.0. Override at build time for a
+# different remote GPU target.
+ARG CUDA_ARCHITECTURES=90
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    MAMBA_ROOT_PREFIX=/opt/mamba \
+    PYTHONNOUSERSITE=1 \
+    CCACHE_DIR=/root/.cache/ccache \
+    CCACHE_BASEDIR=/src \
+    CCACHE_COMPILERCHECK=content
+
+# Install micromamba.
+COPY --from=micromamba /usr/bin/micromamba /usr/local/bin/micromamba
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+# Copy only environment definitions first to avoid invalidating
+# the Conda environment layer when source files change.
+COPY --from=source-tree conda/environments /tmp/conda-environments
+
+# Create the Conda environment using a persistent BuildKit cache.
+RUN --mount=type=cache,id=cuopt-mamba-pkgs-${TARGETARCH}-cuda${CUDA_ENV},target=/opt/mamba/pkgs,sharing=locked \
+    case "${TARGETARCH}" in \
+        amd64) conda_arch=x86_64 ;; \
+        arm64) conda_arch=aarch64 ;; \
+        *) echo "Unsupported target architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && micromamba create -y -v -p /opt/conda \
+        --always-copy \
+        --file "/tmp/conda-environments/all_cuda-${CUDA_ENV}_arch-${conda_arch}.yaml"
+
+# Copy the complete source tree after environment creation.
+COPY --from=source-tree . /src
+
+# Build cuOpt using persistent CMake and compiler caches.
+RUN --mount=type=cache,id=cuopt-mamba-pkgs-${TARGETARCH}-cuda${CUDA_ENV},target=/opt/mamba/pkgs,sharing=locked \
+    --mount=type=cache,id=cuopt-ccache-${TARGETARCH}-cuda${CUDA_ENV},target=/root/.cache/ccache \
+    --mount=type=cache,id=cuopt-cpp-build-${TARGETARCH}-cuda${CUDA_ENV},target=/src/cpp/build \
+    PATH=/opt/conda/bin:${PATH} \
+    PARALLEL_LEVEL=${PARALLEL_LEVEL} \
+    CUOPT_CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES} \
+    ./build.sh --install --skip-tests-build --cache-tool=ccache
+
+# Runtime stage.
+FROM ${CUDA_RUNTIME_IMAGE} AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV DEBIAN_FRONTEND="" \
+    PYTHONNOUSERSITE=1 \
+    PATH=/opt/conda/bin:${PATH} \
+    LD_LIBRARY_PATH=/opt/conda/lib:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+
+# Copy the installed Conda environment from the build stage.
+COPY --from=build /opt/conda /opt/conda
+
+# Install the runtime entrypoint.
+RUN mkdir -p /opt/cuopt
+
+COPY --from=source-tree ci/docker/entrypoint.sh /opt/cuopt/entrypoint.sh
+
+RUN chmod 755 /opt/cuopt/entrypoint.sh
+
+WORKDIR /opt/cuopt
+
+EXPOSE 5000 5001
+
+ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
+
+CMD ["proxy"]
