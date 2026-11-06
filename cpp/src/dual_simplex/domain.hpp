@@ -59,6 +59,8 @@ struct domain_params {
   double min_improvement_factor   = 1e3;
   // Derived bounds larger than this in magnitude are discarded
   double max_derived_bound = 1e8;
+  // Maximum number of rounds of objective propagation followed by row propagation
+  int max_objective_rounds = 3;
 };
 
 // The finite parts of the activities are accumulated with compensated (Dot2) summation: the
@@ -164,7 +166,18 @@ class domain_t {
                            bound_change_t<i_t, f_t> bound_change,
                            lp_problem_t<i_t, f_t>& lp);
 
+  // Propagates c^T x <= cutoff, followed by the rows affected by its tightenings, for up to
+  // max_objective_rounds rounds. Returns false if no solution within the bounds in lp can reach
+  // the cutoff.
+  bool propagate_objective(const csr_matrix_t<i_t, f_t>& Arow,
+                           const std::vector<variable_type_t>& var_types,
+                           const simplex_solver_settings_t<i_t, f_t>& settings,
+                           lp_problem_t<i_t, f_t>& lp,
+                           f_t cutoff);
+
   size_t last_nnz_processed{0};
+  size_t objective_fixings{0};
+  size_t objective_cutoffs{0};
 
   // Implications applied when an integer variable is fixed to 0 or 1. Either may be null, and the
   // clique table is skipped until it is ready.
@@ -180,6 +193,9 @@ class domain_t {
 
   std::vector<uint8_t> var_queued;
   circular_deque_t<i_t> var_queue;
+
+  // Variables with a nonzero objective coefficient.
+  std::vector<i_t> objective_vars;
 
   std::vector<bound_change_t<i_t, f_t>> bound_changes;
 
