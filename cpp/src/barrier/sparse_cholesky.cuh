@@ -343,6 +343,30 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 #endif
 
+    // cuDSS rejects ND_NLEVELS <= 1, and a failed cudssConfigSet exits, so ignore those values.
+    if (settings_.cudss_nd_nlevels >= 2) {
+      settings_.log.printf("cuDSS ND levels             : %d\n", settings_.cudss_nd_nlevels);
+      int32_t nd_nlevels = settings_.cudss_nd_nlevels;
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssConfigSet(solverConfig, CUDSS_CONFIG_ND_NLEVELS, &nd_nlevels, sizeof(int32_t)),
+        status,
+        "cudssConfigSet for nd nlevels");
+    } else if (settings_.cudss_nd_nlevels != -1) {
+      settings_.log.printf("cuDSS ND levels             : %d ignored, must be at least 2\n",
+                           settings_.cudss_nd_nlevels);
+    }
+
+    if (settings_.cudss_hybrid_execute_mode >= 0) {
+      settings_.log.printf("cuDSS hybrid execute mode   : %d\n",
+                           settings_.cudss_hybrid_execute_mode);
+      int32_t hybrid_execute_mode = settings_.cudss_hybrid_execute_mode;
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssConfigSet(
+          solverConfig, CUDSS_CONFIG_HYBRID_EXECUTE_MODE, &hybrid_execute_mode, sizeof(int32_t)),
+        status,
+        "cudssConfigSet for hybrid execute mode");
+    }
+
 #if USE_ITERATIVE_REFINEMENT
     int32_t ir_n_steps = 2;
     CUDSS_CALL_AND_CHECK_EXIT(

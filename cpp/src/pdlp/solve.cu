@@ -563,6 +563,11 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   const raft::handle_t* handle_ptr,
   cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache = nullptr)
 {
+  cuopt_expects(!(settings.cudss_deterministic && settings.cudss_hybrid_execute_mode == 1),
+                error_type_t::ValidationError,
+                "cudss_hybrid_execute_mode=1 is not supported with cudss_deterministic. "
+                "Set cudss_hybrid_execute_mode to -1 or 0, or disable cudss_deterministic.");
+
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
@@ -601,6 +606,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.qcqp_ruiz_equilibration          = settings.qcqp_ruiz_equilibration;
   barrier_settings.gpu_ruiz_nnz_threshold           = settings.gpu_ruiz_nnz_threshold;
   barrier_settings.cudss_deterministic              = settings.cudss_deterministic;
+  barrier_settings.cudss_nd_nlevels                 = settings.cudss_nd_nlevels;
+  barrier_settings.cudss_hybrid_execute_mode        = settings.cudss_hybrid_execute_mode;
   barrier_settings.barrier_relaxed_feasibility_tol  = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol   = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;

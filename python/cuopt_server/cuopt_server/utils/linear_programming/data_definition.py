@@ -510,6 +510,17 @@ class SolverConfig(BaseModel):
         description="Set if cuDSS should use deterministic mode. "
         "True to use deterministic mode, False to not use deterministic mode",
     )
+    cudss_nd_nlevels: Optional[int] = Field(
+        default=-1,
+        description="Set the number of nested dissection levels cuDSS uses "
+        "for reordering in the barrier solver (at least 2). "
+        "-1 to keep the cuDSS default.",
+    )
+    cudss_hybrid_execute_mode: Optional[int] = Field(
+        default=-1,
+        description="Set the cuDSS hybrid execute mode for the barrier solver. "
+        "-1 to keep the cuDSS default (disabled), 0 to disable, 1 to enable",
+    )
     crossover: Optional[bool] = Field(
         default=False,
         description="Set True to use crossover, False to not use crossover.",

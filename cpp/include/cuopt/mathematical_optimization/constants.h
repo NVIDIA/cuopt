@@ -57,6 +57,8 @@
 #define CUOPT_BARRIER_STEP_SCALE                    "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
+#define CUOPT_CUDSS_ND_NLEVELS                      "cudss_nd_nlevels"
+#define CUOPT_CUDSS_HYBRID_EXECUTE_MODE             "cudss_hybrid_execute_mode"
 #define CUOPT_PRESOLVE                              "presolve"
 #define CUOPT_DUAL_SIMPLEX_INITIAL_PERTURBATION     "dual_simplex_initial_perturbation"
 #define CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION      "dual_simplex_remove_perturbation"
