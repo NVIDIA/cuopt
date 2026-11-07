@@ -3,11 +3,14 @@
 
 """Post or update a sticky PR comment summarizing CI test job failures."""
 
+import errno
 import http.client
 import io
 import json
 import os
 import re
+import socket
+import ssl
 import sys
 import time
 import urllib.error
@@ -27,6 +30,25 @@ _HTTP_TIMEOUT_SEC = 30
 _HTTP_ATTEMPTS = 4
 _MAX_RETRY_WAIT_SEC = 120
 _NETWORK_ERRORS = (OSError, http.client.HTTPException)
+_SUMMARY_NETWORK_ERRORS = (
+    urllib.error.URLError,
+    http.client.HTTPException,
+    ConnectionError,
+    TimeoutError,
+    socket.gaierror,
+    ssl.SSLError,
+)
+_NETWORK_ERRNOS = {
+    errno.ECONNABORTED,
+    errno.ECONNREFUSED,
+    errno.ECONNRESET,
+    errno.EHOSTUNREACH,
+    errno.ENETDOWN,
+    errno.ENETRESET,
+    errno.ENETUNREACH,
+    errno.EPIPE,
+    errno.ETIMEDOUT,
+}
 _MAX_TESTS = 50
 
 # gtest prints "[  FAILED  ] Suite.Test (12 ms)" per failing test and again
@@ -39,6 +61,22 @@ _GTEST_FAILED = re.compile(r"\[  FAILED  \] (\S+\.\S+?)(?: \(\d+ ms\))?$")
 #   "FAILED: FOO_TEST (exit code 1)"
 _BINARY_CRASH = re.compile(r"CRASH: (\S+) died from (\w+) \(exit code \d+\)")
 _BINARY_FAILED = re.compile(r"FAILED: (\S+) \(exit code (\d+)\)")
+
+
+class _SummaryNetworkUnavailable(Exception):
+    """A transient API failure exhausted its retry budget."""
+
+
+def _is_network_error(exc):
+    # Certificate verification failures need configuration changes, not retry.
+    if isinstance(exc, ssl.SSLCertVerificationError) or (
+        isinstance(exc, urllib.error.URLError)
+        and isinstance(exc.reason, ssl.SSLCertVerificationError)
+    ):
+        return False
+    return isinstance(exc, _SUMMARY_NETWORK_ERRORS) or (
+        isinstance(exc, OSError) and exc.errno in _NETWORK_ERRNOS
+    )
 
 
 class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
@@ -89,11 +127,13 @@ def _is_transient(e):
 
 def _backoff(e, attempt):
     """Sleep before a retry, or re-raise e if it is not worth retrying."""
-    if not _is_transient(e) or attempt == _HTTP_ATTEMPTS:
+    if not _is_network_error(e) or not _is_transient(e):
         raise e
+    if attempt == _HTTP_ATTEMPTS:
+        raise _SummaryNetworkUnavailable(str(e)) from e
     delay = _retry_delay(attempt, getattr(e, "headers", None) or {})
     if delay > _MAX_RETRY_WAIT_SEC:
-        raise e
+        raise _SummaryNetworkUnavailable(str(e)) from e
     time.sleep(delay)
 
 
@@ -202,6 +242,10 @@ def _analyze_job_log(job_id, repo, token):
             f"Warning: could not fetch logs for job {job_id}: {exc}",
             file=sys.stderr,
         )
+    except _NETWORK_ERRORS as exc:
+        if not _is_network_error(exc) or not _is_transient(exc):
+            raise
+        raise _SummaryNetworkUnavailable(str(exc)) from exc
 
     return failed[:_MAX_TESTS]
 
@@ -269,7 +313,9 @@ def _upsert_comment(repo, token, pr_number, body):
                     "PATCH",
                     {"body": body},
                 )
-                print(f"Updated comment {existing['id']} on PR #{pr_number}.")
+                message = (
+                    f"Updated comment {existing['id']} on PR #{pr_number}."
+                )
             else:
                 result = _api(
                     f"/repos/{repo}/issues/{pr_number}/comments",
@@ -277,10 +323,12 @@ def _upsert_comment(repo, token, pr_number, body):
                     "POST",
                     {"body": body},
                 )
-                print(f"Posted comment {result['id']} on PR #{pr_number}.")
-            return
+                message = f"Posted comment {result['id']} on PR #{pr_number}."
         except _NETWORK_ERRORS as e:
             _backoff(e, attempt)
+            continue
+        print(message)
+        return
 
 
 def main():
@@ -321,5 +369,14 @@ def main():
     _upsert_comment(repo, token, pr_number, body)
 
 
+def _run():
+    # The summary is informational. Keep transient API failures visible as
+    # warnings while allowing authentication errors and script bugs to fail.
+    try:
+        main()
+    except _SummaryNetworkUnavailable as exc:
+        print(f"Warning: PR test summary unavailable: {exc}", file=sys.stderr)
+
+
 if __name__ == "__main__":
-    main()
+    _run()
