@@ -241,7 +241,7 @@ For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions 
 
 ## Pre-PR self-review
 
-Before every `git push`, review `git diff origin/<target-branch>...HEAD` (usually `main`) against [references/review_rules.md](references/review_rules.md), starting with its Whole-PR review section. The rules (comment content, terminology, types and ownership, reuse, public API surface, test quality, docs wording, PR hygiene) are the ones reviewers repeat most; CodeRabbit applies the same file, so a miss here comes back as a review comment.
+Before every `git push`, review `git diff origin/<target-branch>...<branch-you-push>` (the target is usually `main`) against [references/review_rules.md](references/review_rules.md), starting with its Whole-PR review section. The rules (comment content, terminology, types and ownership, reuse, public API surface, test quality, docs wording, PR hygiene) are the ones reviewers repeat most; CodeRabbit applies the same file, so a miss here comes back as a review comment.
 
 ## OpenMP task/runtime compatibility
 

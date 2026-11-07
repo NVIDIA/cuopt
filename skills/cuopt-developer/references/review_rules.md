@@ -3,7 +3,7 @@
 One rule set for two consumers: the author (human or agent) before `git push`, and CodeRabbit
 during review.
 
-- **Author / agent:** go through this list against `git diff origin/<target-branch>...HEAD` before pushing.
+- **Author / agent:** go through this list against `git diff origin/<target-branch>...<branch-you-push>` before pushing.
 - **CodeRabbit:** raise a violation as a short nit that names the rule. Do not raise style
   that is not listed here, or anything `clang-format` or `ruff` already enforces.
 - **Reviewer:** name the rule instead of re-explaining. If a rule is wrong or missing, change this
@@ -44,7 +44,7 @@ Before the line-by-line rules, look at the PR as a whole.
   | problem | model |
   | multi-GPU | distributed |
   | MIP | MILP |
-  | `mathematical_optimization` (new names) | `linear_programming` |
+  | `mathematical_optimization` | `linear_programming` |
 
 - **Spell names out and make them accurate.** No cryptic abbreviations in identifiers,
   and a name must describe what the thing is.
