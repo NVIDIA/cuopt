@@ -108,6 +108,11 @@ class solver_settings_t {
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
   mip_solver_settings_t<i_t, f_t> mip_settings;
 
+  // Compatibility storage only; never passed to either solver.
+  f_t deprecated_rins_time_limit     = f_t(3.0);
+  f_t deprecated_rins_max_time_limit = f_t(20.0);
+  f_t deprecated_rins_fix_rate       = f_t(0.5);
+
   std::vector<parameter_info_t<f_t>> float_parameters;
   std::vector<parameter_info_t<i_t>> int_parameters;
   std::vector<parameter_info_t<bool>> bool_parameters;
