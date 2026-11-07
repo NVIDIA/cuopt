@@ -43,6 +43,7 @@ from cuopt.linear_programming.problem import Problem, CONTINUOUS, MAXIMIZE
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_METHOD,
     CUOPT_PDLP_SOLVER_MODE,
+    CUOPT_PRESOLVE,
 )
 from cuopt.linear_programming.solver_settings import (
     SolverSettings,
@@ -73,6 +74,8 @@ def main():
     settings = SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
+    # Warmstart data must come from the original problem, so disable presolve
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
 
     # Solve the problem
     problem.solve(settings)
