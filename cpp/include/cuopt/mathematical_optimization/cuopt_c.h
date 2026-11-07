@@ -623,8 +623,8 @@ cuopt_int_t cuOptGetConstraintMatrixCSR(cuOptOptimizationProblem problem,
  * @param[in] problem - The optimization problem.
  *
  * @param[out] constraint_matrix_column_offsets_ptr - A pointer to an array of type cuopt_int_t of
- *  size num_variables + 1 (see cuOptGetProblemIntAttribute) that on output will contain the column
- * offsets of the constraint matrix.
+ *  size num_variables + 1 that on output will contain the column offsets of the constraint
+ *  matrix.
  *
  * @param[out] constraint_matrix_row_indices_ptr - A pointer to an array of type cuopt_int_t of size
  *  equal to the number of nonzeros (see cuOptGetNumNonZeros) that on output will contain the row
