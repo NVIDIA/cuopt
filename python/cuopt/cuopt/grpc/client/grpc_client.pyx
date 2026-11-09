@@ -1107,10 +1107,9 @@ cdef _solution_to_py(cpu_routing_solution_t s):
     }
 
 
-# dump_best_results is intentionally not forwarded. The proto and C++ mapper
-# already carry dump_best_results_path, but that writes a debug file on the
-# gRPC server host rather than returning data to the client. Wire it up later
-# if a remote-debug use case appears.
+# dump_best_results is intentionally not forwarded. The server mapper ignores
+# dump_best_results_path, so it is only useful for a local solve. Wire it up
+# later if a remote-debug use case appears.
 cdef void _apply_routing_settings(
     routing_solver_settings_t[int, float]& s, settings
 ) except *:
