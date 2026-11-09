@@ -58,8 +58,13 @@ Before the line-by-line rules, look at the PR as a whole.
   neighbouring files' `const` and instantiation patterns.
 - **Explicit ownership.** `std::unique_ptr` by default, `std::shared_ptr` only with a
   reason, `std::span` over pointer plus size, no raw owning pointers.
-- **Plain control flow.** Short lambdas only, no scope guards or hidden cleanup without a
-  comment. A condition used in two places is one named function.
+- **Plain control flow.** Avoid lambdas; use one only for sorting. No scope guards or hidden
+  cleanup without a comment. A condition used in two places is one named function.
+- **Sparse-matrix index names.** `i` is a row, `j` is a column, and `p` or `q` indexes the
+  nonzero arrays. Never use `j` for a row or `i` for a column. If those are taken, use `k`,
+  `h`, `r`, `s`.
+- **Argument order.** In a new function, input-only parameters come before output parameters.
+  Follow the nearby code, for example `lp_problem_t` first and `solver_settings_t` second.
 - **Name your constants.** Use an `enum class` for modes, and named constants or
   settings for limits and tolerances, not literals. Where `-Wswitch` is an error, leave
   `default:` out of a `switch` over an enum so a new value fails to compile.
