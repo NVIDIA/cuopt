@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from cuopt.linear_programming import Read
+from cuopt.linear_programming import DataModel, Read, Solve
 from cuopt.linear_programming.problem import EQ, GE, LE, MAXIMIZE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_METHOD
 from cuopt.linear_programming.solver_settings import (
@@ -299,3 +299,63 @@ def test_read_then_rebuild_keeps_quadratic_constraints(tmp_path):
     _solve(reread)
     _assert_feasible(reread)
     assert reread.ObjValue == pytest.approx(-2.0, abs=OBJ_TOL)
+
+
+def _quadratic_data_model():
+    model = DataModel()
+    model.set_csr_constraint_matrix([1.0], [0], [0, 1])
+    model.set_constraint_bounds([10.0])
+    model.set_row_types(np.array(["L"], dtype="S1"))
+    model.set_objective_coefficients([-1.0])
+    model.set_variable_lower_bounds([0.0])
+    model.set_variable_upper_bounds([10.0])
+    model.add_quadratic_constraint(
+        linear_values=[1.0],
+        linear_indices=[0],
+        vals=[1.0],
+        rows=[0],
+        cols=[0],
+        rhs_value=6.0,
+    )
+    return model
+
+
+def test_data_model_quadratic_constraint_array_edits():
+    """Each view rebuild reads current arrays, including read-only buffers."""
+    model = _quadratic_data_model()
+    settings = _barrier_settings()
+    settings.set_parameter("presolve", 0)
+    constraint = model.get_quadratic_constraints()[0]
+
+    def assert_optimum(expected):
+        solution = Solve(model, settings)
+        assert solution.get_termination_reason() == "Optimal"
+        np.testing.assert_allclose(
+            solution.get_primal_solution(), [expected], atol=PRIMAL_TOL
+        )
+        assert solution.get_primal_objective() == pytest.approx(
+            -expected, abs=OBJ_TOL
+        )
+
+    assert_optimum(2.0)
+    constraint["vals"][:] = 2.0
+    assert_optimum(1.5)
+    constraint["vals"] = np.array([3.0])
+    for name in ("linear_values", "linear_indices", "vals", "rows", "cols"):
+        constraint[name].flags.writeable = False
+    assert_optimum((np.sqrt(73.0) - 1.0) / 6.0)
+    model.clear_quadratic_constraints()
+    assert_optimum(10.0)
+    model.add_quadratic_constraint(
+        vals=[1.0], rows=[0], cols=[0], rhs_value=9.0
+    )
+    assert_optimum(3.0)
+
+
+@pytest.mark.parametrize("name", ["linear_indices", "rows", "cols"])
+def test_data_model_quadratic_constraint_rejects_none_array(name):
+    """Invalid array references raise rather than reaching pointer access."""
+    model = _quadratic_data_model()
+    model.get_quadratic_constraints()[0][name] = None
+    with pytest.raises(TypeError):
+        model.set_data_model_view()
