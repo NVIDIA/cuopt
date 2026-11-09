@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,8 +45,32 @@ TEST(SolverSettingsTest, DeprecatedRinsParameters)
     settings.set_parameter_from_string(name, "0.75");
     EXPECT_DOUBLE_EQ(settings.get_parameter<double>(name), 0.75);
     EXPECT_EQ(settings.get_parameter_as_string(name), std::to_string(0.75));
+    EXPECT_THROW(settings.set_parameter_from_string(name, "invalid"), std::invalid_argument);
+    EXPECT_THROW(settings.set_parameter_from_string(name, "nan"), std::invalid_argument);
+    EXPECT_DOUBLE_EQ(settings.get_parameter<double>(name), 0.75);
     EXPECT_DOUBLE_EQ(other_settings.get_parameter<double>(name), default_value);
   }
+
+  EXPECT_EQ(std::count(names.begin(), names.end(), CUOPT_MIP_HEURISTICS_ONLY), 1);
+  EXPECT_FALSE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_EQ(settings.get_parameter_as_string(CUOPT_MIP_HEURISTICS_ONLY), "false");
+
+  settings.set_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY, true);
+  EXPECT_TRUE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_EQ(settings.get_parameter_as_string(CUOPT_MIP_HEURISTICS_ONLY), "true");
+  EXPECT_FALSE(other_settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+
+  settings.set_parameter_from_string(CUOPT_MIP_HEURISTICS_ONLY, "false");
+  EXPECT_FALSE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_EQ(settings.get_parameter_as_string(CUOPT_MIP_HEURISTICS_ONLY), "false");
+
+  settings.set_parameter_from_string(CUOPT_MIP_HEURISTICS_ONLY, "true");
+  EXPECT_TRUE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_EQ(settings.get_parameter_as_string(CUOPT_MIP_HEURISTICS_ONLY), "true");
+  EXPECT_THROW(settings.set_parameter_from_string(CUOPT_MIP_HEURISTICS_ONLY, "invalid"),
+               std::invalid_argument);
+  EXPECT_TRUE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_FALSE(other_settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
 }
 
 TEST(SolverSettingsTest, TestSetGet)

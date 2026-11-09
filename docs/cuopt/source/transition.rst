@@ -80,7 +80,7 @@ The following are **New** in ``solver_configs`` for the service but were availab
 - log_file
 - solution_file
 
-Changes to solver parameters
+Changes to Solver Parameters
 ----------------------------
 
 The following parameters are **Deprecated**. They are accepted but have no effect, and a warning is logged when one is set to a value other than its former default:
