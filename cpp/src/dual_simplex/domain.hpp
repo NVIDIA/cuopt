@@ -199,6 +199,11 @@ class domain_t {
   // Empties the row and variable queues.
   void clear_queues();
 
+  bool set_literal_false(i_t v,
+                         const std::vector<variable_type_t>& var_types,
+                         const simplex_solver_settings_t<i_t, f_t>& settings,
+                         lp_problem_t<i_t, f_t>& lp);
+
   // Applies the probing and clique implications of x_j at its fixed value. Returns false if an
   // implied bound proves infeasibility.
   bool propagate_implications(i_t j,

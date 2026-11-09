@@ -248,7 +248,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   // Resize the solution now that we know the number of columns/variables
   branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
 
-  extract_probing_implied_bounds(op_problem_,
+  extract_probing_implied_bounds(op_problem_.reverse_original_ids,
                                  branch_and_bound_problem,
                                  dm.ls.constraint_prop.bounds_update.probing_cache,
                                  probing_implied_bound);
