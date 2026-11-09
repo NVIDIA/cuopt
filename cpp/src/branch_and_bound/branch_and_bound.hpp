@@ -426,7 +426,6 @@ class branch_and_bound_t {
                                      submip_stats_t& submip_stats,
                                      f_t fixrate,
                                      int64_t simplex_iter_used,
-                                     f_t time_limit,
                                      simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
   // ============================================================================

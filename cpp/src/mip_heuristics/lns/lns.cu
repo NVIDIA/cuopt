@@ -164,6 +164,73 @@ i_t extend_variable_fixings(const csr_matrix_t<i_t, f_t>& Arow,
   return num_fixed;
 }
 
+template <typename i_t, typename f_t>
+bool solve_lp(const branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+              const simplex_solver_settings_t<i_t, f_t>& settings,
+              diving_worker_t<i_t, f_t>* worker,
+              branch_and_bound_stats_t<i_t, f_t>& stats,
+              std::vector<i_t>& fractional)
+{
+  branch_and_bound_t<i_t, f_t>* bnb_ptr = worker->branch_and_bound_ptr;
+  mip_node_t<i_t, f_t>* node            = &worker->start_node;
+
+  // After fixing the variables, re-solve the LP relaxation. We use the optimal solution
+  // in the next iteration to find additional variable fixings.
+  // We continue to do this until enough variables were fixed or no variable is left to fix.
+  simplex::logger_t log;
+  log.log = false;
+
+  int64_t iter_offset =
+    settings.inside_submip ? 0 : settings.submip_settings.iteration_limit_offset;
+  int64_t simplex_iter       = bnb_stats.total_simplex_iters;
+  f_t iter_ratio             = settings.submip_settings.iteration_limit_ratio;
+  int64_t simplex_iter_limit = iter_offset + simplex_iter * iter_ratio;
+  int64_t max_iter           = simplex_iter_limit - stats.total_simplex_iters;
+  if (max_iter <= 0) {
+    DEBUG_SUBMIP(settings,
+                 "{}Max iteration reached! {}/{}",
+                 settings.log.log_prefix,
+                 stats.total_simplex_iters.load(std::memory_order::relaxed),
+                 simplex_iter_limit)
+    return false;
+  }
+
+  f_t leaf_obj;
+  f_t upper_bound = bnb_ptr->get_upper_bound();
+  simplex::dual_status_t lp_status =
+    worker->solve_node_lp(settings, node, stats, log, max_iter, bnb_stats.start_time, upper_bound);
+
+  node_status_t node_status =
+    worker->classify_node(node, lp_status, upper_bound, settings, fractional, leaf_obj);
+
+  if (node_status == node_status_t::FATHOMED) {
+    DEBUG_SUBMIP(settings,
+                 "{}Round {}: simplex returned {}. leaf_obj={:.4g}, upper_bound={:.4g}",
+                 settings.log.log_prefix,
+                 round,
+                 simplex::dual_status_to_string(lp_status),
+                 leaf_obj,
+                 upper_bound)
+    return false;
+  }
+
+  // We found a feasible solution when fixing the variables in RINS/RENS.
+  if (node_status == node_status_t::INTEGER_FEASIBLE) {
+    bnb_ptr->set_solution_from_worker(
+      worker->leaf_problem, leaf_obj, worker->leaf_solution.x, -1, worker->search_strategy);
+    DEBUG_SUBMIP(settings,
+                 "{}Round {}: found a solution with obj={:.4g}. upper_bound={:.4g}",
+                 settings.log.log_prefix,
+                 round,
+                 leaf_obj,
+                 bnb_ptr->get_upper_bound())
+    return false;
+  }
+
+  worker->recompute_basis = false;
+  return true;
+}
+
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -173,9 +240,9 @@ void solve_submip(diving_worker_t<i_t, f_t>* worker,
                   submip_stats_t& submip_stats,
                   f_t fixrate,
                   int64_t simplex_iter_used,
-                  f_t time_limit,
                   simplex_solver_settings_t<i_t, f_t> submip_settings)
 {
+  f_t time_limit = submip_settings.time_limit - toc(bnb_stats.start_time);
   if (time_limit <= 0) { return; }
 
   double start_time                     = tic();
@@ -468,7 +535,6 @@ void mutation(diving_worker_t<i_t, f_t>* worker,
 
   ++submip_stats.total_calls;
 
-  branch_and_bound_stats_t<i_t, f_t> stats;
   lp_problem_t<i_t, f_t>& lp  = worker->leaf_problem;
   std::vector<f_t>& incumbent = worker->current_incumbent;
   domain_t<i_t, f_t>& domain  = worker->domain;
@@ -529,14 +595,7 @@ void mutation(diving_worker_t<i_t, f_t>* worker,
                target_num_fixed,
                target_fixrate);
 
-  solve_submip(worker,
-               bnb_stats,
-               original_problem,
-               submip_stats,
-               fixrate,
-               stats.total_simplex_iters,
-               settings.time_limit - toc(bnb_stats.start_time),
-               settings);
+  solve_submip(worker, bnb_stats, original_problem, submip_stats, fixrate, 0, settings);
 
   DEBUG_SUBMIP(
     settings,
@@ -561,8 +620,9 @@ void rins(diving_worker_t<i_t, f_t>* worker,
   raft::common::nvtx::range scope("BB::submip_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
 
-  i_t submip_level                      = settings.submip_settings.level + 1;
-  settings.log.log_prefix               = std::format("[RINS {}] ", submip_level);
+  i_t submip_level = settings.submip_settings.level + 1;
+  settings.log.log_prefix =
+    std::format("[{} {}] ", search_strategy_to_string(worker->search_strategy), submip_level);
   branch_and_bound_t<i_t, f_t>* bnb_ptr = worker->branch_and_bound_ptr;
 
   assert(worker->search_strategy == search_strategy_t::RINS &&
@@ -574,7 +634,6 @@ void rins(diving_worker_t<i_t, f_t>* worker,
   worker->recompute_basis = true;
 
   branch_and_bound_stats_t<i_t, f_t> stats;
-  mip_node_t<i_t, f_t>& node    = worker->start_node;
   lp_problem_t<i_t, f_t>& lp    = worker->leaf_problem;
   std::vector<f_t>& incumbent   = worker->current_incumbent;
   domain_t<i_t, f_t>& domain    = worker->domain;
@@ -582,7 +641,7 @@ void rins(diving_worker_t<i_t, f_t>* worker,
   worker->domain.compute_activities(worker->Arow, worker->leaf_problem);
 
   std::vector<i_t> fractional;
-  i_t num_frac = fractional_variables(settings, current_sol, worker->var_types, fractional);
+  fractional_variables(settings, current_sol, worker->var_types, fractional);
 
   std::vector<i_t> integer_list;
   get_unfixed_integer_variables(
@@ -643,12 +702,10 @@ void rins(diving_worker_t<i_t, f_t>* worker,
         if (!domain.apply_and_propagate(
               worker->Arow, worker->var_types, settings, bound_change, lp)) {
           DEBUG_SUBMIP(settings,
-                       "{}Bound propagation detected infeasibility. fixrate={:.4g} ({:.0f}/{}), "
-                       "max_fixrate={:.4g}, "
-                       "min_fixrate={:.4g}",
+                       "{}Bound propagation detected infeasibility. fixed={}/{}, "
+                       "max_fixrate={:.4g}, min_fixrate={:.4g}",
                        settings.log.log_prefix,
-                       fixrate,
-                       fixrate * num_integers,
+                       num_fixed + new_fixings,
                        num_integers,
                        max_fixrate,
                        min_fixrate)
@@ -727,61 +784,8 @@ void rins(diving_worker_t<i_t, f_t>* worker,
 
     if (toc(bnb_stats.start_time) >= settings.time_limit) { break; }
 
-    // After fixing the variables, re-solve the LP relaxation. We use the optimal solution
-    // in the next iteration to find additional variable fixings.
-    // We continue to do this until enough variables were fixed or no variable is left to fix.
-    simplex::logger_t log;
-    log.log = false;
-
-    int64_t iter_offset =
-      settings.inside_submip ? 0 : settings.submip_settings.iteration_limit_offset;
-    int64_t simplex_iter       = bnb_stats.total_simplex_iters;
-    f_t iter_ratio             = settings.submip_settings.iteration_limit_ratio;
-    int64_t simplex_iter_limit = iter_offset + simplex_iter * iter_ratio;
-    int64_t max_iter           = simplex_iter_limit - stats.total_simplex_iters;
-    if (max_iter <= 0) {
-      DEBUG_SUBMIP(settings,
-                   "{}Round {}: max iteration reached! {}/{}",
-                   settings.log.log_prefix,
-                   round,
-                   stats.total_simplex_iters.load(std::memory_order::relaxed),
-                   simplex_iter_limit)
-      break;
-    }
-
-    f_t leaf_obj;
-    f_t upper_bound                  = bnb_ptr->get_upper_bound();
-    simplex::dual_status_t lp_status = worker->solve_node_lp(
-      settings, &node, stats, log, max_iter, bnb_stats.start_time, upper_bound);
-
-    node_status_t node_status =
-      worker->classify_node(&node, lp_status, upper_bound, settings, fractional, leaf_obj);
-
-    if (node_status == node_status_t::FATHOMED) {
-      DEBUG_SUBMIP(settings,
-                   "{}Round {}: simplex returned {}. leaf_obj={:.4g}, upper_bound={:.4g}",
-                   settings.log.log_prefix,
-                   round,
-                   simplex::dual_status_to_string(lp_status),
-                   leaf_obj,
-                   upper_bound)
-      break;
-    }
-
-    // We found a feasible solution when fixing the variables in RINS/RENS.
-    if (node_status == node_status_t::INTEGER_FEASIBLE) {
-      bnb_ptr->set_solution_from_worker(
-        worker->leaf_problem, leaf_obj, current_sol, -1, worker->search_strategy);
-      DEBUG_SUBMIP(settings,
-                   "{}Round {}: found a solution with obj={:.4g}. upper_bound={:.4g}",
-                   settings.log.log_prefix,
-                   round,
-                   leaf_obj,
-                   bnb_ptr->get_upper_bound())
-      break;
-    }
-
-    worker->recompute_basis = false;
+    bool continue_dive = solve_lp(bnb_stats, settings, worker, stats, fractional);
+    if (!continue_dive) { break; }
     ++round;
   }
 
@@ -795,7 +799,6 @@ void rins(diving_worker_t<i_t, f_t>* worker,
                  submip_stats,
                  fixrate,
                  stats.total_simplex_iters,
-                 settings.time_limit - toc(bnb_stats.start_time),
                  settings);
   }
 
@@ -824,8 +827,9 @@ void rens(diving_worker_t<i_t, f_t>* worker,
   raft::common::nvtx::range scope("BB::submip_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
 
-  i_t submip_level                      = settings.submip_settings.level + 1;
-  settings.log.log_prefix               = std::format("[RENS {}] ", submip_level);
+  i_t submip_level = settings.submip_settings.level + 1;
+  settings.log.log_prefix =
+    std::format("[{} {}] ", search_strategy_to_string(worker->search_strategy), submip_level);
   branch_and_bound_t<i_t, f_t>* bnb_ptr = worker->branch_and_bound_ptr;
 
   assert(worker->search_strategy == search_strategy_t::RENS &&
@@ -837,14 +841,13 @@ void rens(diving_worker_t<i_t, f_t>* worker,
   worker->recompute_basis = true;
 
   branch_and_bound_stats_t<i_t, f_t> stats;
-  mip_node_t<i_t, f_t>& node    = worker->start_node;
   lp_problem_t<i_t, f_t>& lp    = worker->leaf_problem;
   domain_t<i_t, f_t>& domain    = worker->domain;
   std::vector<f_t>& current_sol = worker->leaf_solution.x;
   worker->domain.compute_activities(worker->Arow, worker->leaf_problem);
 
   std::vector<i_t> fractional;
-  i_t num_frac = fractional_variables(settings, current_sol, worker->var_types, fractional);
+  fractional_variables(settings, current_sol, worker->var_types, fractional);
 
   std::vector<i_t> integer_list;
   get_unfixed_integer_variables(
@@ -907,12 +910,10 @@ void rens(diving_worker_t<i_t, f_t>* worker,
         if (!domain.apply_and_propagate(
               worker->Arow, worker->var_types, settings, bound_change, lp)) {
           DEBUG_SUBMIP(settings,
-                       "{}Bound propagation detected infeasibility. fixrate={:.4g} ({:.0f}/{}), "
-                       "max_fixrate={:.4g}, "
-                       "min_fixrate={:.4g}",
+                       "{}Bound propagation detected infeasibility. fixed={}/{}, "
+                       "max_fixrate={:.4g}, min_fixrate={:.4g}",
                        settings.log.log_prefix,
-                       fixrate,
-                       fixrate * num_integers,
+                       num_fixed + new_fixings,
                        num_integers,
                        max_fixrate,
                        min_fixrate)
@@ -984,61 +985,8 @@ void rens(diving_worker_t<i_t, f_t>* worker,
 
     if (toc(bnb_stats.start_time) >= settings.time_limit) { break; }
 
-    // After fixing the variables, re-solve the LP relaxation. We use the optimal solution
-    // in the next iteration to find additional variable fixings.
-    // We continue to do this until enough variables were fixed or no variable is left to fix.
-    simplex::logger_t log;
-    log.log = false;
-
-    int64_t iter_offset =
-      settings.inside_submip ? 0 : settings.submip_settings.iteration_limit_offset;
-    int64_t simplex_iter       = bnb_stats.total_simplex_iters;
-    f_t iter_ratio             = settings.submip_settings.iteration_limit_ratio;
-    int64_t simplex_iter_limit = iter_offset + simplex_iter * iter_ratio;
-    int64_t max_iter           = simplex_iter_limit - stats.total_simplex_iters;
-    if (max_iter <= 0) {
-      DEBUG_SUBMIP(settings,
-                   "{}Round {}: max iteration reached! {}/{}",
-                   settings.log.log_prefix,
-                   round,
-                   stats.total_simplex_iters.load(std::memory_order::relaxed),
-                   simplex_iter_limit)
-      break;
-    }
-
-    f_t leaf_obj;
-    f_t upper_bound                  = bnb_ptr->get_upper_bound();
-    simplex::dual_status_t lp_status = worker->solve_node_lp(
-      settings, &node, stats, log, max_iter, bnb_stats.start_time, upper_bound);
-
-    node_status_t node_status =
-      worker->classify_node(&node, lp_status, upper_bound, settings, fractional, leaf_obj);
-
-    if (node_status == node_status_t::FATHOMED) {
-      DEBUG_SUBMIP(settings,
-                   "{}Round {}: simplex returned {}. leaf_obj={:.4g}, upper_bound={:.4g}",
-                   settings.log.log_prefix,
-                   round,
-                   simplex::dual_status_to_string(lp_status),
-                   leaf_obj,
-                   upper_bound)
-      break;
-    }
-
-    // We found a feasible solution when fixing the variables in RINS/RENS.
-    if (node_status == node_status_t::INTEGER_FEASIBLE) {
-      bnb_ptr->set_solution_from_worker(
-        worker->leaf_problem, leaf_obj, current_sol, -1, worker->search_strategy);
-      DEBUG_SUBMIP(settings,
-                   "{}Round {}: found a solution with obj={:.4g}. upper_bound={:.4g}",
-                   settings.log.log_prefix,
-                   round,
-                   leaf_obj,
-                   bnb_ptr->get_upper_bound())
-      break;
-    }
-
-    worker->recompute_basis = false;
+    bool continue_dive = solve_lp(bnb_stats, settings, worker, stats, fractional);
+    if (!continue_dive) { break; }
     ++round;
   }
 
@@ -1052,7 +1000,6 @@ void rens(diving_worker_t<i_t, f_t>* worker,
                  submip_stats,
                  fixrate,
                  stats.total_simplex_iters,
-                 settings.time_limit - toc(bnb_stats.start_time),
                  settings);
   }
 
@@ -1079,7 +1026,6 @@ template void solve_submip(diving_worker_t<int, double>* worker,
                            submip_stats_t& submip_stats,
                            double fixrate,
                            int64_t simplex_iter_used,
-                           double time_limit,
                            simplex_solver_settings_t<int, double> submip_settings);
 
 template void mutation(diving_worker_t<int, double>* worker,

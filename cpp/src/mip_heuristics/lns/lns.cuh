@@ -43,7 +43,6 @@ void solve_submip(diving_worker_t<i_t, f_t>* worker,
                   submip_stats_t& submip_stats,
                   f_t fixrate,
                   int64_t simplex_iter_used,
-                  f_t time_limit,
                   simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
 template <typename i_t, typename f_t>
