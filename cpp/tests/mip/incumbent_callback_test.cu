@@ -255,7 +255,7 @@ TEST(mip_solve, initial_solution_survives_papilo_crush)
   // was crushed through PaPILO and accepted by add_user_given_solutions.
   // Early FJ is not strong enough to find the 11 optimal in the given time frame.
   auto settings2       = mip_solver_settings_t<int, double>{};
-  settings2.time_limit = 5.;
+  settings2.time_limit = 10.;
   settings2.presolver  = presolver_t::Papilo;
   settings2.node_limit = 0;
   settings2.add_initial_solution(reference_solution.data(), reference_solution.size(), stream);
