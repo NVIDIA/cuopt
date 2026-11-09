@@ -3079,6 +3079,34 @@ TEST(MapperRoundtrip, ParameterMapRejectsOutOfRangeValue)
   EXPECT_THROW(apply_parameter_overrides(settings, pb.parameters()), std::invalid_argument);
 }
 
+// Path values are replaced with "" and a non-path parameter in the same map still applies.
+TEST(MapperRoundtrip, ParameterMapBlanksFilePathParameters)
+{
+  const char* const names[] = {
+    CUOPT_LOG_FILE, CUOPT_SOLUTION_FILE, CUOPT_USER_PROBLEM_FILE, CUOPT_PRESOLVE_FILE};
+
+  cuopt::remote::PDLPSolverSettings pb;
+  (*pb.mutable_parameters())[CUOPT_TIME_LIMIT] = "1.5";
+  for (const char* name : names) {
+    (*pb.mutable_parameters())[name] = "/tmp/cuopt-client-path";
+  }
+
+  solver_settings_t<int32_t, double> settings;
+  EXPECT_NO_THROW(apply_parameter_overrides(settings, pb.parameters()));
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().time_limit, 1.5);
+
+  const auto& lp  = settings.get_pdlp_settings();
+  const auto& mip = settings.get_mip_settings();
+  EXPECT_EQ(lp.log_file, "");
+  EXPECT_EQ(mip.log_file, "");
+  EXPECT_EQ(lp.sol_file, "");
+  EXPECT_EQ(mip.sol_file, "");
+  EXPECT_EQ(lp.user_problem_file, "");
+  EXPECT_EQ(mip.user_problem_file, "");
+  EXPECT_EQ(lp.presolve_file, "");
+  EXPECT_EQ(mip.presolve_file, "");
+}
+
 TEST(MapperRoundtrip, ParameterMapRejectsTooManyEntries)
 {
   solver_settings_t<int32_t, double> settings;
