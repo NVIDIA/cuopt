@@ -145,18 +145,28 @@ struct parameter_info_t<bool> {
   const char* description;
 };
 
+/**
+ * @brief What a string parameter's value means to the solver.
+ *
+ * text: a plain string with no special meaning.
+ * file_path: a filesystem path the solver opens on the host it runs on.
+ */
+enum class string_parameter_kind { text, file_path };
+
 template <>
 struct parameter_info_t<std::string> {
   parameter_info_t(std::string_view name,
                    std::string* value,
                    std::string def,
-                   const char* description = "")
-    : param_name(name), value_ptr(value), default_value(def), description(description)
+                   string_parameter_kind kind = string_parameter_kind::text,
+                   const char* description    = "")
+    : param_name(name), value_ptr(value), default_value(def), kind(kind), description(description)
   {
   }
   std::string param_name;
   std::string* value_ptr;
   std::string default_value;
+  string_parameter_kind kind;
   const char* description;
 };
 

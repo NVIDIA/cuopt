@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -100,6 +101,20 @@ TEST(SolverSettingsTest, LargeNnzThresholdParameter)
   settings.set_parameter_from_string(CUOPT_LARGE_NNZ_THRESHOLD, "-1");
   EXPECT_EQ(settings.get_pdlp_settings().large_nnz_threshold, -1);
   EXPECT_EQ(settings.get_mip_settings().large_nnz_threshold, -1);
+}
+
+// Exactly the four path parameters are labeled file_path. A new string parameter is
+// text unless its table row says otherwise.
+TEST(SolverSettingsTest, FilePathStringParametersAreLabeled)
+{
+  solver_settings_t<int, double> settings;
+  const std::set<std::string> file_paths{
+    CUOPT_LOG_FILE, CUOPT_SOLUTION_FILE, CUOPT_USER_PROBLEM_FILE, CUOPT_PRESOLVE_FILE};
+
+  for (const auto& param : settings.get_string_parameters()) {
+    const bool labeled = param.kind == string_parameter_kind::file_path;
+    EXPECT_EQ(labeled, file_paths.count(param.param_name) == 1) << param.param_name;
+  }
 }
 
 TEST(SolverSettingsTest, warm_start_smaller_vector)

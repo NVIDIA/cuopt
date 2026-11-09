@@ -277,14 +277,14 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
   };
   // String parameters
   string_parameters = {
-    {CUOPT_LOG_FILE,  &mip_settings.log_file, ""},
-    {CUOPT_LOG_FILE,  &pdlp_settings.log_file, ""},
-    {CUOPT_SOLUTION_FILE,  &mip_settings.sol_file, ""},
-    {CUOPT_SOLUTION_FILE,  &pdlp_settings.sol_file, ""},
-    {CUOPT_USER_PROBLEM_FILE, &mip_settings.user_problem_file, ""},
-    {CUOPT_USER_PROBLEM_FILE, &pdlp_settings.user_problem_file, ""},
-    {CUOPT_PRESOLVE_FILE, &mip_settings.presolve_file, ""},
-    {CUOPT_PRESOLVE_FILE, &pdlp_settings.presolve_file, ""},
+    {CUOPT_LOG_FILE,  &mip_settings.log_file, "", string_parameter_kind::file_path},
+    {CUOPT_LOG_FILE,  &pdlp_settings.log_file, "", string_parameter_kind::file_path},
+    {CUOPT_SOLUTION_FILE,  &mip_settings.sol_file, "", string_parameter_kind::file_path},
+    {CUOPT_SOLUTION_FILE,  &pdlp_settings.sol_file, "", string_parameter_kind::file_path},
+    {CUOPT_USER_PROBLEM_FILE, &mip_settings.user_problem_file, "", string_parameter_kind::file_path},
+    {CUOPT_USER_PROBLEM_FILE, &pdlp_settings.user_problem_file, "", string_parameter_kind::file_path},
+    {CUOPT_PRESOLVE_FILE, &mip_settings.presolve_file, "", string_parameter_kind::file_path},
+    {CUOPT_PRESOLVE_FILE, &pdlp_settings.presolve_file, "", string_parameter_kind::file_path},
   };
   // clang-format on
 }
