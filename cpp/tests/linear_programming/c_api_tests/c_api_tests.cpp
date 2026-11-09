@@ -82,7 +82,7 @@ INSTANTIATE_TEST_SUITE_P(
   TimeLimitTestFixture,
   ::testing::Values(
     std::make_tuple("/linear_programming/square41/square41.mps",
-                    5,
+                    2,
                     CUOPT_METHOD_DUAL_SIMPLEX),  // LP, Dual Simplex
     std::make_tuple("/linear_programming/square41/square41.mps", 5, CUOPT_METHOD_PDLP),  // LP, PDLP
     std::make_tuple("/mip/supportcase22.mps", 15, CUOPT_METHOD_DUAL_SIMPLEX)             // MIP
