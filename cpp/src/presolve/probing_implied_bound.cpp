@@ -21,20 +21,6 @@ i_t remap_probing_variable(i_t raw_idx, const std::vector<i_t>& reverse_original
   return reverse_original_ids[raw_idx];
 }
 
-template <typename i_t, typename f_t>
-bool is_bb_binary(i_t j, const simplex::user_problem_t<i_t, f_t>& problem)
-{
-  return problem.lower[j] == 0.0 && problem.upper[j] == 1.0;
-}
-
-template <typename i_t, typename f_t>
-bool bb_bounds_consistent(i_t i,
-                          f_t lower,
-                          f_t upper,
-                          const simplex::user_problem_t<i_t, f_t>& problem)
-{
-  return upper >= problem.lower[i] - 1e-6 && lower <= problem.upper[i] + 1e-6;
-}
 }  // namespace
 
 // Extract probing cache into CPU-only CSR struct for implied bounds cuts
@@ -55,18 +41,26 @@ void extract_probing_implied_bounds(
     if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
     i_t j = remap_probing_variable(var_idx, reverse_original_ids);
     if (j < 0 || j >= num_cols) { continue; }
-    if (!is_bb_binary(j, branch_and_bound_problem)) { continue; }
+    if (branch_and_bound_problem.lower[j] != 0.0 || branch_and_bound_problem.upper[j] != 1.0) {
+      continue;
+    }
 
     for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
       i_t i = remap_probing_variable(imp_var, reverse_original_ids);
       if (i < 0 || i >= num_cols) { continue; }
-      if (!bb_bounds_consistent(i, bound.lb, bound.ub, branch_and_bound_problem)) { continue; }
+      if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
+          bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
+        continue;
+      }
       probing_implied_bound.zero_offsets[j + 1]++;
     }
     for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
       i_t i = remap_probing_variable(imp_var, reverse_original_ids);
       if (i < 0 || i >= num_cols) { continue; }
-      if (!bb_bounds_consistent(i, bound.lb, bound.ub, branch_and_bound_problem)) { continue; }
+      if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
+          bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
+        continue;
+      }
       probing_implied_bound.one_offsets[j + 1]++;
     }
   }
@@ -95,12 +89,17 @@ void extract_probing_implied_bounds(
     if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
     i_t j = remap_probing_variable(var_idx, reverse_original_ids);
     if (j < 0 || j >= num_cols) { continue; }
-    if (!is_bb_binary(j, branch_and_bound_problem)) { continue; }
+    if (branch_and_bound_problem.lower[j] != 0.0 || branch_and_bound_problem.upper[j] != 1.0) {
+      continue;
+    }
 
     for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
       i_t i = remap_probing_variable(imp_var, reverse_original_ids);
       if (i < 0 || i >= num_cols) { continue; }
-      if (!bb_bounds_consistent(i, bound.lb, bound.ub, branch_and_bound_problem)) { continue; }
+      if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
+          bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
+        continue;
+      }
       i_t p                                     = zero_cursor[j]++;
       probing_implied_bound.zero_variables[p]   = i;
       probing_implied_bound.zero_lower_bound[p] = bound.lb;
@@ -109,7 +108,10 @@ void extract_probing_implied_bounds(
     for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
       i_t i = remap_probing_variable(imp_var, reverse_original_ids);
       if (i < 0 || i >= num_cols) { continue; }
-      if (!bb_bounds_consistent(i, bound.lb, bound.ub, branch_and_bound_problem)) { continue; }
+      if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
+          bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
+        continue;
+      }
       i_t p                                    = one_cursor[j]++;
       probing_implied_bound.one_variables[p]   = i;
       probing_implied_bound.one_lower_bound[p] = bound.lb;

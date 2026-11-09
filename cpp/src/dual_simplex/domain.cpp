@@ -285,23 +285,6 @@ bool domain_t<i_t, f_t>::tighten_bounds(i_t k,
 }
 
 template <typename i_t, typename f_t>
-bool domain_t<i_t, f_t>::set_literal_false(i_t v,
-                                           const std::vector<variable_type_t>& var_types,
-                                           const simplex_solver_settings_t<i_t, f_t>& settings,
-                                           lp_problem_t<i_t, f_t>& lp)
-{
-  ++nnz_processed;
-  const i_t n = clique_table->n_variables;
-  const i_t k = v < n ? v : v - n;
-  if (v < n) {
-    return tighten_bounds(
-      k, lp.lower[k], 0.0, bound_change_origin_t::CLIQUE, var_types, settings, lp);
-  }
-  return tighten_bounds(
-    k, 1.0, lp.upper[k], bound_change_origin_t::CLIQUE, var_types, settings, lp);
-}
-
-template <typename i_t, typename f_t>
 bool domain_t<i_t, f_t>::propagate_implications(i_t j,
                                                 const std::vector<variable_type_t>& var_types,
                                                 const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -344,7 +327,14 @@ bool domain_t<i_t, f_t>::propagate_implications(i_t j,
   const i_t literal = one ? j : j + n;
 
   for (i_t v : clique_table->get_adj_set_of_var(literal)) {
-    if (!set_literal_false(v, var_types, settings, lp)) { return false; }
+    ++nnz_processed;
+    const i_t k         = v < n ? v : v - n;
+    const f_t new_lower = v < n ? lp.lower[k] : 1.0;
+    const f_t new_upper = v < n ? 0.0 : lp.upper[k];
+    if (!tighten_bounds(
+          k, new_lower, new_upper, bound_change_origin_t::CLIQUE, var_types, settings, lp)) {
+      return false;
+    }
   }
 
   return true;
