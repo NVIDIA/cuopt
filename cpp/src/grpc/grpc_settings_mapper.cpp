@@ -355,9 +355,13 @@ void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,
   }
 
   // Only names present in the map are set. The caller has already skipped
-  // deprecated typed fields when this map is non-empty.
+  // deprecated typed fields when this map is non-empty. The four path names
+  // are forced to "" so a client path is never opened. Anything else,
+  // including a future string parameter, is applied as sent.
   for (const auto& entry : parameters) {
-    settings.set_parameter_from_string(entry.first, entry.second);
+    std::string value = entry.second;
+    if (is_remote_file_path_parameter(entry.first)) { value.clear(); }
+    settings.set_parameter_from_string(entry.first, value);
   }
 }
 
