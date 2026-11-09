@@ -1839,7 +1839,6 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
   worker->leaf_problem.lower = original_lp_.lower;
   worker->leaf_problem.upper = original_lp_.upper;
   worker->leaf_solution.x    = sol;
-  worker->search_strategy    = use_rins ? search_strategy_t::RINS : search_strategy_t::RENS;
   worker->set_active();
 
   simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
@@ -1855,24 +1854,35 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
     return true;
   }
 
+  if (use_rins) {
+    worker->search_strategy = search_strategy_t::RINS;
+    if (settings_.inside_submip) {
+      // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
+      // function for included tasks.
+      rins(worker, exploration_stats_, original_problem_, rins_stats_, submip_settings);
+      submip_worker_pool_.return_worker_to_pool(worker);
+    } else {
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
+  firstprivate(worker, submip_settings)
+      {
+        rins(worker, exploration_stats_, original_problem_, rins_stats_, submip_settings);
+        submip_worker_pool_.return_worker_to_pool(worker);
+      }
+    }
+    return true;
+  }
+
+  worker->search_strategy = search_strategy_t::RENS;
   if (settings_.inside_submip) {
     // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
     // function for included tasks.
-    recursive_submip(worker,
-                     exploration_stats_,
-                     original_problem_,
-                     use_rins ? rins_stats_ : rens_stats_,
-                     submip_settings);
+    rens(worker, exploration_stats_, original_problem_, rens_stats_, submip_settings);
     submip_worker_pool_.return_worker_to_pool(worker);
   } else {
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(worker, submip_settings)
     {
-      recursive_submip(worker,
-                       exploration_stats_,
-                       original_problem_,
-                       use_rins ? rins_stats_ : rens_stats_,
-                       submip_settings);
+      rens(worker, exploration_stats_, original_problem_, rens_stats_, submip_settings);
       submip_worker_pool_.return_worker_to_pool(worker);
     }
   }
@@ -1985,11 +1995,11 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      recursive_submip(worker,
-                       exploration_stats_,
-                       original_problem_,
-                       use_rins ? rins_stats_ : rens_stats_,
-                       submip_settings);
+      if (use_rins) {
+        rins(worker, exploration_stats_, original_problem_, rins_stats_, submip_settings);
+      } else {
+        rens(worker, exploration_stats_, original_problem_, rens_stats_, submip_settings);
+      }
       worker->cleanup();
     } else {
       ++current_heuristic->active_workers_;
@@ -1997,11 +2007,11 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(current_heuristic, worker_count, submip_settings) depend(out : *worker)
       {
-        recursive_submip(worker,
-                         exploration_stats_,
-                         original_problem_,
-                         use_rins ? rins_stats_ : rens_stats_,
-                         submip_settings);
+        if (use_rins) {
+          rins(worker, exploration_stats_, original_problem_, rins_stats_, submip_settings);
+        } else {
+          rens(worker, exploration_stats_, original_problem_, rens_stats_, submip_settings);
+        }
         worker->cleanup();
         --(*worker_count);
         --current_heuristic->active_workers_;

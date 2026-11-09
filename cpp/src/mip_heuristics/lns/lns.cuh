@@ -51,13 +51,20 @@ void mutation(diving_worker_t<i_t, f_t>* worker,
               branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
               const simplex::user_problem_t<i_t, f_t>& original_problem,
               submip_stats_t& submip_stats,
-              simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
+              simplex::simplex_solver_settings_t<i_t, f_t> settings);
 
 template <typename i_t, typename f_t>
-void recursive_submip(diving_worker_t<i_t, f_t>* worker,
-                      branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
-                      const simplex::user_problem_t<i_t, f_t>& original_problem,
-                      submip_stats_t& submip_stats,
-                      simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
+void rins(diving_worker_t<i_t, f_t>* worker,
+          branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+          const simplex::user_problem_t<i_t, f_t>& original_problem,
+          submip_stats_t& submip_stats,
+          simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
+
+template <typename i_t, typename f_t>
+void rens(diving_worker_t<i_t, f_t>* worker,
+          branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+          const simplex::user_problem_t<i_t, f_t>& original_problem,
+          submip_stats_t& submip_stats,
+          simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
 }  // namespace cuopt::mathematical_optimization::mip

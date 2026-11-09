@@ -30,6 +30,7 @@ node_status_t diving_worker_t<i_t, f_t>::classify_node(
 {
   if (lp_status != simplex::dual_status_t::OPTIMAL) { return node_status_t::FATHOMED; }
 
+  fractional.clear();
   i_t num_fractional =
     fractional_variables(settings, this->leaf_solution.x, this->var_types, fractional);
   leaf_obj = simplex::compute_objective(this->leaf_problem, this->leaf_solution.x);
