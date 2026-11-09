@@ -14,6 +14,8 @@
 #include <pdlp/utilities/ping_pong_graph.cuh>
 #include <pdlp/utils.cuh>
 
+#include <cuda/std/algorithm.max.h>
+#include <cuda/std/algorithm.min.h>
 #include <cuda/stream>
 #include <raft/core/device_span.hpp>
 

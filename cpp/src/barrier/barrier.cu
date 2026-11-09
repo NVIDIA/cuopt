@@ -36,6 +36,7 @@
 
 #include <barrier/barrier_transform.hpp>
 
+#include <cuda/std/algorithm.min.h>
 #include <cuda/stream>
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_scalar.hpp>

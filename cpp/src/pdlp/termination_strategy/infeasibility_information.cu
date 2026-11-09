@@ -16,6 +16,8 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
+#include <cuda/std/algorithm.max.h>
+#include <cuda/std/algorithm.min.h>
 #include <thrust/iterator/transform_output_iterator.h>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>

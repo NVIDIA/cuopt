@@ -12,6 +12,7 @@
 #include <math_optimization/types.hpp>
 #include <raft/core/handle.hpp>
 
+#include <cuda/std/algorithm.min.h>
 #include <cub/device/device_reduce.cuh>
 #include <cub/device/device_scan.cuh>
 #include <cuda/stream>

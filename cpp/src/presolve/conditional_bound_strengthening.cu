@@ -11,6 +11,8 @@
 #include <utilities/cuda_helpers.cuh>
 #include <utilities/vector_helpers.cuh>
 
+#include <cuda/std/algorithm.max.h>
+#include <cuda/std/algorithm.min.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>

@@ -27,6 +27,7 @@
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/macros.cuh>
 
+#include <cuda/std/algorithm.max.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
