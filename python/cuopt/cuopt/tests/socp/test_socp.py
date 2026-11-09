@@ -285,13 +285,13 @@ def test_read_keeps_quadratic_constraints(tmp_path):
 def test_read_then_rebuild_keeps_quadratic_constraints(tmp_path):
     """A rebuild after read() must re-emit the quadratic rows."""
     problem = Problem.read(_write_qc_mps(tmp_path))
-    # update() drops the cached CSR, so writeMPS rebuilds the DataModel from
+    # update() drops the cached CSR, so write() rebuilds the DataModel from
     # the Python objects instead of reusing the one that was read.
     problem.getConstraint(0).RHS = 9.0
     problem.update()
 
     round_trip = tmp_path / "round_trip.mps"
-    problem.writeMPS(str(round_trip))
+    problem.write(str(round_trip))
     assert "QCMATRIX" in round_trip.read_text()
 
     reread = Problem.read(str(round_trip))
