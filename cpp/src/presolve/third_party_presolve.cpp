@@ -35,6 +35,8 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.hpp>
 #include <presolve/bhw_coeff_reduce.hpp>
+#include <presolve/experimental_equivalent_probe.hpp>
+#include <presolve/experimental_rcm_mps.hpp>
 #include <presolve/gf2_presolve.hpp>
 #include <presolve/indicator_strengthening.hpp>
 #include <presolve/single_lock_dual_aggregation.hpp>
@@ -1005,6 +1007,15 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   return status;
 }
 
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::enable_experimental_rcm(std::size_t hub_threshold)
+{
+  cuopt_expects((std::is_same_v<i_t, int> && std::is_same_v<f_t, double>) && hub_threshold > 0,
+                error_type_t::ValidationError,
+                "Experimental RCM requires int32/FP64 and a positive hub threshold");
+  experimental_rcm_hub_threshold_ = hub_threshold;
+}
+
 // Wrapper around apply_presolve_from_mps_data
 // Generates an mps_data, presolve it and turn it back into a reduced op_problem
 template <typename i_t, typename f_t>
@@ -1021,7 +1032,13 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_op_problem(
   i_t max_rounds,
   i_t max_badgesize)
 {
-  auto* handle = op_problem.get_handle_ptr();
+  auto* handle            = op_problem.get_handle_ptr();
+  experimental_rcm_state_ = {};
+  cuopt_expects(experimental_rcm_hub_threshold_ == 0 ||
+                  (category == problem_category_t::LP &&
+                   presolver == cuopt::mathematical_optimization::presolver_t::PSLP),
+                error_type_t::ValidationError,
+                "Experimental RCM is restricted to the native PSLP LP path");
 
   cuopt_expects(!op_problem.has_quadratic_objective(),
                 error_type_t::ValidationError,
@@ -1054,6 +1071,42 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_op_problem(
       std::move(host_res.implied_integer_indices),
       std::move(host_res.reduced_to_original_map),
       std::move(host_res.original_to_reduced_map)};
+  }
+
+  if (experimental_rcm_hub_threshold_ != 0) {
+    if constexpr (std::is_same_v<i_t, int> && std::is_same_v<f_t, double>) {
+      const auto began = std::chrono::steady_clock::now();
+      auto lower       = host_res.reduced_problem.get_constraint_lower_bounds();
+      auto upper       = host_res.reduced_problem.get_constraint_upper_bounds();
+      expand_rhs(host_res.reduced_problem, lower, upper);
+      experimental_rcm_state_ = lpfeas_ordering::reorder_native_mps(
+        host_res.reduced_problem, experimental_rcm_hub_threshold_, lower, upper);
+      const double elapsed =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
+      CUOPT_LOG_INFO(
+        "RCM_JSON {\"phase\":\"after_builtin_presolve\",\"active\":%s,"
+        "\"hub_threshold\":%zu,\"rows\":%d,\"columns\":%d,\"nnz\":%d,"
+        "\"excluded_graph_rows\":%zu,\"excluded_graph_nnz\":%zu,"
+        "\"build_seconds\":%.9f}",
+        experimental_rcm_state_.active ? "true" : "false",
+        experimental_rcm_hub_threshold_,
+        host_res.reduced_problem.get_n_constraints(),
+        host_res.reduced_problem.get_n_variables(),
+        host_res.reduced_problem.get_nnz(),
+        experimental_rcm_state_.excluded_rows,
+        experimental_rcm_state_.excluded_nnz,
+        elapsed);
+    }
+  }
+
+  if (lpfeas_equivalent_probe::enabled()) {
+    // Publish the actual post-PSLP permutation owned by this exact presolver invocation.
+    lpfeas_equivalent_probe::publish(this,
+                                     host_res.reduced_problem.get_n_constraints(),
+                                     host_res.reduced_problem.get_n_variables(),
+                                     experimental_rcm_state_.active,
+                                     experimental_rcm_state_.row_new_to_old,
+                                     experimental_rcm_state_.column_new_to_old);
   }
 
   auto reduced_opt =
@@ -1292,6 +1345,16 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
   raft::copy(h_rc.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
   stream_view.sync();
 
+  if (experimental_rcm_state_.active) {
+    const auto began = std::chrono::steady_clock::now();
+    experimental_rcm_state_.restore(h_primal, h_dual, h_rc);
+    const double elapsed =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
+    CUOPT_LOG_INFO(
+      "RCM_JSON {\"phase\":\"before_builtin_postsolve\","
+      "\"inverse_seconds\":%.9f}",
+      elapsed);
+  }
   undo(h_primal, h_dual, h_rc, category, status_to_skip, dual_postsolve);
 
   primal_solution.resize(h_primal.size(), stream_view);
