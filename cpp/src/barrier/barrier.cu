@@ -2319,7 +2319,7 @@ class iteration_data_t {
     return settings_.barrier_iterative_refinement == CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO;
   }
 
-  // Whether KKT solves are refined: always when on, in automatic mode once auto_ir switched on.
+  // Whether KKT solves are refined: always in mode 1, in automatic mode once auto_ir switched on.
   bool refine_kkt_solves() const
   {
     if (settings_.barrier_iterative_refinement == CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF) {

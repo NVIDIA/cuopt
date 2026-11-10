@@ -466,7 +466,7 @@ Barrier Iterative Refinement
 ``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` controls whether iterative refinement is applied after each barrier iteration to improve solution accuracy.
 
 * ``0`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF``): Disable iterative refinement.
-* ``1`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON``): Enable iterative refinement.
+* ``1`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_ALWAYS``): Apply iterative refinement at every iteration.
 * ``2`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO``): Start without iterative refinement and enable it once the iterate nears convergence.
 
 Barrier Step Scale

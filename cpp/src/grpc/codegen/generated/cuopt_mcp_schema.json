@@ -147,7 +147,7 @@
         },
         "barrier_iterative_refinement": {
           "type": "integer",
-          "description": "Barrier: iterative refinement of each KKT solve: 0 off, 1 on, 2 automatic (switched on once the iterate nears convergence). Default: 1 (on)."
+          "description": "Barrier: iterative refinement of each KKT solve: 0 off, 1 always on, 2 automatic (switched on once the iterate nears convergence). Default: 1 (always on)."
         },
         "barrier_adaptive_regularization": {
           "type": "integer",
