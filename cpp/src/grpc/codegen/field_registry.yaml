@@ -843,6 +843,9 @@ mip_settings:
   proto_type: "cuopt::remote::MIPSolverSettings"
   reserved_fields:
     heuristics_only: 9
+    rins_time_limit: 41
+    rins_max_time_limit: 42
+    rins_fix_rate: 43
   # See pdlp_settings.parameter_map. presolve_absolute_tolerance is not a
   # set_parameter() setting (param_name: null) and stays a typed field.
   parameter_map:
@@ -1239,9 +1242,6 @@ mip_settings:
       default: "15.0"
       field_num: 40
       optional: true
-    # 41, 42 and 43 held rins_time_limit, rins_max_time_limit and
-    # rins_fix_rate, removed with the GPU RINS heuristic. Do not reuse: an
-    # older client still sends them on those numbers.
   - stagnation_trigger:
       member: mip_hyper_params.heuristic_stagnation_trigger
       param_name: mip_hyper_heuristic_stagnation_trigger

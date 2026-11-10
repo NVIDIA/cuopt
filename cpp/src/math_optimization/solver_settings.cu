@@ -123,9 +123,9 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
   // clang-format off
   // Float parameters
   float_parameters = {
-    {CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT, &deprecated_rins_time_limit, -std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity(), f_t(3.0), "deprecated; has no effect"},
-    {CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT, &deprecated_rins_max_time_limit, -std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity(), f_t(20.0), "deprecated; has no effect"},
-    {CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE, &deprecated_rins_fix_rate, -std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity(), f_t(0.5), "deprecated; has no effect"},
+    {CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT, &deprecated_rins_time_limit, -std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity(), f_t(3.0), "deprecated; has no effect", true},
+    {CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT, &deprecated_rins_max_time_limit, -std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity(), f_t(20.0), "deprecated; has no effect", true},
+    {CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE, &deprecated_rins_fix_rate, -std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity(), f_t(0.5), "deprecated; has no effect", true},
     {CUOPT_TIME_LIMIT, &mip_settings.time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
     {CUOPT_TIME_LIMIT, &pdlp_settings.time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
     {CUOPT_WORK_LIMIT, &mip_settings.work_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
@@ -275,7 +275,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_SEQUENCE_SOLVE, &pdlp_settings.sequence_solve, false},
     {CUOPT_BARRIER_ITERATIVE_REFINEMENT, &pdlp_settings.barrier_iterative_refinement, true},
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
-    {CUOPT_MIP_HEURISTICS_ONLY, &deprecated_heuristics_only, false, "deprecated; has no effect"},
+    {CUOPT_MIP_HEURISTICS_ONLY, &deprecated_heuristics_only, false, "deprecated; has no effect", true},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_SHOW_TYPE, &mip_settings.mip_hyper_params.diving_show_type, false, "log diving heuristic type when it finds a new incumbent"},
     // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
