@@ -216,8 +216,9 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                  "Size mismatch");
     // only call preprocess on scaled problem, so we can compute feasibility on the original problem
     scaled_problem.preprocess_problem();
-    scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
-    const i_t n_vars_before                = scaled_problem.n_variables;
+    scaled_problem.related_vars_time_limit =
+      settings.mip_hyper_params.heuristic_related_vars_time_limit;
+    const i_t n_vars_before = scaled_problem.n_variables;
     mip::trivial_presolve(scaled_problem, /*remap_cache_ids=*/true);
 
 #ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
@@ -680,7 +681,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     auto constexpr const dual_postsolve = false;
     if (run_presolve) {
       sort_csr(op_problem);
-      const auto& hp             = settings.heuristic_params;
+      const auto& hp             = settings.mip_hyper_params;
       const auto papilo_features = mip::papilo_presolve_features(op_problem);
       const auto papilo_budget   = mip::evaluate_presolve_budget(hp, papilo_features);
       mip::log_presolve_budget("PAPILO", papilo_features, papilo_budget);
@@ -704,7 +705,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         structural_workers,
         omp_get_num_threads());
       presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
-      presolver->set_indicator_strengthening(settings.indicator_strengthening);
+      presolver->set_indicator_strengthening(hp.presolve_indicator_strengthening);
       // Dual reductions can remove feasible user assignments that callbacks may later inject.
       // Keep primal reductions so those assignments can be crushed into the presolved problem.
       presolver->set_dual_reductions(!has_set_solution_callback);
