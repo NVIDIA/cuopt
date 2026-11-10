@@ -251,8 +251,7 @@ class mps_data_model_t {
     /** ROWS declaration index (among all constraint rows), not an index into the linear CSR. */
     i_t constraint_row_index{};
     std::string constraint_row_name{};
-    /** MPS ROWS sense for this quadratic row; only 'L' (≤) is supported for convex QCQP at the
-     * moment. */
+    /** MPS ROWS sense for this quadratic row: 'L' (≤) or 'G' (≥). 'E' is not supported. */
     char constraint_row_type{};
     std::vector<f_t> linear_values{};
     std::vector<i_t> linear_indices{};

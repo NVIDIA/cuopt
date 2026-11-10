@@ -297,7 +297,7 @@ endif ()
 FetchContent_Declare(
         papilo
         GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
-        GIT_TAG "178364c774210a2c049e38b7a5a03a3f83eec2f7"
+        GIT_TAG "815a2cc77597d9a07d6d6aadf0ba23fb52ae5117"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -315,7 +315,7 @@ FetchContent_MakeAvailable(papilo)
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "v0.1.0"
+        GIT_TAG "v0.3.1"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM

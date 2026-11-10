@@ -34,15 +34,8 @@ def main():
         ip="localhost", port=5000
     )
 
-    # Delete the job if it is still queued or running
-    # Parameters:
-    #   - job_uuid: The UUID of the job to abort
-    #   - running=True: Abort if the job is currently running
-    #   - queued=True: Abort if the job is in the queue
-    #   - cached=False: Don't delete from cache (only abort active/queued jobs)
-    response = cuopt_service_client.delete(
-        job_uuid, running=True, queued=True, cached=False
-    )
+    # Abort the job if it is still queued or running
+    response = cuopt_service_client.delete(job_uuid)
 
     print(f"Response: {response}")
 

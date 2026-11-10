@@ -7,8 +7,7 @@
 
 #pragma once
 
-#include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
-#include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/mip_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <dual_simplex/logger.hpp>
@@ -36,7 +35,6 @@ struct simplex_solver_settings_t {
       node_limit(std::numeric_limits<i_t>::max()),
       time_limit(std::numeric_limits<f_t>::infinity()),
       work_limit(std::numeric_limits<f_t>::infinity()),
-      branch_and_bound_simplex_iteration_limit(std::numeric_limits<int64_t>::max()),
       absolute_mip_gap_tol(0.0),
       relative_mip_gap_tol(1e-3),
       integer_tol(1e-5),
@@ -120,9 +118,6 @@ struct simplex_solver_settings_t {
       mip_batch_pdlp_reliability_branching(0),
       strong_branching_simplex_iteration_limit(-1),
       random_seed(0),
-      bnb_steal_chance(-1),
-      bnb_nodes_per_steal(-1),
-      bnb_max_steal_attempts(-1),
       reliability_branching(-1),
       inside_mip(0),
       inside_submip(0),
@@ -142,17 +137,15 @@ struct simplex_solver_settings_t {
   i_t node_limit;
   f_t time_limit;
   f_t work_limit;
-  int64_t branch_and_bound_simplex_iteration_limit;  // Limit of the total number of simplex
-                                                     // iterations in B&B
-  f_t absolute_mip_gap_tol;                          // Tolerance on mip gap to declare optimal
-  f_t relative_mip_gap_tol;                          // Tolerance on mip gap to declare optimal
-  f_t integer_tol;                                   // Tolerance on integralitiy violation
-  f_t primal_tol;                                    // Absolute primal infeasibility tolerance
-  f_t dual_tol;                                      // Absolute dual infeasibility tolerance
-  f_t pivot_tol;                                     // Simplex pivot tolerance
-  f_t tight_tol;  // A tight tolerance used to check for infeasibility
-  f_t fixed_tol;  // If l <= x <= u with u - l < fixed_tol a variable is consider fixed
-  f_t zero_tol;   // Values below this tolerance are considered numerically zero
+  f_t absolute_mip_gap_tol;  // Tolerance on mip gap to declare optimal
+  f_t relative_mip_gap_tol;  // Tolerance on mip gap to declare optimal
+  f_t integer_tol;           // Tolerance on integralitiy violation
+  f_t primal_tol;            // Absolute primal infeasibility tolerance
+  f_t dual_tol;              // Absolute dual infeasibility tolerance
+  f_t pivot_tol;             // Simplex pivot tolerance
+  f_t tight_tol;             // A tight tolerance used to check for infeasibility
+  f_t fixed_tol;             // If l <= x <= u with u - l < fixed_tol a variable is consider fixed
+  f_t zero_tol;              // Values below this tolerance are considered numerically zero
   f_t barrier_relative_feasibility_tol;  // Relative feasibility tolerance for barrier method
   f_t barrier_relative_optimality_tol;   // Relative optimality tolerance for barrier method
   f_t
@@ -256,15 +249,8 @@ struct simplex_solver_settings_t {
   // >1 - set as the iteration limit in dual simplex
   i_t strong_branching_simplex_iteration_limit;
 
-  mip_diving_hyper_params_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
-
-  // In B&B, indicate the chance in which a worker can steal a node from another worker.
-  // -1 - automatic (0.05)
-  // 0 - disable
-  // >0 - set the stealing chance [0, 1]
-  f_t bnb_steal_chance;
-  i_t bnb_nodes_per_steal;
-  i_t bnb_max_steal_attempts;
+  // Settings for B&B, diving and the recursive sub-MIP
+  mip::mip_hyper_params_t<i_t, f_t> mip_hyper_params;
 
   // Settings for the reliability branching.
   // - -1: automatic
@@ -275,9 +261,6 @@ struct simplex_solver_settings_t {
   i_t inside_mip;  // 0 if outside MIP, 1 if inside MIP at root node, 2 if inside MIP at leaf node
   i_t inside_submip;     // 0 if in regular MIP solve, 1 if in sub-MIP solve
   i_t inside_root_node;  // 1 if this is running during the root node, 0 otherwise
-
-  // Settings for the recursive sub-MIP
-  mip_submip_hyper_params_t<i_t, f_t> submip_settings;
 
   std::function<void(std::vector<f_t>&, f_t)> solution_callback;
   std::function<void()> heuristic_preemption_callback;

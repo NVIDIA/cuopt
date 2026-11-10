@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <string>
@@ -1054,13 +1055,13 @@ void LpParseEngine<i_t, f_t>::parse_constraints_section()
                          peek().text.c_str());
     }
 
-    // Quadratic constraints currently only support '≤' in the data model
+    // The data model accepts only '<=' and '>=' quadratic rows
     // (see mps_data_model_t::quadratic_constraint_t docs).
     if (is_quadratic_row) {
-      mps_parser_expects(row_type == LesserThanOrEqual,
+      mps_parser_expects(row_type == LesserThanOrEqual || row_type == GreaterThanOrEqual,
                          error_type_t::ValidationError,
                          "LP parse error at line %d: quadratic constraint '%s' must use "
-                         "'<=' (only convex '≤' quadratic constraints are supported)",
+                         "'<=' or '>=' (quadratic equality constraints are not supported)",
                          peek().line,
                          row_name.c_str());
     }
@@ -1506,6 +1507,9 @@ lp_parser_t<i_t, f_t>::lp_parser_t(mps_data_model_t<i_t, f_t>& problem, std::str
 
 template class lp_parser_t<int, float>;
 template class lp_parser_t<int, double>;
+// This instantiation is used for the index64 path. we unconditionally instantiate it to allow
+// cli-swap to index64
+template class lp_parser_t<int64_t, double>;
 
 // ===========================================================================
 // Public read_lp() / read_lp_from_string()
@@ -1529,6 +1533,8 @@ mps_data_model_t<i_t, f_t> read_lp_from_string(std::string_view lp_contents)
 
 template CUOPT_EXPORT mps_data_model_t<int, float> read_lp<int, float>(const std::string&);
 template CUOPT_EXPORT mps_data_model_t<int, double> read_lp<int, double>(const std::string&);
+template CUOPT_EXPORT mps_data_model_t<int64_t, double> read_lp<int64_t, double>(
+  const std::string&);
 template CUOPT_EXPORT mps_data_model_t<int, float> read_lp_from_string<int, float>(
   std::string_view);
 template CUOPT_EXPORT mps_data_model_t<int, double> read_lp_from_string<int, double>(

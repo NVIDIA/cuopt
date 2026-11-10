@@ -28,7 +28,7 @@ class worker_pool_t {
             const std::vector<f_t>& root_solution,
             const std::vector<f_t>& root_edge_norm,
             const std::vector<i_t>& new_slacks,
-            const uint64_t rng_offset = 0)
+            splitmix64_t& seed_gen)
   {
     assert(!is_initialized_);
     assert(num_workers > 0);
@@ -46,14 +46,14 @@ class worker_pool_t {
                                                  root_solution,
                                                  root_edge_norm,
                                                  new_slacks,
-                                                 rng_offset);
+                                                 seed_gen);
       idle_workers_.push_back(i);
       // Propagate the (possibly null) symmetry pointer; workers lazily build
       // their orbital_fixing/lexical_reduction state via ensure_orbital_fixing().
       workers_[i]->symmetry_ptr = symmetry;
     }
 
-    is_initialized_ = true;
+    is_initialized_.store(true, std::memory_order::release);
   }
 
   WorkerType* pop_idle_worker()
@@ -65,7 +65,8 @@ class worker_pool_t {
       i_t idx = idle_workers_.front();
       idle_workers_.pop_front();
       num_idle_workers_--;
-      assert(idle_workers_.size() == static_cast<size_t>(num_idle_workers_.load()));
+      assert(idle_workers_.size() ==
+             static_cast<size_t>(num_idle_workers_.load(std::memory_order::relaxed)));
       assert(idx >= 0 && static_cast<size_t>(idx) < workers_.size());
       return workers_[idx].get();
     }
@@ -75,13 +76,14 @@ class worker_pool_t {
   {
     assert(worker != nullptr);
     worker->set_inactive();
-    assert(!worker->is_active.load());
+    assert(!worker->is_active.load(std::memory_order::relaxed));
 
-    if (!is_initialized_) return;
+    if (!is_initialized()) return;
 
     std::lock_guard lock(mutex_);
     assert(workers_[worker->worker_id].get() == worker);
-    assert(static_cast<size_t>(num_idle_workers_.load()) == idle_workers_.size());
+    assert(static_cast<size_t>(num_idle_workers_.load(std::memory_order::relaxed)) ==
+           idle_workers_.size());
     assert(idle_workers_.size() <= workers_.size());
 
     idle_workers_.push_back(worker->worker_id);
@@ -101,14 +103,14 @@ class worker_pool_t {
     return workers_[id].get();
   }
 
-  bool is_initialized() const { return is_initialized_; }
+  bool is_initialized() const { return is_initialized_.load(std::memory_order::acquire); }
 
   i_t num_idle() const { return num_idle_workers_; }
   i_t size() const { return workers_.size(); }
 
  private:
   std::vector<std::unique_ptr<WorkerType>> workers_;
-  bool is_initialized_ = false;
+  omp_atomic_t<bool> is_initialized_{false};
 
   omp_mutex_t mutex_;
   circular_deque_t<i_t> idle_workers_;

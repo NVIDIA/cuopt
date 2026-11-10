@@ -76,6 +76,9 @@ Initial Solution
 
 Previously run solutions or uploaded solutions can be used as the initial solution for new requests using previously run reqIds as follows:
 
+.. note::
+   This example uploads a solution, which is only supported by the :ref:`legacy HTTP server <legacy-http-server>`. The HTTP proxy server returns 501 for uploaded solutions. See :ref:`legacy-http-differences`.
+
 :download:`initial_solution_example.py <routing/examples/initial_solution_example.py>`
 
 .. literalinclude:: routing/examples/initial_solution_example.py
@@ -254,6 +257,9 @@ Uploading a Solution
 --------------------
 
 Users can also upload a solution which might have been saved for later runs.
+
+.. note::
+   Uploaded solutions are only supported by the :ref:`legacy HTTP server <legacy-http-server>`. The HTTP proxy server returns 501. See :ref:`legacy-http-differences`.
 
 .. code-block:: shell
 

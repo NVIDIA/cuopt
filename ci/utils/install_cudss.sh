@@ -6,18 +6,16 @@
 set -euo pipefail
 
 # Clean metadata & install cudss
-# Pin to 0.7.x to match the runtime cuDSS pinned in dependencies.yaml.
+# Pin to 1.0.x to match the runtime cuDSS pinned in dependencies.yaml.
 if command -v dnf &> /dev/null; then
-    # Adding static library just to please CMAKE requirements
+    # The cudss-cuda-<major> metapackage pulls in the runtime, devel and static packages (the static
+    # library is needed by CMake) and registers the default-path links that 1.0's library packages no longer do.
     if [ "$(echo "$CUDA_VERSION" | cut -d. -f1)" -ge 13 ] && [ "$(echo "$CUDA_VERSION" | cut -d. -f1)" -lt 14 ]; then
-        dnf -y install "libcudss0-static-cuda-13-0.7.*" "libcudss0-devel-cuda-13-0.7.*" "libcudss0-cuda-13-0.7.*"
+        dnf -y install "cudss-cuda-13-1.0.*"
     else
-        dnf -y install "libcudss0-static-cuda-12-0.7.*" "libcudss0-devel-cuda-12-0.7.*" "libcudss0-cuda-12-0.7.*"
+        dnf -y install "cudss-cuda-12-1.0.*"
     fi
-elif command -v apt-get &> /dev/null; then
-    apt-get update
-    apt-get install -y "libcudss-devel=0.7.*"
 else
-    echo "Neither dnf nor apt-get found. Cannot install cudss dependencies."
+    echo "dnf not found. Cannot install cudss dependencies."
     exit 1
 fi

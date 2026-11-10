@@ -114,12 +114,9 @@
 #define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_ROUNDS "mip_hyper_heuristic_presolve_max_rounds"
 #define CUOPT_MIP_HYPER_HEURISTIC_PAPILO_PROBING_MAX_BADGESIZE \
   "mip_hyper_heuristic_papilo_probing_max_badgesize"
-#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO  "mip_hyper_heuristic_root_lp_time_ratio"
-#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME    "mip_hyper_heuristic_root_lp_max_time"
-#define CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT     "mip_hyper_heuristic_rins_time_limit"
-#define CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT "mip_hyper_heuristic_rins_max_time_limit"
-#define CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE       "mip_hyper_heuristic_rins_fix_rate"
-#define CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER  "mip_hyper_heuristic_stagnation_trigger"
+#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO "mip_hyper_heuristic_root_lp_time_ratio"
+#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME   "mip_hyper_heuristic_root_lp_max_time"
+#define CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER "mip_hyper_heuristic_stagnation_trigger"
 #define CUOPT_MIP_HYPER_HEURISTIC_MAX_ITERS_WITHOUT_IMPROVEMENT \
   "mip_hyper_heuristic_max_iterations_without_improvement"
 #define CUOPT_MIP_HYPER_HEURISTIC_INITIAL_INFEASIBILITY_WEIGHT \
@@ -159,6 +156,15 @@
 #define CUOPT_MIP_HYPER_SUBMIP_ROUND_CLOSE_RATIO      "mip_hyper_submip_round_close_ratio"
 #define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ           "mip_hyper_submip_enable_cpufj"
 
+/* @brief Branch-and-bound hyper-parameters */
+#define CUOPT_MIP_HYPER_BNB_BFS_WORKERS_RATIO    "mip_hyper_bnb_bfs_workers_ratio"
+#define CUOPT_MIP_HYPER_BNB_DIVING_WORKERS_RATIO "mip_hyper_bnb_diving_workers_ratio"
+#define CUOPT_MIP_HYPER_BNB_SUBMIP_WORKERS_RATIO "mip_hyper_bnb_submip_workers_ratio"
+#define CUOPT_MIP_HYPER_BNB_STEAL_CHANCE         "mip_hyper_bnb_steal_chance"
+#define CUOPT_MIP_HYPER_BNB_NODES_PER_STEAL      "mip_hyper_bnb_nodes_per_steal"
+#define CUOPT_MIP_HYPER_BNB_MAX_STEAL_ATTEMPTS   "mip_hyper_bnb_max_steal_attempts"
+#define CUOPT_MIP_HYPER_BNB_ROOT_HEURISTICS      "mip_hyper_bnb_root_heuristics"
+
 /* @brief Block bounded-variable-elimination step of cuOpt's internal MIP presolve */
 #define CUOPT_MIP_HYPER_BLOCK_BVE "mip_hyper_block_bve"
 
@@ -183,6 +189,12 @@
 
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
+
+/* @brief Deprecated: accepted and ignored */
+#define CUOPT_MIP_HEURISTICS_ONLY                     "mip_heuristics_only"
+#define CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT     "mip_hyper_heuristic_rins_time_limit"
+#define CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT "mip_hyper_heuristic_rins_max_time_limit"
+#define CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE       "mip_hyper_heuristic_rins_fix_rate"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
@@ -256,6 +268,7 @@
 
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0
+#define CUOPT_FILE_FORMAT_LP  1
 
 /* @brief Status codes constants -- shared with cuopt::client, defined in status_codes.h */
 #include "cuopt/status_codes.h"
