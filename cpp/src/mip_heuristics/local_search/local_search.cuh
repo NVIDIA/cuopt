@@ -45,12 +45,10 @@ class local_search_t {
   local_search_t(mip_solver_context_t<i_t, f_t>& context,
                  rmm::device_uvector<f_t>& lp_optimal_solution_);
 
-  void start_cpufj_scratch_threads(population_t<i_t, f_t>& population);
-  void start_cpufj_lptopt_scratch_threads(population_t<i_t, f_t>& population);
   // Reserve one persistent CPUFJ worker to improve the population's best feasible incumbent
   // by reusing its private climber across ruin-and-repair iterations.
   void start_cpufj_lns_improvement_thread(population_t<i_t, f_t>& population);
-  void stop_cpufj_scratch_threads();
+  void stop_cpufj_lns_improvement_thread();
   void generate_fast_solution(solution_t<i_t, f_t>& solution, timer_t timer);
   bool generate_solution(solution_t<i_t, f_t>& solution,
                          bool perturb,
@@ -86,7 +84,7 @@ class local_search_t {
   fj_improvement_callback_t<f_t> make_fj_improvement_callback(
     problem_t<i_t, f_t>* publication_problem);
 
-  i_t ls_threads() const { return ls_cpu_fj.size() + scratch_cpu_fj.size(); }
+  i_t ls_threads() const { return ls_cpu_fj.size(); }
 
   // Start CPUFJ thread for deterministic mode with B&B integration
   void start_cpufj_deterministic(mip::branch_and_bound_t<i_t, f_t>& bb);
@@ -122,8 +120,6 @@ class local_search_t {
   std::mt19937 rng;
 
   std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>> ls_cpu_fj;
-  std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>> scratch_cpu_fj;
-  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> scratch_cpu_fj_on_lp_opt;
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> deterministic_cpu_fj;
   // Single persistent climber reused across every ruin-and-repair iteration of the LNS
   // improvement worker, so that only the first iteration pays the O(nnz) climber construction.
@@ -136,7 +132,6 @@ class local_search_t {
   bool cutting_plane_added_for_active_run{false};
 
   omp_atomic_t<f_t> local_search_best_obj{std::numeric_limits<double>::max()};
-  population_t<i_t, f_t>* pop_ptr{nullptr};
 };
 
 }  // namespace cuopt::mathematical_optimization::mip

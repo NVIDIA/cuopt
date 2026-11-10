@@ -17,7 +17,7 @@ dependencies:
 - cuda-nvcc
 - cuda-nvtx-dev
 - cuda-sanitizer-api
-- cuda-version=13.3
+- cuda-version=13.4
 - cudf==26.12.*,>=0.0.0a0
 - cupy>=14.0.1,!=14.1.0
 - cxx-compiler
@@ -30,7 +30,7 @@ dependencies:
 - jsonref==1.1.0
 - libabseil
 - libboost-devel
-- libcudss-dev >=0.7,<0.8
+- libcudss-dev >=1.0,<1.1
 - libcusparse-dev
 - libgomp >=11
 - libgrpc >=1.78.0,<1.80.0a0
@@ -82,4 +82,4 @@ dependencies:
 - pip:
   - nvidia-sphinx-theme
   - swagger-plugin-for-sphinx
-name: all_cuda-133_arch-x86_64
+name: all_cuda-134_arch-x86_64
