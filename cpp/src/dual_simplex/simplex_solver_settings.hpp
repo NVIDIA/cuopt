@@ -72,6 +72,7 @@ struct simplex_solver_settings_t {
       barrier(false),
       eliminate_dense_columns(true),
       barrier_iterative_refinement(true),
+      barrier_adaptive_iterative_refinement(false),
       barrier_adaptive_regularization(-1),
       barrier_primal_regularization(-1.0),
       barrier_dual_regularization(-1.0),
@@ -176,8 +177,10 @@ struct simplex_solver_settings_t {
   bool cudss_deterministic;  // true to use cuDSS deterministic mode, false for non-deterministic
   bool barrier;              // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
-  bool eliminate_dense_columns;         // true to eliminate dense columns from A*D*A^T
-  bool barrier_iterative_refinement;    // true to use iterative refinement for barrier method
+  bool eliminate_dense_columns;       // true to eliminate dense columns from A*D*A^T
+  bool barrier_iterative_refinement;  // true to use iterative refinement for barrier method
+  // true: adaptive KKT IR tolerance (1e-8, then 1e-12) for all problems
+  bool barrier_adaptive_iterative_refinement;
   int barrier_adaptive_regularization;  // -1 automatic, 0 disabled, 1 enabled
   f_t barrier_primal_regularization;    // -1 automatic (has_soc ? 1e-8 : 1e-6), else user-specified
                                         // initial primal regularization (augmented system's (2,2)

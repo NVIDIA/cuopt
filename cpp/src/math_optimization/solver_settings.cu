@@ -274,6 +274,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true},
     {CUOPT_SEQUENCE_SOLVE, &pdlp_settings.sequence_solve, false},
     {CUOPT_BARRIER_ITERATIVE_REFINEMENT, &pdlp_settings.barrier_iterative_refinement, true},
+    {CUOPT_BARRIER_ADAPTIVE_ITERATIVE_REFINEMENT, &pdlp_settings.barrier_adaptive_iterative_refinement, false},
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
     {CUOPT_MIP_HEURISTICS_ONLY, &deprecated_heuristics_only, false, "deprecated; has no effect", true},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
