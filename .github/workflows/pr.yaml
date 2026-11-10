@@ -193,7 +193,6 @@ jobs:
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
           - '!.yamllint.yaml'
-          - '!benchmarks/**'
           - '!ci/nightly/**'
           - '!ci/utils/pr_test_summary.py'
           - '!codecov.yml'
