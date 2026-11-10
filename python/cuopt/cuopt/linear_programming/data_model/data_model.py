@@ -580,6 +580,13 @@ class DataModel(data_model_wrapper.DataModel):
                 "constraint lower and upper bounds must have the same "
                 f"length, got {n_lower} and {n_upper}"
             )
+        # Convert first so invalid input raises before the model changes.
+        constraint_lower_bounds = np.asarray(
+            constraint_lower_bounds, dtype=np.float64
+        )
+        constraint_upper_bounds = np.asarray(
+            constraint_upper_bounds, dtype=np.float64
+        )
         self.set_constraint_lower_bounds(constraint_lower_bounds)
         self.set_constraint_upper_bounds(constraint_upper_bounds)
         self.set_constraint_bounds(np.array([], dtype=np.float64))
@@ -618,6 +625,10 @@ class DataModel(data_model_wrapper.DataModel):
                 "constraint rhs and row types must have the same length, "
                 f"got {n_rhs} and {n_types}"
             )
+        # Convert first so invalid input raises before the model changes.
+        rhs = np.asarray(rhs, dtype=np.float64)
+        for row_type in row_types:
+            ord(row_type)
         self.set_constraint_bounds(rhs)
         self.set_row_types(row_types)
         self.set_constraint_lower_bounds(np.array([], dtype=np.float64))

@@ -86,3 +86,14 @@ def test_both_setters_give_the_same_solution():
     )
     assert _objective(by_rhs) == pytest.approx(-4.0, abs=1e-4)
     assert _objective(by_bounds) == pytest.approx(-4.0, abs=1e-4)
+
+
+def test_rows_from_rhs_failure_leaves_model_unchanged():
+    dm = _base_model()
+    dm.set_constraint_rows_from_rhs(np.array([4.0, 0.0]), np.array(["L", "G"]))
+    with pytest.raises((TypeError, ValueError)):
+        dm.set_constraint_rows_from_rhs(
+            np.array([9.0, 9.0]), np.array(["L", ""])
+        )
+    assert dm.get_constraint_bounds().tolist() == [4.0, 0.0]
+    assert dm.get_ascii_row_types().tolist() == [ord("L"), ord("G")]
