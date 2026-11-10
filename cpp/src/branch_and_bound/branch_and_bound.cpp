@@ -4262,7 +4262,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (root_status == lp_status_t::CONCURRENT_LIMIT) {
     solver_status_ = mip_status_t::HALT;
-    set_final_solution(solution, -inf);
+    // the best valid bound a root solver reported before it stopped
+    set_final_solution(solution, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
     return mip_status_t::HALT;
   }
 
@@ -4283,13 +4284,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (root_status == lp_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
-    set_final_solution(solution, -inf);
+    // the best valid bound a root solver reported before it stopped
+    set_final_solution(solution, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
     return solver_status_;
   }
 
   if (root_status == lp_status_t::WORK_LIMIT) {
     solver_status_ = mip_status_t::WORK_LIMIT;
-    set_final_solution(solution, -inf);
+    // the best valid bound a root solver reported before it stopped
+    set_final_solution(solution, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
     return solver_status_;
   }
 
