@@ -85,7 +85,7 @@ bool repair_cpufj_lns_neighborhood(fj_cpu_climber_t<i_t, f_t>* ptr,
 // a single, already-constructed CPU FJ climber (`ptr`) through repeated ruin+repair bursts once
 // the population has a feasible incumbent. It never touches device memory or population
 // internals directly -- all communication is through the host snapshot and improvement callback, so
-// it cannot race the main solve thread or the feasibility-finding scratch CPUFJ lanes.
+// it cannot race the main solve thread.
 template <typename i_t, typename f_t>
 void run_cpufj_lns_ruin_repair(fj_cpu_climber_t<i_t, f_t>* ptr,
                                const std::function<bool(std::vector<f_t>&)>& snapshot,
