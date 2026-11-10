@@ -8,7 +8,7 @@
  * @brief Unit tests for grpc_client_t using mock stubs
  *
  * These tests verify client-side error handling without requiring a real server.
- * For integration tests with a real server, see grpc_integration_test.cpp.
+ * For integration tests with a real server, see grpc_mathopt_integration_test.cpp.
  */
 
 #include <gmock/gmock.h>
@@ -2495,26 +2495,24 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   orig.determinism_mode = CUOPT_MODE_DETERMINISTIC;
   orig.seed             = 12345;
 
-  // Heuristic hyper-parameters (mip_heuristics_hyper_params_t).
+  // Heuristic hyper-parameters (mip_hyper_params_t).
   // Set every field to a value distinct from its C++ default so a missed
   // mapping line would produce a default-valued mismatch on decode.
-  orig.heuristic_params.population_size                    = 64;     // default 32
-  orig.heuristic_params.num_cpufj_threads                  = 4;      // default 8
-  orig.heuristic_params.presolve_max_rounds                = 12;     // default -1
-  orig.heuristic_params.papilo_probing_max_badgesize       = 64;     // default -1
-  orig.heuristic_params.root_lp_time_ratio                 = 0.25;   // default 0.1
-  orig.heuristic_params.root_lp_max_time                   = 7.5;    // default 15.0
-  orig.heuristic_params.rins_time_limit                    = 4.0;    // default 3.0
-  orig.heuristic_params.rins_max_time_limit                = 25.0;   // default 20.0
-  orig.heuristic_params.rins_fix_rate                      = 0.75;   // default 0.5
-  orig.heuristic_params.stagnation_trigger                 = 5;      // default 3
-  orig.heuristic_params.max_iterations_without_improvement = 12;     // default 8
-  orig.heuristic_params.initial_infeasibility_weight       = 500.0;  // default 1000.0
-  orig.heuristic_params.n_of_minimums_for_exit             = 9000;   // default 7000
-  orig.heuristic_params.enabled_recombiners                = 7;      // default 15 (bitmask)
-  orig.heuristic_params.cycle_detection_length             = 40;     // default 30
-  orig.heuristic_params.relaxed_lp_time_limit              = 2.5;    // default 1.0
-  orig.heuristic_params.related_vars_time_limit            = 45.0;   // default 2.0
+  auto& hp                                        = orig.mip_hyper_params;
+  hp.heuristic_population_size                    = 64;     // default 32
+  hp.heuristic_num_cpufj_threads                  = 4;      // default 8
+  hp.presolve_max_rounds                          = 12;     // default -1
+  hp.presolve_papilo_probing_max_badgesize        = 64;     // default -1
+  hp.heuristic_root_lp_time_ratio                 = 0.25;   // default 0.1
+  hp.heuristic_root_lp_max_time                   = 7.5;    // default 15.0
+  hp.heuristic_stagnation_trigger                 = 5;      // default 3
+  hp.heuristic_max_iterations_without_improvement = 12;     // default 8
+  hp.heuristic_initial_infeasibility_weight       = 500.0;  // default 1000.0
+  hp.heuristic_n_of_minimums_for_exit             = 9000;   // default 7000
+  hp.heuristic_enabled_recombiners                = 7;      // default 15 (bitmask)
+  hp.heuristic_cycle_detection_length             = 40;     // default 30
+  hp.heuristic_relaxed_lp_time_limit              = 2.5;    // default 1.0
+  hp.heuristic_related_vars_time_limit            = 45.0;   // default 2.0
 
   // Roundtrip: C++ -> proto -> C++
   cuopt::remote::MIPSolverSettings pb;
@@ -2568,23 +2566,21 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   EXPECT_EQ(restored.seed, 12345);
 
   // Heuristic hyper-parameters
-  EXPECT_EQ(restored.heuristic_params.population_size, 64);
-  EXPECT_EQ(restored.heuristic_params.num_cpufj_threads, 4);
-  EXPECT_EQ(restored.heuristic_params.presolve_max_rounds, 12);
-  EXPECT_EQ(restored.heuristic_params.papilo_probing_max_badgesize, 64);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_time_ratio, 0.25);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_max_time, 7.5);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_time_limit, 4.0);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_max_time_limit, 25.0);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_fix_rate, 0.75);
-  EXPECT_EQ(restored.heuristic_params.stagnation_trigger, 5);
-  EXPECT_EQ(restored.heuristic_params.max_iterations_without_improvement, 12);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.initial_infeasibility_weight, 500.0);
-  EXPECT_EQ(restored.heuristic_params.n_of_minimums_for_exit, 9000);
-  EXPECT_EQ(restored.heuristic_params.enabled_recombiners, 7);
-  EXPECT_EQ(restored.heuristic_params.cycle_detection_length, 40);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.relaxed_lp_time_limit, 2.5);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.related_vars_time_limit, 45.0);
+  const auto& rhp = restored.mip_hyper_params;
+  EXPECT_EQ(rhp.heuristic_population_size, 64);
+  EXPECT_EQ(rhp.heuristic_num_cpufj_threads, 4);
+  EXPECT_EQ(rhp.presolve_max_rounds, 12);
+  EXPECT_EQ(rhp.presolve_papilo_probing_max_badgesize, 64);
+  EXPECT_DOUBLE_EQ(rhp.heuristic_root_lp_time_ratio, 0.25);
+  EXPECT_DOUBLE_EQ(rhp.heuristic_root_lp_max_time, 7.5);
+  EXPECT_EQ(rhp.heuristic_stagnation_trigger, 5);
+  EXPECT_EQ(rhp.heuristic_max_iterations_without_improvement, 12);
+  EXPECT_DOUBLE_EQ(rhp.heuristic_initial_infeasibility_weight, 500.0);
+  EXPECT_EQ(rhp.heuristic_n_of_minimums_for_exit, 9000);
+  EXPECT_EQ(rhp.heuristic_enabled_recombiners, 7);
+  EXPECT_EQ(rhp.heuristic_cycle_detection_length, 40);
+  EXPECT_DOUBLE_EQ(rhp.heuristic_relaxed_lp_time_limit, 2.5);
+  EXPECT_DOUBLE_EQ(rhp.heuristic_related_vars_time_limit, 45.0);
 }
 
 TEST(MapperRoundtrip, MIPSettingsSymmetryRejectsOutOfRange)
@@ -3070,6 +3066,18 @@ TEST(MapperRoundtrip, ParameterMapRejectsUnknownName)
   EXPECT_THROW(apply_parameter_overrides(settings, pb.parameters()), std::invalid_argument);
 }
 
+TEST(MapperRoundtrip, ParameterMapAcceptsDeprecatedNames)
+{
+  cuopt::remote::MIPSolverSettings pb;
+  (*pb.mutable_parameters())[CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT]     = "3.0";
+  (*pb.mutable_parameters())[CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT] = "20";
+  (*pb.mutable_parameters())[CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE]       = "0.9";
+  (*pb.mutable_parameters())[CUOPT_MIP_HEURISTICS_ONLY]                     = "false";
+
+  solver_settings_t<int32_t, double> settings;
+  EXPECT_NO_THROW(apply_parameter_overrides(settings, pb.parameters()));
+}
+
 TEST(MapperRoundtrip, ParameterMapRejectsOutOfRangeValue)
 {
   cuopt::remote::PDLPSolverSettings pb;
@@ -3077,6 +3085,34 @@ TEST(MapperRoundtrip, ParameterMapRejectsOutOfRangeValue)
 
   solver_settings_t<int32_t, double> settings;
   EXPECT_THROW(apply_parameter_overrides(settings, pb.parameters()), std::invalid_argument);
+}
+
+// Path values are replaced with "" and a non-path parameter in the same map still applies.
+TEST(MapperRoundtrip, ParameterMapBlanksFilePathParameters)
+{
+  const char* const names[] = {
+    CUOPT_LOG_FILE, CUOPT_SOLUTION_FILE, CUOPT_USER_PROBLEM_FILE, CUOPT_PRESOLVE_FILE};
+
+  cuopt::remote::PDLPSolverSettings pb;
+  (*pb.mutable_parameters())[CUOPT_TIME_LIMIT] = "1.5";
+  for (const char* name : names) {
+    (*pb.mutable_parameters())[name] = "/tmp/cuopt-client-path";
+  }
+
+  solver_settings_t<int32_t, double> settings;
+  EXPECT_NO_THROW(apply_parameter_overrides(settings, pb.parameters()));
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().time_limit, 1.5);
+
+  const auto& lp  = settings.get_pdlp_settings();
+  const auto& mip = settings.get_mip_settings();
+  EXPECT_EQ(lp.log_file, "");
+  EXPECT_EQ(mip.log_file, "");
+  EXPECT_EQ(lp.sol_file, "");
+  EXPECT_EQ(mip.sol_file, "");
+  EXPECT_EQ(lp.user_problem_file, "");
+  EXPECT_EQ(mip.user_problem_file, "");
+  EXPECT_EQ(lp.presolve_file, "");
+  EXPECT_EQ(mip.presolve_file, "");
 }
 
 TEST(MapperRoundtrip, ParameterMapRejectsTooManyEntries)
@@ -3348,7 +3384,7 @@ TEST(MapperRoundtrip, PDLPSettingsCurtisReidScalingExplicitFalseRoundtrips)
 // in-class default. Spot-checks a representative cross-section of the fields
 // converted to `optional` in field_registry.yaml — booleans with default true,
 // numeric tolerances with non-zero defaults, time/work limits at infinity,
-// int32 knobs whose default is -1 or +N, and a handful of heuristic_params
+// int32 knobs whose default is -1 or +N, and a handful of mip_hyper_params
 // values. If a field is ever added with a non-zero C++ default but without
 // `optional: true` in the registry, this test will fail and point at the gap.
 TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
@@ -3452,20 +3488,18 @@ TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_DOUBLE_EQ(after.semi_continuous_big_m, fresh.semi_continuous_big_m);
   EXPECT_EQ(static_cast<int>(after.presolver), static_cast<int>(fresh.presolver));
   EXPECT_EQ(after.mip_scaling, fresh.mip_scaling);
-  // heuristic_params: spot-check one of each kind (int, double).
-  EXPECT_EQ(after.heuristic_params.population_size, fresh.heuristic_params.population_size);
-  EXPECT_EQ(after.heuristic_params.num_cpufj_threads, fresh.heuristic_params.num_cpufj_threads);
-  EXPECT_EQ(after.heuristic_params.presolve_max_rounds, fresh.heuristic_params.presolve_max_rounds);
-  EXPECT_EQ(after.heuristic_params.papilo_probing_max_badgesize,
-            fresh.heuristic_params.papilo_probing_max_badgesize);
-  EXPECT_DOUBLE_EQ(after.heuristic_params.root_lp_time_ratio,
-                   fresh.heuristic_params.root_lp_time_ratio);
-  EXPECT_DOUBLE_EQ(after.heuristic_params.root_lp_max_time,
-                   fresh.heuristic_params.root_lp_max_time);
-  EXPECT_DOUBLE_EQ(after.heuristic_params.rins_fix_rate, fresh.heuristic_params.rins_fix_rate);
-  EXPECT_EQ(after.heuristic_params.enabled_recombiners, fresh.heuristic_params.enabled_recombiners);
-  EXPECT_DOUBLE_EQ(after.heuristic_params.initial_infeasibility_weight,
-                   fresh.heuristic_params.initial_infeasibility_weight);
+  // mip_hyper_params: spot-check one of each kind (int, double).
+  const auto& ahp = after.mip_hyper_params;
+  const auto& fhp = fresh.mip_hyper_params;
+  EXPECT_EQ(ahp.heuristic_population_size, fhp.heuristic_population_size);
+  EXPECT_EQ(ahp.heuristic_num_cpufj_threads, fhp.heuristic_num_cpufj_threads);
+  EXPECT_EQ(ahp.presolve_max_rounds, fhp.presolve_max_rounds);
+  EXPECT_EQ(ahp.presolve_papilo_probing_max_badgesize, fhp.presolve_papilo_probing_max_badgesize);
+  EXPECT_DOUBLE_EQ(ahp.heuristic_root_lp_time_ratio, fhp.heuristic_root_lp_time_ratio);
+  EXPECT_DOUBLE_EQ(ahp.heuristic_root_lp_max_time, fhp.heuristic_root_lp_max_time);
+  EXPECT_EQ(ahp.heuristic_enabled_recombiners, fhp.heuristic_enabled_recombiners);
+  EXPECT_DOUBLE_EQ(ahp.heuristic_initial_infeasibility_weight,
+                   fhp.heuristic_initial_infeasibility_weight);
 }
 
 // ============================================================================

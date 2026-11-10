@@ -70,7 +70,7 @@ For problems with quadratic constraints, first create a problem, and then use
    Support for quadratic constraints is currently in **beta**. ``cuOptAddQuadraticConstraint``
    supports three types of quadratic constraints:
    - **Convex quadratic constraints** of the form ``x^T Q x + d^T x <= alpha`` where ``H=(Q+Q^T)/2`` is a symmetric positive semidefinite matrix. `Q` need not be symmetric.
-   - **Second-order cone constraints** of the form ``sum_{i=1}^n x_i^2 <= x_0``, ``x_0 >= 0``
+   - **Second-order cone constraints** of the form ``sum_{i=1}^n x_i^2 <= x_0^2``, ``x_0 >= 0``
    - **Rotated second-order cone constraints** of the form ``sum_{i=2}^n x_i^2 - 2 * x_0 * x_1 <= 0``, ``x_0 >= 0``, ``x_1 >= 0`` (supply ``Q[x_0, x_1] = -2`` in COO, or ``-x_0*x_1`` for the ``<= x_0*x_1`` cone form; see :doc:`/convex-features`)
 
    Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints are not supported.
@@ -134,6 +134,7 @@ The following functions may be used to get information about an `cuOptimizationP
 .. doxygenfunction:: cuOptGetNumNonZeros
 .. doxygenfunction:: cuOptGetConstraintMatrix
 .. doxygenfunction:: cuOptGetConstraintMatrixCSR
+.. doxygenfunction:: cuOptGetConstraintMatrixCSC
 .. doxygenfunction:: cuOptGetConstraintSense
 .. doxygenfunction:: cuOptGetConstraintRightHandSide
 .. doxygenfunction:: cuOptGetConstraintLowerBounds
@@ -299,6 +300,16 @@ These constants are used to configure `CUOPT_MULTIGPU_PDLP_PARTITIONER` via :c:f
 .. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO
 .. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER_KAMINPAR
 .. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER_ROUND_ROBIN
+
+Presolve Constants
+------------------
+
+These constants are used to configure `CUOPT_PRESOLVE` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_PRESOLVE_DEFAULT
+.. doxygendefine:: CUOPT_PRESOLVE_OFF
+.. doxygendefine:: CUOPT_PRESOLVE_PAPILO
+.. doxygendefine:: CUOPT_PRESOLVE_PSLP
 
 .. _barrier-iterative-refinement-constants:
 

@@ -271,9 +271,12 @@ message MIPSolverSettings {
   optional int32 num_cpufj_threads = 36 [deprecated = true];
   optional double root_lp_time_ratio = 39 [deprecated = true];
   optional double root_lp_max_time = 40 [deprecated = true];
-  optional double rins_time_limit = 41 [deprecated = true];
-  optional double rins_max_time_limit = 42 [deprecated = true];
-  optional double rins_fix_rate = 43 [deprecated = true];
+  reserved 41;
+  reserved "rins_time_limit";
+  reserved 42;
+  reserved "rins_max_time_limit";
+  reserved 43;
+  reserved "rins_fix_rate";
   optional int32 stagnation_trigger = 44 [deprecated = true];
   optional int32 max_iterations_without_improvement = 45 [deprecated = true];
   optional double initial_infeasibility_weight = 46 [deprecated = true];
