@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <mip_heuristics/lns/thread_budget.hpp>
+#include <mip_heuristics/ruin-repair-lns/thread_budget.hpp>
 #include "diversity/diversity_manager.cuh"
 #include "local_search/local_search.cuh"
 #include "local_search/rounding/simple_rounding.cuh"

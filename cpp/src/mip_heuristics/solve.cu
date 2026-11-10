@@ -12,9 +12,9 @@
 #include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/feasibility_jump/early_gpufj.cuh>
-#include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
+#include <mip_heuristics/ruin-repair-lns/thread_budget.hpp>
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/structural/early_structural.cuh>
 #include <mip_heuristics/utils.cuh>

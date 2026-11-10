@@ -5,12 +5,224 @@
  */
 /* clang-format on */
 
-#include <branch_and_bound/diving_heuristics.hpp>
+#include "diving_heuristics.hpp"
+
+#include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/fractional.hpp>
+#include <branch_and_bound/utils.hpp>
+#include <dual_simplex/solve.hpp>
+
+#include <raft/core/nvtx.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
 
 using simplex::logger_t;
 using simplex::lp_problem_t;
+
+template <typename i_t, typename f_t>
+node_status_t diving_worker_t<i_t, f_t>::classify_node(
+  mip_node_t<i_t, f_t>* node_ptr,
+  simplex::dual_status_t lp_status,
+  f_t upper_bound,
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  std::vector<i_t>& fractional,
+  f_t& leaf_obj)
+{
+  if (lp_status != simplex::dual_status_t::OPTIMAL) { return node_status_t::FATHOMED; }
+
+  fractional.clear();
+  i_t num_fractional =
+    fractional_variables(settings, this->leaf_solution.x, this->var_types, fractional);
+  leaf_obj = simplex::compute_objective(this->leaf_problem, this->leaf_solution.x);
+
+  // The pseudocost update reads the lower bound inherited from the parent, so it must come first.
+  this->pseudo_costs.update_pseudo_costs(node_ptr, leaf_obj);
+  node_ptr->lower_bound = leaf_obj;
+  snap_to_lattice(this->leaf_problem, settings, node_ptr, leaf_obj);
+
+  if (num_fractional == 0) { return node_status_t::INTEGER_FEASIBLE; }
+  if (node_ptr->lower_bound > upper_bound + settings.absolute_mip_gap_tol / 10) {
+    return node_status_t::FATHOMED;
+  }
+  return node_status_t::HAS_CHILDREN;
+}
+
+template <typename i_t, typename f_t>
+void diving_worker_t<i_t, f_t>::dive(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                     const branch_and_bound_stats_t<i_t, f_t>& bnb_stats)
+{
+  raft::common::nvtx::range scope("BB::diving_thread");
+  if (this->orbital_fixing) { this->orbital_fixing->disable(); }
+  logger_t log;
+  log.log = false;
+
+  const i_t diving_node_limit = settings.mip_hyper_params.diving_node_limit;
+  const i_t backtrack_limit   = settings.mip_hyper_params.diving_backtrack_limit;
+  this->recompute_basis       = true;
+
+  bool is_start_feasible = this->rebuild_bounds_from_stack(settings);
+  if (!is_start_feasible) { return; }
+
+  branch_and_bound_t<i_t, f_t>* bnb_ptr = this->branch_and_bound_ptr;
+  search_tree_t<i_t, f_t> dive_tree(std::move(this->start_node));
+
+  // Since we are perform a DFS with a limit amount of backtracking, the
+  // stack can hold at most `backtrack_limit` + 2 siblings nodes of the
+  // current level
+  circular_deque_t<mip_node_t<i_t, f_t>*> stack(backtrack_limit + 4);
+  stack.push_front(&dive_tree.root);
+
+  branch_and_bound_stats_t<i_t, f_t> dive_stats;
+  f_t lower_bound = bnb_ptr->get_lower_bound();
+  f_t upper_bound = bnb_ptr->get_upper_bound();
+  f_t user_obj    = compute_user_objective(this->leaf_problem, upper_bound);
+  f_t user_lower  = compute_user_objective(this->leaf_problem, lower_bound);
+  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
+  f_t abs_gap     = compute_user_abs_gap(this->leaf_problem, upper_bound, lower_bound);
+
+  while (stack.size() > 0 && !bnb_ptr->has_solver_stopped() &&
+         rel_gap > settings.relative_mip_gap_tol && abs_gap > settings.absolute_mip_gap_tol &&
+         !settings.received_halt_signal()) {
+    mip_node_t<i_t, f_t>* node_ptr = stack.front();
+    stack.pop_front();
+
+    this->lower_bound = node_ptr->lower_bound;
+
+    if (node_ptr->lower_bound > upper_bound) {
+      this->recompute_basis = true;
+      if (stack.size() >= 1) {
+        for (i_t i = 0; i < node_ptr->depth - stack.front()->depth; ++i) {
+          this->backtrack_bound_changes();
+        }
+      }
+      continue;
+    }
+
+    if (toc(bnb_stats.start_time) > settings.time_limit) { break; }
+    if (dive_stats.nodes_explored >= diving_node_limit) { break; }
+
+    int64_t bnb_lp_iters = bnb_stats.total_simplex_iters;
+    f_t factor           = settings.mip_hyper_params.diving_iteration_limit_factor;
+    int64_t offset       = settings.mip_hyper_params.diving_iteration_limit_offset;
+    int64_t max_iter     = offset + factor * bnb_lp_iters - dive_stats.total_simplex_iters;
+    if (max_iter <= 0) { break; }
+
+    decompress_vstatus(node_ptr->packed_vstatus, this->leaf_problem.num_cols, this->leaf_vstatus);
+    assert(this->leaf_vstatus.size() == this->leaf_problem.num_cols);
+
+    simplex::dual_status_t lp_status = this->solve_node_lp(
+      settings, node_ptr, dive_stats, log, max_iter, bnb_stats.start_time, upper_bound);
+    ++dive_stats.nodes_explored;
+
+    if (lp_status == simplex::dual_status_t::TIME_LIMIT) { break; }
+    if (lp_status == simplex::dual_status_t::CONCURRENT_LIMIT) { break; }
+    if (lp_status == simplex::dual_status_t::ITERATION_LIMIT) { break; }
+
+    const i_t depth = node_ptr->depth;
+    f_t leaf_obj;
+    std::vector<i_t> fractional;
+    node_status_t node_status =
+      classify_node(node_ptr, lp_status, upper_bound, settings, fractional, leaf_obj);
+    if (node_status == node_status_t::INTEGER_FEASIBLE) {
+      bnb_ptr->set_solution_from_worker(this->leaf_problem,
+                                        leaf_obj,
+                                        this->leaf_solution.x,
+                                        node_ptr->depth,
+                                        this->search_strategy);
+    }
+
+    if (node_status != node_status_t::HAS_CHILDREN) {
+      this->recompute_basis = true;
+
+      if (stack.size() >= 1) {
+        for (i_t i = 0; i < depth - stack.front()->depth + 1; ++i) {
+          this->backtrack_bound_changes();
+        }
+      }
+
+    } else {
+      this->recompute_basis = false;
+
+      auto [var, dir] = select_branch_variable(fractional, settings);
+      dive_tree.branch(node_ptr,
+                       var,
+                       this->leaf_solution.x[var],
+                       fractional.size(),
+                       this->leaf_vstatus,
+                       this->leaf_problem,
+                       log);
+
+      if (dir == branch_direction_t::UP) {
+        stack.push_front(node_ptr->get_down_child());
+        stack.push_front(node_ptr->get_up_child());
+      } else {
+        stack.push_front(node_ptr->get_up_child());
+        stack.push_front(node_ptr->get_down_child());
+      }
+    }
+
+    // Remove nodes that we can no longer backtrack to (i.e., from the current node, we can only
+    // backtrack to a node that is has a depth of at most 5 levels lower than the current node).
+    while (stack.size() > 1 && stack.front()->depth - stack.back()->depth > backtrack_limit) {
+      stack.pop_back();
+    }
+
+    lower_bound = bnb_ptr->get_lower_bound();
+    upper_bound = bnb_ptr->get_upper_bound();
+    user_obj    = compute_user_objective(this->leaf_problem, upper_bound);
+    user_lower  = compute_user_objective(this->leaf_problem, lower_bound);
+    rel_gap     = user_relative_gap(user_obj, user_lower);
+    abs_gap     = compute_user_abs_gap(this->leaf_problem, upper_bound, lower_bound);
+  }
+}
+
+template <typename i_t, typename f_t>
+branch_variable_t<i_t> diving_worker_t<i_t, f_t>::select_branch_variable(
+  const std::vector<i_t>& fractional, const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+{
+  logger_t log;
+  log.log                      = false;
+  i_t branch_var               = -1;
+  branch_direction_t round_dir = branch_direction_t::NONE;
+  std::vector<f_t>& solution   = this->leaf_solution.x;
+
+  switch (this->search_strategy) {
+    case search_strategy_t::COEFFICIENT_DIVING:
+      if (this->var_up_locks.empty()) {
+        calculate_variable_locks(this->leaf_problem, this->var_up_locks, this->var_down_locks);
+      }
+
+      return coefficient_diving(
+        this->leaf_problem, fractional, solution, this->var_up_locks, this->var_down_locks, log);
+
+    case search_strategy_t::LINE_SEARCH_DIVING:
+      return line_search_diving(fractional, solution, this->root_solution, log);
+
+    case search_strategy_t::PSEUDOCOST_DIVING:
+      return pseudocost_diving(this->pseudo_costs, fractional, solution, this->root_solution, log);
+
+    case search_strategy_t::GUIDED_DIVING:
+      assert(!this->current_incumbent.empty());
+      return guided_diving(this->pseudo_costs, fractional, solution, this->current_incumbent, log);
+
+    case search_strategy_t::FARKAS_DIVING:
+      return farkas_diving(this->leaf_problem, fractional, solution, settings.zero_tol, log);
+
+    case search_strategy_t::VECTOR_LENGTH_DIVING:
+      return vector_length_diving(this->leaf_problem, fractional, solution, log);
+
+    case search_strategy_t::BEST_FIRST:
+    case search_strategy_t::RINS:  // This is used for solving the DFS of the sub-MIP.
+    case search_strategy_t::RENS:
+    case search_strategy_t::MUTATION:
+      branch_var = this->pseudo_costs.variable_selection(fractional, solution);
+      round_dir  = martin_criteria(solution[branch_var], this->root_solution[branch_var]);
+      return {branch_var, round_dir};
+  }
+
+  log.debug("Unknown variable selection method: %d\n", this->search_strategy);
+  return {-1, branch_direction_t::NONE};
+}
 
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
@@ -407,6 +619,8 @@ template branch_variable_t<int> vector_length_diving(const lp_problem_t<int, dou
                                                      const std::vector<int>& fractional,
                                                      const std::vector<double>& solution,
                                                      logger_t& log);
+
+template class diving_worker_t<int, double>;
 
 #endif
 

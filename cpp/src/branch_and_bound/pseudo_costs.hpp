@@ -335,4 +335,25 @@ void strong_branching(const simplex::lp_problem_t<i_t, f_t>& original_lp,
                       mip_symmetry_t<i_t, f_t>* symmetry,
                       pseudo_costs_t<i_t, f_t>& pc);
 
+// Martin's criteria for the preferred rounding direction (see [1])
+// [1] A. Martin, “Integer Programs with Block Structure,”
+// Technische Universit¨at Berlin, Berlin, 1999. Accessed: Aug. 08, 2025.
+// [Online]. Available: https://opus4.kobv.de/opus4-zib/frontdoor/index/index/docId/391
+template <typename f_t>
+branch_direction_t martin_criteria(f_t val, f_t root_val)
+{
+  const f_t down_val  = std::floor(root_val);
+  const f_t up_val    = std::ceil(root_val);
+  const f_t down_dist = val - down_val;
+  const f_t up_dist   = up_val - val;
+  constexpr f_t eps   = 1e-6;
+
+  if (down_dist < up_dist + eps) {
+    return branch_direction_t::DOWN;
+
+  } else {
+    return branch_direction_t::UP;
+  }
+}
+
 }  // namespace cuopt::mathematical_optimization::mip
