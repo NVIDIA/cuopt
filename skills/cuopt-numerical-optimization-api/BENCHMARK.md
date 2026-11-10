@@ -1,14 +1,16 @@
 # Skill Benchmark: cuopt-numerical-optimization-api
 
-> ❌ **Overall verdict: FAIL — Publication blocked**
+> ✅ **Overall verdict: PASS — Recommended for publication**
 
-The skill should be reviewed before publication. Address the blocking findings below, then rerun Skill Evaluator.
+## Publication Recommendation
+
+Recommended for publication based on the completed evaluation evidence in this report.
 
 ## Evaluation Metadata
 
 - Skill: `cuopt-numerical-optimization-api`
-- Validation status: `failed`
-- Evaluation date: 2026-11-09
+- Validation status: `passed`
+- Evaluation date: 2026-11-10
 - Evaluator version: `1.6.9`
 - Agents: Claude Code (`aws/anthropic/bedrock-claude-opus-5-5`), Codex (`openai/openai/gpt-6.1-sol`)
 - Tasks: 9 evaluation tasks (9 positive)
@@ -48,12 +50,12 @@ The three-tier evaluation checks whether the skill:
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 94.3% — baseline ran, but no comparable score was available; uplift unavailable | 85.1% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 95.2% — baseline ran, but no comparable score was available; uplift unavailable | 86.6% — baseline ran, but no comparable score was available; uplift unavailable |
 | Security | 100.0% → 100.0% (±0.0 points) | 100.0% → 100.0% (±0.0 points) |
-| Correctness | 82.2% → 97.8% (+15.6 points) | 91.1% → 93.3% (+2.2 points) |
+| Correctness | 86.7% → 100.0% (+13.3 points) | 91.1% → 95.6% (+4.5 points) |
 | Discoverability | 100.0% — baseline ran, but no comparable score was available; uplift unavailable | 92.8% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 74.0% → 90.0% (+16.0 points) | 52.4% → 66.1% (+13.7 points) |
-| Efficiency | 83.6% — baseline ran, but no comparable score was available; uplift unavailable | 73.4% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 65.1% → 91.4% (+26.3 points) | 56.2% → 74.1% (+17.9 points) |
+| Efficiency | 84.6% — baseline ran, but no comparable score was available; uplift unavailable | 70.7% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -66,9 +68,9 @@ Shared-source comparisons use the same signals and weights on both conditions. T
 | Agent | Dimension | Basis | Baseline → With skill (uplift) | Explanation |
 | --- | --- | --- | --- | --- |
 | claude-code | Discoverability | Dimension comparison | N/A | Discoverability is not applicable to the no-skill baseline; there is no installed skill to discover. |
-| claude-code | Efficiency | Token-only comparison | 98.7% → 96.8% (-1.9 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
+| claude-code | Efficiency | Token-only comparison | 98.7% → 97.0% (-1.7 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
 | codex | Discoverability | Dimension comparison | N/A | Discoverability is not applicable to the no-skill baseline; there is no installed skill to discover. |
-| codex | Efficiency | Token-only comparison | 87.6% → 88.8% (+1.2 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
+| codex | Efficiency | Token-only comparison | 88.3% → 88.3% (±0.0 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
 
 ## Token Usage
 
@@ -76,27 +78,27 @@ Actual Tier 3 execution usage is reported for every observed agent/case pair and
 
 | Agent | Dataset case | With skill | Without skill | Delta | Change | Coverage |
 |---|---|---:|---:|---:|---:|---|
-| claude-code | All cases | 1,128,193 | 537,122 | +591,071 | +110.04% | skill 9/9; base 9/9 |
-| claude-code | numopt-c-eval-001-milp-api-call-sequence | 154,232 | 36,279 | +117,953 | +325.13% | skill 1/1; base 1/1 |
-| claude-code | numopt-c-eval-002-parameter-function-wrong-name | 151,443 | 71,272 | +80,171 | +112.49% | skill 1/1; base 1/1 |
-| claude-code | numopt-c-eval-003-csr-constraint-matrix | 111,269 | 35,832 | +75,437 | +210.53% | skill 1/1; base 1/1 |
-| claude-code | numopt-c-eval-004-qp-restrictions | 111,645 | 143,383 | -31,738 | -22.14% | skill 1/1; base 1/1 |
-| claude-code | numopt-cli-eval-001-mps-sections-and-cli-command | 112,355 | 71,591 | +40,764 | +56.94% | skill 1/1; base 1/1 |
-| claude-code | numopt-py-eval-001-lp-api-call-sequence | 112,580 | 35,660 | +76,920 | +215.70% | skill 1/1; base 1/1 |
-| claude-code | numopt-py-eval-002-status-case-sensitivity | 110,562 | 35,809 | +74,753 | +208.75% | skill 1/1; base 1/1 |
-| claude-code | numopt-py-eval-003-integer-vs-continuous-workers | 110,781 | 36,055 | +74,726 | +207.26% | skill 1/1; base 1/1 |
-| claude-code | numopt-py-eval-004-qp-maximize-workaround | 153,326 | 71,241 | +82,085 | +115.22% | skill 1/1; base 1/1 |
-| codex | All cases | 523,828 | 258,944 | +264,884 | +102.29% | skill 9/9; base 9/9 |
-| codex | numopt-c-eval-001-milp-api-call-sequence | 48,461 | 38,433 | +10,028 | +26.09% | skill 1/1; base 1/1 |
-| codex | numopt-c-eval-002-parameter-function-wrong-name | 48,551 | 26,134 | +22,417 | +85.78% | skill 1/1; base 1/1 |
-| codex | numopt-c-eval-003-csr-constraint-matrix | 48,705 | 17,790 | +30,915 | +173.78% | skill 1/1; base 1/1 |
-| codex | numopt-c-eval-004-qp-restrictions | 67,262 | 56,084 | +11,178 | +19.93% | skill 1/1; base 1/1 |
-| codex | numopt-cli-eval-001-mps-sections-and-cli-command | 52,215 | 26,279 | +25,936 | +98.69% | skill 1/1; base 1/1 |
-| codex | numopt-py-eval-001-lp-api-call-sequence | 48,603 | 26,146 | +22,457 | +85.89% | skill 1/1; base 1/1 |
-| codex | numopt-py-eval-002-status-case-sensitivity | 77,074 | 21,610 | +55,464 | +256.66% | skill 1/1; base 1/1 |
-| codex | numopt-py-eval-003-integer-vs-continuous-workers | 62,164 | 21,716 | +40,448 | +186.26% | skill 1/1; base 1/1 |
-| codex | numopt-py-eval-004-qp-maximize-workaround | 70,793 | 24,752 | +46,041 | +186.01% | skill 1/1; base 1/1 |
-| ALL AGENTS | Dataset aggregate | 1,652,021 | 796,066 | +855,955 | +107.52% | skill 18/18; base 18/18 |
+| claude-code | All cases | 1,121,154 | 501,132 | +620,022 | +123.72% | skill 9/9; base 9/9 |
+| claude-code | numopt-c-eval-001-milp-api-call-sequence | 112,671 | 71,924 | +40,747 | +56.65% | skill 1/1; base 1/1 |
+| claude-code | numopt-c-eval-002-parameter-function-wrong-name | 149,126 | 71,816 | +77,310 | +107.65% | skill 1/1; base 1/1 |
+| claude-code | numopt-c-eval-003-csr-constraint-matrix | 150,215 | 35,779 | +114,436 | +319.84% | skill 1/1; base 1/1 |
+| claude-code | numopt-c-eval-004-qp-restrictions | 111,370 | 71,217 | +40,153 | +56.38% | skill 1/1; base 1/1 |
+| claude-code | numopt-cli-eval-001-mps-sections-and-cli-command | 112,014 | 71,445 | +40,569 | +56.78% | skill 1/1; base 1/1 |
+| claude-code | numopt-py-eval-001-lp-api-call-sequence | 111,558 | 35,759 | +75,799 | +211.97% | skill 1/1; base 1/1 |
+| claude-code | numopt-py-eval-002-status-case-sensitivity | 111,038 | 35,707 | +75,331 | +210.97% | skill 1/1; base 1/1 |
+| claude-code | numopt-py-eval-003-integer-vs-continuous-workers | 110,549 | 71,226 | +39,323 | +55.21% | skill 1/1; base 1/1 |
+| claude-code | numopt-py-eval-004-qp-maximize-workaround | 152,613 | 36,259 | +116,354 | +320.90% | skill 1/1; base 1/1 |
+| codex | All cases | 535,086 | 242,605 | +292,481 | +120.56% | skill 9/9; base 9/9 |
+| codex | numopt-c-eval-001-milp-api-call-sequence | 52,596 | 25,850 | +26,746 | +103.47% | skill 1/1; base 1/1 |
+| codex | numopt-c-eval-002-parameter-function-wrong-name | 52,572 | 21,721 | +30,851 | +142.03% | skill 1/1; base 1/1 |
+| codex | numopt-c-eval-003-csr-constraint-matrix | 48,334 | 17,912 | +30,422 | +169.84% | skill 1/1; base 1/1 |
+| codex | numopt-c-eval-004-qp-restrictions | 73,110 | 47,107 | +26,003 | +55.20% | skill 1/1; base 1/1 |
+| codex | numopt-cli-eval-001-mps-sections-and-cli-command | 52,456 | 25,905 | +26,551 | +102.49% | skill 1/1; base 1/1 |
+| codex | numopt-py-eval-001-lp-api-call-sequence | 48,187 | 26,163 | +22,024 | +84.18% | skill 1/1; base 1/1 |
+| codex | numopt-py-eval-002-status-case-sensitivity | 66,940 | 21,741 | +45,199 | +207.90% | skill 1/1; base 1/1 |
+| codex | numopt-py-eval-003-integer-vs-continuous-workers | 62,236 | 17,540 | +44,696 | +254.82% | skill 1/1; base 1/1 |
+| codex | numopt-py-eval-004-qp-maximize-workaround | 78,655 | 38,666 | +39,989 | +103.42% | skill 1/1; base 1/1 |
+| ALL AGENTS | Dataset aggregate | 1,656,240 | 743,737 | +912,503 | +122.69% | skill 18/18; base 18/18 |
 
 Prompt tokens include cached reads, so total tokens are `prompt + completion` (cached is not added twice). The Efficiency score uses `(prompt - cached) + completion`. Change is `100 * (with - without) / without`; negative means fewer tokens. N/A comparisons include their reason in the coverage column; coverage is never estimated.
 
@@ -104,31 +106,23 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 
 | Tier | Purpose | Status | Evidence |
 |---|---|---|---|
-| Tier 1 | Static validation | **FAILED** | 11 validator(s); 11 finding(s) |
-| Tier 2 | Semantic deduplication | **PASSED WITH OBSERVATIONS** | 2 validator(s); 2 finding(s) |
+| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 10 finding(s) |
+| Tier 2 | Semantic deduplication | **PASSED WITH OBSERVATIONS** | 2 validator(s); 1 finding(s) |
 | Tier 3 | Live agent evaluation | **PASS** | 2 agent(s); 9 task(s) |
-
-## Blocking Findings
-
-- **MEDIUM** BANDIT/B310:blacklist: Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected. (CWE-22) (`skills/cuopt-numerical-optimization-api/assets/python/mps_solver/model.py:39`)
 
 ## Findings and Observations
 
 <details>
 <summary>Show detailed findings and successful checks</summary>
 
-- **HIGH** DUPLICATE/duplicate: Duplicate content found across SKILL.md and references/qp_examples.md:
-  "## QP Rules (all interfaces)" in SKILL.md (lines 51-57)
-  vs "## Critical Reminders" in references/qp_examples.md (lines 180-188) (`SKILL.md:51`)
-- **MEDIUM** BANDIT/B310:blacklist: Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected. (CWE-22) (`skills/cuopt-numerical-optimization-api/assets/python/mps_solver/model.py:39`)
-- **MEDIUM** DUPLICATE/duplicate: Duplicate content found across assets/python/portfolio/README.md and assets/python/portfolio/model.py and references/python_api.md and references/qp_examples.md:
-  "# Portfolio optimization (QP)" in assets/python/portfolio/README.md (lines 1-7)
-  vs "(module docstring)" in assets/python/portfolio/model.py (lines 1-3)
-  vs "## QP Example (beta — MINIMIZE only)" in references/python_api.md (lines 51-73)
-  vs "## Portfolio Optimization" in references/qp_examples.md (lines 3-19) (`assets/python/portfolio/README.md:1`)
+- **MEDIUM** DUPLICATE/duplicate: Duplicate content found across assets/python/mps_solver/README.md and references/cli_api.md:
+  "## MPS File Format" in assets/python/mps_solver/README.md (lines 15-38)
+  vs "## MPS Format (required sections, in order)" in references/cli_api.md (lines 44-54) (`assets/python/mps_solver/README.md:15`)
 - **MEDIUM** QUALITY/quality_efficiency: Deeply nested references in c_api.md (`skills/cuopt-numerical-optimization-api/SKILL.md`)
 - **MEDIUM** SCHEMA/frontmatter_field_placement: Root field 'version' is ignored; use 'metadata.version' (`skills/cuopt-numerical-optimization-api/SKILL.md`)
-- 8 additional finding(s) are available in the full evaluation artifacts.
+- **MEDIUM** SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cuopt-numerical-optimization-api/SKILL.md`)
+- **MEDIUM** SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/cuopt-numerical-optimization-api/SKILL.md`)
+- 6 additional finding(s) are available in the full evaluation artifacts.
 
 </details>
 

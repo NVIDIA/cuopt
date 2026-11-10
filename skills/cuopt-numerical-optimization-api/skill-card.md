@@ -1,5 +1,5 @@
 ## Description: <br>
-LP, MILP, and QP (beta) with cuOpt — Python, C, and CLI; use when the user is solving LP, MILP, or QP with any cuOpt interface. <br>
+LP, MILP, and QP (beta) with cuOpt — Python, C, and CLI. Use when the user is solving LP, MILP, or QP with any cuOpt interface. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who model and solve linear programming (LP), mixed-integer linear programming (MILP), and quadratic programming (QP, beta) problems with NVIDIA cuOpt's GPU-accelerated solver through the Python API, C API, or the cuopt_cli command line. <br>
+Developers and engineers use this skill to model and solve linear, mixed-integer linear, and quadratic optimization problems with NVIDIA cuOpt's GPU-accelerated solver through its Python API, C API, or command-line interface. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -25,17 +25,17 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [Python API Reference](references/python_api.md) <br>
-- [C API Reference](references/c_api.md) <br>
-- [CLI API Reference](references/cli_api.md) <br>
-- [QP Examples](references/qp_examples.md) <br>
-- [Third-Party Modeling Languages](https://docs.nvidia.com/cuopt/user-guide/latest/thirdparty_modeling_languages/index.html) <br>
+- [Python API reference](references/python_api.md) <br>
+- [C API reference](references/c_api.md) <br>
+- [CLI reference](references/cli_api.md) <br>
+- [QP examples](references/qp_examples.md) <br>
+- [cuOpt Third-Party Modeling Languages](https://docs.nvidia.com/cuopt/user-guide/latest/thirdparty_modeling_languages/index.html) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Code, Shell commands, Configuration instructions, Analysis] <br>
-**Output Format:** [Markdown with inline code blocks (Python, C, shell, MPS)] <br>
+**Output Type(s):** [Code, Analysis, Shell commands] <br>
+**Output Format:** [Markdown with inline Python, C, and bash code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
@@ -46,7 +46,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-9 evaluation tasks (9 positive), 1 attempt per task, each task attempt run in its own isolated sandbox pod (`k8s-sandbox` environment); evaluator version `1.6.9`, evaluation date 2026-11-09. Each task was also attempted without the skill as a baseline. <br>
+9 evaluation tasks (9 positive), 1 attempt per task, each run in its own isolated sandbox pod (`k8s-sandbox` environment); evaluator version `1.6.9`, evaluation date 2026-11-10. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -68,20 +68,22 @@ Underlying evaluation signals used in this run: <br>
 
 
 ## Evaluation Results: <br>
-> ❌ **Overall verdict: FAIL — Publication blocked**
+> ✅ **Overall verdict: PASS — Recommended for publication**
 
-The skill should be reviewed before publication. Address the blocking findings below, then rerun Skill Evaluator.
+### Publication Recommendation
+
+Recommended for publication based on the completed evaluation evidence in this report.
 
 ### Results at a Glance
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 94.3% — baseline ran, but no comparable score was available; uplift unavailable | 85.1% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 95.2% — baseline ran, but no comparable score was available; uplift unavailable | 86.6% — baseline ran, but no comparable score was available; uplift unavailable |
 | Security | 100.0% → 100.0% (±0.0 points) | 100.0% → 100.0% (±0.0 points) |
-| Correctness | 82.2% → 97.8% (+15.6 points) | 91.1% → 93.3% (+2.2 points) |
+| Correctness | 86.7% → 100.0% (+13.3 points) | 91.1% → 95.6% (+4.5 points) |
 | Discoverability | 100.0% — baseline ran, but no comparable score was available; uplift unavailable | 92.8% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 74.0% → 90.0% (+16.0 points) | 52.4% → 66.1% (+13.7 points) |
-| Efficiency | 83.6% — baseline ran, but no comparable score was available; uplift unavailable | 73.4% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 65.1% → 91.4% (+26.3 points) | 56.2% → 74.1% (+17.9 points) |
+| Efficiency | 84.6% — baseline ran, but no comparable score was available; uplift unavailable | 70.7% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -94,16 +96,16 @@ Shared-source comparisons use the same signals and weights on both conditions. T
 | Agent | Dimension | Basis | Baseline → With skill (uplift) | Explanation |
 | --- | --- | --- | --- | --- |
 | claude-code | Discoverability | Dimension comparison | N/A | Discoverability is not applicable to the no-skill baseline; there is no installed skill to discover. |
-| claude-code | Efficiency | Token-only comparison | 98.7% → 96.8% (-1.9 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
+| claude-code | Efficiency | Token-only comparison | 98.7% → 97.0% (-1.7 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
 | codex | Discoverability | Dimension comparison | N/A | Discoverability is not applicable to the no-skill baseline; there is no installed skill to discover. |
-| codex | Efficiency | Token-only comparison | 87.6% → 88.8% (+1.2 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
+| codex | Efficiency | Token-only comparison | 88.3% → 88.3% (±0.0 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
 
 ### Tier Status
 
 | Tier | Purpose | Status | Evidence |
 |---|---|---|---|
-| Tier 1 | Static validation | **FAILED** | 11 validator(s); 11 finding(s) |
-| Tier 2 | Semantic deduplication | **PASSED WITH OBSERVATIONS** | 2 validator(s); 2 finding(s) |
+| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 10 finding(s) |
+| Tier 2 | Semantic deduplication | **PASSED WITH OBSERVATIONS** | 2 validator(s); 1 finding(s) |
 | Tier 3 | Live agent evaluation | **PASS** | 2 agent(s); 9 task(s) |
 
 ## Skill Version(s): <br>

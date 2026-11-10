@@ -31,7 +31,6 @@ TEST(RoutingSettingsMapper, RoundTripPreservesEveryField)
   original.set_time_limit(12.5f);
   original.set_verbose_mode(true);
   original.set_error_logging_mode(true);
-  original.dump_best_results("/tmp/best_results.json", 7);
 
   cuopt::remote::RoutingSolverSettings pb;
   cuopt::routing::map_routing_settings_to_proto(original, &pb);
@@ -42,11 +41,26 @@ TEST(RoutingSettingsMapper, RoundTripPreservesEveryField)
   EXPECT_FLOAT_EQ(restored.get_time_limit(), 12.5f);
   EXPECT_TRUE(restored.get_verbose_mode());
   EXPECT_TRUE(restored.get_error_logging_mode());
+}
 
+// The client may still serialize dump_best_results_path. The inbound mapper
+// leaves dump disabled so the routing solver does not open that path.
+TEST(RoutingSettingsMapper, DumpBestResultsPathIsNotApplied)
+{
+  settings_t original;
+  original.dump_best_results("/tmp/cuopt-client-path", 7);
+
+  cuopt::remote::RoutingSolverSettings pb;
+  cuopt::routing::map_routing_settings_to_proto(original, &pb);
+  EXPECT_EQ(pb.dump_best_results_path(), "/tmp/cuopt-client-path");
+  EXPECT_EQ(pb.dump_best_results_interval(), 7);
+
+  settings_t restored;
+  cuopt::routing::map_proto_to_routing_settings(pb, restored);
   auto [interval, dump, path] = restored.get_dump_best_results();
-  EXPECT_EQ(interval, 7);
-  EXPECT_TRUE(dump);
-  EXPECT_EQ(path, "/tmp/best_results.json");
+  EXPECT_FALSE(dump);
+  EXPECT_TRUE(path.empty());
+  EXPECT_EQ(interval, std::numeric_limits<int>::max());
 }
 
 // An unset time_limit must not be serialized: the solver derives its own default

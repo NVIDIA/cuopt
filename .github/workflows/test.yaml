@@ -222,7 +222,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      script: ci/test_conda_split_packages.sh
+      script: ci/nightly/test_conda_split_packages.sh
       matrix_filter: 'map(select(.ARCH == "amd64")) | sort_by(.CUDA_VER, .PY_VER) | [last]'
       matrix_type: nightly
 
@@ -240,7 +240,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      script: ci/test_wheel_split_packages.sh
+      script: ci/nightly/test_wheel_split_packages.sh
       matrix_filter: 'map(select(.ARCH == "amd64")) | sort_by(.CUDA_VER, .PY_VER) | [last]'
       matrix_type: nightly
 

@@ -20,7 +20,7 @@ if(NOT TARGET cuopt::${COMPONENT})
 endif()
 
 if(COMPONENT STREQUAL "mathopt")
-  set(SMOKE_SOURCE ${CMAKE_CURRENT_LIST_DIR}/../../docs/cuopt/source/cuopt-c/convex/examples/simple_lp_example.c)
+  set(SMOKE_SOURCE ${CMAKE_CURRENT_LIST_DIR}/../../../docs/cuopt/source/cuopt-c/convex/examples/simple_lp_example.c)
 else()
   set(SMOKE_SOURCE ${COMPONENT}.cpp)
 endif()

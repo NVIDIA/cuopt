@@ -63,8 +63,4 @@ Quadratic objectives are **MINIMIZE only** (for maximization, negate the objecti
 
 ## Reference Models
 
-| Model | Type | Location |
-|-------|------|----------|
-| Minimal LP | LP | [assets/cli/lp_simple/](../assets/cli/lp_simple/) |
-| Production planning | LP | [assets/cli/lp_production/](../assets/cli/lp_production/) |
-| Facility location | MILP | [assets/cli/milp_facility/](../assets/cli/milp_facility/) |
+See [assets/cli/README.md](../assets/cli/README.md).

@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPONENTS=(client mathopt routing)
 
 source rapids-init-pip
@@ -66,9 +66,9 @@ for component in "${COMPONENTS[@]}"; do
   pip install --upgrade pip cmake ninja
   rapids-pip-retry install --prefer-binary --constraint "${PIP_CONSTRAINT}" "${package}"
 
-  python "${REPO_ROOT}/ci/split_package_smoke/env_check.py" wheel-packages "${expected[@]}"
-  prefixes=$(python "${REPO_ROOT}/ci/split_package_smoke/env_check.py" cmake-prefixes)
-  bash "${REPO_ROOT}/ci/split_package_smoke/build_and_run.sh" "${component}" "${prefixes}"
+  python "${REPO_ROOT}/ci/nightly/split_package_smoke/env_check.py" wheel-packages "${expected[@]}"
+  prefixes=$(python "${REPO_ROOT}/ci/nightly/split_package_smoke/env_check.py" cmake-prefixes)
+  bash "${REPO_ROOT}/ci/nightly/split_package_smoke/build_and_run.sh" "${component}" "${prefixes}"
   deactivate
   set -e
 done
