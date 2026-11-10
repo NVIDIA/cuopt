@@ -49,7 +49,7 @@ no ``cuopt.native.dir`` is required:
 .. note::
 
    The embedded libraries do not include the CUDA toolkit's own math libraries
-   (``libcublas``, ``libcusolver``, etc.) — install them separately, or use an
+   (``libcublas``, ``libcusparse``, etc.) — install them separately, or use an
    ``nvidia/cuda:*-runtime-*`` base image instead, which already has them
    without installing cuOpt itself. Loading the jar without them fails with an
    ``UnsatisfiedLinkError`` naming the missing CUDA library.

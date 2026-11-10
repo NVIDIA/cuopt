@@ -25,7 +25,7 @@ JAR=""
 
 # Supplied by the CUDA toolkit a consumer installs for the classifier's CUDA major version.
 ALLOWED_CUDA_LIBRARIES=(
-  libcublas.so libcublasLt.so libcusparse.so libcusolver.so libcudart.so libcurand.so
+  libcublas.so libcublasLt.so libcusparse.so libcudart.so
   libnvJitLink.so libnvrtc.so libcuda.so
 )
 
