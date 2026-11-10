@@ -56,8 +56,8 @@ void diving_worker_t<i_t, f_t>::dive(const simplex::simplex_solver_settings_t<i_
   logger_t log;
   log.log = false;
 
-  const i_t diving_node_limit = settings.diving_settings.node_limit;
-  const i_t backtrack_limit   = settings.diving_settings.backtrack_limit;
+  const i_t diving_node_limit = settings.mip_hyper_params.diving_node_limit;
+  const i_t backtrack_limit   = settings.mip_hyper_params.diving_backtrack_limit;
   this->recompute_basis       = true;
 
   bool is_start_feasible = this->rebuild_bounds_from_stack(settings);
@@ -102,8 +102,8 @@ void diving_worker_t<i_t, f_t>::dive(const simplex::simplex_solver_settings_t<i_
     if (dive_stats.nodes_explored >= diving_node_limit) { break; }
 
     int64_t bnb_lp_iters = bnb_stats.total_simplex_iters;
-    f_t factor           = settings.diving_settings.iteration_limit_factor;
-    int64_t offset       = settings.diving_settings.iteration_limit_offset;
+    f_t factor           = settings.mip_hyper_params.diving_iteration_limit_factor;
+    int64_t offset       = settings.mip_hyper_params.diving_iteration_limit_offset;
     int64_t max_iter     = offset + factor * bnb_lp_iters - dive_stats.total_simplex_iters;
     if (max_iter <= 0) { break; }
 

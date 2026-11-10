@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/mip_hyper_params.hpp>
 
 #include <branch_and_bound/pseudo_costs.hpp>
 #include <branch_and_bound/worker.hpp>

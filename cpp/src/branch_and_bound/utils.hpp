@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/mip_hyper_params.hpp>
 
 #include <branch_and_bound/constants.hpp>
 #include <branch_and_bound/mip_node.hpp>
@@ -144,19 +144,19 @@ f_t compute_node_cutoff(const simplex::lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
-void get_diving_heuristic_list(const mip_diving_hyper_params_t<i_t, f_t>& settings,
+void get_diving_heuristic_list(const mip_hyper_params_t<i_t, f_t>& settings,
                                std::vector<search_strategy_t>& heuristic_list)
 {
   heuristic_list.clear();
-  if (settings.pseudocost_diving != 0)
+  if (settings.diving_pseudocost != 0)
     heuristic_list.push_back(search_strategy_t::PSEUDOCOST_DIVING);
-  if (settings.line_search_diving != 0)
+  if (settings.diving_line_search != 0)
     heuristic_list.push_back(search_strategy_t::LINE_SEARCH_DIVING);
-  if (settings.guided_diving != 0) heuristic_list.push_back(search_strategy_t::GUIDED_DIVING);
-  if (settings.coefficient_diving != 0)
+  if (settings.diving_guided != 0) heuristic_list.push_back(search_strategy_t::GUIDED_DIVING);
+  if (settings.diving_coefficient != 0)
     heuristic_list.push_back(search_strategy_t::COEFFICIENT_DIVING);
-  if (settings.farkas_diving != 0) heuristic_list.push_back(search_strategy_t::FARKAS_DIVING);
-  if (settings.vector_length_diving != 0)
+  if (settings.diving_farkas != 0) heuristic_list.push_back(search_strategy_t::FARKAS_DIVING);
+  if (settings.diving_vector_length != 0)
     heuristic_list.push_back(search_strategy_t::VECTOR_LENGTH_DIVING);
 }
 

@@ -150,7 +150,8 @@ simplex::dual_status_t branch_and_bound_worker_t<i_t, f_t>::solve_node_lp(
       if (lp_settings.time_limit <= 0.0) { return simplex::dual_status_t::TIME_LIMIT; }
 
       if (search_strategy == search_strategy_t::BEST_FIRST) {
-        if (!domain.propagate_objective(Arow, var_types, settings, leaf_problem, cutoff)) {
+        if (!domain.propagate_objective(
+              Arow, var_types, settings, leaf_problem, lp_settings.cut_off)) {
           return simplex::dual_status_t::CUTOFF;
         }
       }

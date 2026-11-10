@@ -267,7 +267,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   // Resize the solution now that we know the number of columns/variables
   branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
 
-  extract_probing_implied_bounds(op_problem_,
+  extract_probing_implied_bounds(op_problem_.reverse_original_ids,
                                  branch_and_bound_problem,
                                  dm.ls.constraint_prop.bounds_update.probing_cache,
                                  probing_implied_bound);
@@ -327,8 +327,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.settings.dual_degenerate_pivots == -1 ? 0 : context.settings.dual_degenerate_pivots;
   branch_and_bound_settings.symmetry = context.settings.symmetry;
 
-  branch_and_bound_settings.diving_settings = context.settings.diving_params;
-  branch_and_bound_settings.submip_settings = context.settings.submip_params;
+  branch_and_bound_settings.mip_hyper_params = context.settings.mip_hyper_params;
 
   // Set the branch and bound -> primal heuristics callback
   branch_and_bound_settings.solution_callback =
