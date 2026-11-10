@@ -253,7 +253,6 @@ int run_single_file(std::string file_path,
                     int n_gpus,
                     std::string out_dir,
                     std::optional<std::string> initial_solution_dir,
-                    bool heuristics_only,
                     int num_cpu_threads,
                     bool write_log_file,
                     bool log_to_console,
@@ -280,7 +279,6 @@ int run_single_file(std::string file_path,
   }
   settings.time_limit       = time_limit;
   settings.work_limit       = work_limit;
-  settings.heuristics_only  = heuristics_only;
   settings.num_cpu_threads  = num_cpu_threads;
   settings.log_to_console   = log_to_console;
   settings.determinism_mode = deterministic ? CUOPT_MODE_DETERMINISTIC : CUOPT_MODE_OPPORTUNISTIC;
@@ -443,7 +441,6 @@ void run_single_file_mp(std::string file_path,
                         int n_gpus,
                         std::string out_dir,
                         std::optional<std::string> input_file_dir,
-                        bool heuristics_only,
                         int num_cpu_threads,
                         bool write_log_file,
                         bool log_to_console,
@@ -461,7 +458,6 @@ void run_single_file_mp(std::string file_path,
                                   n_gpus,
                                   out_dir,
                                   input_file_dir,
-                                  heuristics_only,
                                   num_cpu_threads,
                                   write_log_file,
                                   log_to_console,
@@ -526,10 +522,6 @@ int main(int argc, char* argv[])
     .default_value(-1);
 
   program.add_argument("--initial-solution-path").help("path to the initial solution csv file");
-
-  program.add_argument("--heuristics-only")
-    .help("run heuristics only (t/f)")
-    .default_value(std::string("f"));
 
   program.add_argument("--num-cpu-threads")
     .help("number of CPU threads")
@@ -596,7 +588,6 @@ int main(int argc, char* argv[])
   std::string result_file;
   int batch_num = -1;
 
-  bool heuristics_only      = program.get<std::string>("--heuristics-only")[0] == 't';
   int num_cpu_threads       = program.get<int>("--num-cpu-threads");
   bool write_log_file       = program.get<std::string>("--write-log-file")[0] == 't';
   bool log_to_console       = program.get<std::string>("--log-to-console")[0] == 't';
@@ -696,7 +687,6 @@ int main(int argc, char* argv[])
                                n_gpus,
                                out_dir,
                                initial_solution_file,
-                               heuristics_only,
                                num_cpu_threads,
                                write_log_file,
                                log_to_console,
@@ -727,7 +717,6 @@ int main(int argc, char* argv[])
                              n_gpus,
                              out_dir,
                              initial_solution_file,
-                             heuristics_only,
                              num_cpu_threads,
                              write_log_file,
                              log_to_console,

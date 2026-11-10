@@ -36,7 +36,7 @@ libcuopt-routing-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo "${LIBCUOPT_ROUTING_WH
 EOF
 
 # generate constraints (possibly pinning to oldest support versions of dependencies)
-rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
+rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}" constraints
 
 python -m venv libcuopt-env
 . libcuopt-env/bin/activate

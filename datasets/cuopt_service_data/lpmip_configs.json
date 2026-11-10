@@ -74,7 +74,6 @@
     "pdlp_solver_mode": 2,
     "method": 2,
     "mip_scaling": true,
-    "mip_heuristics_only": true,
     "num_cpu_threads": 100,
     "crossover": true,
     "log_to_console": false,

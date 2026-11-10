@@ -80,7 +80,7 @@ TEST(mip_solve, empty_max_problem_with_objective_test)
 
 TEST(mip_solve, mip_presolved_to_lp)
 {
-  auto [termination_status, obj_val, lb] = test_mps_file("mip/mip-presolved-to-lp.mps", 5, false);
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/mip-presolved-to-lp.mps", 5);
   EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
   EXPECT_NEAR(obj_val, 0, 1e-5);
 }

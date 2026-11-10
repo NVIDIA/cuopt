@@ -23,7 +23,6 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
     CUOPT_METHOD,
-    CUOPT_MIP_HEURISTICS_ONLY,
     CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
@@ -721,26 +720,6 @@ def test_solved_by():
     assert solution.get_termination_reason() == "Optimal"
     assert solution.get_primal_objective() == pytest.approx(1333.33, 2)
     assert solution.get_solved_by() == SolverMethod.Barrier
-
-
-def test_heuristics_only():
-    file_path = RAPIDS_DATASET_ROOT_DIR + "/mip/swath1.mps"
-    data_model_obj = Read(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_parameter(CUOPT_MIP_HEURISTICS_ONLY, True)
-    settings.set_parameter(CUOPT_TIME_LIMIT, 30)
-
-    solution = solver.Solve(data_model_obj, settings)
-
-    lower_bound = solution.get_milp_stats()["solution_bound"]
-
-    settings.set_parameter(CUOPT_MIP_HEURISTICS_ONLY, False)
-    settings.set_parameter(CUOPT_TIME_LIMIT, 30)
-
-    solution = solver.Solve(data_model_obj, settings)
-
-    assert solution.get_milp_stats()["solution_bound"] > lower_bound
 
 
 def test_bound_in_maximization():

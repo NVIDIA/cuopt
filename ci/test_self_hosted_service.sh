@@ -18,7 +18,7 @@ LIBCUOPT_MATHOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-nam
 LIBCUOPT_ROUTING_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt_routing cuopt --cuda "$RAPIDS_CUDA_VERSION")")
 
 # generate constraints (possibly pinning to oldest support versions of dependencies)
-rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
+rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}" constraints
 
 cat >> "${PIP_CONSTRAINT}" <<EOF
 libcuopt-client @ file://$(echo "${LIBCUOPT_CLIENT_WHEELHOUSE}"/libcuopt_client-*.whl)
