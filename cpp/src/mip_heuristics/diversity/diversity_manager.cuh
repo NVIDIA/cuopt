@@ -38,6 +38,9 @@ class diversity_manager_t {
   solution_t<i_t, f_t> run_solver(branch_and_bound_t<i_t, f_t>& branch_and_bound);
   void generate_solution(f_t time_limit, bool random_start = true);
   void run_fp_alone();
+  // LP-guided CPU fix-and-propagate on the root LP point (fix_and_propagate_t), called once from
+  // local search before the GPU rounding of the same point
+  void run_root_fix_and_propagate();
   // main loop of diversity improvements
   void main_loop();
   // randomly chooses a recombiner and returns the offspring

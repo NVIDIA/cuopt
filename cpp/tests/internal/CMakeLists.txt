@@ -27,6 +27,7 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/mip/mip_node_test.cpp
     ${CUOPT_TEST_DIR}/mip/problem_test.cu
     ${CUOPT_TEST_DIR}/mip/population_test.cu
+    ${CUOPT_TEST_DIR}/mip/fix_propagate_value_test.cu
     ${CUOPT_TEST_DIR}/mip/elim_var_remap_test.cu
     ${CUOPT_TEST_DIR}/mip/bounds_standardization_test.cu
     ${CUOPT_TEST_DIR}/mip/multi_probe_test.cu

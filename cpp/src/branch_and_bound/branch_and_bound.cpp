@@ -1749,7 +1749,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
   if (!is_start_feasible) {
     start_node->lower_bound = inf;
     search_tree_.graphviz_node(settings_.log, start_node, "infeasible", inf);
-    search_tree_.update(start_node, node_status_t::INFEASIBLE);
+    search_tree_.update(start_node, node_status_t::FATHOMED);
     ++exploration_stats_.nodes_explored;
     --exploration_stats_.nodes_unexplored;
     return;

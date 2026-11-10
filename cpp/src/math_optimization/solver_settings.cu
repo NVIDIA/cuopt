@@ -154,6 +154,10 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_HEURISTIC_INITIAL_INFEASIBILITY_WEIGHT, &mip_settings.heuristic_params.initial_infeasibility_weight, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(1000.0), "constraint violation penalty seed"},
     {CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT, &mip_settings.heuristic_params.relaxed_lp_time_limit, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(1.0), "base relaxed LP time cap in heuristics"},
     {CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT, &mip_settings.heuristic_params.related_vars_time_limit, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(2.0), "time for related-variable structure build"},
+    {CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_VALUE_PARAM, &mip_settings.heuristic_params.fix_propagate_value_param, f_t(0.0), f_t(1.0), f_t(0.0), "reduced-cost or fraction threshold of the fix-and-propagate value strategy"},
+    {CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_TIME_RATIO, &mip_settings.heuristic_params.fix_propagate_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "per-call share of the time limit for the LP-guided fix-and-propagate"},
+    {CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_MAX_TIME, &mip_settings.heuristic_params.fix_propagate_max_time, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(60.0), "per-call cap in seconds for the LP-guided fix-and-propagate"},
+    {CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_CONTINUOUS_MIN_IMPROVEMENT, &mip_settings.heuristic_params.fix_propagate_continuous_min_improvement, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(0.3), "minimum relative domain shrink for a continuous bound tightening in the CPU fix-and-propagate (0 keeps every tightening, above 1 disables them)"},
     {CUOPT_MIP_SEMICONTINUOUS_BIG_M, &mip_settings.semi_continuous_big_m, f_t(1.0), std::numeric_limits<f_t>::infinity(), f_t(1e10), "big-M value for semi-continuous variables with no finite upper bound"},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR, &mip_settings.diving_params.iteration_limit_factor, f_t(0.0), f_t(1.0), f_t(0.05), "fraction of best-first iterations allowed per dive"},
@@ -228,6 +232,10 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_HEURISTIC_N_OF_MINIMUMS_FOR_EXIT, &mip_settings.heuristic_params.n_of_minimums_for_exit, 1, std::numeric_limits<i_t>::max(), 7000, "FJ baseline local-minima exit threshold"},
     {CUOPT_MIP_HYPER_HEURISTIC_ENABLED_RECOMBINERS, &mip_settings.heuristic_params.enabled_recombiners, 0, 15, 15, "bitmask: 1=BP 2=FP 4=LS 8=SubMIP"},
     {CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH, &mip_settings.heuristic_params.cycle_detection_length, 1, std::numeric_limits<i_t>::max(), 30, "FP assignment cycle ring buffer length"},
+    {CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE, &mip_settings.heuristic_params.fix_propagate, 0, 1, 1, "LP-guided fix-and-propagate on the root LP point (0 off, 1 on)"},
+    {CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_REPAIR, &mip_settings.heuristic_params.fix_propagate_repair, 0, 1, 1, "fix-and-propagate repair of a pattern left infeasible: 0 none, 1 feasibility jump"},
+    {CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_VARIABLE_STRATEGY, &mip_settings.heuristic_params.fix_propagate_variable_strategy, 0, 4, 1, "fixing order: 0 fractionality, 1 LP value, 2 reduced cost, 3 largest |reduced cost|, 4 type (binaries first, formulation order)"},
+    {CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_VALUE_STRATEGY, &mip_settings.heuristic_params.fix_propagate_value_strategy, 0, 8, 2, "fixing value: 0 upper bound, 1 lower bound, 2 round up, 3 round up or negative reduced cost, 4 round up above a fraction threshold, 5 round up with probability equal to the fractional part, 6 toward the objective, 7 against the objective, 8 random bound"},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_LINE_SEARCH, &mip_settings.diving_params.line_search_diving, -1, 1, -1, "line-search diving toggle: -1 automatic, 0 disabled, 1 enabled"},
     {CUOPT_MIP_HYPER_DIVING_PSEUDOCOST, &mip_settings.diving_params.pseudocost_diving, -1, 1, -1, "pseudocost diving toggle: -1 automatic, 0 disabled, 1 enabled"},

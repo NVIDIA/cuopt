@@ -1333,6 +1333,74 @@ mip_settings:
         field_num: 54
         type: int32
         optional: true
+    - fix_propagate:
+        param_name: mip_hyper_heuristic_fix_propagate
+        description: >-
+          Run the LP-guided CPU fix-and-propagate on the root LP point (0 off,
+          1 on).
+        default: "1"
+        field_num: 55
+        type: int32
+        optional: true
+    - fix_propagate_variable_strategy:
+        param_name: mip_hyper_heuristic_fix_propagate_variable_strategy
+        description: >-
+          Fixing order: 0 fractionality, 1 LP value, 2 reduced cost, 3 largest
+          absolute reduced cost, 4 type (binaries first, formulation order).
+        default: "1"
+        field_num: 56
+        type: int32
+        optional: true
+    - fix_propagate_value_strategy:
+        param_name: mip_hyper_heuristic_fix_propagate_value_strategy
+        description: >-
+          Fixing value: 0 upper bound, 1 lower bound, 2 round up, 3 round up or
+          negative reduced cost, 4 round up above a fraction threshold, 5 round up
+          with probability equal to the fractional part, 6 toward the objective,
+          7 against the objective, 8 random bound.
+        default: "2"
+        field_num: 57
+        type: int32
+        optional: true
+    - fix_propagate_value_param:
+        param_name: mip_hyper_heuristic_fix_propagate_value_param
+        description: >-
+          Reduced-cost or fraction threshold used by the fixing value strategy.
+        default: "0.0"
+        field_num: 58
+        optional: true
+    - fix_propagate_time_ratio:
+        param_name: mip_hyper_heuristic_fix_propagate_time_ratio
+        description: >-
+          Per-call share of the time limit for the LP-guided fix-and-propagate.
+        default: "0.1"
+        field_num: 59
+        optional: true
+    - fix_propagate_max_time:
+        param_name: mip_hyper_heuristic_fix_propagate_max_time
+        description: >-
+          Per-call cap in seconds for the LP-guided fix-and-propagate.
+        default: "60.0"
+        field_num: 60
+        optional: true
+    - fix_propagate_continuous_min_improvement:
+        param_name: mip_hyper_heuristic_fix_propagate_continuous_min_improvement
+        description: >-
+          Minimum relative domain shrink for a continuous bound tightening in the
+          CPU fix-and-propagate to be kept; 0 keeps every tightening, values
+          above 1 disable continuous tightening.
+        default: "0.3"
+        field_num: 61
+        optional: true
+    - fix_propagate_repair:
+        param_name: mip_hyper_heuristic_fix_propagate_repair
+        description: >-
+          Repair of a fix-and-propagate pattern left infeasible by the pass or its
+          evaluation: 0 none, 1 feasibility jump.
+        default: "1"
+        field_num: 62
+        type: int32
+        optional: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Optimization Problem (cpu_optimization_problem_t)

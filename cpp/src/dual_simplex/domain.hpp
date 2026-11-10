@@ -184,6 +184,8 @@ class domain_t {
   const mip::probing_implied_bound_t<i_t, f_t>* implied_bounds = nullptr;
   const mip::clique_table_t<i_t, f_t>* clique_table            = nullptr;
 
+  void set_params(const domain_params& p) { params = p; }
+
  private:
   domain_params params;
 

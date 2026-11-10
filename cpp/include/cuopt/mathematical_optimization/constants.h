@@ -129,6 +129,20 @@
 #define CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH \
   "mip_hyper_heuristic_cycle_detection_length"
 #define CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT "mip_hyper_heuristic_relaxed_lp_time_limit"
+#define CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE         "mip_hyper_heuristic_fix_propagate"
+#define CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_VARIABLE_STRATEGY \
+  "mip_hyper_heuristic_fix_propagate_variable_strategy"
+#define CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_VALUE_STRATEGY \
+  "mip_hyper_heuristic_fix_propagate_value_strategy"
+#define CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_VALUE_PARAM \
+  "mip_hyper_heuristic_fix_propagate_value_param"
+#define CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_TIME_RATIO \
+  "mip_hyper_heuristic_fix_propagate_time_ratio"
+#define CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_MAX_TIME \
+  "mip_hyper_heuristic_fix_propagate_max_time"
+#define CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_CONTINUOUS_MIN_IMPROVEMENT \
+  "mip_hyper_heuristic_fix_propagate_continuous_min_improvement"
+#define CUOPT_MIP_HYPER_HEURISTIC_FIX_PROPAGATE_REPAIR "mip_hyper_heuristic_fix_propagate_repair"
 #define CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT \
   "mip_hyper_heuristic_related_vars_time_limit"
 

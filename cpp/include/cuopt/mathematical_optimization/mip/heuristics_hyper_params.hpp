@@ -41,6 +41,19 @@ struct mip_heuristics_hyper_params_t {
   i_t cycle_detection_length             = 30;      // FP assignment cycle ring buffer
   f_t relaxed_lp_time_limit              = 1.0;     // base relaxed LP time cap in heuristics
   f_t related_vars_time_limit            = 2.0;     // time for related-variable structure build
+
+  // CPU fix-and-propagate (mip_heuristics/diversity/fix_propagate_host.hpp)
+  i_t fix_propagate = 1;  // LP-guided fix-and-propagate on the root LP point (0 off, 1 on)
+  i_t fix_propagate_variable_strategy = 1;  // fix_propagate_variable_strategy_t (1 = LP value desc)
+  i_t fix_propagate_value_strategy    = 2;  // fix_propagate_value_strategy_t (2 = round up)
+  f_t fix_propagate_value_param       = 0.0;   // reduced-cost / fraction threshold of the value
+  f_t fix_propagate_time_ratio        = 0.1;   // per-call share of the time limit
+  f_t fix_propagate_max_time          = 60.0;  // per-call cap in seconds
+  // minimum relative domain shrink for a continuous bound tightening in the CPU propagation to be
+  // kept: 0 keeps every tightening, values above 1 disable continuous tightening
+  f_t fix_propagate_continuous_min_improvement = 0.3;
+  // repair of a pattern the pass or its evaluation leaves infeasible: 0 none, 1 feasibility jump
+  i_t fix_propagate_repair = 1;
 };
 
 }  // namespace cuopt::mathematical_optimization

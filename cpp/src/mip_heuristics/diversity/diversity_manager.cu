@@ -20,6 +20,7 @@
 #include <mip_heuristics/problem/problem_helpers.cuh>
 
 #include <pdlp/solve.cuh>
+#include "fix_and_propagate.cuh"
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/scope_guard.hpp>
@@ -189,6 +190,20 @@ void diversity_manager_t<i_t, f_t>::generate_solution(f_t time_limit, bool rando
   // if a feasible is found, it is added to the population
   ls.generate_solution(sol, random_start, &population, time_limit);
   population.add_solution(std::move(sol));
+}
+
+template <typename i_t, typename f_t>
+void diversity_manager_t<i_t, f_t>::run_root_fix_and_propagate()
+{
+  fix_and_propagate_t<i_t, f_t> fix_and_propagate(context,
+                                                  problem_ptr,
+                                                  population,
+                                                  ls,
+                                                  timer,
+                                                  lp_optimal_solution,
+                                                  lp_dual_optimal_solution,
+                                                  [this]() { return check_b_b_preemption(); });
+  fix_and_propagate.run();
 }
 
 template <typename i_t, typename f_t>
@@ -697,6 +712,11 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
       population.best_feasible().get_user_objective();
   }
 
+  // LP-guided CPU fix-and-propagate on the root LP point, before local search rounds the same point
+  if (context.settings.heuristic_params.fix_propagate != 0 && ls.lp_optimal_exists) {
+    run_root_fix_and_propagate();
+    population.add_external_solutions_to_population();
+  }
   generate_solution(timer.remaining_time(), false);
   if (timer.check_time_limit()) {
     population.add_external_solutions_to_population();
