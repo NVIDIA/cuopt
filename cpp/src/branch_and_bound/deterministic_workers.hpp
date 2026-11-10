@@ -8,19 +8,16 @@
 #pragma once
 
 #include <branch_and_bound/bb_event.hpp>
+#include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/worker.hpp>
-
-#include <mip_heuristics/diving_heuristics.hpp>
 
 #include <utilities/work_limit_context.hpp>
 
 #include <cmath>
 #include <deque>
 #include <limits>
-#include <memory>
 #include <optional>
-#include <queue>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {

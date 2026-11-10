@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <mip_heuristics/diving_heuristics.hpp>
+#include <branch_and_bound/diving_heuristics.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
 

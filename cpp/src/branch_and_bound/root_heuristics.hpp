@@ -7,12 +7,12 @@
 
 #pragma once
 
+#include <branch_and_bound/diving_heuristics.hpp>
 #include <dual_simplex/user_problem.hpp>
-#include <mip_heuristics/diving_heuristics.hpp>
+#include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/splitmix64.hpp>
-#include "feasibility_jump/fj_cpu_worker.cuh"
 
 #include <algorithm>
 #include <cstdint>

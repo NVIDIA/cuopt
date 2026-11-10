@@ -35,18 +35,16 @@
 
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
-#include <mip_heuristics/diving_heuristics.hpp>
-#include <mip_heuristics/lns/lns.cuh>
-#include <mip_heuristics/root_heuristics.hpp>
+#include <branch_and_bound/diving_heuristics.hpp>
+#include <branch_and_bound/lns.cuh>
+#include <branch_and_bound/root_heuristics.hpp>
 #include <presolve/third_party_presolve.hpp>
 
 #include <omp.h>
 
 #include <atomic>
 #include <functional>
-#include <future>
 #include <limits>
-#include <list>
 #include <memory>
 #include <vector>
 

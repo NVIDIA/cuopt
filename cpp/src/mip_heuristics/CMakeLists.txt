@@ -12,7 +12,6 @@ set(MIP_LP_NECESSARY_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/simple_rounding.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/diving_heuristics.cpp
 )
 
 # Files that are MIP-specific and not needed for pure LP
@@ -25,7 +24,6 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/multi_armed_bandit.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/population.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/relaxed_lp/relaxed_lp.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/lns/lns.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/local_search.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/bounds_repair.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/constraint_prop.cu
