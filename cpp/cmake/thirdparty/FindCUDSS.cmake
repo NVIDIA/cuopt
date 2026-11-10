@@ -1,6 +1,6 @@
 # =============================================================================
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 # =============================================================================
@@ -27,7 +27,7 @@ if (DEFINED ENV{CUDSS_DIR} AND NOT "$ENV{CUDSS_DIR}" STREQUAL "")
   find_library(CUDSS_LIBRARIES cudss PATHS $ENV{CUDSS_DIR}/lib ${LIB_INSTALL_DIR})
 
   set(CUDSS_LIB_FILE ${CUDSS_LIBRARIES})
-  set(CUDSS_MT_LIB_FILE $ENV{CUDSS_DIR}/lib/libcudss_mtlayer_gomp.so.0)
+  set(CUDSS_MT_LIB_FILE $ENV{CUDSS_DIR}/lib/libcudss_mtlayer_gomp.so.1)
 
   message(STATUS "Using cuDSS include   : ${CUDSS_INCLUDE}")
   message(STATUS "Using cuDSS library   : ${CUDSS_LIBRARIES}")
@@ -40,8 +40,8 @@ if (DEFINED ENV{CUDSS_DIR} AND NOT "$ENV{CUDSS_DIR}" STREQUAL "")
   mark_as_advanced(CUDSS_INCLUDE CUDSS_LIBRARIES)
 
 else()
- # Request CUDSS version >= 0.7
-  find_package(cudss 0.7 REQUIRED CONFIG)
+ # Request CUDSS version >= 1.0
+  find_package(cudss 1.0 REQUIRED CONFIG)
 
   # Print all details of the cudss package
   message(STATUS "cudss package details:")
@@ -58,8 +58,8 @@ else()
   set(CUDSS_INCLUDE ${cudss_INCLUDE_DIR})
 
 # Use the specific cudss library version to avoid symlink issues
-  set(CUDSS_LIB_FILE "${cudss_LIBRARY_DIR}/libcudss.so.0")
-  set(CUDSS_MT_LIB_FILE "${cudss_LIBRARY_DIR}/libcudss_mtlayer_gomp.so.0")
+  set(CUDSS_LIB_FILE "${cudss_LIBRARY_DIR}/libcudss.so.1")
+  set(CUDSS_MT_LIB_FILE "${cudss_LIBRARY_DIR}/libcudss_mtlayer_gomp.so.1")
   message(STATUS "Using cudss library: ${CUDSS_LIB_FILE}")
   message(STATUS "Using cudss MT library: ${CUDSS_MT_LIB_FILE}")
 endif()
