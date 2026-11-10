@@ -102,7 +102,7 @@ if(CUOPT_STATIC_BUILD_DIR)
   find_package(rapids_logger REQUIRED)
   find_library(CUOPT_TBB_LIBRARY NAMES tbb libtbb.so.12 REQUIRED)
   find_library(CUOPT_NCCL_LIBRARY NAMES nccl libnccl.so.2 REQUIRED)
-  find_library(CUOPT_CUDSS_LIBRARY NAMES cudss libcudss.so.0 REQUIRED)
+  find_library(CUOPT_CUDSS_LIBRARY NAMES cudss libcudss.so.1 REQUIRED)
 
   # The JNI layer references only a fraction of cuOpt directly; the rest is reached through
   # registrations and virtual dispatch, so the archive has to be kept whole.

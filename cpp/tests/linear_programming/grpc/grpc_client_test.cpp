@@ -8,7 +8,7 @@
  * @brief Unit tests for grpc_client_t using mock stubs
  *
  * These tests verify client-side error handling without requiring a real server.
- * For integration tests with a real server, see grpc_integration_test.cpp.
+ * For integration tests with a real server, see grpc_mathopt_integration_test.cpp.
  */
 
 #include <gmock/gmock.h>
