@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/mip_hyper_params.hpp>
 
 #include <mip_heuristics/logger.hpp>
 
@@ -98,7 +98,7 @@ struct presolve_budget_t {
 // badge accept an explicit override from the hyper-parameters; a negative setting asks for the
 // measured rule below, and any other value is passed through, where <=0 removes the cap.
 template <typename i_t, typename f_t>
-presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i_t, f_t>& hp,
+presolve_budget_t evaluate_presolve_budget(const mip_hyper_params_t<i_t, f_t>& hp,
                                            const presolve_features_t& feat)
 {
   presolve_budget_t b{};
@@ -117,8 +117,8 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
 
   const double papilo_probe_cost = n_bin * acl;
   b.papilo_max_badgesize =
-    hp.papilo_probing_max_badgesize >= 0
-      ? (int)hp.papilo_probing_max_badgesize
+    hp.presolve_papilo_probing_max_badgesize >= 0
+      ? (int)hp.presolve_papilo_probing_max_badgesize
       : (papilo_probe_cost > papilo_badge_cost_threshold ? papilo_badge_clamped
                                                          : papilo_badge_exempt);
 

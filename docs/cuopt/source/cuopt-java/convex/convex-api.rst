@@ -98,8 +98,9 @@ representation. The ``getSetting(name, type)`` overload provides a typed
 
 The settings API also includes the static setting accessors and ``setOptimalityTolerance``.
 
-``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and
-``CONCURRENT``. ``PDLPSolverMode`` exposes the supported PDLP solver modes.
+``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER``,
+``CONCURRENT``, ``PRIMAL_SIMPLEX`` and ``UNSET``. ``UNSET`` is also what an
+unrecognized native method value maps to. ``PDLPSolverMode`` exposes the supported PDLP solver modes.
 
 Solutions and Statistics
 ------------------------
