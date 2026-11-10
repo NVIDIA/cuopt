@@ -129,6 +129,7 @@
 #define CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH \
   "mip_hyper_heuristic_cycle_detection_length"
 #define CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT "mip_hyper_heuristic_relaxed_lp_time_limit"
+#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_PDLP_DUAL_BOUND  "mip_hyper_heuristic_root_pdlp_dual_bound"
 #define CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT \
   "mip_hyper_heuristic_related_vars_time_limit"
 
