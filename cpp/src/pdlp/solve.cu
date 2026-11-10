@@ -26,6 +26,8 @@
 #include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/solver.cuh>
+#include <presolve/experimental_equivalent_probe_registry.inc>
+#include <presolve/experimental_rcm_algorithm.hpp>
 #include <presolve/third_party_presolve.hpp>
 #include <presolve/trivial_presolve.cuh>
 
@@ -2358,6 +2360,31 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       }
     }
 
+    const auto experimental_rcm         = lpfeas_ordering::from_environment();
+    const bool equivalent_probe_enabled = lpfeas_equivalent_probe::enabled();
+    if (experimental_rcm.enabled || equivalent_probe_enabled) {
+      cuopt_expects(
+        (std::is_same_v<i_t, int> && std::is_same_v<f_t, double>) && !settings.inside_mip &&
+          !is_batch_mode && single_problem && !settings.sequence_solve && run_presolve &&
+          settings.presolver == presolver_t::PSLP && !has_initial_primal && !has_initial_dual &&
+          settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1 &&
+          settings.pdlp_precision != pdlp_precision_t::SinglePrecision &&
+          settings.pdlp_precision != pdlp_precision_t::MixedPrecision,
+        error_type_t::ValidationError,
+        "Experimental RCM/probe requires a cold single-GPU int32/FP64 PSLP LP solve");
+    }
+    if (equivalent_probe_enabled) {
+      cuopt_expects(
+        settings.fixed_batch_size <= 1 && settings.new_bounds.empty() &&
+          settings.hyper_params.initial_step_size_max_singular_value &&
+          !settings.get_initial_step_size().has_value() &&
+          !settings.get_initial_primal_weight().has_value(),
+        error_type_t::ValidationError,
+        "Equivalent probe requires one climber and natural spectral/weight initialization");
+    }
+    // Declared after presolver: registry removal precedes presolver destruction on every return.
+    std::unique_ptr<lpfeas_equivalent_probe::scoped_context> equivalent_probe_scope;
+
     // Declare result at outer scope so that result.reduced_problem (which may be
     // referenced by problem.original_problem_ptr) remains alive through the solve.
     std::optional<mip::third_party_presolve_device_result_t<i_t, f_t>> result;
@@ -2370,7 +2397,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       const double presolve_time_limit =
         std::max(1.0, std::min(0.1 * lp_timer.remaining_time(), 60.0));
       presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
-      result    = presolver->apply_presolve_from_op_problem(
+      if (equivalent_probe_enabled) {
+        equivalent_probe_scope =
+          std::make_unique<lpfeas_equivalent_probe::scoped_context>(presolver.get());
+      }
+      if (experimental_rcm.enabled) {
+        presolver->enable_experimental_rcm(experimental_rcm.hub_threshold);
+      }
+      result = presolver->apply_presolve_from_op_problem(
         op_problem,
         cuopt::mathematical_optimization::problem_category_t::LP,
         settings.presolver,
@@ -2479,7 +2513,21 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
 
+    if (equivalent_probe_scope) {
+      equivalent_probe_scope->bind_problem(&*problem, problem->n_constraints, problem->n_variables);
+      if (lpfeas_equivalent_probe::diagnostics_enabled()) {
+        CUOPT_LOG_INFO(
+          "EQUIVALENT_PROBE_JSON {\"phase\":\"bind_problem\",\"problem_identity\":\"%p\","
+          "\"presolver_identity\":\"%p\",\"rows\":%d,\"columns\":%d}",
+          static_cast<const void*>(&*problem),
+          static_cast<const void*>(presolver.get()),
+          problem->n_constraints,
+          problem->n_variables);
+      }
+    }
     auto solution = solve_lp_with_method(*problem, settings, lp_timer, is_batch_mode);
+    // Concurrent dispatch has joined all workers before this call returns.
+    equivalent_probe_scope.reset();
 
     if (run_presolve) {
       auto primal_solution = cuopt::device_copy(solution.get_primal_solution(),

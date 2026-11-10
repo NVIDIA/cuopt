@@ -17,6 +17,7 @@
 #include <pdlp/problem_memory.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utils.cuh>
+#include <presolve/experimental_equivalent_probe.hpp>
 
 #include <linear_algebra/sparse_matrix.hpp>
 #include <mip_heuristics/mip_constants.hpp>
@@ -42,6 +43,8 @@
 #include <cub/device/device_transform.cuh>
 
 #include <cstdint>
+#include <cstdlib>
+#include <limits>
 
 #include <thrust/count.h>
 #include <thrust/extrema.h>
@@ -59,6 +62,12 @@
 #include <unordered_set>
 
 namespace cuopt::mathematical_optimization::pdlp {
+
+static bool experimental_init_diagnostics_enabled()
+{
+  const char* value = std::getenv("LPFEAS_INIT_DIAGNOSTICS");
+  return value != nullptr && value[0] == '1' && value[1] == '\0';
+}
 
 // Templated wrapper for cuBLAS geam function
 // cublasSgeam for float, cublasDgeam for double
@@ -188,6 +197,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
     primal_weight_{climber_strategies_.size(), stream_view_},
     best_primal_weight_{climber_strategies_.size(), stream_view_},
     step_size_{climber_strategies_.size(), stream_view_},
+    h_fixed_error_inputs_(5),
     step_size_strategy_{handle_ptr_,
                         &primal_weight_,
                         &step_size_,
@@ -2363,11 +2373,38 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
 #endif
   } else {
-    fixed_error_computation<f_t>(step_size_strategy_.get_norm_squared_delta_primal(0),
-                                 step_size_strategy_.get_norm_squared_delta_dual(0),
-                                 primal_weight_.element(0, stream_view_),
-                                 step_size_.element(0, stream_view_),
-                                 step_size_strategy_.get_interaction(0),
+    // Read the scalar inputs together before evaluating the unchanged host expression.
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[0],
+                                  step_size_strategy_.get_norm_squared_delta_primal().data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[1],
+                                  step_size_strategy_.get_norm_squared_delta_dual().data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[2],
+                                  primal_weight_.data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[3],
+                                  step_size_.data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[4],
+                                  step_size_strategy_.get_interaction().data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    stream_view_.sync();
+    fixed_error_computation<f_t>(h_fixed_error_inputs_[0],
+                                 h_fixed_error_inputs_[1],
+                                 h_fixed_error_inputs_[2],
+                                 h_fixed_error_inputs_[3],
+                                 h_fixed_error_inputs_[4],
                                  &restart_strategy_.fixed_point_error_[0]);
   }
 
@@ -2626,6 +2663,85 @@ void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
       stream_view_.get());
   }
 }
+// Local experiment only; this is deliberately not a supported solver parameter.
+static int experimental_graph_batch_size()
+{
+  const char* value = std::getenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE");
+  if (value == nullptr) { return 1; }
+  char* end       = nullptr;
+  const long size = std::strtol(value, &end, 10);
+  if (end != value && *end == '\0' &&
+      (size == 1 || size == 4 || size == 8 || size == 16 || size == 24)) {
+    return static_cast<int>(size);
+  }
+  CUOPT_LOG_INFO("Experimental graph batching disabled: unsupported batch size '%s'", value);
+  return 1;
+}
+
+template <typename f_t>
+struct experimental_graph_batch_t {
+  experimental_graph_batch_t(cuda::stream_ref stream, int requested, bool eligible)
+    : stream{stream},
+      requested{requested},
+      effective{eligible ? requested : 1},
+      halpern_weights{static_cast<size_t>(eligible && requested > 1 ? requested : 0), stream}
+  {
+    if (requested > 1) {
+      CUOPT_LOG_INFO("Experimental graph batching: requested=%d effective=%d%s",
+                     requested,
+                     effective,
+                     eligible ? "" : " (unsupported solver path)");
+    }
+  }
+  ~experimental_graph_batch_t()
+  {
+    if (requested > 1) {
+      // The local graph must not outlive pending use of the solver's buffers.
+      RAFT_CUDA_TRY_NO_THROW(cudaStreamSynchronize(stream.get()));
+      CUOPT_LOG_INFO(
+        "Experimental graph batching: batch_launches=%llu batched_iterations=%llu "
+        "eager_recoveries=%llu",
+        static_cast<unsigned long long>(launches),
+        static_cast<unsigned long long>(iterations),
+        static_cast<unsigned long long>(recoveries));
+    }
+  }
+  cuda::stream_ref stream;
+  int requested;
+  int effective;
+  uint64_t launches{0};
+  uint64_t iterations{0};
+  uint64_t recoveries{0};
+  rmm::device_uvector<f_t> halpern_weights;
+  manual_cuda_graph_t graph;
+};
+
+template <typename i_t>
+static bool ordinary_graph_batch_fits(
+  i_t total, i_t internal, i_t limit, int batch_size, const pdlp_hyper_params_t& hyper_params)
+{
+  if (batch_size <= 1 || hyper_params.major_iteration <= 0 ||
+      total > std::numeric_limits<i_t>::max() - batch_size - 2 || internal > limit ||
+      limit - internal < batch_size) {
+    return false;
+  }
+  for (int offset = 0; offset < batch_size; ++offset) {
+    const i_t iteration = total + offset;
+    // Preserve every host checkpoint and both independent major-step triggers.
+    // PDHG's (iteration + 2) trigger is unconditional even when conditional
+    // termination checks are disabled. Recompute the period at each step.
+    if (iteration <= hyper_params.min_iteration_restart ||
+        iteration % hyper_params.major_iteration == 0 ||
+        (iteration + 1) % hyper_params.major_iteration == 0 ||
+        (iteration + 2) % conditional_major<i_t>(iteration + 2) == 0 ||
+        (hyper_params.use_conditional_major &&
+         iteration % conditional_major<i_t>(iteration) == 0)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(const timer_t& timer)
 {
@@ -2890,11 +3006,60 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     raft::print_device_vector(
       "Initial primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
 #endif
+    if (experimental_init_diagnostics_enabled() && !batch_mode_ &&
+        climber_strategies_.size() == 1) {
+      // Setup is complete and no iteration graph is being captured. Read only;
+      // the synchronization makes enabled runs diagnostic runs, not timing controls.
+      const f_t diagnostic_step        = step_size_.element(0, stream_view_);
+      const f_t diagnostic_weight      = primal_weight_.element(0, stream_view_);
+      const f_t diagnostic_primal_step = primal_step_size_.element(0, stream_view_);
+      const f_t diagnostic_dual_step   = dual_step_size_.element(0, stream_view_);
+      CUOPT_LOG_INFO(
+        "INIT_DIAGNOSTICS_JSON {\"phase\":\"initialization_ready\","
+        "\"step_size\":\"%.17g\",\"step_size_hex\":\"%a\","
+        "\"primal_weight\":\"%.17g\",\"primal_weight_hex\":\"%a\","
+        "\"primal_step_size\":\"%.17g\",\"dual_step_size\":\"%.17g\","
+        "\"bound_rescaling\":\"%.17g\",\"objective_rescaling\":\"%.17g\","
+        "\"step_size_setting_override\":%s,\"step_size_instance_override\":%s,"
+        "\"primal_weight_setting_override\":%s,\"primal_weight_instance_override\":%s}",
+        static_cast<double>(diagnostic_step),
+        static_cast<double>(diagnostic_step),
+        static_cast<double>(diagnostic_weight),
+        static_cast<double>(diagnostic_weight),
+        static_cast<double>(diagnostic_primal_step),
+        static_cast<double>(diagnostic_dual_step),
+        static_cast<double>(initial_scaling_strategy_.get_h_bound_rescaling()),
+        static_cast<double>(initial_scaling_strategy_.get_h_objective_rescaling()),
+        settings_.get_initial_step_size().has_value() ? "true" : "false",
+        initial_step_size_.has_value() ? "true" : "false",
+        settings_.get_initial_primal_weight().has_value() ? "true" : "false",
+        initial_primal_weight_.has_value() ? "true" : "false");
+    }
   }
   if (!inside_mip_) {
     CUOPT_LOG_INFO(
       "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
   }
+  const auto& graph_hyper = settings_.hyper_params;
+  const bool graph_reduction_disabled =
+    graph_hyper.reduced_matrix == reduced_matrix_mode_t::OFF ||
+    (graph_hyper.reduced_matrix == reduced_matrix_mode_t::DEFAULT &&
+     !should_skip_concurrent_cpu_solvers(static_cast<std::size_t>(op_problem_scaled_.nnz),
+                                         settings_.large_nnz_threshold));
+  bool graph_batch_eligible =
+    std::is_same_v<i_t, int> && std::is_same_v<f_t, double> && !inside_mip_ &&
+    !is_distributed_master() && !batch_mode_ && climber_strategies_.size() == 1 &&
+    !pdhg_solver_.get_graph_all().is_legacy_batch_mode() &&
+    settings_.pdlp_precision != pdlp_precision_t::MixedPrecision && settings_.new_bounds.empty() &&
+    problem_ptr->Q_values.empty() && graph_reduction_disabled &&
+    graph_hyper.use_reflected_primal_dual && !graph_hyper.use_adaptive_step_size_strategy &&
+    graph_hyper.never_restart_to_average && !graph_hyper.artificial_restart_in_main_loop;
+#if defined(CUPDLP_DEBUG_MODE) || defined(PDLP_DEBUG_MODE)
+  graph_batch_eligible = false;
+#endif
+  experimental_graph_batch_t<f_t> ordinary_batch{
+    stream_view_, experimental_graph_batch_size(), graph_batch_eligible};
+
   while (true) {
 #ifdef CUPDLP_DEBUG_MODE
     printf("Step: %d\n", total_pdlp_iterations_);
@@ -3030,10 +3195,14 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
       if (solution.has_value()) { return std::move(solution.value()); }
 
-      const auto& convergence      = current_termination_strategy_.get_convergence_information();
-      const f_t reduced_matrix_kkt = std::max({convergence.get_relative_l2_primal_residual_value(),
-                                               convergence.get_relative_l2_dual_residual_value(),
-                                               convergence.get_relative_gap_value()});
+      const bool use_reduced_matrix = pdhg_solver_.is_reduced_matrix_enabled();
+      f_t reduced_matrix_kkt        = f_t(0);
+      if (use_reduced_matrix) {
+        const auto& convergence = current_termination_strategy_.get_convergence_information();
+        reduced_matrix_kkt      = std::max({convergence.get_relative_l2_primal_residual_value(),
+                                            convergence.get_relative_l2_dual_residual_value(),
+                                            convergence.get_relative_gap_value()});
+      }
 
       if (settings_.hyper_params.rescale_for_restart) {
         if (!settings_.hyper_params.never_restart_to_average) {
@@ -3098,12 +3267,14 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         }
       }
 
-      const bool checkpoint_restarted = std::any_of(
-        has_restarted.begin(), has_restarted.end(), [](int restarted) { return restarted == 1; });
-      pdhg_solver_.update_reduced_matrix(
-        reduced_matrix_kkt,
-        checkpoint_restarted,
-        restart_strategy_.last_restart_duality_gap_.primal_solution_);
+      if (use_reduced_matrix) {
+        const bool checkpoint_restarted = std::any_of(
+          has_restarted.begin(), has_restarted.end(), [](int restarted) { return restarted == 1; });
+        pdhg_solver_.update_reduced_matrix(
+          reduced_matrix_kkt,
+          checkpoint_restarted,
+          restart_strategy_.last_restart_duality_gap_.primal_solution_);
+      }
 
       // In batch mode, after having checked for termination and restart
       // We transpose back to row for the PDHG iterations
@@ -3128,6 +3299,38 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 #ifdef CUPDLP_DEBUG_MODE
     printf("Is Major %d\n", takes_major_step);
 #endif
+    if (!is_major_iteration && !is_conditional_major && !error_occured &&
+        !artificial_restart_check_main_loop && !restarted_this_iteration &&
+        ordinary_graph_batch_fits(total_pdlp_iterations_,
+                                  internal_solver_iterations_,
+                                  settings_.iteration_limit,
+                                  ordinary_batch.effective,
+                                  settings_.hyper_params)) {
+      cuopt_assert(total_pdlp_iterations_ == pdhg_solver_.get_total_pdhg_iterations(),
+                   "PDLP and PDHG iteration counters must agree before graph batching");
+      auto& average = restart_strategy_.weighted_average_solution_;
+      pdhg_solver_.take_ordinary_graph_batch(
+        ordinary_batch.graph,
+        static_cast<i_t>(ordinary_batch.effective),
+        primal_step_size_,
+        dual_step_size_,
+        restart_strategy_.last_restart_duality_gap_.primal_solution_,
+        restart_strategy_.last_restart_duality_gap_.dual_solution_,
+        average.mutable_device_iterations_since_last_restart(),
+        ordinary_batch.halpern_weights);
+      // The captured body already advanced the device age by the full batch size.
+      // Keep all host effects outside capture, including eager-recovery paths.
+      average.advance_host_iterations_since_last_restart(ordinary_batch.effective);
+      total_pdlp_iterations_ += ordinary_batch.effective;
+      internal_solver_iterations_ += ordinary_batch.effective;
+      ordinary_batch.iterations += ordinary_batch.effective;
+      if (ordinary_batch.graph.is_initialized()) {
+        ++ordinary_batch.launches;
+      } else {
+        ++ordinary_batch.recoveries;
+      }
+      continue;
+    }
     take_step(total_pdlp_iterations_, takes_major_step || restarted_this_iteration);
 
     if (settings_.hyper_params.use_reflected_primal_dual) {
@@ -3313,6 +3516,20 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 {
   raft::common::nvtx::range fun_scope("compute_initial_step_size");
 
+  const auto equivalent_probe = lpfeas_equivalent_probe::enabled()
+                                  ? lpfeas_equivalent_probe::require_context(problem_ptr)
+                                  : nullptr;
+  if (equivalent_probe) {
+    cuopt_expects((std::is_same_v<i_t, int> && std::is_same_v<f_t, double>) &&
+                    !is_distributed_master() && !batch_mode_ && climber_strategies_.size() == 1 &&
+                    !inside_mip_ && settings_.hyper_params.initial_step_size_max_singular_value &&
+                    !settings_.get_initial_step_size().has_value() &&
+                    !initial_step_size_.has_value() &&
+                    settings_.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1,
+                  error_type_t::ValidationError,
+                  "Equivalent probe requires cold single-GPU FP64 single-climber spectral setup");
+  }
+
   // Shared knobs for the power-iteration path (both single-GPU and
   // multi-GPU)
   constexpr f_t scaling_factor = f_t{0.998};
@@ -3364,6 +3581,59 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     i_t n = op_problem_scaled_.n_variables;
 
     std::vector<f_t> z = make_singular_value_probe<f_t>(static_cast<std::size_t>(m));
+    if (equivalent_probe) {
+      cuopt_expects(equivalent_probe->rows == static_cast<std::size_t>(m) &&
+                      equivalent_probe->columns == static_cast<std::size_t>(n),
+                    error_type_t::ValidationError,
+                    "Equivalent probe reduced shape changed");
+      const bool probe_diagnostics = lpfeas_equivalent_probe::diagnostics_enabled();
+      const auto original_digest = probe_diagnostics ? lpfeas_equivalent_probe::byte_digest(z) : 0;
+      if (probe_diagnostics) {
+        lpfeas_equivalent_probe::write_vector(*equivalent_probe, "probe_original.f64.bin", z);
+      }
+      lpfeas_equivalent_probe::permute_probe(*equivalent_probe, z);
+      if (probe_diagnostics) {
+        lpfeas_equivalent_probe::write_vector(*equivalent_probe, "probe_used.f64.bin", z);
+        CUOPT_LOG_INFO(
+          "EQUIVALENT_PROBE_JSON {\"phase\":\"spectral_probe\",\"problem_identity\":\"%p\","
+          "\"presolver_identity\":\"%p\",\"rows\":%d,\"columns\":%d,\"rcm_active\":%s,"
+          "\"original_probe_fnv1a64\":\"%016llx\",\"used_probe_fnv1a64\":\"%016llx\","
+          "\"row_map_fnv1a64\":\"%016llx\",\"column_map_fnv1a64\":\"%016llx\","
+          "\"dump_requested\":%s,\"scaled_csr_dump_requested\":%s}",
+          static_cast<const void*>(problem_ptr),
+          equivalent_probe->presolver_identity,
+          m,
+          n,
+          equivalent_probe->reordered ? "true" : "false",
+          static_cast<unsigned long long>(original_digest),
+          static_cast<unsigned long long>(lpfeas_equivalent_probe::byte_digest(z)),
+          static_cast<unsigned long long>(
+            lpfeas_equivalent_probe::byte_digest(equivalent_probe->row_new_to_old)),
+          static_cast<unsigned long long>(
+            lpfeas_equivalent_probe::byte_digest(equivalent_probe->column_new_to_old)),
+          equivalent_probe->dump_directory.empty() ? "false" : "true",
+          lpfeas_equivalent_probe::scaled_dump_enabled() ? "true" : "false");
+      }
+      if (lpfeas_equivalent_probe::scaled_dump_enabled()) {
+        // The scaled descriptors share the original problem's CSR structure after setup.
+        // Copy each array separately on the solver stream; these runs are diagnostic only.
+        cuopt_expects(problem_ptr->offsets.size() == static_cast<std::size_t>(m) + 1 &&
+                        problem_ptr->variables.size() == op_problem_scaled_.coefficients.size(),
+                      error_type_t::ValidationError,
+                      "Scaled CSR diagnostic shape mismatch");
+        lpfeas_equivalent_probe::write_vector(*equivalent_probe,
+                                              "scaled_A.offsets.i32.bin",
+                                              cuopt::host_copy(problem_ptr->offsets, stream_view_));
+        lpfeas_equivalent_probe::write_vector(
+          *equivalent_probe,
+          "scaled_A.columns.i32.bin",
+          cuopt::host_copy(problem_ptr->variables, stream_view_));
+        lpfeas_equivalent_probe::write_vector(
+          *equivalent_probe,
+          "scaled_A.values.f64.bin",
+          cuopt::host_copy(op_problem_scaled_.coefficients, stream_view_));
+      }
+    }
     rmm::device_uvector<f_t> d_z(m, stream_view_);
     rmm::device_uvector<f_t> d_q(m, stream_view_);
     // PDHG owns at least n scratch entries, with no live iteration data during setup.
@@ -3458,6 +3728,30 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 #endif
 
     const f_t step_size = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));
+    if (experimental_init_diagnostics_enabled() && !batch_mode_ &&
+        climber_strategies_.size() == 1) {
+      // Diagnostic-only reads after the original power iteration has finished.
+      // Decimal strings preserve nonfinite diagnostics; hex strings preserve finite values exactly.
+      const f_t diagnostic_sigma_sq = sigma_max_sq.value(stream_view_);
+      const f_t diagnostic_residual = residual_norm.value(stream_view_);
+      CUOPT_LOG_INFO(
+        "INIT_DIAGNOSTICS_JSON {\"phase\":\"spectral_estimate\","
+        "\"power_iterations\":%d,\"max_power_iterations\":%d,"
+        "\"power_tolerance\":\"%.17g\",\"sigma_squared\":\"%.17g\","
+        "\"sigma_squared_hex\":\"%a\",\"power_residual\":\"%.17g\","
+        "\"computed_step_size\":\"%.17g\",\"computed_step_size_hex\":\"%a\","
+        "\"probe_seed\":1,\"probe_coordinates\":\"%s\"}",
+        sing_iters,
+        max_iterations,
+        static_cast<double>(tolerance),
+        static_cast<double>(diagnostic_sigma_sq),
+        static_cast<double>(diagnostic_sigma_sq),
+        static_cast<double>(diagnostic_residual),
+        static_cast<double>(step_size),
+        static_cast<double>(step_size),
+        equivalent_probe && equivalent_probe->reordered ? "permuted_original_reduced_row_index"
+                                                        : "current_row_index");
+    }
     thrust::uninitialized_fill(
       handle_ptr_->get_thrust_policy(), step_size_.begin(), step_size_.end(), step_size);
 

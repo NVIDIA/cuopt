@@ -86,6 +86,15 @@ class pdhg_solver_t {
                  bool last_restart_was_average,
                  i_t total_pdlp_iterations,
                  bool is_major_iteration);
+  // Only the experimental single-problem fixed-step path calls this, between checkpoints.
+  void take_ordinary_graph_batch(manual_cuda_graph_t& graph,
+                                 i_t batch_size,
+                                 rmm::device_uvector<f_t>& primal_step_size,
+                                 rmm::device_uvector<f_t>& dual_step_size,
+                                 rmm::device_uvector<f_t>& initial_primal,
+                                 rmm::device_uvector<f_t>& initial_dual,
+                                 i_t* d_iterations_since_last_restart,
+                                 rmm::device_uvector<f_t>& batched_halpern_weights);
   void update_solution(cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_);
   void refine_initial_primal_projection(const rmm::device_uvector<f_t>& bound_rescaling);
 
@@ -105,6 +114,8 @@ class pdhg_solver_t {
   // cusparsespmv on this shard's local A / A^T
   void spmv_At_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
   void spmv_A_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
+
+  bool is_reduced_matrix_enabled() const { return reduced_matrix_.enabled(); }
 
   void update_reduced_matrix(f_t relative_kkt,
                              bool restarted,

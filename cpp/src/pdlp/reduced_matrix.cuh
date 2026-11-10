@@ -52,6 +52,7 @@ class reduced_matrix_t {
                    mip::problem_t<i_t, f_t>& problem,
                    bool enabled);
 
+  bool enabled() const { return enabled_; }
   bool active() const { return active_; }
   // The original structure outlives this operator; numerical values stay scaled.
   void redirect_csr_structure(const mip::problem_t<i_t, f_t>& original_problem)

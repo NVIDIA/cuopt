@@ -18,6 +18,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <presolve/experimental_rcm_state.hpp>
 #include <presolve/presolve_budget_policy.hpp>
 
 #include <PSLP/PSLP_API.h>
@@ -73,6 +74,9 @@ template <typename i_t, typename f_t>
 class third_party_presolve_t {
  public:
   third_party_presolve_t() = default;
+
+  // Experimental cold single-GPU LP path only; configured explicitly by solve_lp.
+  void enable_experimental_rcm(std::size_t hub_threshold);
 
   // Delete copy constructor, copy assignment operator, move constructor, and move assignment
   // operator This is because we are using PSLP pointers
@@ -195,6 +199,9 @@ class third_party_presolve_t {
   ~third_party_presolve_t();
 
  private:
+  std::size_t experimental_rcm_hub_threshold_{0};
+  lpfeas_ordering::native_rcm_state experimental_rcm_state_;
+
   third_party_presolve_status_t apply_pslp(io::mps_data_model_t<i_t, f_t> const& mps,
                                            double time_limit);
 
