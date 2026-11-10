@@ -1219,6 +1219,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   // enough) We still need to check iteration and time limit prior without breaking the logic below
   // of first checking termination before the limit
   if (internal_solver_iterations_ <= 1) {
+    report_dual_bound();
     print_termination_criteria(timer);
     return check_limits(timer);
   }
@@ -1480,7 +1481,10 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
                               average_termination_strategy_,
                               termination_current,
                               termination_average);
-  if (total_pdlp_iterations_ % 1000 == 0) { print_termination_criteria(timer); }
+  if (total_pdlp_iterations_ % 1000 == 0) {
+    report_dual_bound();
+    print_termination_criteria(timer);
+  }
 
   // No reason to terminate
   return check_limits(timer);
@@ -2626,6 +2630,34 @@ void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
       stream_view_.get());
   }
 }
+template <typename i_t, typename f_t>
+bool pdlp_solver_t<i_t, f_t>::reports_dual_bound()
+{
+  return settings_.dual_bound_callback && climber_strategies_.size() == 1 &&
+         !is_distributed_master();
+}
+
+// Called from check_termination with the iteration log (iteration 0, then every 1000 iterations),
+// where the iterates are unscaled, so the dual iterate can be turned into a valid bound.
+template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::report_dual_bound()
+{
+  if (!reports_dual_bound()) { return; }
+  auto& dual = settings_.hyper_params.use_adaptive_step_size_strategy
+                 ? pdhg_solver_.get_dual_solution()
+                 : pdhg_solver_.get_potential_next_dual_solution();
+  if (static_cast<i_t>(dual.size()) != problem_ptr->n_constraints) { return; }
+  if (!dual_bound_) {
+    dual_bound_ = std::make_unique<lagrangian_dual_bound_t<i_t, f_t>>(
+      problem_ptr->n_constraints, problem_ptr->n_variables, stream_view_);
+  }
+  const f_t bound = dual_bound_->compute(*problem_ptr, dual.data(), stream_view_);
+  if (!std::isfinite(bound) || bound <= best_dual_bound_) { return; }
+  best_dual_bound_ = bound;
+  settings_.dual_bound_callback(problem_ptr->presolve_data.objective_scaling_factor *
+                                (bound + problem_ptr->presolve_data.objective_offset));
+}
+
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(const timer_t& timer)
 {

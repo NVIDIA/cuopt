@@ -19,6 +19,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
+#include <functional>
 #include <tuple>
 
 #include <cuda/std/span>
@@ -370,6 +371,11 @@ class pdlp_solver_settings_t {
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
+  // Optional valid lower bound reporting: with the iteration log (iteration 0, then every 1000
+  // iterations), the current dual iterate is turned into a Lagrangian lower bound on the objective
+  // (user space: offset and scaling applied) and passed here when it improves on the last reported
+  // one. Used by the MIP root LP to report a bound before PDLP converges.
+  std::function<void(f_t)> dual_bound_callback{};
   // Shared strong branching solved flags for cooperative DS + PDLP
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
