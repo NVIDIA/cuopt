@@ -315,7 +315,7 @@ FetchContent_MakeAvailable(papilo)
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "v0.3.1"
+        GIT_TAG "c259a10b55f3019899f60d998389fbe098005204"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -1680,6 +1680,7 @@ endif ()
 
 option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)
 if (BUILD_LP_BENCHMARKS)
+    add_subdirectory(../benchmarks/linear_programming/cuopt/pdlp_overhead pdlp_overhead)
     add_executable(solve_LP ../benchmarks/linear_programming/cuopt/run_pdlp.cu)
 
     set_target_properties(solve_LP
