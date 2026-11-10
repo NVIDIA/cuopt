@@ -599,7 +599,7 @@ TEST(Lns, PresolveIncumbentIsHandedToMainPopulationOnce)
   std::vector<mip::solution_t<int, double>> solutions;
   dm.add_user_given_solutions(solutions);
   EXPECT_TRUE(solutions.empty());
-  context.initial_incumbent_from_papilo_model = true;
+  context.papilo_model_user_incumbents = {{1, 0}};
   dm.add_user_given_solutions(solutions);
   ASSERT_EQ(solutions.size(), 1);
   EXPECT_TRUE(solutions[0].get_feasible());
@@ -684,32 +684,20 @@ TEST(Lns, MainWorkersStopWithoutBranchAndBoundOnSmallTeams)
       {
 #pragma omp taskgroup
         {
-          dm.ls.start_cpufj_scratch_threads(dm.population);
           dm.ls.start_cpufj_lns_improvement_thread(dm.population);
           const int lns_workers = mip::lns_worker_count(team_size, false);
           EXPECT_EQ(dm.ls.scratch_cpu_fj_lns != nullptr, lns_workers > 0);
-          // Reserve a slot for the LNS worker only on teams large enough to run it.
-          for (const auto& worker : dm.ls.scratch_cpu_fj)
-            EXPECT_EQ(worker != nullptr,
-                      team_size - lns_workers >= CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT);
-
-          dm.ls.stop_cpufj_scratch_threads();
+          dm.ls.stop_cpufj_lns_improvement_thread();
           bool stopped = true;
           if (dm.ls.scratch_cpu_fj_lns) {
             EXPECT_TRUE(dm.ls.scratch_cpu_fj_lns->halted.load());
             stopped &= dm.ls.scratch_cpu_fj_lns->halted.load();
           }
-          for (const auto& worker : dm.ls.scratch_cpu_fj) {
-            if (worker) {
-              EXPECT_TRUE(worker->halted.load());
-              stopped &= worker->halted.load();
-            }
-          }
           EXPECT_FALSE(context.preempt_heuristic_solver_.load());
           // Keep a regression from hanging the test itself. Successful cleanup
           // must not need the preemption signal normally supplied by B&B.
           if (!stopped) context.preempt_heuristic_solver_ = true;
-          dm.ls.stop_cpufj_scratch_threads();
+          dm.ls.stop_cpufj_lns_improvement_thread();
         }
       }
     }

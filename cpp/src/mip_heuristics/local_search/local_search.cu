@@ -60,10 +60,10 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
     rng(derive_seed(context.base_seed, rng_id_t::local_search)),
     problem_with_objective_cut(*context.problem_ptr, context.problem_ptr->handle_ptr)
 {
-  const int n_cpufj = context.settings.heuristic_params.num_cpufj_threads;
+  const int n_cpufj = context.settings.mip_hyper_params.heuristic_num_cpufj_threads;
   ls_cpu_fj.resize(n_cpufj);
-  scratch_cpu_fj.resize(1);
-  fj.settings.n_of_minimums_for_exit = context.settings.heuristic_params.n_of_minimums_for_exit;
+  fj.settings.n_of_minimums_for_exit =
+    context.settings.mip_hyper_params.heuristic_n_of_minimums_for_exit;
 }
 
 template <typename i_t, typename f_t>
@@ -76,60 +76,6 @@ fj_improvement_callback_t<f_t> local_search_t<i_t, f_t>::make_fj_improvement_cal
     context.solution_publication.publish_if_better(
       publication_problem, assignment, publication_problem->get_solver_obj_from_user_obj(user_obj));
   };
-}
-
-template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t>& population)
-{
-  // TODO: Find a way to enable this in low core count scenarios
-  if (feasibility_team_size(context) < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
-
-  pop_ptr = &population;
-  std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
-
-  solution_t<i_t, f_t> solution(*context.problem_ptr);
-  thrust::fill(solution.handle_ptr->get_thrust_policy(),
-               solution.assignment.begin(),
-               solution.assignment.end(),
-               0.0);
-  solution.clamp_within_bounds();
-  i_t counter = 0;
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    if (counter > 0) solution.assign_random_within_bounds(rng(), 0.4);
-    cpu_fj = fj.create_cpu_climber(solution,
-                                   default_weights,
-                                   default_weights,
-                                   0.,
-                                   context.preempt_heuristic_solver_,
-                                   &constraint_prop.bounds_update.probing_cache,
-                                   fj_settings_t{},
-                                   /*randomize=*/counter > 0);
-
-    cpu_fj->log_prefix = "******* scratch " + std::to_string(counter) + ": ";
-    cpu_fj->improvement_callback =
-      [this, &population, problem_ptr = context.problem_ptr](
-        f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
-        population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
-        (void)problem_ptr;
-        if (obj < this->local_search_best_obj.fetch_min(obj, std::memory_order::relaxed)) {
-          CUOPT_LOG_TRACE("******* New local search best obj %g, best overall %g",
-                          problem_ptr->get_user_obj_from_solver_obj(obj),
-                          problem_ptr->get_user_obj_from_solver_obj(
-                            population.is_feasible() ? population.best_feasible().get_objective()
-                                                     : std::numeric_limits<f_t>::max()));
-        }
-      };
-    counter++;
-  };
-
-  CUOPT_LOG_DEBUG("Launching %d scratch CPUFJ tasks", scratch_cpu_fj.size());
-
-  for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
-    auto ptr = scratch_cpu_fj[i].get();
-#pragma omp task firstprivate(ptr) priority(CUOPT_DEFAULT_TASK_PRIORITY) \
-  depend(out : *ptr) default(none)
-    cpufj_solve(ptr);
-  }
 }
 
 template <typename i_t, typename f_t>
@@ -204,67 +150,10 @@ void local_search_t<i_t, f_t>::start_cpufj_lns_improvement_thread(
 }
 
 template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
-  population_t<i_t, f_t>& population)
+void local_search_t<i_t, f_t>::stop_cpufj_lns_improvement_thread()
 {
-  // TODO: Find a way to enable this in low core count scenarios
-  if (feasibility_team_size(context) < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
-
-  pop_ptr = &population;
-
-  std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
-
-  solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
-  solution_lp.copy_new_assignment(
-    host_copy(lp_optimal_solution, context.problem_ptr->handle_ptr->get_stream()));
-  solution_lp.round_random_nearest(500, rng());
-  scratch_cpu_fj_on_lp_opt             = fj.create_cpu_climber(solution_lp,
-                                                   default_weights,
-                                                   default_weights,
-                                                   0.,
-                                                   context.preempt_heuristic_solver_,
-                                                   &constraint_prop.bounds_update.probing_cache);
-  scratch_cpu_fj_on_lp_opt->log_prefix = "******* scratch on LP optimal: ";
-  scratch_cpu_fj_on_lp_opt->improvement_callback =
-    [this, &population](f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
-      population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
-      if (obj < this->local_search_best_obj.fetch_min(obj, std::memory_order::relaxed)) {
-        CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
-                        context.problem_ptr->get_user_obj_from_solver_obj(obj),
-                        context.problem_ptr->get_user_obj_from_solver_obj(
-                          population.is_feasible() ? population.best_feasible().get_objective()
-                                                   : std::numeric_limits<f_t>::max()));
-      }
-    };
-
-  CUOPT_LOG_DEBUG("Launching scratch CPUFJ (on LP optimal) task");
-
-#pragma omp task shared(scratch_cpu_fj_on_lp_opt) \
-  priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : *scratch_cpu_fj_on_lp_opt)
-  cpufj_solve(scratch_cpu_fj_on_lp_opt.get());
-}
-
-template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
-{
-  // Signal every persistent worker before reaching any task scheduling point.
-  // LNS can run on teams too small to launch the scratch feasibility lanes.
+  // Signal the worker before reaching any task scheduling point.
   if (scratch_cpu_fj_lns) scratch_cpu_fj_lns->halted = true;
-  if (scratch_cpu_fj_on_lp_opt) scratch_cpu_fj_on_lp_opt->halted = true;
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    if (cpu_fj) cpu_fj->halted = true;
-  }
-  for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
-    if (!scratch_cpu_fj[i]) continue;
-#pragma omp taskwait depend(in : *scratch_cpu_fj[i])  // Wait for each scratch CPU FJ task to finish
-  }
-
-  if (scratch_cpu_fj_on_lp_opt) {
-#pragma omp taskwait depend( \
-    in : *scratch_cpu_fj_on_lp_opt)  // Wait for the scratch CPU FJ (LP optimal) task to finish
-
-    CUOPT_LOG_DEBUG("All scratch CPUFJ tasks were stopped");
-  }
 
   if (scratch_cpu_fj_lns) {
 #pragma omp taskwait depend(in : *scratch_cpu_fj_lns)  // Wait for the LNS improvement task
@@ -564,7 +453,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                   cpu_better[source]);
 
   total_calls[source]++;
-  if (cpu_feasible && !gpu_feasible ||
+  if ((cpu_feasible && !gpu_feasible) ||
       (cpu_feasible && solution_cpu.get_objective() < solution.get_objective())) {
     CUOPT_LOG_DEBUG(
       "CPU FJ returns better solution! cpu_obj %g, gpu_obj %g, stats %d/%d, source %s",
@@ -961,9 +850,9 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   f_t& best_objective)
 {
   raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
-  const auto& hp                               = context.settings.heuristic_params;
-  const i_t iterations_for_stagnation          = hp.stagnation_trigger;
-  const i_t max_iterations_without_improvement = hp.max_iterations_without_improvement;
+  const auto& hp                               = context.settings.mip_hyper_params;
+  const i_t iterations_for_stagnation          = hp.heuristic_stagnation_trigger;
+  const i_t max_iterations_without_improvement = hp.heuristic_max_iterations_without_improvement;
   population_ptr->add_external_solutions_to_population();
   if (population_ptr->current_size() > 1 &&
       i - last_improved_iteration > iterations_for_stagnation) {

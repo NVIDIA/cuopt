@@ -296,6 +296,7 @@ bool domain_t<i_t, f_t>::propagate_implications(i_t j,
                                                 const simplex_solver_settings_t<i_t, f_t>& settings,
                                                 lp_problem_t<i_t, f_t>& lp)
 {
+  assert(lp.lower[j] == lp.upper[j] && "Implications require a fixed variable");
   const bool one = lp.lower[j] == 1;
 
   // Probing x_j = 0 (resp. 1) implies lower[p] <= x_k <= upper[p] for every entry p of x_j.
@@ -331,39 +332,15 @@ bool domain_t<i_t, f_t>::propagate_implications(i_t j,
   if (j >= n) { return true; }
   const i_t literal = one ? j : j + n;
 
-  auto set_false = [&](i_t v) {
+  for (i_t v : clique_table->get_adj_set_of_var(literal)) {
     ++nnz_processed;
-    const i_t k = v < n ? v : v - n;
-    if (k == j) { return true; }
-    if (v < n) {
-      return tighten_bounds(
-        k, lp.lower[k], 0.0, bound_change_origin_t::CLIQUE, var_types, settings, lp);
-    }
-    return tighten_bounds(
-      k, 1.0, lp.upper[k], bound_change_origin_t::CLIQUE, var_types, settings, lp);
-  };
-
-  for (i_t c : clique_table->var_clique_first.slice(literal)) {
-    for (i_t v : clique_table->first[c]) {
-      if (!set_false(v)) { return false; }
-    }
-  }
-
-  for (i_t a : clique_table->var_clique_addtl.slice(literal)) {
-    const auto& addtl = clique_table->addtl_cliques[a];
-    if (addtl.vertex_idx == literal) {
-      // The extension vertex is adjacent to the suffix of its base clique.
-      const auto& base = clique_table->first[addtl.clique_idx];
-      for (size_t pos = addtl.start_pos_on_clique; pos < base.size(); ++pos) {
-        if (!set_false(base[pos])) { return false; }
-      }
-    } else if (!set_false(addtl.vertex_idx)) {
+    const i_t k         = v < n ? v : v - n;
+    const f_t new_lower = v < n ? lp.lower[k] : 1.0;
+    const f_t new_upper = v < n ? 0.0 : lp.upper[k];
+    if (!tighten_bounds(
+          k, new_lower, new_upper, bound_change_origin_t::CLIQUE, var_types, settings, lp)) {
       return false;
     }
-  }
-
-  for (i_t v : clique_table->small_clique_adj.slice(literal)) {
-    if (!set_false(v)) { return false; }
   }
 
   return true;

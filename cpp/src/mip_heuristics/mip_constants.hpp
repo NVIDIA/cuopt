@@ -56,11 +56,6 @@
 #define CUOPT_MEDIUM_TASK_PRIORITY   10
 #define CUOPT_DEFAULT_TASK_PRIORITY  1
 
-// Default values for work stealing in B&B
-#define MIP_DEFAULT_STEAL_CHANCE       0.05
-#define MIP_DEFAULT_NODES_PER_STEAL    10
-#define MIP_DEFAULT_MAX_STEAL_ATTEMPTS 3
-
 namespace cuopt::mathematical_optimization::mip {
 
 enum class rng_id_t : uint64_t {

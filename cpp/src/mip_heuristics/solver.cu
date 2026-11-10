@@ -87,39 +87,8 @@ struct branch_and_bound_solution_helper_t {
 };
 
 template <typename i_t, typename f_t>
-solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
+void mip_solver_t<i_t, f_t>::stop_early_heuristics()
 {
-  solution_t<i_t, f_t> sol(*context.problem_ptr);
-
-  //  we need to keep original problem const
-  cuopt_assert(context.problem_ptr != nullptr, "invalid problem pointer");
-  context.problem_ptr->tolerances = context.settings.get_tolerances();
-  cuopt_expects(context.problem_ptr->preprocess_called,
-                error_type_t::RuntimeError,
-                "preprocess_problem should be called before running the solver");
-
-  diversity_manager_t<i_t, f_t> dm(context);
-  if (context.problem_ptr->empty) {
-    CUOPT_LOG_INFO("Problem fully reduced in presolve");
-    sol.set_problem_fully_reduced();
-    context.solution_publication.publish_if_better(
-      context.problem_ptr, sol.get_host_assignment(), sol.get_objective());
-    context.problem_ptr->post_process_solution(sol);
-    return sol;
-  }
-
-  dm.timer                = timer_;
-  const bool run_presolve = context.settings.presolver != presolver_t::None;
-  // cuOpt presolve no longer gets a share of the solve. Its cost is bounded by the probing work
-  // ceiling in presolve_budget_policy.hpp, so this is only the end of the solve.
-  const f_t presolve_time_limit = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
-                                    ? std::numeric_limits<f_t>::infinity()
-                                    : timer_.remaining_time();
-  if (std::isfinite(presolve_time_limit))
-    CUOPT_LOG_DEBUG("Presolve time limit: %g", presolve_time_limit);
-  bool presolve_success = run_presolve ? dm.run_presolve(presolve_time_limit, timer_) : true;
-
-  // Stop early CPUFJ after cuopt presolve (probing cache) but before main solve
   if (context.early_cpufj_ptr) { context.early_cpufj_ptr->request_stop(); }
   if (context.early_structural_ptr) { context.early_structural_ptr->request_stop(); }
   if (context.early_cpufj_ptr) {
@@ -139,6 +108,56 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         context.early_structural_ptr->get_best_user_objective());
     }
   }
+
+  auto& incumbents = context.papilo_model_incumbents;
+  if (incumbents.empty()) { return; }
+  for (const auto& incumbent : incumbents) {
+    std::vector<f_t> user_assignment;
+    context.problem_ptr->presolve_data.papilo_uncrush_assignment(incumbent.assignment,
+                                                                 user_assignment);
+    context.papilo_model_user_incumbents.push_back(std::move(user_assignment));
+  }
+  context.initial_upper_bound          = incumbents.back().user_obj;
+  context.initial_incumbent_assignment = context.papilo_model_user_incumbents.back();
+  incumbents.clear();
+}
+
+template <typename i_t, typename f_t>
+solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
+{
+  solution_t<i_t, f_t> sol(*context.problem_ptr);
+
+  //  we need to keep original problem const
+  cuopt_assert(context.problem_ptr != nullptr, "invalid problem pointer");
+  context.problem_ptr->tolerances = context.settings.get_tolerances();
+  cuopt_expects(context.problem_ptr->preprocess_called,
+                error_type_t::RuntimeError,
+                "preprocess_problem should be called before running the solver");
+
+  diversity_manager_t<i_t, f_t> dm(context);
+  if (context.problem_ptr->empty) {
+    CUOPT_LOG_INFO("Problem fully reduced in presolve");
+    stop_early_heuristics();
+    sol.set_problem_fully_reduced();
+    context.solution_publication.publish_if_better(
+      context.problem_ptr, sol.get_host_assignment(), sol.get_objective());
+    context.problem_ptr->post_process_solution(sol);
+    return sol;
+  }
+
+  dm.timer                = timer_;
+  const bool run_presolve = context.settings.presolver != presolver_t::None;
+  // cuOpt presolve no longer gets a share of the solve. Its cost is bounded by the probing work
+  // ceiling in presolve_budget_policy.hpp, so this is only the end of the solve.
+  const f_t presolve_time_limit = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
+                                    ? std::numeric_limits<f_t>::infinity()
+                                    : timer_.remaining_time();
+  if (std::isfinite(presolve_time_limit))
+    CUOPT_LOG_DEBUG("Presolve time limit: %g", presolve_time_limit);
+  bool presolve_success = run_presolve ? dm.run_presolve(presolve_time_limit, timer_) : true;
+
+  // Stop early CPUFJ after cuopt presolve (probing cache) but before main solve
+  stop_early_heuristics();
 
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
@@ -248,7 +267,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   // Resize the solution now that we know the number of columns/variables
   branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
 
-  extract_probing_implied_bounds(op_problem_,
+  extract_probing_implied_bounds(op_problem_.reverse_original_ids,
                                  branch_and_bound_problem,
                                  dm.ls.constraint_prop.bounds_update.probing_cache,
                                  probing_implied_bound);
@@ -308,8 +327,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.settings.dual_degenerate_pivots == -1 ? 0 : context.settings.dual_degenerate_pivots;
   branch_and_bound_settings.symmetry = context.settings.symmetry;
 
-  branch_and_bound_settings.diving_settings = context.settings.diving_params;
-  branch_and_bound_settings.submip_settings = context.settings.submip_params;
+  branch_and_bound_settings.mip_hyper_params = context.settings.mip_hyper_params;
 
   // Set the branch and bound -> primal heuristics callback
   branch_and_bound_settings.solution_callback =
