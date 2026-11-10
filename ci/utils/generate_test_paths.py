@@ -9,6 +9,29 @@ from pathlib import Path
 import yaml
 
 
+class UniqueKeySafeLoader(yaml.SafeLoader):
+    """Load safe YAML while rejecting duplicate mapping keys."""
+
+    def construct_mapping(self, node, deep=False):
+        """Reject repeated keys before constructing a mapping."""
+        keys = set()
+
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+
+            if key in keys:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"duplicate key: {key!r}",
+                    key_node.start_mark,
+                )
+
+            keys.add(key)
+
+        return super().construct_mapping(node, deep=deep)
+
+
 def mapping_value(node, name):
     """Find exactly one key in a YAML mapping, rejecting ambiguous input."""
 
@@ -117,6 +140,8 @@ def generate(workflow, rules):
 
 
 def main():
+    """Load path rules and update or check the workflow."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--check", action="store_true", help="Check without writing"
@@ -124,8 +149,12 @@ def main():
 
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
+
     path = root / ".github/workflows/pr.yaml"
-    rules = yaml.safe_load((root / "ci/test-paths.yaml").read_text())
+    rules = yaml.load(
+        (root / "ci/test-paths.yaml").read_text(), Loader=UniqueKeySafeLoader
+    )
+
     original = path.read_text()
     updated = generate(original, rules)
 
