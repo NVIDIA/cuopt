@@ -350,7 +350,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       CUDSS_CALL_AND_CHECK_EXIT(
         cudssConfigSet(solverConfig, CUDSS_CONFIG_ND_NLEVELS, &nd_nlevels, sizeof(int32_t)),
         status,
-        "cudssConfigSet for nd nlevels");
+        "cudssConfigSet for ND nlevels");
     } else if (settings_.cudss_nd_nlevels != -1) {
       settings_.log.printf("cuDSS ND levels             : %d ignored, must be at least 2\n",
                            settings_.cudss_nd_nlevels);
