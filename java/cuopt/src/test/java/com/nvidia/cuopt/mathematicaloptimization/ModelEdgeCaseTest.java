@@ -371,7 +371,7 @@ final class ModelEdgeCaseTest {
     problem.addConstraint(shared);
     assertThrows(IllegalArgumentException.class, () -> problem.addConstraint(shared));
     assertEquals(1, problem.getNumConstraints());
-        assertEquals(0, shared.getIndex());
+    assertEquals(0, shared.getIndex());
   }
 
   @Test
