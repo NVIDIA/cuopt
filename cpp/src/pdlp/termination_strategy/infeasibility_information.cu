@@ -16,8 +16,14 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
+// <cuda/std/algorithm.*.h> is available since CCCL 3.4.
+#include <cuda/version>
+#if CCCL_VERSION >= 3004000
 #include <cuda/std/algorithm.max.h>
 #include <cuda/std/algorithm.min.h>
+#else
+#include <cuda/std/algorithm>
+#endif
 #include <thrust/iterator/transform_output_iterator.h>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>

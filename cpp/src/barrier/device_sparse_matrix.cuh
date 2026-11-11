@@ -12,7 +12,13 @@
 #include <math_optimization/types.hpp>
 #include <raft/core/handle.hpp>
 
+// <cuda/std/algorithm.*.h> is available since CCCL 3.4.
+#include <cuda/version>
+#if CCCL_VERSION >= 3004000
 #include <cuda/std/algorithm.min.h>
+#else
+#include <cuda/std/algorithm>
+#endif
 #include <cub/device/device_reduce.cuh>
 #include <cub/device/device_scan.cuh>
 #include <cuda/stream>
