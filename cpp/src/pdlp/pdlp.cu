@@ -1219,6 +1219,25 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   // enough) We still need to check iteration and time limit prior without breaking the logic below
   // of first checking termination before the limit
   if (internal_solver_iterations_ <= 1) {
+    // LP and MIP callers clamp supplied primal starts to variable bounds. Accept a feasible
+    // one before steps can worsen it, but do not claim optimality yet. The default zero start
+    // may violate variable bounds, which the primal residual does not check.
+    const auto status = current_termination_strategy_.get_termination_status(0);
+    if (!batch_mode_ && settings_.first_primal_feasible && !initial_primal_.is_empty() &&
+        (status == pdlp_termination_status_t::PrimalFeasible ||
+         status == pdlp_termination_status_t::Optimal)) {
+      return current_termination_strategy_.fill_return_problem_solution(
+        internal_solver_iterations_,
+        pdhg_solver_,
+        (settings_.hyper_params.use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_primal_solution()
+          : pdhg_solver_.get_potential_next_primal_solution(),
+        (settings_.hyper_params.use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_dual_solution()
+          : pdhg_solver_.get_potential_next_dual_solution(),
+        get_filled_warmed_start_data(),
+        {pdlp_termination_status_t::PrimalFeasible});
+    }
     print_termination_criteria(timer);
     return check_limits(timer);
   }

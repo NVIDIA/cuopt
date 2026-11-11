@@ -1202,6 +1202,116 @@ TEST(pdlp_class, best_primal_so_far_time)
               solution1.get_additional_termination_information().l2_primal_residual);
 }
 
+TEST(pdlp_class, initial_primal_feasible_stable2)
+{
+  const raft::handle_t handle{};
+  const std::vector<std::pair<std::vector<double>, double>> initial_solutions = {
+    {{1.3, 0.0}, 0.0},  // Optimal primal, zero dual.
+    {{1.3, 0.0}, 1.0},  // Optimal primal and dual.
+    {{0.0, 1.3}, 0.0},  // Feasible but nonoptimal primal.
+    {{0.0, 0.0}, 0.0},  // Violates the row bound.
+    {{2.5, 0.0}, 0.0}   // Clipped to a feasible point by solve_lp.
+  };
+
+  for (bool per_constraint_residual : {false, true}) {
+    for (bool first_primal_feasible : {false, true}) {
+      for (const auto& [initial_primal, initial_dual] : initial_solutions) {
+        SCOPED_TRACE(::testing::Message()
+                     << "per_constraint_residual=" << per_constraint_residual
+                     << ", first_primal_feasible=" << first_primal_feasible << ", initial_primal=("
+                     << initial_primal[0] << ", " << initial_primal[1]
+                     << "), initial_dual=" << initial_dual);
+        auto problem                     = cuopt::test::parse_inline_lp(R"(
+Minimize
+ obj: y + 1.001 z
+Subject To
+ demand: y + z >= 1.3
+Bounds
+ 0 <= y <= 2
+ 0 <= z <= 2
+End
+)");
+        auto settings                    = pdlp_solver_settings_t<int, double>{};
+        settings.method                  = method_t::PDLP;
+        settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable2;
+        settings.presolver               = presolver_t::None;
+        settings.first_primal_feasible   = first_primal_feasible;
+        settings.per_constraint_residual = per_constraint_residual;
+        settings.iteration_limit         = 10000;
+        settings.set_optimality_tolerance(1e-8);
+        settings.set_initial_primal_solution(
+          initial_primal.data(), initial_primal.size(), handle.get_stream());
+        settings.set_initial_dual_solution(&initial_dual, 1, handle.get_stream());
+
+        auto solution = solve_lp(&handle, problem, settings);
+        auto primal   = host_copy(solution.get_primal_solution(), handle.get_stream());
+        ASSERT_EQ(primal.size(), 2);
+        EXPECT_GE(primal[0] + primal[1], 1.3 - 1e-7);
+        for (double value : primal) {
+          EXPECT_GE(value, -1e-7);
+          EXPECT_LE(value, 2.0 + 1e-7);
+        }
+
+        auto expected_primal = initial_primal;
+        for (double& value : expected_primal) {
+          value = std::max(0.0, std::min(value, 2.0));
+        }
+        const bool initially_feasible = expected_primal[0] + expected_primal[1] >= 1.3;
+        const auto& info              = solution.get_additional_termination_information();
+        if (first_primal_feasible && initially_feasible) {
+          EXPECT_EQ(solution.get_termination_status(), pdlp_termination_status_t::PrimalFeasible);
+          EXPECT_EQ(info.number_of_steps_taken, 0);
+          EXPECT_NEAR(primal[0], expected_primal[0], 1e-12);
+          EXPECT_NEAR(primal[1], expected_primal[1], 1e-12);
+          EXPECT_NEAR(
+            solution.get_objective_value(), expected_primal[0] + 1.001 * expected_primal[1], 1e-12);
+        } else {
+          EXPECT_GT(info.number_of_steps_taken, 1);
+          if (first_primal_feasible) {
+            EXPECT_TRUE(solution.get_termination_status() ==
+                          pdlp_termination_status_t::PrimalFeasible ||
+                        solution.get_termination_status() == pdlp_termination_status_t::Optimal);
+          } else {
+            EXPECT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+            EXPECT_NEAR(solution.get_objective_value(), 1.3, 1e-7);
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(pdlp_class, first_primal_feasible_stable2_default_start_outside_bounds)
+{
+  const raft::handle_t handle{};
+  auto problem                             = cuopt::test::parse_inline_lp(R"(
+Minimize
+ obj: y + 1.001 z
+Subject To
+ demand: y + z >= 0
+Bounds
+ 1 <= y <= 2
+ 0 <= z <= 2
+End
+)");
+  auto settings                            = pdlp_solver_settings_t<int, double>{};
+  settings.method                          = method_t::PDLP;
+  settings.pdlp_solver_mode                = pdlp_solver_mode_t::Stable2;
+  settings.presolver                       = presolver_t::None;
+  settings.first_primal_feasible           = true;
+  settings.iteration_limit                 = 10000;
+  settings.project_initial_primal_override = 0;
+
+  auto solution = solve_lp(&handle, problem, settings);
+  auto primal   = host_copy(solution.get_primal_solution(), handle.get_stream());
+  ASSERT_EQ(primal.size(), 2);
+  EXPECT_GE(primal[0], 1.0 - 1e-7);
+  EXPECT_LE(primal[0], 2.0 + 1e-7);
+  EXPECT_GE(primal[1], -1e-7);
+  EXPECT_LE(primal[1], 2.0 + 1e-7);
+  EXPECT_GT(solution.get_additional_termination_information().number_of_steps_taken, 0);
+}
+
 TEST(pdlp_class, first_primal_feasible)
 {
   GTEST_SKIP() << "Skipping test: first_primal_feasible. Enable when ready to run.";
