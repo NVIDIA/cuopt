@@ -29,11 +29,11 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*",
+    "cuda-toolkit[cublas,cudart,cusparse,nvtx]==13.*",
     "libcuopt-client==26.12.*,>=0.0.0a0",
     "libraft==26.12.*,>=0.0.0a0",
     "librmm==26.12.*,>=0.0.0a0",
-    "nvidia-cudss-cu13>=0.7,<0.8",
+    "nvidia-cudss-cu13>=1.0,<1.1",
     "nvidia-nccl-cu13>=2.19",
     "nvidia-nvjitlink>=13.4,<14",
     "rapids-logger==0.3.*",

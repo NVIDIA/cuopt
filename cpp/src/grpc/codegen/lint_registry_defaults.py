@@ -59,9 +59,9 @@ SOURCES = [
     ),
     (
         "mip_settings",
-        "cpp/include/cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp",
-        "mip_heuristics_hyper_params_t",
-        "heuristic_params.",
+        "cpp/include/cuopt/mathematical_optimization/mip/mip_hyper_params.hpp",
+        "mip_hyper_params_t",
+        "mip_hyper_params.",
     ),
 ]
 
