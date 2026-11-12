@@ -209,10 +209,13 @@ class DataModel(data_model_wrapper.DataModel):
 
         Notes
         -----
-        Setting before calling the solver is mandatory.
+        Before solving, the constraints need either this right-hand side
+        (together with ``set_row_types``) or lower and upper bounds.
 
-        Prefer ``set_constraint_rows_from_rhs``, which sets the right-hand
-        side and row types together and clears any lower/upper bounds.
+        .. deprecated::
+            Use :meth:`set_constraint_rows_from_rhs`, which sets the
+            right-hand side and row types together and clears any
+            lower/upper bounds. This setter still works and does not warn.
 
         """
         super().set_constraint_bounds(b)
@@ -534,8 +537,10 @@ class DataModel(data_model_wrapper.DataModel):
         lower and upper bounds, else it's mandatory. If both are set,
         priority goes to set_constraint_lower/upper_bounds.
 
-        Prefer ``set_constraint_rows_from_rhs``, which sets the right-hand
-        side and row types together and clears any lower/upper bounds.
+        .. deprecated::
+            Use :meth:`set_constraint_rows_from_rhs`, which sets the
+            right-hand side and row types together and clears any
+            lower/upper bounds. This setter still works and does not warn.
 
         Examples
         --------
