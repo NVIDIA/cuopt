@@ -1,5 +1,18 @@
 # Release Notes
 
+## Release Notes 26.10.01 (hotfix)
+
+### Bug Fixes (26.10.01)
+
+- `DataModel` slack is now correct for constraints set through lower/upper bounds (it was computed from empty rhs/row-type arrays)
+- Papilo updated to fix an assertion in sub-MIP presolve (Sparsify) seen in the incumbent callback test, and the local integrality-guard patch was removed
+- gRPC server now ignores the local-solve file-path parameters (`solution_file`, `user_problem_file`, `presolve_file`, `log_file`, routing `dump_best_results_path`)
+- Barrier no longer reads the output vector in `augmented_multiply` when `beta == 0`, so stale NaNs from an earlier failed solve cannot affect later iterative refinement
+
+### Improvements (26.10.01)
+
+- Kitmaker publish jobs use the new Ferry tunnel proxy (`ext-nv-stg-apps.teleport.sh:443`)
+
 ## Release Notes 26.10
 
 ### New Features (26.10)
