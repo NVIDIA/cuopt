@@ -1,6 +1,6 @@
 ---
 name: cuopt-server-api-python
-version: "26.10.00"
+version: "26.10.01"
 description: cuOpt REST server — start server, endpoints, Python/curl client examples. Use when the user is deploying or calling the REST API.
 license: Apache-2.0
 metadata:
