@@ -273,15 +273,6 @@ class deterministic_bfs_worker_t
     ++total_nodes_pruned;
   }
 
-  void record_infeasible(mip_node_t<i_t, f_t>* node)
-  {
-    record_event(
-      bb_event_t<i_t, f_t>::make_infeasible(this->clock, this->worker_id, node->creation_seq));
-    ++nodes_processed_this_horizon;
-    ++this->total_nodes_processed;
-    ++total_nodes_infeasible;
-  }
-
   void record_numerical(mip_node_t<i_t, f_t>* node)
   {
     record_event(
