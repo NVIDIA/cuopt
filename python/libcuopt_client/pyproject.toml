@@ -70,7 +70,7 @@ dependencies-file = "../../dependencies.yaml"
 disable-cuda = true
 matrix-entry = "cuda_suffixed=false;use_cuda_wheels=false"
 requires = [
-    "cmake>=4.0",
+    "cmake>=4.3",
     "librmm==26.12.*,>=0.0.0a0",
     "ninja",
     "rapids-logger==0.3.*",
