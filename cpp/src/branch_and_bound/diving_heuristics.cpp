@@ -76,9 +76,6 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t>& pc,
   const i_t num_fractional = fractional.size();
   if (num_fractional == 0) return {-1, branch_direction_t::NONE};
 
-  f_t avg_down = pc.compute_pseudocost_average_down();
-  f_t avg_up   = pc.compute_pseudocost_average_up();
-
   i_t branch_var               = fractional[0];
   f_t max_score                = std::numeric_limits<f_t>::lowest();
   branch_direction_t round_dir = branch_direction_t::DOWN;
@@ -87,8 +84,8 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t>& pc,
   for (i_t j : fractional) {
     f_t f_down     = solution[j] - std::floor(solution[j]);
     f_t f_up       = std::ceil(solution[j]) - solution[j];
-    f_t pc_down    = pc.get_pseudocost_down(j, avg_down);
-    f_t pc_up      = pc.get_pseudocost_up(j, avg_up);
+    f_t pc_down    = pc.get_pseudocost_down(j);
+    f_t pc_up      = pc.get_pseudocost_up(j);
     f_t score_down = std::sqrt(f_up) * (1 + pc_up) / (1 + pc_down);
     f_t score_up   = std::sqrt(f_down) * (1 + pc_down) / (1 + pc_up);
 
@@ -148,9 +145,6 @@ branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t>& pc,
   const i_t num_fractional = fractional.size();
   if (num_fractional == 0) return {-1, branch_direction_t::NONE};
 
-  f_t avg_down = pc.compute_pseudocost_average_down();
-  f_t avg_up   = pc.compute_pseudocost_average_up();
-
   i_t branch_var               = fractional[0];
   f_t max_score                = std::numeric_limits<f_t>::lowest();
   branch_direction_t round_dir = branch_direction_t::DOWN;
@@ -164,8 +158,8 @@ branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t>& pc,
     branch_direction_t dir =
       down_dist < up_dist + eps ? branch_direction_t::DOWN : branch_direction_t::UP;
 
-    f_t pc_down = pc.get_pseudocost_down(j, avg_down);
-    f_t pc_up   = pc.get_pseudocost_up(j, avg_up);
+    f_t pc_down = pc.get_pseudocost_down(j);
+    f_t pc_up   = pc.get_pseudocost_up(j);
     f_t score1  = dir == branch_direction_t::DOWN ? 5 * pc_down * f_down : 5 * pc_up * f_up;
     f_t score2  = dir == branch_direction_t::DOWN ? pc_up * f_up : pc_down * f_down;
     f_t score   = (score1 + score2) / 6;
