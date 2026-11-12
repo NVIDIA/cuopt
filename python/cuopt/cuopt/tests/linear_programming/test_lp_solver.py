@@ -485,6 +485,95 @@ def test_check_data_model_validity():
     solver.Solve(data_model_obj)
 
 
+def _solve_with_constraint_bounds(
+    A_values, A_indices, A_offsets, c, row_lower, row_upper
+):
+    dm = data_model.DataModel()
+    dm.set_csr_constraint_matrix(
+        np.array(A_values, dtype=np.float64),
+        np.array(A_indices, dtype=np.int32),
+        np.array(A_offsets, dtype=np.int32),
+    )
+    dm.set_objective_coefficients(np.array(c, dtype=np.float64))
+    dm.set_variable_lower_bounds(np.zeros(len(c)))
+    dm.set_variable_upper_bounds(np.full(len(c), np.inf))
+    dm.set_constraint_lower_bounds(np.array(row_lower, dtype=np.float64))
+    dm.set_constraint_upper_bounds(np.array(row_upper, dtype=np.float64))
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    return solver.Solve(dm, settings)
+
+
+def test_slack_with_constraint_bounds_all_row_kinds():
+    # Minimize x + y, optimum x = y = 1, with one row of each kind:
+    #   x + y >= 2        (lower bound only)
+    #   x <= 3            (upper bound only)
+    #   x - y == 0        (equal bounds)
+    #   0.5 <= y <= 4     (ranged)
+    solution = _solve_with_constraint_bounds(
+        [1.0, 1.0, 1.0, 1.0, -1.0, 1.0],
+        [0, 1, 0, 0, 1, 1],
+        [0, 2, 3, 5, 6],
+        [1.0, 1.0],
+        [2.0, -np.inf, 0.0, 0.5],
+        [np.inf, 3.0, 0.0, 4.0],
+    )
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_slack() == pytest.approx(
+        [0.0, 2.0, 0.0, 0.5], abs=1e-4
+    )
+
+
+def test_slack_prefers_constraint_bounds_over_rhs_and_row_types():
+    # Minimize x with a stale row x <= 3 and the bounds x >= 1 that take
+    # priority, so the solution is x = 1 and the slack is 0.
+    dm = data_model.DataModel()
+    dm.set_csr_constraint_matrix(
+        np.array([1.0]),
+        np.array([0], dtype=np.int32),
+        np.array([0, 1], dtype=np.int32),
+    )
+    dm.set_objective_coefficients(np.array([1.0]))
+    dm.set_variable_lower_bounds(np.array([0.0]))
+    dm.set_variable_upper_bounds(np.array([np.inf]))
+    dm.set_constraint_bounds(np.array([3.0]))
+    dm.set_row_types(np.array(["L"]))
+    dm.set_constraint_lower_bounds(np.array([1.0]))
+    dm.set_constraint_upper_bounds(np.array([np.inf]))
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    solution = solver.Solve(dm, settings)
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_primal_solution() == pytest.approx([1.0], abs=1e-4)
+    assert solution.get_slack() == pytest.approx([0.0], abs=1e-4)
+
+
+def test_slack_with_row_types_given_as_str():
+    # Row types passed as a plain str keep one code per row, so the slack of
+    # every row is computed. Minimize x + y with x >= 1 and x + y >= 0.5:
+    # the optimum is x = 1, y = 0, so the first row is tight and the second
+    # has slack 0.5.
+    dm = data_model.DataModel()
+    dm.set_csr_constraint_matrix(
+        np.array([1.0, 1.0, 1.0]),
+        np.array([0, 0, 1], dtype=np.int32),
+        np.array([0, 1, 3], dtype=np.int32),
+    )
+    dm.set_objective_coefficients(np.array([1.0, 1.0]))
+    dm.set_variable_lower_bounds(np.zeros(2))
+    dm.set_variable_upper_bounds(np.full(2, np.inf))
+    dm.set_constraint_bounds(np.array([1.0, 0.5]))
+    dm.set_row_types("GG")
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    solution = solver.Solve(dm, settings)
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_slack() == pytest.approx([0.0, 0.5], abs=1e-4)
+
+
 def test_parse_var_names():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
