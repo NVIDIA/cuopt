@@ -29,7 +29,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*",
+    "cuda-toolkit[cublas,cudart,cusparse,nvtx]==13.*",
     "libcuopt-client==26.12.*,>=0.0.0a0",
     "libraft==26.12.*,>=0.0.0a0",
     "librmm==26.12.*,>=0.0.0a0",
