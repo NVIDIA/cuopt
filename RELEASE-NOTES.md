@@ -1,6 +1,6 @@
 # Release Notes
 
-## Release Notes 26.10.01 (hotfix)
+## Release Notes 26.10.01 (Hotfix)
 
 ### Bug Fixes (26.10.01)
 
