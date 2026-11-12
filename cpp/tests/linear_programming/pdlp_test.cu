@@ -1312,6 +1312,46 @@ End
   EXPECT_GT(solution.get_additional_termination_information().number_of_steps_taken, 0);
 }
 
+TEST(pdlp_class, first_primal_feasible_stable2_warm_start_outside_bounds)
+{
+  const raft::handle_t handle{};
+  auto make_problem = [](const char* y_bounds) {
+    return cuopt::test::parse_inline_lp(std::string(R"(
+Minimize
+ obj: y + 1.001 z
+Subject To
+ demand: y + z >= 1.3
+Bounds
+ )") + y_bounds + R"(
+ 0 <= z <= 2
+End
+)");
+  };
+  auto settings             = pdlp_solver_settings_t<int, double>{};
+  settings.method           = method_t::PDLP;
+  settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable2;
+  settings.presolver        = presolver_t::None;
+  settings.iteration_limit  = 10000;
+  settings.set_optimality_tolerance(1e-8);
+
+  auto problem       = make_problem("0 <= y <= 2");
+  auto warm_solution = solve_lp(&handle, problem, settings);
+  ASSERT_EQ(warm_solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+
+  // The warm start primal (y = 1.3) satisfies the row but violates the tightened bound on y.
+  auto tightened                 = make_problem("0 <= y <= 1");
+  settings.first_primal_feasible = true;
+  settings.set_pdlp_warm_start_data(warm_solution.get_pdlp_warm_start_data());
+  auto solution = solve_lp(&handle, tightened, settings);
+  auto primal   = host_copy(solution.get_primal_solution(), handle.get_stream());
+  ASSERT_EQ(primal.size(), 2);
+  EXPECT_GE(primal[0], -1e-7);
+  EXPECT_LE(primal[0], 1.0 + 1e-7);
+  EXPECT_GE(primal[1], -1e-7);
+  EXPECT_LE(primal[1], 2.0 + 1e-7);
+  EXPECT_GE(primal[0] + primal[1], 1.3 - 1e-7);
+}
+
 TEST(pdlp_class, first_primal_feasible)
 {
   GTEST_SKIP() << "Skipping test: first_primal_feasible. Enable when ready to run.";
