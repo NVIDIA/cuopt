@@ -27,6 +27,13 @@
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/macros.cuh>
 
+// <cuda/std/algorithm.*.h> is available since CCCL 3.4.
+#include <cuda/version>
+#if CCCL_VERSION >= 3004000
+#include <cuda/std/algorithm.max.h>
+#else
+#include <cuda/std/algorithm>
+#endif
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
