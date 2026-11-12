@@ -1221,9 +1221,11 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   if (internal_solver_iterations_ <= 1) {
     // Accept a feasible supplied primal start before steps can worsen it, but do not claim
     // optimality yet. The primal residual does not check variable bounds, and not every start
-    // (e.g. PDLP warm start data) is clamped to them, so check the bounds explicitly.
+    // (e.g. PDLP warm start data) is clamped to them, so check the bounds explicitly. new_bounds
+    // overrides are not reflected in problem_ptr->variable_bounds, so skip when they are present.
     const auto status = current_termination_strategy_.get_termination_status(0);
-    if (!batch_mode_ && settings_.first_primal_feasible && !initial_primal_.is_empty() &&
+    if (!batch_mode_ && settings_.new_bounds.empty() && settings_.first_primal_feasible &&
+        !initial_primal_.is_empty() &&
         (status == pdlp_termination_status_t::PrimalFeasible ||
          status == pdlp_termination_status_t::Optimal)) {
       using f_t2   = typename type_2<f_t>::type;
