@@ -18,7 +18,6 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
-#include <presolve/experimental_equivalent_probe.hpp>
 
 #include <linear_algebra/sparse_matrix.hpp>
 #include <mip_heuristics/mip_constants.hpp>
@@ -3539,20 +3538,6 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 {
   raft::common::nvtx::range fun_scope("compute_initial_step_size");
 
-  const auto equivalent_probe = lpfeas_equivalent_probe::enabled()
-                                  ? lpfeas_equivalent_probe::require_context(problem_ptr)
-                                  : nullptr;
-  if (equivalent_probe) {
-    cuopt_expects((std::is_same_v<i_t, int> && std::is_same_v<f_t, double>) &&
-                    !is_distributed_master() && !batch_mode_ && climber_strategies_.size() == 1 &&
-                    !inside_mip_ && settings_.hyper_params.initial_step_size_max_singular_value &&
-                    !settings_.get_initial_step_size().has_value() &&
-                    !initial_step_size_.has_value() &&
-                    settings_.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1,
-                  error_type_t::ValidationError,
-                  "Equivalent probe requires cold single-GPU FP64 single-climber spectral setup");
-  }
-
   // Shared knobs for the power-iteration path (both single-GPU and
   // multi-GPU)
   constexpr f_t scaling_factor = f_t{0.998};
@@ -3604,59 +3589,6 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     i_t n = op_problem_scaled_.n_variables;
 
     std::vector<f_t> z = make_singular_value_probe<f_t>(static_cast<std::size_t>(m));
-    if (equivalent_probe) {
-      cuopt_expects(equivalent_probe->rows == static_cast<std::size_t>(m) &&
-                      equivalent_probe->columns == static_cast<std::size_t>(n),
-                    error_type_t::ValidationError,
-                    "Equivalent probe reduced shape changed");
-      const bool probe_diagnostics = lpfeas_equivalent_probe::diagnostics_enabled();
-      const auto original_digest = probe_diagnostics ? lpfeas_equivalent_probe::byte_digest(z) : 0;
-      if (probe_diagnostics) {
-        lpfeas_equivalent_probe::write_vector(*equivalent_probe, "probe_original.f64.bin", z);
-      }
-      lpfeas_equivalent_probe::permute_probe(*equivalent_probe, z);
-      if (probe_diagnostics) {
-        lpfeas_equivalent_probe::write_vector(*equivalent_probe, "probe_used.f64.bin", z);
-        CUOPT_LOG_INFO(
-          "EQUIVALENT_PROBE_JSON {\"phase\":\"spectral_probe\",\"problem_identity\":\"%p\","
-          "\"presolver_identity\":\"%p\",\"rows\":%d,\"columns\":%d,\"rcm_active\":%s,"
-          "\"original_probe_fnv1a64\":\"%016llx\",\"used_probe_fnv1a64\":\"%016llx\","
-          "\"row_map_fnv1a64\":\"%016llx\",\"column_map_fnv1a64\":\"%016llx\","
-          "\"dump_requested\":%s,\"scaled_csr_dump_requested\":%s}",
-          static_cast<const void*>(problem_ptr),
-          equivalent_probe->presolver_identity,
-          m,
-          n,
-          equivalent_probe->reordered ? "true" : "false",
-          static_cast<unsigned long long>(original_digest),
-          static_cast<unsigned long long>(lpfeas_equivalent_probe::byte_digest(z)),
-          static_cast<unsigned long long>(
-            lpfeas_equivalent_probe::byte_digest(equivalent_probe->row_new_to_old)),
-          static_cast<unsigned long long>(
-            lpfeas_equivalent_probe::byte_digest(equivalent_probe->column_new_to_old)),
-          equivalent_probe->dump_directory.empty() ? "false" : "true",
-          lpfeas_equivalent_probe::scaled_dump_enabled() ? "true" : "false");
-      }
-      if (lpfeas_equivalent_probe::scaled_dump_enabled()) {
-        // The scaled descriptors share the original problem's CSR structure after setup.
-        // Copy each array separately on the solver stream; these runs are diagnostic only.
-        cuopt_expects(problem_ptr->offsets.size() == static_cast<std::size_t>(m) + 1 &&
-                        problem_ptr->variables.size() == op_problem_scaled_.coefficients.size(),
-                      error_type_t::ValidationError,
-                      "Scaled CSR diagnostic shape mismatch");
-        lpfeas_equivalent_probe::write_vector(*equivalent_probe,
-                                              "scaled_A.offsets.i32.bin",
-                                              cuopt::host_copy(problem_ptr->offsets, stream_view_));
-        lpfeas_equivalent_probe::write_vector(
-          *equivalent_probe,
-          "scaled_A.columns.i32.bin",
-          cuopt::host_copy(problem_ptr->variables, stream_view_));
-        lpfeas_equivalent_probe::write_vector(
-          *equivalent_probe,
-          "scaled_A.values.f64.bin",
-          cuopt::host_copy(op_problem_scaled_.coefficients, stream_view_));
-      }
-    }
     rmm::device_uvector<f_t> d_z(m, stream_view_);
     rmm::device_uvector<f_t> d_q(m, stream_view_);
     // PDHG owns at least n scratch entries, with no live iteration data during setup.
@@ -3770,8 +3702,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
         static_cast<double>(diagnostic_residual),
         static_cast<double>(step_size),
         static_cast<double>(step_size),
-        equivalent_probe && equivalent_probe->reordered ? "permuted_original_reduced_row_index"
-                                                        : "current_row_index");
+        "current_row_index");
     }
     thrust::uninitialized_fill(
       handle_ptr_->get_thrust_policy(), step_size_.begin(), step_size_.end(), step_size);

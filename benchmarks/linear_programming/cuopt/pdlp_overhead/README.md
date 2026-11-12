@@ -33,16 +33,14 @@ the device for the experiment.
 # Baseline controls.
 env CUDA_VISIBLE_DEVICES=0 CUDA_MODULE_LOADING=EAGER OMP_NUM_THREADS=8 \
   CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE=1 \
-  LPFEAS_REORDER=off LPFEAS_REORDER_HUB_THRESHOLD=1024 \
   LPFEAS_RMM_MEMORY_MODE=default \
   build/pdlp_overhead/cuopt_pdlp_overhead model.mps \
   --method 0 --threads 8 --time-limit 300 \
   --relative-tolerance 1e-6 --absolute-tolerance 1e-4
 
-# Retained overhead changes, RCM, and compressed allocation.
+# Retained overhead changes and compressed allocation.
 env CUDA_VISIBLE_DEVICES=0 CUDA_MODULE_LOADING=EAGER OMP_NUM_THREADS=8 \
   CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE=24 \
-  LPFEAS_REORDER=rcm LPFEAS_REORDER_HUB_THRESHOLD=1024 \
   LPFEAS_RMM_MEMORY_MODE=compressed \
   build/pdlp_overhead/cuopt_pdlp_overhead model.mps \
   --method 0 --threads 8 --time-limit 300 \
@@ -53,19 +51,18 @@ Here `--method 0` means the **C API default/concurrent** method. Use `--method 1
 in both commands for **PDLP only**. The relative tolerance applies to primal,
 dual, and gap termination; all three absolute tolerances are also set explicitly.
 Native PSLP is enabled, crossover is disabled, and cuOpt owns the 300-second solve
-budget. Native PSLP uses its configured default folding behavior. RCM
-automatically preserves the spectral probe's coordinates; diagnostic probe flags
-are unnecessary. Graph batching can fall back to size one on unsupported paths;
+budget. Native PSLP uses its configured default folding behavior. Graph batching
+can fall back to size one on unsupported paths;
 inspect the logged effective size and batch counts.
 
 For comparisons of library changes, build and run each revision with its own
 matching dependencies. Switching the environment controls above in one binary
 does not disable the compiled vector and scalar-readback changes. Keep diagnostic
-overrides, solution imports, and probe dumps disabled during timings.
+overrides and solution imports disabled during timings.
 
 `RESULT_JSON` includes native status, timings, objectives, and original-space
-residual checks. `RCM_JSON` reports ordering and inverse times, and `ALLOCATOR_JSON`
-reports allocation coverage and cleanup. Treat the timers separately:
+residual checks. `ALLOCATOR_JSON` reports allocation coverage and cleanup.
+Treat the timers separately:
 
 - `cuopt_reported_seconds` includes native presolve and solver setup. A PDLP
   concurrent winner can finish before the other workers have joined.
