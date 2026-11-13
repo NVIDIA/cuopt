@@ -450,4 +450,57 @@ f_t iterative_refinement(T& op,
   return iterative_refinement_gmres<i_t, f_t, T>(op, b, x, tol);
 }
 
+// Automatic iterative refinement (CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO): each solve starts
+// without refinement, and GMRES refinement switches on (and stays on) once the iterate nears
+// convergence. Tolerances are the barrier's relative feasibility / optimality / complementarity
+// tolerances.
+template <typename i_t, typename f_t>
+struct auto_iterative_refinement_t {
+  enum class state_t { off, watch, on };
+
+  state_t state = state_t::off;
+  // Residuals of the previous iterate
+  f_t prev_primal_residual = std::numeric_limits<f_t>::infinity();
+  f_t prev_dual_residual   = std::numeric_limits<f_t>::infinity();
+
+  bool on() const { return state == state_t::on; }
+
+  // Advance off -> watch -> on for the current iterate. Call once per iteration.
+  void update(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+              f_t primal_residual,
+              f_t dual_residual,
+              f_t complementarity_residual,
+              f_t step_length)
+  {
+    if (on()) { return; }
+    const f_t primal_tol = settings.barrier_relative_feasibility_tol;
+    const f_t dual_tol   = settings.barrier_relative_optimality_tol;
+    const f_t gap_tol    = settings.barrier_relative_complementarity_tol;
+
+    const bool reduced_gap_ok = complementarity_residual < 1e3 * gap_tol;
+    const bool watch_gap_ok   = complementarity_residual < 1e4 * gap_tol;
+    const bool watch_feasible =
+      primal_residual < 1e6 * primal_tol && dual_residual < 1e6 * dual_tol;
+    const bool final_feasible =
+      primal_residual < 1e4 * primal_tol && dual_residual < 1e4 * dual_tol;
+    const bool primal_regressed =
+      prev_primal_residual < 1e6 * primal_tol && primal_residual > 2 * prev_primal_residual;
+    const bool dual_regressed =
+      prev_dual_residual < 1e6 * dual_tol && dual_residual > 2 * prev_dual_residual;
+    const bool small_step = step_length < 0.05;
+
+    const bool was_watching = state == state_t::watch;
+    if (watch_gap_ok && watch_feasible) { state = state_t::watch; }
+
+    if (state == state_t::watch &&
+        ((reduced_gap_ok && (final_feasible || primal_regressed || dual_regressed || small_step)) ||
+         (was_watching && watch_gap_ok && watch_feasible))) {
+      state = state_t::on;
+    }
+
+    prev_primal_residual = primal_residual;
+    prev_dual_residual   = dual_residual;
+  }
+};
+
 }  // namespace cuopt::mathematical_optimization::barrier

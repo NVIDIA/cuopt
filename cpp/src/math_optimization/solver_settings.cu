@@ -192,6 +192,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION, &pdlp_settings.remove_perturbation, -1, 1, -1},
     {CUOPT_PRIMAL_SIMPLEX_PRICING, &pdlp_settings.primal_pricing, 0, 1, 1},
     {CUOPT_BARRIER_DUAL_INITIAL_POINT, reinterpret_cast<int*>(&pdlp_settings.barrier_dual_initial_point), -1, 2, -1},
+    {CUOPT_BARRIER_ITERATIVE_REFINEMENT, &pdlp_settings.barrier_iterative_refinement, CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF, CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO, CUOPT_BARRIER_ITERATIVE_REFINEMENT_ALWAYS},
     {CUOPT_POSTSOLVE_INFO, &pdlp_settings.postsolve_info, -1, 1, -1},
     {CUOPT_MIP_CUT_PASSES, &mip_settings.max_cut_passes, -1, std::numeric_limits<i_t>::max(), 10},
     {CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS, &mip_settings.mir_cuts, -1, 1, -1},
@@ -275,7 +276,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_CUDSS_DETERMINISTIC, &pdlp_settings.cudss_deterministic, false},
     {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true},
     {CUOPT_SEQUENCE_SOLVE, &pdlp_settings.sequence_solve, false},
-    {CUOPT_BARRIER_ITERATIVE_REFINEMENT, &pdlp_settings.barrier_iterative_refinement, true},
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
     {CUOPT_MIP_HEURISTICS_ONLY, &deprecated_heuristics_only, false, "deprecated; has no effect", true},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")

@@ -146,8 +146,8 @@
           "description": "Barrier: whether dense columns are eliminated from the constraint matrix before solving, reducing factorization fill-in at the cost of extra solves per iteration. Only has an effect when the ADAT (normal equation) system is solved. Default: true."
         },
         "barrier_iterative_refinement": {
-          "type": "boolean",
-          "description": "Barrier: whether iterative refinement runs after each barrier solve to improve solution accuracy (see cpp/src/barrier/barrier.cu). Default: true."
+          "type": "integer",
+          "description": "Barrier: iterative refinement of each KKT solve: 0 off, 1 always on, 2 automatic (switched on once the iterate nears convergence). Default: 1 (always on)."
         },
         "barrier_adaptive_regularization": {
           "type": "integer",
