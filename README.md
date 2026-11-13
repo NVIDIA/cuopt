@@ -91,25 +91,20 @@ More details on system requirements can be found [here](https://docs.nvidia.com/
 
 Pip wheels are easy to install and easy to configure. Users with existing workflows who uses pip as base to build their workflows can use pip to install cuOpt.
 
-cuOpt can be installed via `pip` from the NVIDIA Python Package Index.
+cuOpt can be installed via `pip` from [PyPI](https://pypi.org/project/cuopt-cu13/).
 Be sure to select the appropriate cuOpt package depending
 on the major version of CUDA available in your environment:
 
 For CUDA 12.x:
 
 ```bash
-pip install \
-  --extra-index-url=https://pypi.nvidia.com \
-  nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-cu12
+pip install nvidia-cuda-runtime-cu12==12.9.* cuopt-cu12
 ```
 
 For CUDA 13.x:
 
 ```bash
-pip install \
-  --extra-index-url=https://pypi.nvidia.com \
-  cuopt-cu13
+pip install cuopt-cu13
 ```
 
 #### Conda
@@ -155,14 +150,12 @@ Nightly packages are built from the HEAD of the development branch (26.12) and a
 ```bash
 # For CUDA 12.x
 pip install --pre \
-  --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
   nvidia-cuda-runtime-cu12==12.9.* \
   cuopt-cu12==26.12.*
 
 # For CUDA 13.x
 pip install --pre \
-  --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
   cuopt-cu13==26.12.*
 ```
