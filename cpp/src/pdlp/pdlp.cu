@@ -64,12 +64,6 @@
 
 namespace cuopt::mathematical_optimization::pdlp {
 
-static bool experimental_init_diagnostics_enabled()
-{
-  const char* value = std::getenv("LPFEAS_INIT_DIAGNOSTICS");
-  return value != nullptr && value[0] == '1' && value[1] == '\0';
-}
-
 // Templated wrapper for cuBLAS geam function
 // cublasSgeam for float, cublasDgeam for double
 template <typename T>
@@ -3035,35 +3029,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     }
     PDLP_DEBUG_LOG("Initial step_size", step_size_);
     PDLP_DEBUG_LOG("Initial primal_weight", primal_weight_);
-    if (experimental_init_diagnostics_enabled() && !batch_mode_ &&
-        climber_strategies_.size() == 1) {
-      // Setup is complete and no iteration graph is being captured. Read only;
-      // the synchronization makes enabled runs diagnostic runs, not timing controls.
-      const f_t diagnostic_step        = step_size_.element(0, stream_view_);
-      const f_t diagnostic_weight      = primal_weight_.element(0, stream_view_);
-      const f_t diagnostic_primal_step = primal_step_size_.element(0, stream_view_);
-      const f_t diagnostic_dual_step   = dual_step_size_.element(0, stream_view_);
-      CUOPT_LOG_INFO(
-        "INIT_DIAGNOSTICS_JSON {\"phase\":\"initialization_ready\","
-        "\"step_size\":\"%.17g\",\"step_size_hex\":\"%a\","
-        "\"primal_weight\":\"%.17g\",\"primal_weight_hex\":\"%a\","
-        "\"primal_step_size\":\"%.17g\",\"dual_step_size\":\"%.17g\","
-        "\"bound_rescaling\":\"%.17g\",\"objective_rescaling\":\"%.17g\","
-        "\"step_size_setting_override\":%s,\"step_size_instance_override\":%s,"
-        "\"primal_weight_setting_override\":%s,\"primal_weight_instance_override\":%s}",
-        static_cast<double>(diagnostic_step),
-        static_cast<double>(diagnostic_step),
-        static_cast<double>(diagnostic_weight),
-        static_cast<double>(diagnostic_weight),
-        static_cast<double>(diagnostic_primal_step),
-        static_cast<double>(diagnostic_dual_step),
-        static_cast<double>(initial_scaling_strategy_.get_h_bound_rescaling()),
-        static_cast<double>(initial_scaling_strategy_.get_h_objective_rescaling()),
-        settings_.get_initial_step_size().has_value() ? "true" : "false",
-        initial_step_size_.has_value() ? "true" : "false",
-        settings_.get_initial_primal_weight().has_value() ? "true" : "false",
-        initial_primal_weight_.has_value() ? "true" : "false");
-    }
   }
   if (!inside_mip_) {
     if (settings_.per_constraint_residual) {
@@ -3681,29 +3646,6 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     PDLP_DEBUG_LOG("iter_count", sing_iters);
 
     const f_t step_size = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));
-    if (experimental_init_diagnostics_enabled() && !batch_mode_ &&
-        climber_strategies_.size() == 1) {
-      // Diagnostic-only reads after the original power iteration has finished.
-      // Decimal strings preserve nonfinite diagnostics; hex strings preserve finite values exactly.
-      const f_t diagnostic_sigma_sq = sigma_max_sq.value(stream_view_);
-      const f_t diagnostic_residual = residual_norm.value(stream_view_);
-      CUOPT_LOG_INFO(
-        "INIT_DIAGNOSTICS_JSON {\"phase\":\"spectral_estimate\","
-        "\"power_iterations\":%d,\"max_power_iterations\":%d,"
-        "\"power_tolerance\":\"%.17g\",\"sigma_squared\":\"%.17g\","
-        "\"sigma_squared_hex\":\"%a\",\"power_residual\":\"%.17g\","
-        "\"computed_step_size\":\"%.17g\",\"computed_step_size_hex\":\"%a\","
-        "\"probe_seed\":1,\"probe_coordinates\":\"%s\"}",
-        sing_iters,
-        max_iterations,
-        static_cast<double>(tolerance),
-        static_cast<double>(diagnostic_sigma_sq),
-        static_cast<double>(diagnostic_sigma_sq),
-        static_cast<double>(diagnostic_residual),
-        static_cast<double>(step_size),
-        static_cast<double>(step_size),
-        "current_row_index");
-    }
     thrust::uninitialized_fill(
       handle_ptr_->get_thrust_policy(), step_size_.begin(), step_size_.end(), step_size);
 
