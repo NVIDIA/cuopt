@@ -105,7 +105,6 @@ class vehicle_order_test_t : public base_test_t<i_t, f_t>, public ::testing::Tes
     }
 
     for (const auto& [id, orders] : vehicle_order_match_d) {
-      ASSERT_GE(orders.size(), 0u);
       data_model.add_vehicle_order_match(id, orders.data(), orders.size());
     }
 

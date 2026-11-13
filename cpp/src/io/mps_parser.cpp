@@ -1668,12 +1668,12 @@ void mps_parser_t<i_t, f_t>::parse_quad(std::string_view line, bool is_quadobj)
 
   mps_parser_expects(var1_it != var_names_map.end(),
                      error_type_t::ValidationError,
-                     "Variable '%s' not found in QUADOBJ! line=%s",
+                     "Variable '%s' not found in QUADOBJ/QMATRIX! line=%s",
                      var1_name.c_str(),
                      std::string(line).c_str());
   mps_parser_expects(var2_it != var_names_map.end(),
                      error_type_t::ValidationError,
-                     "Variable '%s' not found in QUADOBJ! line=%s",
+                     "Variable '%s' not found in QUADOBJ/QMATRIX! line=%s",
                      var2_name.c_str(),
                      std::string(line).c_str());
 

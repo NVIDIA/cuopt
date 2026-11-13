@@ -66,13 +66,13 @@ def validate_variable_bounds(data, settings, solution):
         integrality_tolerance if integrality_tolerance else 1e-5
     )
 
-    if len(data.get_variable_lower_bounds() > 0):
+    if len(data.get_variable_lower_bounds()) > 0:
         assert len(solution) == len(data.get_variable_lower_bounds())
         assert np.all(
             solution
             >= (data.get_variable_lower_bounds() - integrality_tolerance)
         )
-    if len(data.get_variable_upper_bounds() > 0):
+    if len(data.get_variable_upper_bounds()) > 0:
         assert len(solution) == len(data.get_variable_upper_bounds())
         assert np.all(
             solution

@@ -859,7 +859,7 @@ def wrapper_fields(data, do_raise=True):
         if do_raise:
             raise HTTPException(
                 status_code=400,
-                detail="Unrecognized action value {action}",  # noqa
+                detail=f"Unrecognized action value {action}",
             )
         action = "Invalid event/action"
     validator = action in [
