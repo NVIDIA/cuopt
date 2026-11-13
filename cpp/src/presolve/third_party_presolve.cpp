@@ -874,6 +874,11 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
                    presolver->stats->n_rows_reduced,
                    presolver->stats->n_cols_reduced,
                    presolver->stats->nnz_reduced);
+    if (pslp_status == PresolveStatus_::INFEASIBLE) {
+      CUOPT_LOG_INFO("PSLP presolve status: INFEASIBLE");
+    } else if (pslp_status == PresolveStatus_::UNBNDORINFEAS) {
+      CUOPT_LOG_INFO("PSLP presolve status: UNBOUNDED_OR_INFEASIBLE");
+    }
 
     // Free previously allocated presolver and settings (if any) and stash the
     // new ones so undo_pslp / build_reduced_mps_from_pslp can find them later.
