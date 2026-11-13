@@ -2,7 +2,7 @@
 # cuOpt - GPU-accelerated Optimization
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
-[![Version](https://img.shields.io/badge/version-26.12.00-blue)](https://github.com/NVIDIA/cuopt/releases)
+[![Dev](https://img.shields.io/badge/dev-26.12.00-blue)](https://github.com/NVIDIA/cuopt/tree/main)
 [![Release](https://img.shields.io/github/v/release/NVIDIA/cuopt?label=release&color=blue)](#latest-release)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 [![Docker Hub](https://img.shields.io/badge/docker-nvidia%2Fcuopt-blue?logo=docker)](https://hub.docker.com/r/nvidia/cuopt)
