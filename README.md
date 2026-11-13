@@ -150,14 +150,12 @@ Nightly packages are built from the HEAD of the development branch (26.12) and a
 ```bash
 # For CUDA 12.x
 pip install --pre \
-  --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
   nvidia-cuda-runtime-cu12==12.9.* \
   cuopt-cu12==26.12.*
 
 # For CUDA 13.x
 pip install --pre \
-  --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
   cuopt-cu13==26.12.*
 ```
