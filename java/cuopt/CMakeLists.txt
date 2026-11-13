@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 4.3)
 project(cuopt_java_native LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
