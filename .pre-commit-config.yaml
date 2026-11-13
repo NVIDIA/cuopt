@@ -153,7 +153,20 @@ repos:
         language: system
         pass_filenames: false
         files: ^(VERSION|skills/|\.claude-plugin/|\.cursor-plugin/|agents/|ci/utils/validate_skills\.sh|ci/utils/sync_skills_version\.sh|gemini-extension\.json)$
-
+      - id: generate-test-paths
+        name: Generate C++ test path filters
+        entry: python ci/utils/generate_test_paths.py
+        language: python
+        additional_dependencies: [PyYAML==6.0.2]
+        pass_filenames: false
+        files: ^(ci/test-paths\.yaml|ci/utils/generate_test_paths\.py|\.github/workflows/pr\.yaml|\.pre-commit-config\.yaml)$
+      - id: test-generate-test-paths
+        name: Test C++ test path generator
+        entry: python -m pytest -q ci/tests/test_generate_test_paths.py
+        language: python
+        additional_dependencies: [PyYAML==6.0.2, pytest]
+        pass_filenames: false
+        files: ^(ci/tests/|ci/utils/generate_test_paths\.py|ci/test-paths\.yaml|\.github/workflows/pr\.yaml|\.pre-commit-config\.yaml)$
 
 default_language_version:
   python: python3
