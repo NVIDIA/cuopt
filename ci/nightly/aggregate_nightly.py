@@ -283,6 +283,9 @@ def find_last_green_sha(s3_index_uri, date_str, branch, output_dir):
             continue
         if entry.get("job_summary", {}).get("failed", 0) != 0:
             continue
+        # A night where a CI job failed without per-test details is not green.
+        if entry.get("ci_jobs_failed", 0) != 0:
+            continue
         if entry.get("sha") and entry["date"] > best_date:
             best_date, best_sha = entry["date"], entry["sha"]
     return best_sha
@@ -660,6 +663,7 @@ def update_index(s3_index_uri, date_str, consolidated, output_dir):
         "date": date_str,
         "branch": branch,
         "sha": consolidated.get("sha", ""),
+        "ci_jobs_failed": len(consolidated.get("failed_ci_jobs", [])),
         "job_summary": consolidated.get("job_summary", {}),
         "test_totals": consolidated.get("test_totals", {}),
         "has_new_failures": consolidated.get("has_new_failures", False),

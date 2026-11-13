@@ -20,26 +20,42 @@ if [ -z "${SLACK_BOT_TOKEN}" ] || [ -z "${SLACK_CHANNEL_ID}" ]; then
     exit 0
 fi
 
-# Fetch workflow job statuses
-JOBS_FILE=$(mktemp)
+# Fetch workflow job statuses, one file per page of 100 jobs. If anything
+# fails the directory is left without valid pages and the post says the
+# status is unavailable, instead of reporting a green build.
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+JOBS_DIR=$(mktemp -d)
 if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
     echo "Fetching build job statuses from GitHub API..."
-    curl -s -L --max-time 30 \
-        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-        -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
-        > "${JOBS_FILE}" || echo "{}" > "${JOBS_FILE}"
+    JOBS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs"
+    PAGE=1
+    PAGES=1
+    while [ "${PAGE}" -le "${PAGES}" ]; do
+        if ! curl -s -L --fail --max-time 30 \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${JOBS_URL}?per_page=100&page=${PAGE}" \
+            > "${JOBS_DIR}/page-${PAGE}.json"; then
+            echo "WARNING: could not fetch job statuses (page ${PAGE})." >&2
+            rm -f "${JOBS_DIR}"/*.json
+            break
+        fi
+        if [ "${PAGE}" -eq 1 ]; then
+            TOTAL=$(python3 "${SCRIPT_DIR}/slack_json.py" get total_count --file "${JOBS_DIR}/page-1.json" --default 0)
+            PAGES=$(( (TOTAL + 99) / 100 ))
+        fi
+        PAGE=$((PAGE + 1))
+    done
 else
-    echo "{}" > "${JOBS_FILE}"
+    echo "WARNING: GITHUB_TOKEN, GITHUB_RUN_ID or GITHUB_REPOSITORY not set." >&2
 fi
 
 # Generate Slack payload
-SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 PAYLOAD=$(python3 "${SCRIPT_DIR}/generate_build_payload.py" \
-    "${JOBS_FILE}" "${BRANCH}" "${RUN_DATE}" "${GITHUB_RUN_URL}" \
+    "${JOBS_DIR}" "${BRANCH}" "${RUN_DATE}" "${GITHUB_RUN_URL}" \
     "${BUILD_SHA}" "${REPO_URL}")
 
-rm -f "${JOBS_FILE}"
+rm -rf "${JOBS_DIR}"
 
 # Send via bot token
 echo "Sending build summary to Slack..."

@@ -4,26 +4,60 @@
 """Generate the Slack Block Kit payload for the build workflow summary.
 
 Usage:
-    python3 generate_build_payload.py <jobs.json> <branch> <date> <run_url> \
-        [sha] [repo_url]
+    python3 generate_build_payload.py <jobs.json|jobs_dir> <branch> <date> \
+        <run_url> [sha] [repo_url]
 
-``jobs.json`` is the response of the GitHub "list jobs for a workflow run"
-API. Prints one JSON payload to stdout.
+The first argument is the response of the GitHub "list jobs for a workflow
+run" API, or a directory of such responses (one file per page). Prints one
+JSON payload to stdout.
 
 A green build is one line. Only groups that need attention (failed,
 cancelled, not finished) are listed. Skipped jobs are counted but not listed,
-and they are not reported as passed.
+and they are not reported as passed. If no job statuses could be read, the
+post says so instead of reporting a green build.
 """
 
 import json
 import sys
+from pathlib import Path
 
 # Jobs that are part of the workflow plumbing, not build results.
 IGNORED = ("build-summary", "compute-matrix")
 
 
+# GitHub job conclusions. Anything not listed here is treated as incomplete
+# rather than passed, so a new conclusion can never produce a green post.
+FAILED = {"failure", "timed_out", "startup_failure"}
+SKIPPED = {"skipped", "neutral"}
+
+
 def conclusion(job):
     return job.get("conclusion") or "pending"
+
+
+def category(job):
+    """failed, passed, skipped or incomplete (cancelled, pending, other)."""
+    c = conclusion(job)
+    if c in FAILED:
+        return "failed"
+    if c == "success":
+        return "passed"
+    if c in SKIPPED:
+        return "skipped"
+    return "incomplete"
+
+
+def load_jobs(path):
+    """Read one jobs response, or every *.json response in a directory."""
+    p = Path(path)
+    files = sorted(p.glob("*.json")) if p.is_dir() else [p]
+    jobs = []
+    for f in files:
+        try:
+            jobs.extend(json.loads(f.read_text()).get("jobs", []))
+        except (OSError, ValueError, AttributeError):
+            continue
+    return {"jobs": jobs}
 
 
 def group_name(job):
@@ -38,28 +72,63 @@ def build_payload(data, branch, date, run_url, sha="", repo_url=""):
         if not any(i in j.get("name", "").lower() for i in IGNORED)
     ]
 
+    if not jobs:
+        # Nothing could be read, so say that instead of reporting success.
+        parts = [f"<{run_url}|:github: GitHub Actions>"] if run_url else []
+        return {
+            "username": "cuOpt Build Bot",
+            "icon_emoji": ":package:",
+            "blocks": [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"cuOpt Build \u2014 {branch} \u2014 {date}",
+                        "emoji": True,
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": ":warning: *Build status unavailable* "
+                        "\u2014 could not read the job statuses.",
+                    },
+                },
+            ]
+            + (
+                [
+                    {
+                        "type": "context",
+                        "elements": [
+                            {"type": "mrkdwn", "text": "  |  ".join(parts)}
+                        ],
+                    }
+                ]
+                if parts
+                else []
+            ),
+        }
+
     counts = {}
     for j in jobs:
-        counts[conclusion(j)] = counts.get(conclusion(j), 0) + 1
-    failed = counts.get("failure", 0)
-    cancelled = counts.get("cancelled", 0)
+        counts[category(j)] = counts.get(category(j), 0) + 1
+    failed = counts.get("failed", 0)
     skipped = counts.get("skipped", 0)
-    passed = counts.get("success", 0)
-    pending = counts.get("pending", 0)
+    passed = counts.get("passed", 0)
+    incomplete = counts.get("incomplete", 0)
 
     extras = []
     if skipped:
         extras.append(f"{skipped} skipped")
-    if cancelled:
-        extras.append(f"{cancelled} cancelled")
-    if pending:
-        extras.append(f"{pending} not finished")
+    if incomplete:
+        extras.append(f"{incomplete} cancelled or not finished")
     extra_text = f" ({', '.join(extras)})" if extras else ""
 
     if failed:
         emoji = ":x:"
         status = f"{failed} build job(s) failed, {passed} passed{extra_text}"
-    elif cancelled or pending:
+    elif incomplete:
         emoji = ":no_entry_sign:"
         status = f"Build incomplete: {passed} passed{extra_text}"
     else:
@@ -89,23 +158,17 @@ def build_payload(data, branch, date, run_url, sha="", repo_url=""):
 
     lines = []
     for name, members in sorted(groups.items()):
-        bad = [j for j in members if conclusion(j) == "failure"]
-        stopped = [j for j in members if conclusion(j) == "cancelled"]
-        waiting = [j for j in members if conclusion(j) == "pending"]
+        bad = [j for j in members if category(j) == "failed"]
+        stopped = [j for j in members if category(j) == "incomplete"]
         if bad:
-            line = f":x:  *{name}* — {len(bad)}/{len(members)} failed"
+            line = f":x:  *{name}* \u2014 {len(bad)}/{len(members)} failed"
             if bad[0].get("html_url"):
                 line += f"  <{bad[0]['html_url']}|View Logs>"
             lines.append(line)
         elif stopped:
             lines.append(
-                f":no_entry_sign:  *{name}* — "
-                f"{len(stopped)}/{len(members)} cancelled"
-            )
-        elif waiting:
-            lines.append(
-                f":hourglass_flowing_sand:  *{name}* — "
-                f"{len(waiting)}/{len(members)} not finished"
+                f":no_entry_sign:  *{name}* \u2014 "
+                f"{len(stopped)}/{len(members)} cancelled or not finished"
             )
 
     if lines:
@@ -158,8 +221,7 @@ def main():
     jobs_path, branch, date, run_url = sys.argv[1:5]
     sha = sys.argv[5] if len(sys.argv) > 5 else ""
     repo_url = sys.argv[6] if len(sys.argv) > 6 else ""
-    with open(jobs_path) as f:
-        data = json.load(f)
+    data = load_jobs(jobs_path)
     print(
         json.dumps(build_payload(data, branch, date, run_url, sha, repo_url))
     )

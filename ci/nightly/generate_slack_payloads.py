@@ -65,11 +65,13 @@ def clean_message(message, limit=140):
         return ""
 
     location = ""
+    tail = ""  # text after "file:line:" on the same line, used as a fallback
     rest = []
     for ln in lines:
         match = _LOCATION.match(ln)
         if match and not location:
             location = f"{os.path.basename(match.group(1))}:{match.group(2)}"
+            tail = ln[match.end() :].lstrip(": ").strip()
         else:
             rest.append(ln)
 
@@ -84,9 +86,14 @@ def clean_message(message, limit=140):
         if reason.endswith(":") and len(rest) > 1:
             reason = " ".join([reason] + [r.strip() for r in rest[1:3]])
 
-    if location:
-        reason = f"{reason} @ {location}" if reason else location
-    return reason[:limit]
+    reason = reason or tail
+    if not location:
+        return reason[:limit]
+    # Truncate the reason, never the location.
+    suffix = f" @ {location}"
+    if not reason:
+        return location[:limit]
+    return reason[: max(0, limit - len(suffix))] + suffix
 
 
 def reason_signature(message):
@@ -104,7 +111,12 @@ def _dedupe(entries):
     seen = set()
     out = []
     for e in entries:
-        key = (e.get("name"), e.get("matrix_label"))
+        key = (
+            e.get("suite"),
+            e.get("classname"),
+            e.get("name"),
+            e.get("matrix_label"),
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -150,7 +162,10 @@ def issue_lines(entries, tag, detail=None, group_detail=None, limit=MAX_LINES):
             more = f" +{len(members) - 3} more" if len(members) > 3 else ""
             matrix = _esc(_matrix_summary(members))
             suffix = group_detail(members) if group_detail else ""
-            group_tag = tag(members[0]) if callable(tag) else tag
+            # Use a new member for the marker so a group with a new flaky
+            # test is not shown as already known.
+            marker = next((m for m in members if m.get("is_new")), members[0])
+            group_tag = tag(marker) if callable(tag) else tag
             lines.append(
                 f"{group_tag}  *{len(members)} tests* ({matrix}) "
                 f"\u2014 {reason}{suffix}"
