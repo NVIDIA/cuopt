@@ -432,13 +432,17 @@ static bool use_original_space_solution_if_better(mip::problem_t<i_t, f_t>& full
                                                   double total_presolve_time,
                                                   mip_solution_t<i_t, f_t>& sol)
 {
+  // The initial solution validation skips empty vectors.
+  if (static_cast<i_t>(assignment.size()) != full_problem.n_variables) { return false; }
   mip::solution_t<i_t, f_t> candidate(full_problem);
   candidate.copy_new_assignment(assignment);
+  // Infinite or NaN entries can pass the bound validation and make the objective non-finite.
+  if (!mip::all_finite(candidate.handle_ptr, candidate.assignment)) { return false; }
   if (!candidate.compute_feasibility()) { return false; }
-  if (!improves_on_solution(
-        candidate.get_user_objective(), sol, is_maximization, min_improvement)) {
-    return false;
-  }
+  // Large finite entries can still overflow the objective.
+  const f_t objective = candidate.get_user_objective();
+  if (!std::isfinite(objective)) { return false; }
+  if (!improves_on_solution(objective, sol, is_maximization, min_improvement)) { return false; }
   auto stats                       = sol.get_stats();
   stats.presolve_time              = total_presolve_time;
   candidate.post_process_completed = true;
@@ -967,9 +971,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       }
       std::optional<size_t> returned_user_start;
       for (size_t k = 0; evaluate_user_starts && k < n_user_initial_solutions; ++k) {
-        // NaN entries pass the bound validation, and add_user_given_solutions rejects them too.
         const auto& start = *settings.initial_solutions[k];
-        if (mip::has_nans(op_problem.get_handle_ptr(), start)) { continue; }
         if (!full_problem) { full_problem.emplace(op_problem, settings.get_tolerances()); }
         // A start the solve already used can come back with an objective that differs only by
         // round-off, so require an improvement beyond the MIP gap tolerances.

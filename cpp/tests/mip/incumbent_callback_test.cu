@@ -306,7 +306,7 @@ static mip_solution_t<int, double> solve_with_early_time_limit(
 }
 
 // Verify that the best feasible user-provided MIP start is returned when the time limit is
-// reached before the main solve, and that an infeasible one is not.
+// reached before the main solve, and that an infeasible or non-finite one is not.
 TEST(mip_solve, initial_solution_returned_on_early_time_limit)
 {
   const raft::handle_t handle_{};
@@ -315,34 +315,38 @@ TEST(mip_solve, initial_solution_returned_on_early_time_limit)
     cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
-  // The reference solve's intermediate incumbents provide a worse feasible MIP start.
-  auto op_problem         = mps_data_model_to_optimization_problem(&handle_, mps_problem);
-  int reference_user_data = 0;
-  std::vector<std::pair<std::vector<double>, double>> incumbents;
-  test_get_solution_callback_t reference_cb(
-    incumbents, op_problem.get_n_variables(), &reference_user_data);
+  auto op_problem     = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   auto settings       = mip_solver_settings_t<int, double>{};
   settings.time_limit = 5.;
-  settings.set_mip_callback(&reference_cb, &reference_user_data);
-  auto reference = solve_mip(op_problem, settings);
-  auto status    = reference.get_termination_status();
+  auto reference      = solve_mip(op_problem, settings);
+  auto status         = reference.get_termination_status();
   ASSERT_TRUE(status == mip_termination_status_t::FeasibleFound ||
               status == mip_termination_status_t::Optimal)
     << "Reference solve must find a feasible solution";
   auto reference_obj      = reference.get_objective_value();
   auto reference_solution = cuopt::host_copy(reference.get_solution(), handle_.get_stream());
   ASSERT_EQ((int)reference_solution.size(), op_problem.get_n_variables());
-  auto worse_incumbent = std::find_if(incumbents.begin(), incumbents.end(), [&](const auto& s) {
-    return s.second > reference_obj + 1.0;
-  });
-  ASSERT_NE(worse_incumbent, incumbents.end()) << "Reference solve must report a worse incumbent";
-  const auto worse_solution = worse_incumbent->first;
+
+  // pk1's objective is the continuous variable x1, which has no upper bound and appears only with
+  // coefficient +1 in >= rows, so raising it gives a feasible start with a worse objective.
+  const auto& variable_names = mps_problem.get_variable_names();
+  auto objective_var         = std::find(variable_names.begin(), variable_names.end(), "x1");
+  ASSERT_NE(objective_var, variable_names.end());
+  constexpr double worse_by = 10.;
+  auto worse_solution       = reference_solution;
+  worse_solution[objective_var - variable_names.begin()] += worse_by;
 
   const auto& variable_types = mps_problem.get_variable_types();
   auto integer_var           = std::find(variable_types.begin(), variable_types.end(), 'I');
   ASSERT_NE(integer_var, variable_types.end());
   auto infeasible_solution                                  = reference_solution;
   infeasible_solution[integer_var - variable_types.begin()] = 0.5;
+  // x1 has no upper bound, so an infinite value passes the bound validation.
+  auto nonfinite_solution = reference_solution;
+  nonfinite_solution[objective_var - variable_names.begin()] =
+    std::numeric_limits<double>::infinity();
+  auto nan_solution                                    = reference_solution;
+  nan_solution[objective_var - variable_names.begin()] = std::numeric_limits<double>::quiet_NaN();
 
   // Deterministic mode disables the pre-solve probe and the early heuristics, so the MIP starts
   // are the only feasible candidates and the outcome is exact.
@@ -385,11 +389,30 @@ TEST(mip_solve, initial_solution_returned_on_early_time_limit)
            best_first.get_termination_status());
     EXPECT_NEAR(best_first.get_objective_value(), reference_obj, 1e-6);
 
+    auto worse_only = solve_with_early_time_limit(
+      handle_, mps_problem, {worse_solution}, presolver, CUOPT_MODE_DETERMINISTIC);
+    ASSERT_EQ(worse_only.get_termination_status(), mip_termination_status_t::FeasibleFound)
+      << mip_solution_t<int, double>::get_termination_status_string(
+           worse_only.get_termination_status());
+    EXPECT_NEAR(worse_only.get_objective_value(), reference_obj + worse_by, 1e-6);
+
     auto infeasible_only = solve_with_early_time_limit(
       handle_, mps_problem, {infeasible_solution}, presolver, CUOPT_MODE_DETERMINISTIC);
     EXPECT_EQ(infeasible_only.get_termination_status(), mip_termination_status_t::TimeLimit)
       << mip_solution_t<int, double>::get_termination_status_string(
            infeasible_only.get_termination_status());
+
+    auto nonfinite_only = solve_with_early_time_limit(
+      handle_, mps_problem, {nonfinite_solution}, presolver, CUOPT_MODE_DETERMINISTIC);
+    EXPECT_EQ(nonfinite_only.get_termination_status(), mip_termination_status_t::TimeLimit)
+      << mip_solution_t<int, double>::get_termination_status_string(
+           nonfinite_only.get_termination_status());
+
+    auto nan_only = solve_with_early_time_limit(
+      handle_, mps_problem, {nan_solution}, presolver, CUOPT_MODE_DETERMINISTIC);
+    EXPECT_EQ(nan_only.get_termination_status(), mip_termination_status_t::TimeLimit)
+      << mip_solution_t<int, double>::get_termination_status_string(
+           nan_only.get_termination_status());
   }
 
   // With the early heuristics running, the MIP start has to win over their incumbent.
