@@ -112,13 +112,12 @@ endif()
 
 add_dependencies(GRPC_WORKER_SPAWN_TEST cuopt_grpc_server)
 
-add_test(
-    NAME GRPC_WORKER_SPAWN_TEST
-    COMMAND ${CMAKE_COMMAND} -E env
-        "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
-        $<TARGET_FILE:GRPC_WORKER_SPAWN_TEST>
-)
-set_tests_properties(GRPC_WORKER_SPAWN_TEST PROPERTIES LABELS "numopt")
+rapids_test_add(NAME GRPC_WORKER_SPAWN_TEST COMMAND GRPC_WORKER_SPAWN_TEST INSTALL_COMPONENT_SET testing)
+# ENVIRONMENT (not `cmake -E env`) so the installed CTestTestfile.cmake does not embed the build
+# environment's cmake path; the server path is remapped to its installed location.
+set_tests_properties(GRPC_WORKER_SPAWN_TEST PROPERTIES
+    LABELS "numopt"
+    ENVIRONMENT "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>")
 
 install(
     TARGETS GRPC_WORKER_SPAWN_TEST
@@ -157,14 +156,14 @@ install(
 # - gRPC Integration Tests -------------------------------------------------------------------------
 # These tests start a real server process and run end-to-end tests
 
-add_executable(GRPC_INTEGRATION_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/grpc_integration_test.cpp
+add_executable(GRPC_MATHOPT_INTEGRATION_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/grpc_mathopt_integration_test.cpp
     "${CUOPT_SOURCE_DIR}/src/grpc/grpc_service_mapper.cpp"
     "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client.cpp"
     "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client_env.cpp"
 )
 
-target_include_directories(GRPC_INTEGRATION_TEST
+target_include_directories(GRPC_MATHOPT_INTEGRATION_TEST
     PRIVATE
     "${CUOPT_SOURCE_DIR}/include"
     "${CUOPT_SOURCE_DIR}/src"
@@ -174,7 +173,7 @@ target_include_directories(GRPC_INTEGRATION_TEST
     "${CMAKE_BINARY_DIR}"  # For generated protobuf headers
 )
 
-target_link_libraries(GRPC_INTEGRATION_TEST
+target_link_libraries(GRPC_MATHOPT_INTEGRATION_TEST
     PRIVATE
     cuopt_static
     GTest::gmock
@@ -183,31 +182,20 @@ target_link_libraries(GRPC_INTEGRATION_TEST
     protobuf::libprotobuf
 )
 
-if(CUOPT_ENABLE_GRPC_ROUTING)
-    target_compile_definitions(GRPC_INTEGRATION_TEST PRIVATE CUOPT_ENABLE_GRPC_ROUTING)
-endif()
-
 if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
-  target_link_options(GRPC_INTEGRATION_TEST PRIVATE -Wl,--enable-new-dtags)
+  target_link_options(GRPC_MATHOPT_INTEGRATION_TEST PRIVATE -Wl,--enable-new-dtags)
 endif()
 
 # Integration tests need the server binary to be built first
-add_dependencies(GRPC_INTEGRATION_TEST cuopt_grpc_server)
+add_dependencies(GRPC_MATHOPT_INTEGRATION_TEST cuopt_grpc_server)
 
-rapids_test_add(
-    NAME GRPC_INTEGRATION_TEST
-    COMMAND ${CMAKE_COMMAND} -E env
-        "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
-        $<TARGET_FILE:GRPC_INTEGRATION_TEST>
-    # The COMMAND's first token is cmake itself, not the test target, so
-    # rapids_test_add can't infer what to install -- name it explicitly.
-    INSTALL_COMPONENT_SET testing
-    INSTALL_TARGET GRPC_INTEGRATION_TEST
-)
-set_tests_properties(GRPC_INTEGRATION_TEST PROPERTIES LABELS "numopt")
+rapids_test_add(NAME GRPC_MATHOPT_INTEGRATION_TEST COMMAND GRPC_MATHOPT_INTEGRATION_TEST INSTALL_COMPONENT_SET testing)
+set_tests_properties(GRPC_MATHOPT_INTEGRATION_TEST PROPERTIES
+    LABELS "numopt"
+    ENVIRONMENT "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>")
 
 install(
-    TARGETS GRPC_INTEGRATION_TEST
+    TARGETS GRPC_MATHOPT_INTEGRATION_TEST
     COMPONENT testing
     DESTINATION bin/gtests/libcuopt
     EXCLUDE_FROM_ALL

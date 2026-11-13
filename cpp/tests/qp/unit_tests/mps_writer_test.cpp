@@ -6,8 +6,8 @@
 /* clang-format on */
 
 /**
- * Builds small unconstrained QPs as optimization_problem_t, writes MPS via write_to_mps, and checks
- * QUADOBJ coefficients against the symmetric Hessian H = Q + Q^T stored internally (MPS uses
+ * Builds small unconstrained QPs as optimization_problem_t, writes MPS via write_to_file, and
+ * checks QUADOBJ coefficients against the symmetric Hessian H = Q + Q^T stored internally (MPS uses
  * (1/2) x^T H x for the quadratic part).
  */
 
@@ -191,7 +191,7 @@ TEST(mps_writer_op, write_to_mps_diagonal_qp_quadobj_matches_symmetrized_hessian
 
   std::string const path = std::string(::testing::TempDir()) + "qp_diag_write.mps";
   temp_mps_file_guard_t guard(path);
-  op.write_to_mps(path);
+  op.write_to_file(path, file_format_t::mps);
 
   std::string const content = read_entire_file(path);
   ASSERT_FALSE(content.empty()) << "MPS file was empty or could not be read";
@@ -232,7 +232,7 @@ TEST(mps_writer_op, write_to_mps_nonsymmetric_Q_quadobj_matches_Q_plus_Q_transpo
 
   std::string const path = std::string(::testing::TempDir()) + "qp_nonsym_sparse_write.mps";
   temp_mps_file_guard_t guard(path);
-  op.write_to_mps(path);
+  op.write_to_file(path, file_format_t::mps);
 
   std::string const content = read_entire_file(path);
   ASSERT_FALSE(content.empty()) << "MPS file was empty or could not be read";
@@ -292,7 +292,7 @@ TEST_P(MpsWriterBoundsTest, constraint_bounds_round_trip)
   if (named) { op.set_row_names(names); }
   std::string const path = std::string(::testing::TempDir()) + "constraint_bounds_round_trip.mps";
   temp_mps_file_guard_t guard(path);
-  op.write_to_mps(path);
+  op.write_to_file(path, file_format_t::mps);
   auto parsed = io::read_mps<int, double>(path);
   EXPECT_EQ(parsed.get_constraint_lower_bounds(), lower);
   EXPECT_EQ(parsed.get_constraint_upper_bounds(), upper);

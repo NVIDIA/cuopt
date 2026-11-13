@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Helpers for the split-package smoke tests, called from the ci/test_*_split_packages.sh scripts.
+Helpers for the split-package smoke tests, called from the ci/nightly/test_*_split_packages.sh scripts.
 
 Commands:
   conda-packages <env_prefix> <expected_name>...   Fail unless exactly these cuOpt conda packages are installed
