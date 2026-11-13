@@ -16,6 +16,7 @@
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
+#include <pdlp/solution_objectives.hpp>
 #include <pdlp/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <pdlp/translate.hpp>
 #include <pdlp/utilities/ping_pong_graph.cuh>
@@ -445,11 +446,9 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   std::vector<
     typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
     info(1);
-  info[0].solved_by                       = method;
-  info[0].primal_objective                = solution.user_objective;
-  info[0].dual_objective                  = solution.user_objective;
-  info[0].gap                             = 0.0;
-  info[0].relative_gap                    = 0.0;
+  info[0].solved_by        = method;
+  info[0].primal_objective = solution.user_objective;
+  // Dual objective and gap remain unavailable until evaluated on the restored model.
   info[0].solve_time                      = duration;
   info[0].number_of_steps_taken           = solution.iterations;
   info[0].total_number_of_attempted_steps = solution.iterations;
@@ -2129,6 +2128,11 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                    nan_val);
     }
 
+    if (!settings.inside_mip) {
+      detail::update_native_objectives(
+        op_problem, solution, !op_problem.has_quadratic_constraints());
+    }
+
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
       solution.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
@@ -2521,6 +2525,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                                   op_problem.get_row_names(),
                                                   std::move(term_vec),
                                                   std::move(status_vec));
+    }
+
+    if (!settings.inside_mip && !is_batch_mode && single_problem) {
+      detail::update_native_objectives(
+        op_problem, solution, !run_presolve || settings.dual_postsolve);
     }
 
     if (settings.sol_file != "") {
