@@ -1,5 +1,14 @@
 # Release Notes
 
+## Release Notes 26.10.01 (Hotfix)
+
+### Bug Fixes (26.10.01)
+
+- Fix `DataModel` slack for constraints set through lower/upper bounds
+- Update Papilo to fix a sub-MIP presolve assertion
+- Ignore local-solve file-path parameters on the gRPC server
+- Fix barrier `augmented_multiply` reading the output vector when `beta == 0`
+
 ## Release Notes 26.10
 
 ### New Features (26.10)
