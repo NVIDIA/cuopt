@@ -3,6 +3,7 @@
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
 [![Version](https://img.shields.io/badge/version-26.12.00-blue)](https://github.com/NVIDIA/cuopt/releases)
+[![Release](https://img.shields.io/github/v/release/NVIDIA/cuopt?label=release&color=blue)](#latest-release)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 [![Docker Hub](https://img.shields.io/badge/docker-nvidia%2Fcuopt-blue?logo=docker)](https://hub.docker.com/r/nvidia/cuopt)
 [![Examples](https://img.shields.io/badge/examples-cuopt--examples-orange)](https://github.com/NVIDIA/cuopt-examples)
@@ -81,7 +82,7 @@ More details on system requirements can be found [here](https://docs.nvidia.com/
 
 ### Latest Release
 
-**[Latest release](https://github.com/NVIDIA/cuopt/releases/latest)** [![GitHub release](https://img.shields.io/github/v/release/NVIDIA/cuopt?label=&color=blue)](https://github.com/NVIDIA/cuopt/releases/latest) | [Release notes](RELEASE-NOTES.md) | [Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
+**[Latest release](https://github.com/NVIDIA/cuopt/releases/latest)** | [Release notes](RELEASE-NOTES.md) | [Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 
 > [!TIP]
 > **Want a different interface or install method?** The [install selector](https://docs.nvidia.com/cuopt/user-guide/latest/install.html#install-selector) in the docs builds the exact command for the C API, CLI, server, Java, pip, conda or Docker, for your CUDA version.
