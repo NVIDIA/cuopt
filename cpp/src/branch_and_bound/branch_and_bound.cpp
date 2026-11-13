@@ -3364,6 +3364,8 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
                                               lp_solution.x,
                                               strategy,
                                               root_heuristics.seed_rng_);
+    worker->domain.implied_bounds = &probing_implied_bound_;
+    worker->domain.clique_table   = clique_table_.get();
 
     if (use_rins) {
       mutex_upper_.lock();
@@ -3403,6 +3405,8 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
                                                 root_vstatus_,
                                                 lp_solution.x,
                                                 root_heuristics.seed_rng_);
+    worker->domain.implied_bounds = &probing_implied_bound_;
+    worker->domain.clique_table   = clique_table_.get();
     mutex_upper_.lock();
     worker->current_incumbent = incumbent_.x;
     mutex_upper_.unlock();
@@ -3468,6 +3472,8 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 
       diving_worker_t<i_t, f_t>* worker = current_heuristic->create_diving_worker(
         cut_pass, lp, settings_, root_node, strategy, root_heuristics.seed_rng_);
+      worker->domain.implied_bounds = &probing_implied_bound_;
+      worker->domain.clique_table   = clique_table_.get();
 
       if (strategy == search_strategy_t::GUIDED_DIVING) {
         mutex_upper_.lock();
@@ -4602,6 +4608,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   pc_.resize(original_lp_.num_cols);
   pc_.Arow = Arow_;
 
+  // Stop extending the cliques, so the table is ready to be used in bound propagation
+  if (clique_table_ != nullptr && !clique_table_->ready.load(std::memory_order_acquire)) {
+    signal_extend_cliques_.store(true, std::memory_order_release);
+  }
+
   if (!has_initial_pseudocost_) {
     raft::common::nvtx::range scope_sb("BB::strong_branching");
     strong_branching<i_t, f_t>(original_lp_,
@@ -4743,6 +4754,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                             Arow_,
                             var_types_,
                             symmetry_,
+                            &probing_implied_bound_,
+                            clique_table_.get(),
                             settings_,
                             pc_,
                             root_relax_soln_.x,
@@ -4754,6 +4767,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                Arow_,
                                var_types_,
                                symmetry_,
+                               &probing_implied_bound_,
+                               clique_table_.get(),
                                settings_,
                                pc_,
                                root_relax_soln_.x,
@@ -4766,6 +4781,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                Arow_,
                                var_types_,
                                symmetry_,
+                               &probing_implied_bound_,
+                               clique_table_.get(),
                                settings_,
                                pc_,
                                root_relax_soln_.x,
@@ -5005,10 +5022,14 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
   scoped_context_registrations_t context_registrations(*deterministic_scheduler_);
   for (auto& worker : *deterministic_workers_) {
     context_registrations.add(worker.work_context);
+    worker.domain.implied_bounds = &probing_implied_bound_;
+    worker.domain.clique_table   = clique_table_.get();
   }
   if (deterministic_diving_workers_) {
     for (auto& worker : *deterministic_diving_workers_) {
       context_registrations.add(worker.work_context);
+      worker.domain.implied_bounds = &probing_implied_bound_;
+      worker.domain.clique_table   = clique_table_.get();
     }
   }
 
