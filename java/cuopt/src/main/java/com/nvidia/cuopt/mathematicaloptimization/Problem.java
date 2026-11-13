@@ -19,7 +19,8 @@ public final class Problem implements AutoCloseable {
   private final String name;
   private final List<Variable> variables = new ArrayList<>();
   private final List<Constraint> constraints = new ArrayList<>();
-    private final Set<Constraint> addedConstraints = Collections.newSetFromMap(new IdentityHashMap<>());
+  private final Set<Constraint> addedConstraints =
+      Collections.newSetFromMap(new IdentityHashMap<>());
   private LinearExpression linearObjective = new LinearExpression();
   private QuadraticExpression quadraticObjective = null;
   private ObjectiveSense objectiveSense = ObjectiveSense.MINIMIZE;
