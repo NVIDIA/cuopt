@@ -8,6 +8,7 @@ set(DUAL_SIMPLEX_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/basis_updates.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/bound_flipping_ratio_test.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/crossover.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/farkas_certificate.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/folding.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/initial_basis.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/phase1.cpp

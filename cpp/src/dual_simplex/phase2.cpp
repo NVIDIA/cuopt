@@ -8,6 +8,7 @@
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/bound_flipping_ratio_test.hpp>
+#include <dual_simplex/farkas_certificate.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>
 #include <dual_simplex/phase2.hpp>
@@ -263,193 +264,7 @@ void update_Arow(i_t leaving,
   work_estimate += 2 * row_mark.size();
 }
 
-// Computes vectors farkas_y, farkas_zl, farkas_zu that satisfy
-//
-// A'*farkas_y + farkas_zl - farkas_zu ~= 0
-// farkas_zl, farkas_zu >= 0,
-// b'*farkas_y + l'*farkas_zl - u'*farkas_zu = farkas_constant > 0
-//
-// This is a Farkas certificate for the infeasibility of the primal problem
-//
-// A*x = b, l <= x <= u
-
 namespace phase2 {
-
-template <typename i_t, typename f_t>
-void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
-                                const simplex_solver_settings_t<i_t, f_t>& settings,
-                                const std::vector<variable_status_t>& vstatus,
-                                const std::vector<f_t>& x,
-                                const std::vector<f_t>& y,
-                                const std::vector<f_t>& z,
-                                const std::vector<f_t>& delta_y,
-                                const std::vector<f_t>& delta_z,
-                                i_t direction,
-                                i_t leaving_index,
-                                f_t obj_val,
-                                std::vector<f_t>& farkas_y,
-                                std::vector<f_t>& farkas_zl,
-                                std::vector<f_t>& farkas_zu,
-                                f_t& farkas_constant)
-{
-  const i_t m = lp.num_rows;
-  const i_t n = lp.num_cols;
-
-  std::vector<f_t> original_residual = z;
-  matrix_transpose_vector_multiply(lp.A, 1.0, y, 1.0, original_residual);
-  for (i_t j = 0; j < n; ++j) {
-    original_residual[j] -= lp.objective[j];
-  }
-  const f_t original_residual_norm = vector_norm2<i_t, f_t>(original_residual);
-  settings.log.printf("|| A'*y + z - c || = %e\n", original_residual_norm);
-
-  std::vector<f_t> zl(n);
-  std::vector<f_t> zu(n);
-  for (i_t j = 0; j < n; ++j) {
-    zl[j] = std::max(0.0, z[j]);
-    zu[j] = -std::min(0.0, z[j]);
-  }
-
-  original_residual = zl;
-  matrix_transpose_vector_multiply(lp.A, 1.0, y, 1.0, original_residual);
-  for (i_t j = 0; j < n; ++j) {
-    original_residual[j] -= (zu[j] + lp.objective[j]);
-  }
-  const f_t original_residual_2 = vector_norm2<i_t, f_t>(original_residual);
-  settings.log.printf("|| A'*y + zl - zu - c || = %e\n", original_residual_2);
-
-  std::vector<f_t> search_dir_residual = delta_z;
-  matrix_transpose_vector_multiply(lp.A, 1.0, delta_y, 1.0, search_dir_residual);
-  settings.log.printf("|| A'*delta_y + delta_z || = %e\n",
-                      vector_norm2<i_t, f_t>(search_dir_residual));
-
-  std::vector<f_t> y_bar(m);
-  for (i_t i = 0; i < m; ++i) {
-    y_bar[i] = y[i] + delta_y[i];
-  }
-  original_residual = z;
-  matrix_transpose_vector_multiply(lp.A, 1.0, y_bar, 1.0, original_residual);
-  for (i_t j = 0; j < n; ++j) {
-    original_residual[j] += (delta_z[j] - lp.objective[j]);
-  }
-  const f_t original_residual_3 = vector_norm2<i_t, f_t>(original_residual);
-  settings.log.printf("|| A'*(y + delta_y) + (z + delta_z) - c || = %e\n", original_residual_3);
-
-  farkas_y.resize(m);
-  farkas_zl.resize(n);
-  farkas_zu.resize(n);
-
-  f_t gamma = 0.0;
-  for (i_t j = 0; j < n; ++j) {
-    const f_t cj    = lp.objective[j];
-    const f_t lower = lp.lower[j];
-    const f_t upper = lp.upper[j];
-    if (lower > -inf) { gamma -= lower * std::min(0.0, cj); }
-    if (upper < inf) { gamma -= upper * std::max(0.0, cj); }
-  }
-  printf("gamma = %e\n", gamma);
-
-  const f_t threshold          = 1.0;
-  const f_t positive_threshold = std::max(-gamma, 0.0) + threshold;
-  printf("positive_threshold = %e\n", positive_threshold);
-
-  // We need to increase the dual objective to positive threshold
-  f_t alpha        = threshold;
-  const f_t infeas = (direction == 1) ? (lp.lower[leaving_index] - x[leaving_index])
-                                      : (x[leaving_index] - lp.upper[leaving_index]);
-  // We need the new objective to be at least positive_threshold
-  // positive_threshold = obj_val+ alpha * infeas
-  // infeas > 0, alpha > 0, positive_threshold > 0
-  printf("direction = %d\n", direction);
-  printf(
-    "lower %e x %e upper %d\n", lp.lower[leaving_index], x[leaving_index], lp.upper[leaving_index]);
-  printf("infeas = %e\n", infeas);
-  printf("obj_val = %e\n", obj_val);
-  alpha = std::max(threshold, (positive_threshold - obj_val) / infeas);
-  printf("alpha = %e\n", alpha);
-
-  std::vector<f_t> y_prime(m);
-  std::vector<f_t> zl_prime(n);
-  std::vector<f_t> zu_prime(n);
-
-  // farkas_y = y + alpha * delta_y
-  for (i_t i = 0; i < m; ++i) {
-    farkas_y[i] = y[i] + alpha * delta_y[i];
-    y_prime[i]  = y[i] + alpha * delta_y[i];
-  }
-  // farkas_zl = z + alpha * delta_z  - c-
-  for (i_t j = 0; j < n; ++j) {
-    const f_t cj        = lp.objective[j];
-    const f_t z_j       = z[j];
-    const f_t delta_z_j = delta_z[j];
-    farkas_zl[j] = std::max(0.0, z_j) + alpha * std::max(0.0, delta_z_j) + -std::min(0.0, cj);
-    zl_prime[j]  = zl[j] + alpha * std::max(0.0, delta_z_j);
-  }
-
-  // farkas_zu = z + alpha * delta_z + c+
-  for (i_t j = 0; j < n; ++j) {
-    const f_t cj        = lp.objective[j];
-    const f_t z_j       = z[j];
-    const f_t delta_z_j = delta_z[j];
-    farkas_zu[j] = -std::min(0.0, z_j) - alpha * std::min(0.0, delta_z_j) + std::max(0.0, cj);
-    zu_prime[j]  = zu[j] + alpha * (-std::min(0.0, delta_z_j));
-  }
-
-  // farkas_constant = b'*farkas_y + l'*farkas_zl - u'*farkas_zu
-  farkas_constant   = 0.0;
-  f_t test_constant = 0.0;
-  f_t test_3        = 0.0;
-  for (i_t i = 0; i < m; ++i) {
-    farkas_constant += lp.rhs[i] * farkas_y[i];
-    test_constant += lp.rhs[i] * y_prime[i];
-    test_3 += lp.rhs[i] * delta_y[i];
-  }
-  printf("b'*delta_y = %e\n", test_3);
-  printf("|| b || %e\n", vector_norm_inf<i_t, f_t>(lp.rhs));
-  printf("|| delta y || %e\n", vector_norm_inf<i_t, f_t>(delta_y));
-  for (i_t j = 0; j < n; ++j) {
-    const f_t lower = lp.lower[j];
-    const f_t upper = lp.upper[j];
-    if (lower > -inf) {
-      farkas_constant += lower * farkas_zl[j];
-      test_constant += lower * zl_prime[j];
-      const f_t delta_z_l_j = std::max(delta_z[j], 0.0);
-      test_3 += lower * delta_z_l_j;
-    }
-    if (upper < inf) {
-      farkas_constant -= upper * farkas_zu[j];
-      test_constant -= upper * zu_prime[j];
-      const f_t delta_z_u_j = -std::min(delta_z[j], 0.0);
-      test_3 -= upper * delta_z_u_j;
-    }
-  }
-
-  // Verify that the Farkas certificate is valid
-  std::vector<f_t> residual = farkas_zl;
-  matrix_transpose_vector_multiply(lp.A, 1.0, farkas_y, 1.0, residual);
-  for (i_t j = 0; j < n; ++j) {
-    residual[j] -= farkas_zu[j];
-  }
-  const f_t residual_norm = vector_norm2<i_t, f_t>(residual);
-
-  f_t zl_min = 0.0;
-  for (i_t j = 0; j < n; ++j) {
-    zl_min = std::min(zl_min, farkas_zl[j]);
-  }
-  settings.log.printf("farkas_zl_min = %e\n", zl_min);
-  f_t zu_min = 0.0;
-  for (i_t j = 0; j < n; ++j) {
-    zu_min = std::min(zu_min, farkas_zu[j]);
-  }
-  settings.log.printf("farkas_zu_min = %e\n", zu_min);
-
-  settings.log.printf("|| A'*farkas_y + farkas_zl - farkas_zu || = %e\n", residual_norm);
-  settings.log.printf("b'*farkas_y + l'*farkas_zl - u'*farkas_zu = %e\n", farkas_constant);
-
-  if (residual_norm < 1e-6 && farkas_constant > 0.0 && zl_min >= 0.0 && zu_min >= 0.0) {
-    settings.log.printf("Farkas certificate of infeasibility constructed\n");
-  }
-}
 
 template <typename i_t, typename f_t>
 void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
@@ -3879,7 +3694,9 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                                    z,
                                                    delta_z,
                                                    delta_z_indices,
-                                                   nonbasic_mark);
+                                                   nonbasic_mark,
+                                                   lp,
+                                                   delta_y_sparse);
         entering_index =
           bfrt.compute_step_length(step_length, nonbasic_entering_index, flip_indices);
         phase2_work_estimate += bfrt.work_estimate();
@@ -3898,6 +3715,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
     }
     if (entering_index == RATIO_TEST_TIME_LIMIT) { return dual_status_t::TIME_LIMIT; }
     if (entering_index == CONCURRENT_HALT_RETURN) { return dual_status_t::CONCURRENT_LIMIT; }
+    if (entering_index == RATIO_TEST_PRIMAL_INFEASIBLE) { return dual_status_t::DUAL_UNBOUNDED; }
     if (entering_index == RATIO_TEST_NO_ENTERING_VARIABLE) {
       // While solving the (possibly) perturbed problem, we were unable to find an entering
       // variable. We need to check if this implies the original problem is primal infeasible. Note
@@ -3906,39 +3724,6 @@ static dual_status_t dual_phase2_with_advanced_basis(
 
       settings.log.printf("No entering variable found. Iter %d\n", iter);
       settings.log.printf("Scaled infeasibility %e\n", max_val);
-      f_t perturbation = phase2::amount_of_perturbation(lp, objective);
-      phase2_work_estimate += 2 * n;
-
-      if (perturbation == 0.0 && phase == 2) {
-        constexpr bool use_farkas = false;
-        if constexpr (use_farkas) {
-          std::vector<f_t> farkas_y;
-          std::vector<f_t> farkas_zl;
-          std::vector<f_t> farkas_zu;
-          f_t farkas_constant;
-          std::vector<f_t> my_delta_y;
-          delta_y_sparse.to_dense(my_delta_y);
-
-          // TODO(CMM): Do I use the perturbed or unperturbed objective?
-          const f_t obj_val = phase2::compute_perturbed_objective(objective, x);
-          phase2::compute_farkas_certificate(lp,
-                                             settings,
-                                             vstatus,
-                                             x,
-                                             y,
-                                             z,
-                                             my_delta_y,
-                                             delta_z,
-                                             direction,
-                                             leaving_index,
-                                             obj_val,
-                                             farkas_y,
-                                             farkas_zl,
-                                             farkas_zu,
-                                             farkas_constant);
-        }
-      }
-
       const f_t dual_infeas =
         phase2::dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
       phase2_work_estimate += 3 * n;
@@ -3953,12 +3738,25 @@ static dual_status_t dual_phase2_with_advanced_basis(
       settings.log.printf("Primal infeasibility %e\n", primal_inf);
       settings.log.printf("Updates %d\n", ft.num_updates());
       settings.log.printf("Steepest edge %e\n", max_val);
-      if (dual_infeas <= settings.dual_tol && dual_res_norm <= settings.dual_tol) {
+      std::vector<f_t> certificate_direction;
+      delta_y_sparse.to_dense(certificate_direction);
+      phase2_work_estimate += certificate_direction.size();
+      std::vector<f_t> farkas_y, farkas_zl, farkas_zu;
+      f_t farkas_constant;
+      if (compute_farkas_certificate(lp,
+                                     settings,
+                                     certificate_direction,
+                                     delta_z,
+                                     farkas_y,
+                                     farkas_zl,
+                                     farkas_zu,
+                                     farkas_constant,
+                                     phase2_work_estimate)) {
         return dual_status_t::DUAL_UNBOUNDED;
       } else {
         settings.log.printf(
-          "Numerical issues encountered. No entering variable found with large infeasibility or "
-          "residual.\n");
+          "Numerical issues encountered. No entering variable and no verified infeasibility "
+          "certificate.\n");
         return dual_status_t::NUMERICAL;
       }
     }
