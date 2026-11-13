@@ -109,7 +109,7 @@ if(CUOPT_STATIC_BUILD_DIR)
   target_link_libraries(cuopt_jni PRIVATE
     -Wl,--whole-archive "${CUOPT_STATIC_ARCHIVE}" -Wl,--no-whole-archive
     ${CUOPT_STATIC_DEP_ARCHIVES}
-    CUDA::cublas CUDA::cusparse CUDA::cusolver CUDA::cudart_static
+    CUDA::cublas CUDA::cusparse CUDA::cudart_static
     OpenMP::OpenMP_CXX
     rmm::rmm
     rapids_logger::rapids_logger

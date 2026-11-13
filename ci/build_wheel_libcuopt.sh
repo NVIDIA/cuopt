@@ -109,8 +109,6 @@ EXCLUDE_ARGS=(
   --exclude "libcublasLt.so.*"
   --exclude "libcuda.so.1"
   --exclude "libcudss.so.*"
-  --exclude "libcurand.so.*"
-  --exclude "libcusolver.so.*"
   --exclude "libcusparse.so.*"
   --exclude "libcuopt_client.so"
   --exclude "libcuopt_mathopt.so"
