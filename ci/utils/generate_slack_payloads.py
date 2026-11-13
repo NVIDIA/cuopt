@@ -13,7 +13,21 @@ Usage:
 
 import json
 import os
+import re
 import sys
+
+# Same window the per-job report uses for "failed N of the last M nights".
+FAIL_WINDOW_DAYS = int(os.environ.get("CUOPT_FAIL_WINDOW_DAYS", 14))
+
+# Failures in one workflow that share a reason collapse into one line once
+# there are at least this many of them.
+GROUP_MIN = 3
+
+# Maximum lines listed per category and workflow before "+N more".
+MAX_LINES = 10
+
+_BUILD_PREFIX = re.compile(r"^.*?/work/")
+_LOCATION = re.compile(r"^(\S+\.(?:cu|cuh|cpp|hpp|h|py|pyx)):(\d+)\b")
 
 
 def _esc(text):
@@ -30,6 +44,132 @@ def _job_prefix(job):
     """Extract workflow prefix from a GitHub Actions job name."""
     name = job.get("name", "unknown")
     return name.split(" / ")[0] if " / " in name else name
+
+
+def clean_message(message, limit=140):
+    """Turn a raw failure message into a short reason plus ``file:line``.
+
+    gtest failure text starts with the absolute build path of the source file
+    and the line number, for example
+    ``/tmp/conda-bld-output/bld/rattler-build_x/work/cpp/tests/a_test.cu:42``
+    followed by the assertion. Truncating that to 100 characters left only the
+    path. This drops the build prefix, keeps ``a_test.cu:42`` and the first
+    line that says what went wrong. For pytest, the first ``E`` line is used.
+    """
+    lines = [
+        _BUILD_PREFIX.sub("", ln.strip())
+        for ln in str(message).splitlines()
+        if ln.strip()
+    ]
+    if not lines:
+        return ""
+
+    location = ""
+    rest = []
+    for ln in lines:
+        match = _LOCATION.match(ln)
+        if match and not location:
+            location = f"{os.path.basename(match.group(1))}:{match.group(2)}"
+        else:
+            rest.append(ln)
+
+    reason = ""
+    for ln in rest:  # pytest: the first "E" line is the assertion
+        if ln.startswith("E "):
+            reason = ln[2:].strip()
+            break
+    if not reason and rest:
+        reason = rest[0]
+        # gtest: "Expected equality of these values:" is followed by the values
+        if reason.endswith(":") and len(rest) > 1:
+            reason = " ".join([reason] + [r.strip() for r in rest[1:3]])
+
+    if location:
+        reason = f"{reason} @ {location}" if reason else location
+    return reason[:limit]
+
+
+def reason_signature(message):
+    """Normalised reason used to group failures that share a cause.
+
+    Drops the source location and digits so the same assertion at different
+    sizes or indices groups together. An empty reason never groups.
+    """
+    reason = clean_message(message).split(" @ ")[0]
+    return re.sub(r"\d+(\.\d+)?", "#", reason).strip().lower()
+
+
+def _dedupe(entries):
+    """Drop repeated (name, matrix) entries, keeping the first."""
+    seen = set()
+    out = []
+    for e in entries:
+        key = (e.get("name"), e.get("matrix_label"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(e)
+    return out
+
+
+def _nights(entry):
+    """' · N/14 nights' once a test has failed on more than one night."""
+    n = entry.get("nights_failed", 1)
+    return f" \u00b7 {n}/{FAIL_WINDOW_DAYS} nights" if n and n >= 2 else ""
+
+
+def _matrix_summary(entries):
+    labels = sorted({e.get("matrix_label", "") for e in entries} - {""})
+    if len(labels) <= 2:
+        return ", ".join(labels)
+    return ", ".join(labels[:2]) + f", +{len(labels) - 2} more"
+
+
+def issue_lines(entries, tag, detail=None, group_detail=None, limit=MAX_LINES):
+    """Slack lines for failing or flaky tests of one workflow.
+
+    Entries that share a reason collapse into one line once there are
+    GROUP_MIN of them. ``tag`` is an emoji string or a function of the entry.
+    ``detail`` formats the suffix of a single line and ``group_detail`` the
+    suffix of a collapsed line. Returns (lines, hidden) where hidden is the
+    number of lines that did not fit in ``limit``.
+    """
+    unique = _dedupe(entries)
+    groups = {}
+    for e in unique:
+        sig = reason_signature(e.get("message", ""))
+        groups.setdefault(sig or f"\0{e.get('name')}", []).append(e)
+
+    lines = []
+    for members in groups.values():
+        if len(members) >= GROUP_MIN:
+            reason = _esc(clean_message(members[0].get("message", "")))
+            names = ", ".join(
+                f"`{_esc(m.get('name', 'unknown'))}`" for m in members[:3]
+            )
+            more = f" +{len(members) - 3} more" if len(members) > 3 else ""
+            matrix = _esc(_matrix_summary(members))
+            suffix = group_detail(members) if group_detail else ""
+            group_tag = tag(members[0]) if callable(tag) else tag
+            lines.append(
+                f"{group_tag}  *{len(members)} tests* ({matrix}) "
+                f"\u2014 {reason}{suffix}"
+                f"\n      e.g. {names}{more}"
+            )
+        else:
+            for m in members:
+                line_tag = tag(m) if callable(tag) else tag
+                lines.append(
+                    f"{line_tag}  `{_esc(m.get('name', 'unknown'))}` "
+                    f"({_esc(m.get('matrix_label', ''))})"
+                    + (detail(m) if detail else "")
+                )
+    return lines[:limit], max(0, len(lines) - limit)
+
+
+def repo_base(github_run_url):
+    """``https://github.com/org/repo`` from a run URL, or empty."""
+    return github_run_url.split("/actions/runs/")[0] if github_run_url else ""
 
 
 def make_payload(blocks):
@@ -151,8 +291,10 @@ def main():
         stats_parts.append(f":warning: {totals['flaky']} flaky")
     if not stats_parts:
         stats_parts.append(
-            f":white_check_mark: {totals.get('total', 0)} tests passed"
+            f":white_check_mark: {totals.get('passed', totals.get('total', 0))} tests passed"
         )
+    if totals.get("skipped", 0) > 0:
+        stats_parts.append(f":fast_forward: {totals['skipped']} skipped")
     stats = "  |  ".join(stats_parts)
 
     blocks.append(
@@ -237,6 +379,33 @@ def main():
                 }
             )
 
+    # Commit under test, and what changed since the last green night
+    sha = d.get("sha", "")
+    last_green = d.get("last_green_sha", "")
+    base = repo_base(github_run_url)
+    commit_parts = []
+    if sha and base:
+        commit_parts.append(f"<{base}/commit/{sha}|`{sha[:7]}`>")
+    elif sha:
+        commit_parts.append(f"`{sha[:7]}`")
+    if sha and last_green and last_green != sha and base and has_failures:
+        commit_parts.append(
+            f"<{base}/compare/{last_green}...{sha}|changes since last green"
+            f" (`{last_green[:7]}`)>"
+        )
+    if commit_parts:
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "Commit " + "  |  ".join(commit_parts),
+                    }
+                ],
+            }
+        )
+
     # Links in main message
     link_parts = []
     if github_run_url:
@@ -298,69 +467,78 @@ def main():
         )
         issues_by_wf[tt]["resolved"].append(r)
 
-    if issues_by_wf:
-        for wf_name, issues in sorted(issues_by_wf.items()):
-            wf_blocks = []
-            wf_text = f"*{_esc(wf_name)}*\n"
+    def _since(e):
+        return f" \u00b7 since {_esc(e.get('first_seen', '?'))}"
 
-            # New failures first (most urgent, show more error context)
-            for f_entry in issues["new"][:10]:
-                msg = _esc(f_entry.get("message", "")[:150].replace("\n", " "))
-                matrix = _esc(f_entry.get("matrix_label", ""))
-                name = _esc(f_entry.get("name", "unknown"))
-                wf_text += f":new:  `{name}` ({matrix}) \u2014 {msg}\n"
+    def _reason(e):
+        reason = clean_message(e.get("message", ""))
+        return f" \u2014 {_esc(reason)}" if reason else ""
 
-            # Flaky (actionable -- tests that are unstable)
-            for f_entry in issues["flaky"][:10]:
-                matrix = _esc(f_entry.get("matrix_label", ""))
-                err = _esc(f_entry.get("message", "")[:100].replace("\n", " "))
-                suffix = f" \u2014 {err}" if err else ""
-                tag = (
-                    ":new: :warning:" if f_entry.get("is_new") else ":warning:"
+    for wf_name, issues in sorted(issues_by_wf.items()):
+        wf_text = f"*{_esc(wf_name)}*\n"
+
+        def _group_since(members):
+            first = min(
+                (m.get("first_seen") for m in members if m.get("first_seen")),
+                default="?",
+            )
+            return f" \u00b7 since {_esc(first)}" + _group_nights(members)
+
+        def _group_nights(members):
+            n = max((m.get("nights_failed", 1) for m in members), default=1)
+            return _nights({"nights_failed": n})
+
+        sections = [
+            (":new:", issues["new"], _reason, None, "new failures"),
+            (
+                lambda e: ":new: :warning:"
+                if e.get("is_new")
+                else ":warning:",
+                issues["flaky"],
+                lambda e: _reason(e) + _nights(e),
+                _group_nights,
+                "flaky",
+            ),
+            (
+                ":repeat:",
+                issues["recurring"],
+                lambda e: _reason(e) + _since(e) + _nights(e),
+                _group_since,
+                "recurring",
+            ),
+        ]
+        for tag, entries, detail, group_detail, label in sections:
+            lines, hidden = issue_lines(entries, tag, detail, group_detail)
+            for line in lines:
+                wf_text += line + "\n"
+            if hidden:
+                wf_text += f"_...+{hidden} more {label}_\n"
+
+        # Recovered tests are a count only; the names add noise.
+        recovered = _dedupe(issues["resolved"])
+        if recovered:
+            if len(recovered) <= 3:
+                names = ", ".join(
+                    f"`{_esc(r.get('name', 'unknown'))}`" for r in recovered
                 )
-                name = _esc(f_entry.get("name", "unknown"))
-                wf_text += f"{tag}  `{name}` ({matrix}){suffix}\n"
-
-            # Recurring failures (known issues)
-            for f_entry in issues["recurring"][:10]:
-                matrix = _esc(f_entry.get("matrix_label", ""))
-                first = _esc(f_entry.get("first_seen", "?"))
-                name = _esc(f_entry.get("name", "unknown"))
+                wf_text += f":white_check_mark:  {len(recovered)} recovered: {names}\n"
+            else:
                 wf_text += (
-                    f":repeat:  `{name}` ({matrix}) \u2014 since {first}\n"
+                    f":white_check_mark:  {len(recovered)} tests recovered\n"
                 )
 
-            # Resolved
-            for r in issues["resolved"][:5]:
-                matrix = _esc(r.get("matrix_label", ""))
-                count = r.get("failure_count", "?")
-                name = _esc(r.get("name", "unknown"))
-                wf_text += f":white_check_mark:  `{name}` ({matrix}) \u2014 was failing {count}x\n"
+        wf_blocks = []
+        while wf_text:
+            chunk = wf_text[:2900]
+            wf_blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": chunk.rstrip()},
+                }
+            )
+            wf_text = wf_text[2900:]
 
-            # Truncation notes
-            for category, label, limit in [
-                ("new", "new failures", 10),
-                ("recurring", "recurring", 10),
-                ("flaky", "flaky", 10),
-                ("resolved", "resolved", 5),
-            ]:
-                if len(issues[category]) > limit:
-                    wf_text += (
-                        f"_...+{len(issues[category]) - limit} more {label}_\n"
-                    )
-
-            # Chunk if needed
-            while wf_text:
-                chunk = wf_text[:2900]
-                wf_blocks.append(
-                    {
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": chunk.rstrip()},
-                    }
-                )
-                wf_text = wf_text[2900:]
-
-            print(make_payload(wf_blocks))
+        print(make_payload(wf_blocks))
 
     # -- Thread: Failed job log links ----------------------------------
     failed_job_links = [

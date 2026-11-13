@@ -738,6 +738,7 @@ jobs:
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_TOKEN: ${{ github.token }}
           RAPIDS_BRANCH: ${{ inputs.branch }}
+          RAPIDS_SHA: ${{ inputs.sha }}
           SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
         run: bash ci/build_summary.sh

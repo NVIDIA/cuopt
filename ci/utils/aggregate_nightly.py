@@ -249,8 +249,50 @@ def parse_workflow_jobs(workflow_jobs_path):
         return []
 
 
+def commit_sha(agg):
+    """Return the commit SHA the nightly ran against (from the matrix grid)."""
+    for g in agg["matrix_grid"]:
+        if g.get("sha"):
+            return g["sha"]
+    return ""
+
+
+def find_last_green_sha(s3_index_uri, date_str, branch, output_dir):
+    """Return the SHA of the most recent earlier night with no failed jobs.
+
+    Reads index.json (the same file update_index maintains). Returns an empty
+    string when there is no earlier green night that recorded a SHA, for
+    example on the first run after SHAs were added to the index.
+    """
+    if not s3_index_uri:
+        return ""
+    local_index = str(output_dir / "index_previous.json")
+    if not s3_download(s3_index_uri, local_index):
+        return ""
+    try:
+        with open(local_index) as f:
+            dates = json.load(f).get("dates", {})
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+    best_date, best_sha = "", ""
+    for entry in dates.values():
+        if entry.get("branch") != branch or entry.get("date", "") >= date_str:
+            continue
+        if entry.get("job_summary", {}).get("failed", 0) != 0:
+            continue
+        if entry.get("sha") and entry["date"] > best_date:
+            best_date, best_sha = entry["date"], entry["sha"]
+    return best_sha
+
+
 def generate_consolidated_json(
-    agg, date_str, branch, github_run_url="", workflow_jobs=None
+    agg,
+    date_str,
+    branch,
+    github_run_url="",
+    workflow_jobs=None,
+    last_green_sha="",
 ):
     """Generate the consolidated JSON for Slack and dashboard."""
     total_jobs = len(agg["matrix_grid"])
@@ -272,6 +314,8 @@ def generate_consolidated_json(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "date": date_str,
         "branch": branch,
+        "sha": commit_sha(agg),
+        "last_green_sha": last_green_sha,
         "github_run_url": github_run_url,
         "job_summary": {
             "total": total_jobs,
@@ -613,6 +657,7 @@ def update_index(s3_index_uri, date_str, consolidated, output_dir):
     index["dates"][entry_key] = {
         "date": date_str,
         "branch": branch,
+        "sha": consolidated.get("sha", ""),
         "job_summary": consolidated.get("job_summary", {}),
         "test_totals": consolidated.get("test_totals", {}),
         "has_new_failures": consolidated.get("has_new_failures", False),
@@ -756,12 +801,16 @@ def main():
         )
 
     # ---- Step 3: Generate outputs ----
+    last_green_sha = find_last_green_sha(
+        args.s3_index_uri, args.date, args.branch, output_dir
+    )
     consolidated = generate_consolidated_json(
         agg,
         args.date,
         args.branch,
         args.github_run_url,
         workflow_jobs,
+        last_green_sha,
     )
 
     json_path = output_dir / "consolidated_summary.json"

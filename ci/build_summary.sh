@@ -12,6 +12,8 @@ RUN_DATE="$(date +%F)"
 GITHUB_RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-NVIDIA/cuopt}/actions/runs/${GITHUB_RUN_ID:-}"
 SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN:-}"
 SLACK_CHANNEL_ID="${SLACK_CHANNEL_ID:-}"
+BUILD_SHA="${RAPIDS_SHA:-${GITHUB_SHA:-}}"
+REPO_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-NVIDIA/cuopt}"
 
 if [ -z "${SLACK_BOT_TOKEN}" ] || [ -z "${SLACK_CHANNEL_ID}" ]; then
     echo "SLACK_BOT_TOKEN or SLACK_CHANNEL_ID not set, skipping build summary."
@@ -32,97 +34,10 @@ else
 fi
 
 # Generate Slack payload
-PAYLOAD=$(python3 -c "
-import json, sys
-
-with open(sys.argv[1]) as f:
-    data = json.load(f)
-branch = sys.argv[2]
-date = sys.argv[3]
-run_url = sys.argv[4]
-
-jobs = data.get('jobs', [])
-
-# Filter out build-summary itself and compute-matrix helpers
-jobs = [j for j in jobs
-        if 'build-summary' not in j.get('name', '').lower()
-        and 'compute-matrix' not in j.get('name', '').lower()]
-
-# Group by workflow prefix
-groups = {}
-for j in jobs:
-    name = j.get('name', '')
-    prefix = name.split(' / ')[0] if ' / ' in name else name
-    groups.setdefault(prefix, []).append(j)
-
-total = len(jobs)
-failed_count = sum(1 for j in jobs if j.get('conclusion') == 'failure')
-passed_count = sum(1 for j in jobs if j.get('conclusion') == 'success')
-
-if failed_count > 0:
-    emoji = ':x:'
-    status = f'{failed_count} build job(s) failed'
-else:
-    emoji = ':white_check_mark:'
-    status = f'All {passed_count} build jobs passed'
-
-blocks = []
-blocks.append({
-    'type': 'header',
-    'text': {'type': 'plain_text', 'text': f'cuOpt Build \u2014 {branch} \u2014 {date}', 'emoji': True},
-})
-blocks.append({
-    'type': 'section',
-    'text': {'type': 'mrkdwn', 'text': f'{emoji} *{status}*'},
-})
-blocks.append({'type': 'divider'})
-
-# Build status per group
-lines = []
-for group_name, group_jobs in sorted(groups.items()):
-    g_passed = sum(1 for j in group_jobs if j.get('conclusion') == 'success')
-    g_failed = sum(1 for j in group_jobs if j.get('conclusion') == 'failure')
-    g_total = len(group_jobs)
-
-    if g_failed > 0:
-        icon = ':x:'
-        detail = f'{g_failed}/{g_total} failed'
-        # Add clickable log links for failed jobs
-        failed_in_group = [j for j in group_jobs if j.get('conclusion') == 'failure']
-        if failed_in_group and failed_in_group[0].get('html_url'):
-            log_url = failed_in_group[0]['html_url']
-            detail += f'  <{log_url}|View Logs>'
-    elif g_passed == g_total:
-        icon = ':white_check_mark:'
-        detail = f'{g_total} passed'
-    else:
-        icon = ':grey_question:'
-        detail = f'{g_passed}/{g_total} passed'
-    lines.append(f'{icon}  *{group_name}* \u2014 {detail}')
-
-current = ''
-for line in lines:
-    if current and len(current) + len(line) + 1 > 2900:
-        blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': current.rstrip()}})
-        current = ''
-    current += line + '\n'
-if current.strip():
-    blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': current.rstrip()}})
-
-# Link
-if run_url:
-    blocks.append({'type': 'divider'})
-    blocks.append({
-        'type': 'context',
-        'elements': [{'type': 'mrkdwn', 'text': f'<{run_url}|:github: GitHub Actions>'}],
-    })
-
-print(json.dumps({
-    'username': 'cuOpt Build Bot',
-    'icon_emoji': ':package:',
-    'blocks': blocks,
-}))
-" "${JOBS_FILE}" "${BRANCH}" "${RUN_DATE}" "${GITHUB_RUN_URL}")
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+PAYLOAD=$(python3 "${SCRIPT_DIR}/utils/generate_build_payload.py" \
+    "${JOBS_FILE}" "${BRANCH}" "${RUN_DATE}" "${GITHUB_RUN_URL}" \
+    "${BUILD_SHA}" "${REPO_URL}")
 
 rm -f "${JOBS_FILE}"
 
