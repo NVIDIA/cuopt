@@ -81,9 +81,10 @@ More details on system requirements can be found [here](https://docs.nvidia.com/
 
 ### Latest Release
 
-[Latest release branch](https://github.com/NVIDIA/cuopt/tree/release/26.10)
+**Current release: [26.10](https://github.com/NVIDIA/cuopt/tree/release/26.10)** | [Release notes](RELEASE-NOTES.md) | [Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 
-> **Not sure which package you need?** Use the interactive [install selector](https://docs.nvidia.com/cuopt/user-guide/latest/install.html#install-selector) in the docs. Pick your interface, install method and CUDA version, and it generates the exact command.
+> [!TIP]
+> **Want a different interface or install method?** The [install selector](https://docs.nvidia.com/cuopt/user-guide/latest/install.html#install-selector) in the docs builds the exact command for the C API, CLI, server, Java, pip, conda or Docker, for your CUDA version.
 
 #### Pip
 
