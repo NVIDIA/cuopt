@@ -2176,6 +2176,7 @@ static optimization_problem_solution_t<i_t, f_t> build_presolve_optimal_solution
   rmm::device_uvector<f_t>& dual_uv,
   rmm::device_uvector<f_t>& rc_uv,
   f_t objective_offset,
+  f_t objective_scaling_factor,
   double presolve_time,
   std::string const& objective_name,
   std::vector<std::string> const& variable_names,
@@ -2183,8 +2184,10 @@ static optimization_problem_solution_t<i_t, f_t> build_presolve_optimal_solution
 {
   typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
     term_info;
-  term_info.primal_objective      = objective_offset;
-  term_info.dual_objective        = objective_offset;
+  // The eliminated objective is scale * (c^T x + offset). Presolve has already
+  // folded c^T x into objective_offset, but has not applied the input scale.
+  term_info.primal_objective      = objective_scaling_factor * objective_offset;
+  term_info.dual_objective        = term_info.primal_objective;
   term_info.number_of_steps_taken = 0;
   term_info.solve_time            = presolve_time;
   term_info.l2_primal_residual    = 0.0;
@@ -2417,6 +2420,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
           empty_dual,
           empty_reduced_costs,
           result->reduced_problem.get_objective_offset(),
+          result->reduced_problem.get_objective_scaling_factor(),
           presolve_time,
           op_problem.get_objective_name(),
           op_problem.get_variable_names(),
@@ -2948,6 +2952,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
             dual_uv,
             rc_uv,
             host_res->reduced_problem.get_objective_offset(),
+            host_res->reduced_problem.get_objective_scaling_factor(),
             presolve_time,
             model.get_objective_name(),
             model.get_variable_names(),
