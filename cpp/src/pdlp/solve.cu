@@ -15,6 +15,7 @@
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
+#include <pdlp/postsolve_quality.cuh>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <pdlp/translate.hpp>
@@ -2019,6 +2020,10 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool problem_checking)
 {
+  const cuopt::timer_t final_log_timer(settings.time_limit);
+  const bool log_final_status = !settings.inside_mip && settings.new_bounds.size() == 0 &&
+                                settings.fixed_batch_size == 0 &&
+                                (settings.log_to_console || !settings.log_file.empty());
   try {
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
@@ -2052,8 +2057,10 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     if (problem_checking && !reuse_from_cache) {
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
       if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
-        return optimization_problem_solution_t<i_t, f_t>(
+        auto solution = optimization_problem_solution_t<i_t, f_t>(
           pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
+        if (log_final_status) { detail::print_final_status(op_problem, solution, final_log_timer); }
+        return solution;
       }
     }
 
@@ -2129,10 +2136,18 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                    nan_val);
     }
 
+    if (!settings.inside_mip && (settings.log_to_console || !settings.log_file.empty())) {
+      CUOPT_LOG_INFO("Unscale: Barrier solution restored to unscaled model units.");
+      CUOPT_LOG_INFO("Postsolve: Barrier solution restored to original model variables.");
+      detail::print_postsolve_quality(
+        op_problem, solution, !op_problem.has_quadratic_constraints());
+    }
+
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
       solution.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
     }
+    if (log_final_status) { detail::print_final_status(op_problem, solution, final_log_timer); }
     return solution;
   } catch (const cuopt::logic_error& e) {
     CUOPT_LOG_ERROR("Error in solve_qcqp: %s", e.what());
@@ -2261,6 +2276,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     return solve_qcqp(op_problem, settings_const, problem_checking);
   }
 
+  const cuopt::timer_t final_log_timer(settings_const.time_limit);
+  const bool log_final_status = !settings_const.inside_mip && !is_batch_mode &&
+                                settings_const.new_bounds.size() == 0 &&
+                                settings_const.fixed_batch_size == 0 &&
+                                (settings_const.log_to_console || !settings_const.log_file.empty());
   try {
     pdlp_solver_settings_t<i_t, f_t> settings(settings_const);
     // Create log stream for file logging and add it to default logger
@@ -2308,8 +2328,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     // Check for crossing bounds. Return infeasible if there are any
     if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
-      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
-                                                       op_problem.get_handle_ptr()->get_stream());
+      auto solution = optimization_problem_solution_t<i_t, f_t>(
+        pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
+      if (log_final_status) { detail::print_final_status(op_problem, solution, final_log_timer); }
+      return solution;
     }
     validate_new_bounds(op_problem, settings);
 
@@ -2387,6 +2409,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         presolve_time_limit);
       if (auto terminal = terminal_solution_from_presolve_status<i_t, f_t>(
             result->status, op_problem.get_handle_ptr()->get_stream())) {
+        if (log_final_status) {
+          detail::print_final_status(op_problem, *terminal, final_log_timer);
+        }
         return std::move(*terminal);
       }
 
@@ -2404,6 +2429,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         rmm::device_uvector<f_t> empty_primal(0, op_problem.get_handle_ptr()->get_stream());
         rmm::device_uvector<f_t> empty_dual(0, op_problem.get_handle_ptr()->get_stream());
         rmm::device_uvector<f_t> empty_reduced_costs(0, op_problem.get_handle_ptr()->get_stream());
+        CUOPT_LOG_CONDITIONAL_INFO(
+          !settings.inside_mip,
+          "Postsolve: restoring the original model after presolve solved the problem.");
         presolver->undo_from_device(empty_primal,
                                     empty_dual,
                                     empty_reduced_costs,
@@ -2412,15 +2440,20 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                     settings.dual_postsolve,
                                     op_problem.get_handle_ptr()->get_stream());
 
-        return build_presolve_optimal_solution<i_t, f_t>(
-          empty_primal,
-          empty_dual,
-          empty_reduced_costs,
-          result->reduced_problem.get_objective_offset(),
-          presolve_time,
-          op_problem.get_objective_name(),
-          op_problem.get_variable_names(),
-          op_problem.get_row_names());
+        auto solution =
+          build_presolve_optimal_solution<i_t, f_t>(empty_primal,
+                                                    empty_dual,
+                                                    empty_reduced_costs,
+                                                    result->reduced_problem.get_objective_offset(),
+                                                    presolve_time,
+                                                    op_problem.get_objective_name(),
+                                                    op_problem.get_variable_names(),
+                                                    op_problem.get_row_names());
+        if (!settings.inside_mip && (settings.log_to_console || !settings.log_file.empty())) {
+          detail::print_postsolve_quality(op_problem, solution, settings.dual_postsolve);
+        }
+        if (log_final_status) { detail::print_final_status(op_problem, solution, final_log_timer); }
+        return solution;
       }
 
       if (map_initial_solution) {
@@ -2487,6 +2520,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
 
     auto solution = solve_lp_with_method(*problem, settings, lp_timer, is_batch_mode);
+    CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip && !is_batch_mode,
+                               "Unscale: solver solution restored to unscaled model units.");
+    if (!run_presolve && !settings.inside_mip && !is_batch_mode &&
+        solution.get_additional_termination_informations().size() == 1 &&
+        (solution.get_additional_termination_information().solved_by == method_t::Barrier ||
+         solution.get_additional_termination_information().solved_by == method_t::DualSimplex)) {
+      CUOPT_LOG_INFO("Postsolve: native solver variables restored to the original model.");
+    }
 
     if (run_presolve) {
       auto primal_solution = cuopt::device_copy(solution.get_primal_solution(),
@@ -2497,6 +2538,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         cuopt::device_copy(solution.get_reduced_cost(), op_problem.get_handle_ptr()->get_stream());
       bool status_to_skip = false;
 
+      CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip && !is_batch_mode,
+                                 "Postsolve: restoring the original model with %s.",
+                                 settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo");
       presolver->undo_from_device(primal_solution,
                                   dual_solution,
                                   reduced_costs,
@@ -2523,11 +2567,18 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                                   std::move(status_vec));
     }
 
+    if (!settings.inside_mip && !is_batch_mode && single_problem &&
+        (settings.log_to_console || !settings.log_file.empty())) {
+      detail::print_postsolve_quality(
+        op_problem, solution, !run_presolve || settings.dual_postsolve);
+    }
+
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
       solution.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
     }
 
+    if (log_final_status) { detail::print_final_status(op_problem, solution, final_log_timer); }
     return solution;
   } catch (const cuopt::logic_error& e) {
     CUOPT_LOG_ERROR("Error in solve_lp: %s", e.what());
