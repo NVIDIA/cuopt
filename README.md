@@ -79,11 +79,11 @@ Note: WSL2 is tested to run cuOpt, but not for building.
 
 More details on system requirements can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html)
 
+### Latest Release
+
 [Latest release branch](https://github.com/NVIDIA/cuopt/tree/release/26.10)
 
-The sections below cover installing the latest release and nightly builds.
-
-### Latest release
+> **Not sure which package you need?** Use the interactive [install selector](https://docs.nvidia.com/cuopt/user-guide/latest/install.html#install-selector) in the docs. Pick your interface, install method and CUDA version, and it generates the exact command.
 
 #### Pip
 
@@ -99,7 +99,7 @@ For CUDA 12.x:
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
   nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12 cuopt-sh-client
+  cuopt-cu12
 ```
 
 For CUDA 13.x:
@@ -107,17 +107,17 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13 cuopt-sh-client
+  cuopt-cu13
 ```
 
 #### Conda
 
 cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forge/miniforge)):
 
-All other dependencies are installed automatically when `cuopt-server` and `cuopt-sh-client` are installed.
+All other dependencies are installed automatically when `cuopt` is installed.
 
 ```bash
-conda install -c rapidsai -c conda-forge -c nvidia cuopt-server cuopt-sh-client
+conda install -c rapidsai -c conda-forge -c nvidia cuopt
 ```
 
 #### Container
@@ -156,19 +156,19 @@ pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
   nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12==26.12.* cuopt-sh-client==26.12.*
+  cuopt-cu12==26.12.*
 
 # For CUDA 13.x
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==26.12.* cuopt-sh-client==26.12.*
+  cuopt-cu13==26.12.*
 ```
 
 #### Conda
 
 ```bash
-conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt-server=26.12.* cuopt-sh-client=26.12.*
+conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt=26.12.*
 ```
 
 See the [nightly conda packages](https://anaconda.org/rapidsai-nightly) for the full list.
