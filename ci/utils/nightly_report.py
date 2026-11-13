@@ -56,6 +56,9 @@ BOUNCE_WINDOW_DAYS = int(os.environ.get("CUOPT_BOUNCE_WINDOW_DAYS", 14))
 # Number of failure/resolve cycles that classify a test as cross-run flaky.
 BOUNCE_THRESHOLD = int(os.environ.get("CUOPT_BOUNCE_THRESHOLD", 2))
 
+# Window (in nights) for the "failed N of the last M nights" rate shown in Slack.
+FAIL_WINDOW_DAYS = int(os.environ.get("CUOPT_FAIL_WINDOW_DAYS", 14))
+
 
 # ---------------------------------------------------------------------------
 # JUnit XML parsing
@@ -224,6 +227,21 @@ def _is_recent_resolve(rec, date_str):
     return _days_between(resolved_date, date_str) <= BOUNCE_WINDOW_DAYS
 
 
+def _record_failure_night(rec, date_str):
+    """Record that a test failed (or was flaky) on ``date_str``.
+
+    Keeps only the dates inside FAIL_WINDOW_DAYS and returns how many nights
+    in that window the test failed, including today.
+    """
+    dates = rec.setdefault("fail_dates", [])
+    if date_str not in dates:
+        dates.append(date_str)
+    dates[:] = [
+        d for d in dates if _days_between(d, date_str) < FAIL_WINDOW_DAYS
+    ]
+    return len(dates)
+
+
 def update_history(history, classified, sha, date_str):
     """
     Update failure history with this run's results.
@@ -258,7 +276,11 @@ def update_history(history, classified, sha, date_str):
                 rec["last_seen_sha"] = sha
                 rec["failure_count"] += 1
                 recurring_failures.append(
-                    {**entry, "first_seen": rec["first_seen_date"]}
+                    {
+                        **entry,
+                        "first_seen": rec["first_seen_date"],
+                        "nights_failed": _record_failure_night(rec, date_str),
+                    }
                 )
             elif rec["status"] == "resolved" and _is_recent_resolve(
                 rec, date_str
@@ -277,6 +299,7 @@ def update_history(history, classified, sha, date_str):
                         **entry,
                         "first_seen": rec["first_seen_date"],
                         "is_bouncing": True,
+                        "nights_failed": _record_failure_night(rec, date_str),
                     }
                 )
             else:
@@ -286,6 +309,7 @@ def update_history(history, classified, sha, date_str):
                 rec["last_seen_sha"] = sha
                 rec["failure_count"] += 1
                 rec["bounce_count"] = rec.get("bounce_count", 0) + 1
+                entry["nights_failed"] = _record_failure_night(rec, date_str)
                 new_failures.append(entry)
         else:
             # Truly new — never seen before
@@ -302,6 +326,9 @@ def update_history(history, classified, sha, date_str):
                 "bounce_count": 0,
                 "status": "active",
             }
+            entry["nights_failed"] = _record_failure_night(
+                tests[test_key], date_str
+            )
             new_failures.append(entry)
 
     # --- Flaky tests (passed on retry within this run) ---
@@ -313,6 +340,7 @@ def update_history(history, classified, sha, date_str):
             rec["last_seen_sha"] = sha
             rec["failure_count"] += 1
             rec["is_flaky"] = True
+            entry["nights_failed"] = _record_failure_night(rec, date_str)
             # If it was resolved, reactivate — it's still unstable
             if rec["status"] == "resolved":
                 rec["status"] = "active"
@@ -331,6 +359,9 @@ def update_history(history, classified, sha, date_str):
                 "bounce_count": 0,
                 "status": "active",
             }
+            entry["nights_failed"] = _record_failure_night(
+                tests[test_key], date_str
+            )
             new_flaky_tests.append(entry)
 
     # --- Resolve stabilized tests ---
@@ -585,6 +616,7 @@ def generate_json_summary(
                 "classname": e["classname"],
                 "first_seen": e.get("first_seen", "unknown"),
                 "message": e.get("message", ""),
+                "nights_failed": e.get("nights_failed", 1),
             }
             for e in recurring_failures
         ],
@@ -595,6 +627,7 @@ def generate_json_summary(
                 "classname": e["classname"],
                 "retry_count": e.get("retry_count", 0),
                 "message": e.get("message", ""),
+                "nights_failed": e.get("nights_failed", 1),
                 "is_new": f"{e['classname']}::{e['name']}" in new_flaky_keys,
             }
             for e in classified["flaky"]

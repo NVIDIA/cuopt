@@ -78,7 +78,7 @@ S3_SUMMARIES_FALLBACK="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/"
 
 echo "Aggregating nightly summaries from ${S3_SUMMARIES_PREFIX}"
 
-python3 "${SCRIPT_DIR}/utils/aggregate_nightly.py" \
+python3 "${SCRIPT_DIR}/aggregate_nightly.py" \
     --s3-summaries-prefix "${S3_SUMMARIES_PREFIX}" \
     --s3-summaries-fallback "${S3_SUMMARIES_FALLBACK}" \
     --s3-reports-prefix "${S3_REPORTS_PREFIX}" \
@@ -95,7 +95,7 @@ python3 "${SCRIPT_DIR}/utils/aggregate_nightly.py" \
 
 # --- Write GitHub Step Summary (if available) ---
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "${OUTPUT_DIR}/consolidated_summary.json" ]; then
-    python3 "${SCRIPT_DIR}/utils/generate_step_summary.py" "${OUTPUT_DIR}/consolidated_summary.json" >> "${GITHUB_STEP_SUMMARY}" || true
+    python3 "${SCRIPT_DIR}/generate_step_summary.py" "${OUTPUT_DIR}/consolidated_summary.json" >> "${GITHUB_STEP_SUMMARY}" || true
 fi
 
 # --- Generate presigned URLs for reports (7-day expiry) ---
@@ -119,7 +119,7 @@ if [ -n "${CUOPT_SLACK_BOT_TOKEN:-}" ] && [ -n "${CUOPT_SLACK_CHANNEL_ID:-}" ] &
     CUOPT_SLACK_MENTION_ID="${CUOPT_SLACK_MENTION_ID:-}" \
     PRESIGNED_REPORT_URL="${PRESIGNED_HTML}" \
     PRESIGNED_DASHBOARD_URL="${PRESIGNED_DASHBOARD}" \
-        bash "${SCRIPT_DIR}/utils/send_consolidated_summary.sh"
+        bash "${SCRIPT_DIR}/send_consolidated_summary.sh"
 fi
 
 echo "Nightly summary complete."
