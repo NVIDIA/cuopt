@@ -359,6 +359,8 @@ class branch_and_bound_t {
                        mip_node_t<i_t, f_t>* node_ptr,
                        f_t leaf_obj);
 
+  // Largest objective value of a solution that improves on upper_bound. This is the value just
+  // below upper_bound on the objective lattice if the objective is integral or moves in steps.
   f_t compute_node_cutoff(const simplex::lp_problem_t<i_t, f_t>& lp, f_t upper_bound) const;
   bool accept_new_incumbent(f_t obj);
 
