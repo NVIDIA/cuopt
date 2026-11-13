@@ -108,22 +108,15 @@ class node_queue_t {
     return node;
   }
 
-  bool diving_init(const simplex::lp_problem_t<i_t, f_t>& lp,
-                   mip_node_t<i_t, f_t>& start_node,
-                   std::vector<f_t>& start_lower,
-                   std::vector<f_t>& start_upper,
-                   std::vector<bool>& bounds_changed)
+  bool diving_init(mip_node_t<i_t, f_t>& start_node, simplex::domain_t<i_t, f_t>& domain)
   {
     std::lock_guard lock(mutex_);
 
     auto node = pop_diving();
     if (!node) return false;
 
-    start_node  = node->detach_copy();
-    start_lower = lp.lower;
-    start_upper = lp.upper;
-    std::fill(bounds_changed.begin(), bounds_changed.end(), false);
-    node->get_variable_bounds(start_lower, start_upper, bounds_changed);
+    start_node = node->detach_copy();
+    node->rebuild_variable_bounds(domain);
     return true;
   }
 
