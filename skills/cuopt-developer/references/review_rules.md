@@ -28,8 +28,8 @@ Before the line-by-line rules, look at the PR as a whole.
 - **Describe the code as it is.** No history ("used to be", "previously", "fixes the
   bug where"), no failed attempts, no numbers from one benchmark instance, no line numbers,
   commit hashes or PR numbers. See [conventions.md](conventions.md#comments).
-- **Short and plain.** Say what or why in a line or two. Delete comments that restate
-  the code or address an agent. Define jargon or use the plain name.
+- **Short and plain.** Say what or why in a line or two. Do not address comments to an
+  agent. Define jargon or use the plain name.
 - **Non-trivial math is explained.** Say what the inputs are and what is computed.
 
 ## Naming and terminology
@@ -54,8 +54,11 @@ Before the line-by-line rules, look at the PR as a whole.
 ## Code
 
 - **Follow the codebase's type conventions.** Use the project's template types (`i_t`,
-  `f_t`) rather than bare `int`/`double`, drop casts that change nothing, and match the
-  neighbouring files' `const` and instantiation patterns.
+  `f_t`) rather than bare `int`/`double`, and match the neighbouring files' `const` and
+  instantiation patterns.
+- **No noise casts or typed literals.** Drop a `static_cast` that does not change the value
+  or guard against overflow. Write `0.0` or `0`, not `f_t{0}` or `static_cast<f_t>(0)`; the
+  literal converts on its own. See [conventions.md](conventions.md).
 - **Explicit ownership.** `std::unique_ptr` by default, `std::shared_ptr` only with a
   reason, `std::span` over pointer plus size, no raw owning pointers.
 - **Plain control flow.** Avoid lambdas; use one only for sorting. No scope guards or hidden
