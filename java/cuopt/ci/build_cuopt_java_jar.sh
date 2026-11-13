@@ -116,7 +116,7 @@ echo "  native library -> ${RESOURCE_DIR}/libcuopt_jni.so"
 # Without it that call fails and cuDSS writes the failure straight to the process's native
 # stdout, corrupting Maven Surefire's forked-JVM protocol, so it is always added explicitly.
 BASELINE_SYSTEM_LIBRARY_PATTERN='^(ld-linux|linux-vdso)|^lib(c|m|dl|rt|pthread|resolv|util)\.so'
-CUDA_RUNTIME_LIBRARY_PATTERN='^lib(cublas|cublasLt|cusparse|cusolver|nvJitLink)\.so'
+CUDA_RUNTIME_LIBRARY_PATTERN='^lib(cublas|cublasLt|cusparse|nvJitLink)\.so'
 
 # Searched by filename rather than a single prefix, since the build environment may be a conda
 # environment (CUOPT_PREFIX/lib), a dnf/system install (e.g. /usr/lib64, cuDSS's own versioned
