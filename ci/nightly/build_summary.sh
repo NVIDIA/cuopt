@@ -35,7 +35,7 @@ fi
 
 # Generate Slack payload
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-PAYLOAD=$(python3 "${SCRIPT_DIR}/utils/generate_build_payload.py" \
+PAYLOAD=$(python3 "${SCRIPT_DIR}/generate_build_payload.py" \
     "${JOBS_FILE}" "${BRANCH}" "${RUN_DATE}" "${GITHUB_RUN_URL}" \
     "${BUILD_SHA}" "${REPO_URL}")
 
@@ -43,12 +43,8 @@ rm -f "${JOBS_FILE}"
 
 # Send via bot token
 echo "Sending build summary to Slack..."
-BOT_PAYLOAD=$(python3 -c "
-import json, sys
-p = json.loads(sys.argv[1])
-p['channel'] = sys.argv[2]
-print(json.dumps(p))
-" "${PAYLOAD}" "${SLACK_CHANNEL_ID}")
+BOT_PAYLOAD=$(python3 "${SCRIPT_DIR}/slack_json.py" inject \
+    --channel "${SLACK_CHANNEL_ID}" "${PAYLOAD}")
 
 RESPONSE=$(curl -s --max-time 30 -X POST \
     -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
@@ -56,7 +52,7 @@ RESPONSE=$(curl -s --max-time 30 -X POST \
     --data "${BOT_PAYLOAD}" \
     "https://slack.com/api/chat.postMessage" || echo '{"ok":false,"error":"curl_failed"}')
 
-OK=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok',''))" 2>/dev/null || echo "")
+OK=$(echo "${RESPONSE}" | python3 "${SCRIPT_DIR}/slack_json.py" get ok)
 if [ "${OK}" != "True" ]; then
     echo "ERROR: chat.postMessage failed: ${RESPONSE}" >&2
 else

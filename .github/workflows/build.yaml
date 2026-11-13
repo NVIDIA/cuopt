@@ -741,7 +741,7 @@ jobs:
           RAPIDS_SHA: ${{ inputs.sha }}
           SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
-        run: bash ci/build_summary.sh
+        run: bash ci/nightly/build_summary.sh
 
   build-images:
     needs:

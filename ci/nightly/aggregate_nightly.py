@@ -13,7 +13,7 @@ Runs as a post-test job after all matrix CI jobs finish.  It:
   5. Uploads the consolidated report to S3
 
 Usage:
-  python ci/utils/aggregate_nightly.py \\
+  python ci/nightly/aggregate_nightly.py \\
       --s3-summaries-prefix s3://bucket/ci_test_reports/nightly/summaries/2026-04-13/ \\
       --s3-reports-prefix s3://bucket/ci_test_reports/nightly/reports/2026-04-13/ \\
       --output-dir /tmp/aggregate-output \\
@@ -28,8 +28,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Ensure ci/utils is importable when invoked as a script
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# s3_helpers lives in ci/utils, which is shared with the per-job test scripts
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "utils")
+)
 from s3_helpers import s3_download, s3_upload, s3_list  # noqa: E402
 
 
