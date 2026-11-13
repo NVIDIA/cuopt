@@ -4,10 +4,10 @@
 
 ### Bug Fixes (26.10.01)
 
-- Fix `DataModel` slack for constraints set through lower/upper bounds
+- Fix a segfault in the Python `DataModel` when lower/upper bounds for constraints are provided
 - Update Papilo to fix a sub-MIP presolve assertion
 - Ignore local-solve file-path parameters on the gRPC server
-- Fix barrier `augmented_multiply` reading the output vector when `beta == 0`
+- Fix an undefined memory read in barrier's augmented system multiply
 
 ## Release Notes 26.10
 
