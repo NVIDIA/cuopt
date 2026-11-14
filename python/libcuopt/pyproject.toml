@@ -80,7 +80,7 @@ build-backend = "scikit_build_core.build"
 dependencies-file = "../../dependencies.yaml"
 matrix-entry = "cuda_suffixed=true;use_cuda_wheels=true"
 requires = [
-    "cmake>=4.0",
+    "cmake>=4.0,<4.5",
     "libcuopt-client==26.12.*,>=0.0.0a0",
     "libcuopt-mathopt==26.12.*,>=0.0.0a0",
     "libcuopt-routing==26.12.*,>=0.0.0a0",
