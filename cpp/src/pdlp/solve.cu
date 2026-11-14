@@ -455,12 +455,12 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   info[0].total_number_of_attempted_steps = solution.iterations;
   info[0].l2_primal_residual              = solution.l2_primal_residual;
   info[0].l2_dual_residual                = solution.l2_dual_residual;
-  info[0].l2_relative_primal_residual  = solution.l2_primal_residual / (1.0 + norm_user_objective);
-  info[0].l2_relative_dual_residual    = solution.l2_dual_residual / (1.0 + norm_rhs);
-  info[0].max_primal_ray_infeasibility = 0.0;
-  info[0].primal_ray_linear_objective  = 0.0;
-  info[0].max_dual_ray_infeasibility   = 0.0;
-  info[0].dual_ray_linear_objective    = 0.0;
+  info[0].l2_relative_primal_residual     = solution.l2_primal_residual / (1.0 + norm_rhs);
+  info[0].l2_relative_dual_residual       = solution.l2_dual_residual / (1.0 + norm_user_objective);
+  info[0].max_primal_ray_infeasibility    = 0.0;
+  info[0].primal_ray_linear_objective     = 0.0;
+  info[0].max_dual_ray_infeasibility      = 0.0;
+  info[0].dual_ray_linear_objective       = 0.0;
 
   pdlp_termination_status_t termination_status = to_termination_status(status);
   auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
