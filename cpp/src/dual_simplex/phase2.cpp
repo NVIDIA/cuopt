@@ -3741,6 +3741,52 @@ static dual_status_t dual_phase2_with_advanced_basis(
       std::vector<f_t> certificate_direction;
       delta_y_sparse.to_dense(certificate_direction);
       phase2_work_estimate += certificate_direction.size();
+
+      if (ft.num_updates() > 0) {
+        i_t deficient_repaired    = 0;
+        const i_t refactor_status = ft.refactor_basis(lp.A,
+                                                      settings,
+                                                      lp.lower,
+                                                      lp.upper,
+                                                      start_time,
+                                                      basic_list,
+                                                      nonbasic_list,
+                                                      vstatus,
+                                                      deficient_repaired);
+        if (refactor_status == CONCURRENT_HALT_RETURN) { return dual_status_t::CONCURRENT_LIMIT; }
+        if (refactor_status == TIME_LIMIT_RETURN) { return dual_status_t::TIME_LIMIT; }
+        if (refactor_status != 0 || deficient_repaired != 0) { return dual_status_t::NUMERICAL; }
+
+        // Refactorization can reorder the basis.
+        const auto leaving_position =
+          std::find(basic_list.begin(), basic_list.end(), leaving_index);
+        phase2_work_estimate += m;
+        if (leaving_position == basic_list.end()) { return dual_status_t::NUMERICAL; }
+        basic_leaving_index = static_cast<i_t>(leaving_position - basic_list.begin());
+      }
+
+      // Recompute delta_y using the fresh factorization.
+      delta_y_sparse.clear();
+      UTsol_sparse.clear();
+      phase2::compute_delta_y(ft, basic_leaving_index, direction, delta_y_sparse, UTsol_sparse);
+      delta_y_sparse.to_dense(certificate_direction);
+      phase2_work_estimate += m;
+
+      // Recompute delta_z, including the prescribed values on basic variables.
+      std::fill(delta_z_mark.begin(), delta_z_mark.end(), 0);
+      delta_z_indices.clear();
+      phase2_work_estimate += n;
+      compute_reduced_cost_update(lp,
+                                  basic_list,
+                                  nonbasic_list,
+                                  certificate_direction,
+                                  leaving_index,
+                                  direction,
+                                  delta_z_mark,
+                                  delta_z_indices,
+                                  delta_z,
+                                  phase2_work_estimate);
+
       std::vector<f_t> farkas_y, farkas_zl, farkas_zu;
       f_t farkas_constant;
       if (compute_farkas_certificate(lp,

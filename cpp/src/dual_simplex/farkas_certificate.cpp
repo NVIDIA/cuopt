@@ -67,9 +67,10 @@ bool compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
                                 f_t& farkas_constant,
                                 f_t& work_estimate)
 {
-  const i_t m       = lp.num_rows;
-  const i_t n       = lp.num_cols;
-  const f_t epsilon = settings.primal_tol;
+  const i_t m        = lp.num_rows;
+  const i_t n        = lp.num_cols;
+  const f_t epsilon  = settings.primal_tol;
+  const f_t zero_tol = settings.zero_tol;
 
   farkas_constant = 0.0;
 
@@ -97,15 +98,15 @@ bool compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
 
   // Compute a residual bound U = max r^T*x subject to l <= x <= u.
   // Positive residuals select upper bounds; negative residuals select
-  // lower bounds. Zero residuals contribute nothing.
+  // lower bounds. Residuals within zero_tol are treated as zero.
   f_t residual_bound = 0.0;
   i_t nnz_residual   = 0;
   for (i_t j = 0; j < n; j++) {
-    if (residual[j] > 0.0) {
+    if (residual[j] > zero_tol) {
       if (lp.upper[j] == inf) { return false; }
       residual_bound += residual[j] * lp.upper[j];
       nnz_residual++;
-    } else if (residual[j] < 0.0) {
+    } else if (residual[j] < -zero_tol) {
       if (lp.lower[j] == -inf) { return false; }
       residual_bound += residual[j] * lp.lower[j];
       nnz_residual++;
@@ -115,19 +116,19 @@ bool compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
 
   // Compute the farkas constant C = b^T*farkas_y
   //                                + l^T*farkas_zl - u^T*farkas_zu.
-  // Nonzero bound multipliers require finite bounds.
+  // Bound multipliers above zero_tol require finite bounds.
   farkas_constant = dot<i_t, f_t>(lp.rhs, farkas_y);
   work_estimate += 2.0 * m;
 
   i_t nnz_bound_multipliers = 0;
   for (i_t j = 0; j < n; j++) {
-    if (farkas_zl[j] != 0.0) {
+    if (farkas_zl[j] > zero_tol) {
       if (lp.lower[j] == -inf) { return false; }
       farkas_constant += lp.lower[j] * farkas_zl[j];
       nnz_bound_multipliers++;
     }
 
-    if (farkas_zu[j] != 0.0) {
+    if (farkas_zu[j] > zero_tol) {
       if (lp.upper[j] == inf) { return false; }
       farkas_constant -= lp.upper[j] * farkas_zu[j];
       nnz_bound_multipliers++;

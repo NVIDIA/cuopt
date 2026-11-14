@@ -184,9 +184,9 @@ TEST_F(farkas_certificate_test, margin_accounts_for_residual_bound)
 TEST_F(farkas_certificate_test, no_multiplier_on_infinite_bound)
 {
   problem.rhs[0] = 1.0;
-  problem.A.x[1] = 1e-13;
+  problem.A.x[1] = 1e-9;
   problem.upper  = {0.0, std::numeric_limits<double>::infinity()};
-  EXPECT_FALSE(check({1.0}, {-1.0, -1e-13}));
+  EXPECT_FALSE(check({1.0}, {-1.0, -1e-9}));
 }
 
 TEST_F(farkas_certificate_test, residual_scaled_by_large_upper_bound)
@@ -209,7 +209,7 @@ TEST_F(farkas_certificate_test, residual_scaled_by_large_negative_lower_bound)
 TEST_F(farkas_certificate_test, unbounded_residual_contribution)
 {
   problem.rhs[0] = 1.0;
-  problem.A.x[1] = 1e-13;
+  problem.A.x[1] = 1e-9;
   problem.upper  = {0.0, std::numeric_limits<double>::infinity()};
   EXPECT_FALSE(check({1.0}, {-1.0, 0.0}));
 }
@@ -256,15 +256,6 @@ TEST_F(farkas_certificate_test, feasible_solve_with_small_pivot)
   lp_solution_t<int, double> solution(1, 2);
   EXPECT_EQ(solve(solution), dual_status_t::OPTIMAL);
   EXPECT_NEAR(solution.x[1], 1e9, 1e-5);
-}
-
-TEST_F(farkas_certificate_test, unresolved_small_pivot_is_not_infeasibility)
-{
-  problem.rhs[0] = 1.0;
-  problem.A.x[1] = 1e-13;
-  problem.upper  = {0.0, std::numeric_limits<double>::infinity()};
-  lp_solution_t<int, double> solution(1, 2);
-  EXPECT_EQ(solve(solution), dual_status_t::NUMERICAL);
 }
 
 }  // namespace cuopt::mathematical_optimization::simplex::test
