@@ -2033,6 +2033,18 @@ class Problem:
         >>> problem.addConstraint(expr + x == 20, name="Constr2")
         >>> problem.addConstraint(-x*x + y*y <= 0, name="soc")
         """
+        if not isinstance(constr, Constraint):
+            raise ValueError("addConstraint requires a Constraint object")
+        idx = constr.__dict__.get("index")
+        if (
+            constr.__dict__.get("_problem") is self
+            and idx is not None
+            and 0 <= idx < len(self.constrs)
+            and self.constrs[idx] is constr
+        ):
+            raise ValueError(
+                "Constraint has already been added to this problem"
+            )
         if self.solved:
             self._reset_solved_values()
         self._invalidate_problem_cache()
