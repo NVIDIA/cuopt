@@ -94,10 +94,13 @@ def create_solver(LP_data, warmstart_data):
     if LP_data.solver_config is not None:
         solver_config = LP_data.solver_config
         for param in solver_params:
-            param_value = None
-            if param.endswith("tolerance"):
-                param_value = getattr(solver_config.tolerances, param, None)
-            else:
+            # Which sub-model a parameter lives on is a fact about the schema,
+            # not about the spelling of its name. mip_absolute_gap and
+            # mip_relative_gap are Tolerances fields that do not end in
+            # "tolerance", so a name test looked for them on SolverConfig,
+            # found nothing, and dropped them without a word.
+            param_value = getattr(solver_config.tolerances, param, None)
+            if param_value is None or param_value == "":
                 param_value = getattr(solver_config, param, None)
             if param_value is not None and param_value != "":
                 solver_settings.set_parameter(param, param_value)
