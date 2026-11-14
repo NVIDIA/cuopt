@@ -28,6 +28,8 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::barrier {
@@ -61,9 +63,15 @@ struct gmres_workspace_t {
   reduction_workspace_t<f_t> reductions;
   rmm::device_uvector<f_t> d_column;
   std::array<f_t, dimension + 2> h_column;
+  rmm::device_uvector<f_t> d_residual_norms;  // ||r||_inf, sum(r_i^2)
+  std::array<f_t, 2> h_residual_norms;
 
   gmres_workspace_t(size_t n, cuda::stream_ref stream)
-    : r(n, stream), x_sav(n, stream), reductions(stream), d_column(dimension + 2, stream)
+    : r(n, stream),
+      x_sav(n, stream),
+      reductions(stream),
+      d_column(dimension + 2, stream),
+      d_residual_norms(2, stream)
   {
     V.reserve(dimension + 1);
     Z.reserve(dimension);
@@ -84,6 +92,23 @@ struct gmres_workspace_t {
     }
     auto first = thrust::make_counting_iterator<size_t>(0);
     thrust::transform(rmm::exec_policy_nosync(x.stream()), first, first + x.size(), x.begin(), op);
+  }
+
+  // ||r||_inf and ||r||_2 of the residual r, read back together.
+  std::pair<f_t, f_t> residual_norms()
+  {
+    const auto stream = r.stream();
+    vector_norm_inf_async(raft::device_span<const f_t>(r.data(), r.size()),
+                          raft::device_span<f_t>(d_residual_norms.data(), 1),
+                          reductions,
+                          stream);
+    vector_sum_squares_async(raft::device_span<const f_t>(r.data(), r.size()),
+                             raft::device_span<f_t>(d_residual_norms.data() + 1, 1),
+                             reductions,
+                             stream);
+    raft::copy(h_residual_norms.data(), d_residual_norms.data(), 2, stream);
+    stream.sync();
+    return {h_residual_norms[0], std::sqrt(h_residual_norms[1])};
   }
 
   void check_preconditioner_async(const rmm::device_uvector<f_t>& z)
@@ -117,14 +142,10 @@ struct gmres_workspace_t {
                         w.begin(),
                         [hij] __device__(f_t a, f_t b) { return a - hij[0] * b; });
     }
-    reductions.transform_reduce_async(
-      w.data(),
-      thrust::plus<f_t>{},
-      [] __host__ __device__(f_t v) { return v * v; },
-      f_t(0),
-      w.size(),
-      raft::device_span<f_t>(d_column.data() + k + 1, 1),
-      stream);
+    vector_sum_squares_async(raft::device_span<const f_t>(w.data(), w.size()),
+                             raft::device_span<f_t>(d_column.data() + k + 1, 1),
+                             reductions,
+                             stream);
     raft::copy(h_column.data(), d_column.data(), h_column.size(), stream);
     stream.sync();
   }
@@ -257,7 +278,9 @@ f_t iterative_refinement_gmres(T& op,
   raft::copy(r.data(), b.data(), b.size(), x.stream());
   op.a_multiply(-1.0, x, 1.0, r);
 
-  f_t norm_r = vector_norm_inf(r, workspace.reductions);
+  f_t norm_r;
+  f_t norm2_r;  // ||r||_2 of the current r, for the next restart
+  std::tie(norm_r, norm2_r) = workspace.residual_norms();
   if (show_info) { CUOPT_LOG_INFO("GMRES IR: initial residual = %e, |b| = %e", norm_r, bnorm); }
   if (norm_r <= tol) { return norm_r; }
 
@@ -271,7 +294,7 @@ f_t iterative_refinement_gmres(T& op,
     auto& V = workspace.V;
     auto& Z = workspace.Z;
     // v0 = r / ||r||
-    f_t rnorm     = vector_norm2(r, workspace.reductions);
+    f_t rnorm     = norm2_r;
     f_t inv_rnorm = (rnorm > 0) ? (f_t(1) / rnorm) : f_t(1);
 
     thrust::transform(rmm::exec_policy_nosync(op.data_.handle_ptr->get_stream()),
@@ -383,14 +406,13 @@ f_t iterative_refinement_gmres(T& op,
     raft::copy(r.data(), b.data(), b.size(), x.stream());
     op.a_multiply(-1.0, x, 1.0, r);
 
-    residual = vector_norm_inf(r, workspace.reductions);
+    std::tie(residual, norm2_r) = workspace.residual_norms();
 
     if (show_info) {
-      auto l2_residual = vector_norm2(r, workspace.reductions);
       CUOPT_LOG_INFO("GMRES IR: after outer_iter %d residual = %e, l2_residual = %e",
                      outer_iter,
                      residual,
-                     l2_residual);
+                     norm2_r);
     }
 
     f_t improvement_ratio = best_residual / residual;
