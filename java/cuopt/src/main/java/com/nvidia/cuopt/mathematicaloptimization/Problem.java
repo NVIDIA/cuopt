@@ -522,15 +522,12 @@ public final class Problem implements AutoCloseable {
   }
 
   private double[] objectiveCoefficients() {
+    // setObjective keeps each variable's coefficient in sync with the expression, so the
+    // variables hold the current objective even after a later setObjectiveCoefficient or
+    // addVariable.
     double[] coefficients = new double[variables.size()];
-    if (!objectiveSet) {
-      for (Variable variable : variables) {
-        coefficients[variable.getIndex()] = variable.getObjectiveCoefficient();
-      }
-    } else {
-      for (Map.Entry<Variable, Double> entry : linearObjective.getTerms().entrySet()) {
-        coefficients[entry.getKey().getIndex()] += entry.getValue();
-      }
+    for (Variable variable : variables) {
+      coefficients[variable.getIndex()] = variable.getObjectiveCoefficient();
     }
     return coefficients;
   }
