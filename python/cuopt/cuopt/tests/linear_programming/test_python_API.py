@@ -168,6 +168,23 @@ def test_constraint_duplicate_terms_slack():
     assert c.Slack == pytest.approx(6.0)
 
 
+def test_add_constraint_rejects_duplicate():
+    """Adding the same Constraint twice must fail and leave state untouched."""
+    prob = Problem("dup")
+    x = prob.addVariable(lb=0, ub=1, name="x")
+    c = prob.addConstraint(x <= 1, name="first")
+    other = prob.addConstraint(x >= 0, name="second")
+    assert (c.index, other.index) == (0, 1)
+
+    with pytest.raises(ValueError):
+        prob.addConstraint(c, name="renamed")
+
+    assert prob.constrs == [c, other]
+    assert c.index == 0
+    assert c.ConstraintName == "first"
+    assert prob.NumConstraints == 2
+
+
 def test_variable_type_is_normalized():
     """Every entry path stores a VType member and rejects other values."""
     prob = Problem()
