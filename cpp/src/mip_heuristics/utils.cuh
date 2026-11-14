@@ -365,6 +365,15 @@ bool has_nans(const raft::handle_t* handle_ptr, const rmm::device_uvector<f_t>& 
     });
 }
 
+template <typename f_t>
+bool all_finite(const raft::handle_t* handle_ptr, const rmm::device_uvector<f_t>& vec)
+{
+  return thrust::all_of(
+    handle_ptr->get_thrust_policy(), vec.begin(), vec.end(), [] __device__(f_t val) -> bool {
+      return isfinite(val);
+    });
+}
+
 template <typename i_t, typename f_t>
 struct has_integrality_discrepancy_functor {
   const f_t* assignment_ptr;

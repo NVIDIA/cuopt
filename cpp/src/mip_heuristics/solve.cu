@@ -404,6 +404,52 @@ mip_solution_t<i_t, f_t> run_mip_solver(
   }
 }
 
+// True when objective is better than sol's objective by more than min_improvement, or when sol
+// holds no incumbent.
+template <typename i_t, typename f_t>
+static bool improves_on_solution(f_t objective,
+                                 const mip_solution_t<i_t, f_t>& sol,
+                                 bool is_maximization,
+                                 f_t min_improvement = 0)
+{
+  const auto status = sol.get_termination_status();
+  if (status != mip_termination_status_t::FeasibleFound &&
+      status != mip_termination_status_t::Optimal) {
+    return true;
+  }
+  return is_maximization ? objective > sol.get_objective_value() + min_improvement
+                         : objective < sol.get_objective_value() - min_improvement;
+}
+
+// Replaces sol with an original-space assignment when the assignment is feasible on
+// full_problem and improves on sol by more than min_improvement. Returns true if sol was
+// replaced.
+template <typename i_t, typename f_t, typename assignment_t>
+static bool use_original_space_solution_if_better(mip::problem_t<i_t, f_t>& full_problem,
+                                                  const assignment_t& assignment,
+                                                  bool is_maximization,
+                                                  f_t min_improvement,
+                                                  double total_presolve_time,
+                                                  mip_solution_t<i_t, f_t>& sol)
+{
+  // The initial solution validation skips empty vectors.
+  if (static_cast<i_t>(assignment.size()) != full_problem.n_variables) { return false; }
+  mip::solution_t<i_t, f_t> candidate(full_problem);
+  candidate.copy_new_assignment(assignment);
+  // Infinite or NaN entries can pass the bound validation and make the objective non-finite.
+  if (!mip::all_finite(candidate.handle_ptr, candidate.assignment)) { return false; }
+  if (!candidate.compute_feasibility()) { return false; }
+  // Large finite entries can still overflow the objective.
+  const f_t objective = candidate.get_user_objective();
+  if (!std::isfinite(objective)) { return false; }
+  if (!improves_on_solution(objective, sol, is_maximization, min_improvement)) { return false; }
+  auto stats                       = sol.get_stats();
+  stats.presolve_time              = total_presolve_time;
+  candidate.post_process_completed = true;
+  sol                              = candidate.get_solution(true, stats, false);
+  return true;
+}
+
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip_helper(
   optimization_problem_t<i_t, f_t>& op_problem,
@@ -804,6 +850,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       early_structural.reset();
     }
 
+    // The user MIP starts are the entries of initial_solutions before the early-heuristic
+    // incumbents are appended below.
+    const size_t n_user_initial_solutions = settings.initial_solutions.size();
+
     // Add early-heuristic incumbents (original-space) to initial_solutions.
     // PaPILO crushing + validation happens downstream in add_user_given_solutions().
     if (!early_incumbent_pool.empty()) {
@@ -893,28 +943,65 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       }
     }
 
-    // Use the early heuristic OG-space incumbent if it is better than what the solver-space
-    // pipeline returned (or if the pipeline returned no feasible solution at all).
-    if (!early_best_user_assignment.empty()) {
-      bool sol_has_incumbent =
-        sol.get_termination_status() == mip_termination_status_t::FeasibleFound ||
-        sol.get_termination_status() == mip_termination_status_t::Optimal;
-      bool is_maximization = problem.presolve_data.objective_scaling_factor < 0;
-      bool early_heuristic_is_better =
-        !sol_has_incumbent || (is_maximization ? early_best_user_obj > sol.get_objective_value()
-                                               : early_best_user_obj < sol.get_objective_value());
-      if (early_heuristic_is_better) {
-        mip::problem_t<i_t, f_t> full_problem(op_problem);
-        mip::solution_t<i_t, f_t> fallback_sol(full_problem);
-        fallback_sol.copy_new_assignment(early_best_user_assignment);
-        fallback_sol.compute_feasibility();
-        if (fallback_sol.get_feasible()) {
-          auto stats                          = sol.get_stats();
-          stats.presolve_time                 = cuopt_presolve_time + presolve_time;
-          fallback_sol.post_process_completed = true;
-          sol                                 = fallback_sol.get_solution(true, stats, false);
+    // Return an original-space candidate if it is better than what the solver-space pipeline
+    // returned (or if the pipeline returned no feasible solution at all). The early heuristic
+    // incumbent may not survive the presolve crush. The user MIP starts are only added to the
+    // population by add_user_given_solutions, which the time limit can stop before it starts or
+    // partway through, and which deterministic mode does not call. So when the time limit was
+    // reached and the result is not optimal, the starts are evaluated here.
+    {
+      const auto pipeline_status = sol.get_termination_status();
+      const bool evaluate_user_starts =
+        timer.check_time_limit() && (pipeline_status == mip_termination_status_t::TimeLimit ||
+                                     pipeline_status == mip_termination_status_t::FeasibleFound);
+      const bool is_maximization       = problem.presolve_data.objective_scaling_factor < 0;
+      const double total_presolve_time = cuopt_presolve_time + presolve_time;
+      std::optional<mip::problem_t<i_t, f_t>> full_problem;
+      if (!early_best_user_assignment.empty() &&
+          improves_on_solution(early_best_user_obj, sol, is_maximization)) {
+        full_problem.emplace(op_problem, settings.get_tolerances());
+        if (use_original_space_solution_if_better(*full_problem,
+                                                  early_best_user_assignment,
+                                                  is_maximization,
+                                                  f_t{0},
+                                                  total_presolve_time,
+                                                  sol)) {
           CUOPT_LOG_DEBUG("Using early heuristic incumbent (objective %g)", early_best_user_obj);
         }
+      }
+      std::optional<size_t> returned_user_start;
+      for (size_t k = 0; evaluate_user_starts && k < n_user_initial_solutions; ++k) {
+        const auto& start = *settings.initial_solutions[k];
+        if (!full_problem) { full_problem.emplace(op_problem, settings.get_tolerances()); }
+        // A start the solve already used can come back with an objective that differs only by
+        // round-off, so require an improvement beyond the MIP gap tolerances.
+        const f_t min_improvement =
+          std::max(settings.tolerances.absolute_mip_gap,
+                   settings.tolerances.relative_mip_gap * std::abs(sol.get_objective_value()));
+        if (use_original_space_solution_if_better(
+              *full_problem, start, is_maximization, min_improvement, total_presolve_time, sol)) {
+          returned_user_start = k;
+        }
+      }
+      // Early heuristic incumbents reached the get-solution callbacks when they were found. A
+      // start returned here improves on every solution the solve reported, so report it too.
+      if (returned_user_start) {
+        CUOPT_LOG_INFO("Returning user-provided initial MIP solution %zu. Objective %+.6e",
+                       *returned_user_start,
+                       sol.get_objective_value());
+      }
+      if (returned_user_start && has_get_solution_callback) {
+        auto user_assignment =
+          cuopt::host_copy(sol.get_solution(), op_problem.get_handle_ptr()->get_stream());
+        invoke_solution_callbacks(
+          mip_callbacks,
+          mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+            settings),
+          mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+            settings),
+          sol.get_objective_value(),
+          user_assignment,
+          no_bound);
       }
     }
 
