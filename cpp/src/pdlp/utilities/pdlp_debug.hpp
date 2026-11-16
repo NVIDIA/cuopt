@@ -42,6 +42,7 @@ void print(std::string_view const name, T const value)
 
 #else
 
+// No-op macros when PDLP_DEBUG_MODE is not defined, so they don't generate code in release builds.
 #define PDLP_DEBUG_LOG(...) ((void)0)
 #define PDLP_DEBUG_SYNC() ((void)0)
 #define PDLP_DEBUG_DEVICE_LOG(...) ((void)0)
