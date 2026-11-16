@@ -287,28 +287,29 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   rmm::device_uvector<f_t>& _reflected_primal_solution,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
   const pdlp::pdlp_hyper_params_t& hyper_params,
-  bool enable_mixed_precision_spmv)
+  bool enable_mixed_precision_spmv,
+  device_memory_resource_t memory_resource)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     A_T_{op_problem_scaled.reverse_coefficients},
     A_T_offsets_{op_problem_scaled.reverse_offsets},
     A_T_indices_{op_problem_scaled.reverse_constraints},
-    buffer_non_transpose{0, handle_ptr->get_stream()},
-    buffer_transpose{0, handle_ptr->get_stream()},
-    buffer_non_transpose_spmvop{0, handle_ptr->get_stream()},
-    buffer_transpose_spmvop{0, handle_ptr->get_stream()},
-    buffer_transpose_batch{0, handle_ptr->get_stream()},
-    buffer_non_transpose_batch{0, handle_ptr->get_stream()},
-    buffer_transpose_batch_row_row_{0, handle_ptr->get_stream()},
-    buffer_non_transpose_batch_row_row_{0, handle_ptr->get_stream()},
+    buffer_non_transpose{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_spmvop{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_spmvop{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_batch{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_batch{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_batch_row_row_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_batch_row_row_{0, handle_ptr->get_stream(), memory_resource},
     A_{op_problem_scaled.coefficients},
     A_offsets_{op_problem_scaled.offsets},
     A_indices_{op_problem_scaled.variables},
     climber_strategies_(climber_strategies),
-    A_float_{0, handle_ptr->get_stream()},
-    A_T_float_{0, handle_ptr->get_stream()},
-    buffer_non_transpose_mixed_{0, handle_ptr->get_stream()},
-    buffer_transpose_mixed_{0, handle_ptr->get_stream()},
+    A_float_{0, handle_ptr->get_stream(), memory_resource},
+    A_T_float_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_mixed_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_mixed_{0, handle_ptr->get_stream(), memory_resource},
     mixed_precision_enabled_{false}
 {
   raft::common::nvtx::range fun_scope("Initializing cuSparse view");
@@ -426,8 +427,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       make_dnvec<f_t>(op_problem_scaled.n_variables, _reflected_primal_solution.data());
   }
 
-  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
-  const rmm::device_scalar<f_t> beta{zero_v<f_t>, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream(), memory_resource};
+  const rmm::device_scalar<f_t> beta{zero_v<f_t>, handle_ptr->get_stream(), memory_resource};
   size_t buffer_size_non_transpose = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -627,8 +628,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                         const_cast<i_t*>(A_T_indices_.data()),
                                         A_T_float_.data());
 
-      const rmm::device_scalar<double> alpha_d{one_v<double>, handle_ptr->get_stream()};
-      const rmm::device_scalar<double> beta_d{zero_v<double>, handle_ptr->get_stream()};
+      const rmm::device_scalar<double> alpha_d{
+        one_v<double>, handle_ptr->get_stream(), memory_resource};
+      const rmm::device_scalar<double> beta_d{
+        zero_v<double>, handle_ptr->get_stream(), memory_resource};
 
       size_t buffer_size_non_transpose_mixed =
         mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -697,28 +700,29 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   const rmm::device_uvector<i_t>& _A_T_offsets,
   const rmm::device_uvector<i_t>& _A_T_indices,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params,
+  device_memory_resource_t memory_resource)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     A_T_{_A_T},
     A_T_offsets_{_A_T_offsets},
     A_T_indices_{_A_T_indices},
-    buffer_non_transpose{0, handle_ptr->get_stream()},
-    buffer_transpose{0, handle_ptr->get_stream()},
-    buffer_non_transpose_spmvop{0, handle_ptr->get_stream()},
-    buffer_transpose_spmvop{0, handle_ptr->get_stream()},
-    buffer_transpose_batch{0, handle_ptr->get_stream()},
-    buffer_non_transpose_batch{0, handle_ptr->get_stream()},
-    buffer_transpose_batch_row_row_{0, handle_ptr->get_stream()},
-    buffer_non_transpose_batch_row_row_{0, handle_ptr->get_stream()},
+    buffer_non_transpose{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_spmvop{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_spmvop{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_batch{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_batch{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_batch_row_row_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_batch_row_row_{0, handle_ptr->get_stream(), memory_resource},
     A_{op_problem.coefficients},
     A_offsets_{op_problem.offsets},
     A_indices_{op_problem.variables},
     climber_strategies_(climber_strategies),
-    A_float_{0, handle_ptr->get_stream()},
-    A_T_float_{0, handle_ptr->get_stream()},
-    buffer_non_transpose_mixed_{0, handle_ptr->get_stream()},
-    buffer_transpose_mixed_{0, handle_ptr->get_stream()},
+    A_float_{0, handle_ptr->get_stream(), memory_resource},
+    A_T_float_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_mixed_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_mixed_{0, handle_ptr->get_stream(), memory_resource},
     mixed_precision_enabled_{false}
 {
 #ifdef PDLP_DEBUG_MODE
@@ -784,8 +788,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                         CUSPARSE_ORDER_COL);
   }
 
-  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
-  const rmm::device_scalar<f_t> beta{one_v<f_t>, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream(), memory_resource};
+  const rmm::device_scalar<f_t> beta{one_v<f_t>, handle_ptr->get_stream(), memory_resource};
   size_t buffer_size_non_transpose = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -907,16 +911,17 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   f_t* _primal_solution,  // Solutions of each duality gap container
   f_t* _dual_solution,
   f_t* _primal_gradient,
-  f_t* _dual_gradient)
+  f_t* _dual_gradient,
+  device_memory_resource_t memory_resource)
   : handle_ptr_(handle_ptr),
-    buffer_non_transpose{0, handle_ptr->get_stream()},
-    buffer_transpose{0, handle_ptr->get_stream()},
-    buffer_non_transpose_spmvop{0, handle_ptr->get_stream()},
-    buffer_transpose_spmvop{0, handle_ptr->get_stream()},
-    buffer_transpose_batch{0, handle_ptr->get_stream()},
-    buffer_non_transpose_batch{0, handle_ptr->get_stream()},
-    buffer_transpose_batch_row_row_{0, handle_ptr->get_stream()},
-    buffer_non_transpose_batch_row_row_{0, handle_ptr->get_stream()},
+    buffer_non_transpose{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_spmvop{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_spmvop{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_batch{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_batch{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_batch_row_row_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_batch_row_row_{0, handle_ptr->get_stream(), memory_resource},
     A_T_{existing_cusparse_view.A_T_},                  // Need to be init but not used
     A_T_offsets_{existing_cusparse_view.A_T_offsets_},  // Need to be init but not used
     A_T_indices_{existing_cusparse_view.A_T_indices_},  // Need to be init but not used
@@ -924,10 +929,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     A_offsets_{existing_cusparse_view.A_offsets_},
     A_indices_{existing_cusparse_view.A_indices_},
     climber_strategies_(existing_cusparse_view.climber_strategies_),
-    A_float_{0, handle_ptr->get_stream()},
-    A_T_float_{0, handle_ptr->get_stream()},
-    buffer_non_transpose_mixed_{0, handle_ptr->get_stream()},
-    buffer_transpose_mixed_{0, handle_ptr->get_stream()},
+    A_float_{0, handle_ptr->get_stream(), memory_resource},
+    A_T_float_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_mixed_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_mixed_{0, handle_ptr->get_stream(), memory_resource},
     mixed_precision_enabled_{false}
 {
 #ifdef PDLP_DEBUG_MODE
@@ -976,8 +981,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   RAFT_CUSPARSE_TRY(cusparseDnVecGetValues(existing_cusparse_view.tmp_dual.get(), &scratch));
   tmp_dual = make_dnvec<f_t>(op_problem.n_constraints, static_cast<f_t*>(scratch));
 
-  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
-  const rmm::device_scalar<f_t> beta{one_v<f_t>, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream(), memory_resource};
+  const rmm::device_scalar<f_t> beta{one_v<f_t>, handle_ptr->get_stream(), memory_resource};
   size_t buffer_size_non_transpose = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -1038,16 +1043,17 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   raft::handle_t const* handle_ptr,
   const rmm::device_uvector<f_t>& dummy_float,  // Empty just to init the const&
   const rmm::device_uvector<i_t>& dummy_int,    // Empty just to init the const&
-  const std::vector<pdlp_climber_strategy_t>& climber_strategies)
+  const std::vector<pdlp_climber_strategy_t>& climber_strategies,
+  device_memory_resource_t memory_resource)
   : handle_ptr_(handle_ptr),
-    buffer_non_transpose{0, handle_ptr->get_stream()},
-    buffer_transpose{0, handle_ptr->get_stream()},
-    buffer_non_transpose_spmvop{0, handle_ptr->get_stream()},
-    buffer_transpose_spmvop{0, handle_ptr->get_stream()},
-    buffer_transpose_batch{0, handle_ptr->get_stream()},
-    buffer_non_transpose_batch{0, handle_ptr->get_stream()},
-    buffer_transpose_batch_row_row_{0, handle_ptr->get_stream()},
-    buffer_non_transpose_batch_row_row_{0, handle_ptr->get_stream()},
+    buffer_non_transpose{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_spmvop{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_spmvop{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_batch{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_batch{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_batch_row_row_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_batch_row_row_{0, handle_ptr->get_stream(), memory_resource},
     A_T_(dummy_float),
     A_T_offsets_(dummy_int),
     A_T_indices_(dummy_int),
@@ -1055,10 +1061,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     A_offsets_(dummy_int),
     A_indices_(dummy_int),
     climber_strategies_(climber_strategies),
-    A_float_{0, handle_ptr->get_stream()},
-    A_T_float_{0, handle_ptr->get_stream()},
-    buffer_non_transpose_mixed_{0, handle_ptr->get_stream()},
-    buffer_transpose_mixed_{0, handle_ptr->get_stream()},
+    A_float_{0, handle_ptr->get_stream(), memory_resource},
+    A_T_float_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_non_transpose_mixed_{0, handle_ptr->get_stream(), memory_resource},
+    buffer_transpose_mixed_{0, handle_ptr->get_stream(), memory_resource},
     mixed_precision_enabled_{false}
 {
 }

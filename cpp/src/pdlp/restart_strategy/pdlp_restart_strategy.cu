@@ -78,131 +78,159 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
   const i_t dual_size,
   bool is_legacy_batch_mode,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params,
+  cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     batch_mode_(climber_strategies.size() > 1),
-    weighted_average_solution_{handle_ptr_, primal_size, dual_size, is_legacy_batch_mode},
+    weighted_average_solution_{
+      handle_ptr_, primal_size, dual_size, is_legacy_batch_mode, memory_resource},
     primal_size_h_(primal_size),
     dual_size_h_(dual_size),
     problem_ptr(&op_problem),
-    primal_norm_weight_{stream_view_},
+    primal_norm_weight_{stream_view_, memory_resource},
     weights_{(!is_trust_region_restart<i_t, f_t>(hyper_params))
                ? 0
                : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-             stream_view_},
-    dual_norm_weight_{stream_view_},
-    restart_triggered_{zero_v<i_t>, stream_view_},
-    candidate_is_avg_{zero_v<i_t>, stream_view_},
+             stream_view_,
+             memory_resource},
+    dual_norm_weight_{stream_view_, memory_resource},
+    restart_triggered_{zero_v<i_t>, stream_view_, memory_resource},
+    candidate_is_avg_{zero_v<i_t>, stream_view_, memory_resource},
     avg_duality_gap_{handle_ptr_,
                      hyper_params.never_restart_to_average ? 0 : primal_size,
                      hyper_params.never_restart_to_average ? 0 : dual_size,
                      climber_strategies,
-                     hyper_params},
+                     hyper_params,
+                     memory_resource},
     current_duality_gap_{handle_ptr_,
                          is_cupdlpx_restart<i_t, f_t>(hyper_params) ? 0 : primal_size,
                          is_cupdlpx_restart<i_t, f_t>(hyper_params) ? 0 : dual_size,
                          climber_strategies,
-                         hyper_params},
+                         hyper_params,
+                         memory_resource},
     last_restart_duality_gap_{
       handle_ptr_,
       primal_size,
       dual_size,
       climber_strategies,
-      hyper_params},  // Only this one is also used in cuPDLPx so also in batch mode
+      hyper_params,
+      memory_resource},  // Only this one is also used in cuPDLPx so also in batch mode
     // If KKT restart, call the empty cusparse_view constructor
     avg_duality_gap_cusparse_view_{
       (!is_trust_region_restart<i_t, f_t>(hyper_params))
-        ? cusparse_view_t<i_t, f_t>(
-            handle_ptr_, cusparse_view.A_, cusparse_view.A_indices_, climber_strategies)
+        ? cusparse_view_t<i_t, f_t>(handle_ptr_,
+                                    cusparse_view.A_,
+                                    cusparse_view.A_indices_,
+                                    climber_strategies,
+                                    memory_resource)
         : cusparse_view_t<i_t, f_t>(handle_ptr_,
                                     op_problem,
                                     cusparse_view,
                                     avg_duality_gap_.primal_solution_.data(),
                                     avg_duality_gap_.dual_solution_.data(),
                                     avg_duality_gap_.primal_gradient_.data(),
-                                    avg_duality_gap_.dual_gradient_.data())},
+                                    avg_duality_gap_.dual_gradient_.data(),
+                                    memory_resource)},
     current_duality_gap_cusparse_view_{
       (!is_trust_region_restart<i_t, f_t>(hyper_params))
-        ? cusparse_view_t<i_t, f_t>(
-            handle_ptr_, cusparse_view.A_, cusparse_view.A_indices_, climber_strategies)
+        ? cusparse_view_t<i_t, f_t>(handle_ptr_,
+                                    cusparse_view.A_,
+                                    cusparse_view.A_indices_,
+                                    climber_strategies,
+                                    memory_resource)
         : cusparse_view_t<i_t, f_t>(handle_ptr_,
                                     op_problem,
                                     cusparse_view,
                                     current_duality_gap_.primal_solution_.data(),
                                     current_duality_gap_.dual_solution_.data(),
                                     current_duality_gap_.primal_gradient_.data(),
-                                    current_duality_gap_.dual_gradient_.data())},
+                                    current_duality_gap_.dual_gradient_.data(),
+                                    memory_resource)},
     last_restart_duality_gap_cusparse_view_{
       (!is_trust_region_restart<i_t, f_t>(hyper_params))
-        ? cusparse_view_t<i_t, f_t>(
-            handle_ptr_, cusparse_view.A_, cusparse_view.A_indices_, climber_strategies)
+        ? cusparse_view_t<i_t, f_t>(handle_ptr_,
+                                    cusparse_view.A_,
+                                    cusparse_view.A_indices_,
+                                    climber_strategies,
+                                    memory_resource)
         : cusparse_view_t<i_t, f_t>(handle_ptr_,
                                     op_problem,
                                     cusparse_view,
                                     last_restart_duality_gap_.primal_solution_.data(),
                                     last_restart_duality_gap_.dual_solution_.data(),
                                     last_restart_duality_gap_.primal_gradient_.data(),
-                                    last_restart_duality_gap_.dual_gradient_.data())},
-    gap_reduction_ratio_last_trial_{stream_view_},
+                                    last_restart_duality_gap_.dual_gradient_.data(),
+                                    memory_resource)},
+    gap_reduction_ratio_last_trial_{stream_view_, memory_resource},
     last_restart_length_{0},
     // If KKT restart, don't need to init all of those
     center_point_{(!is_trust_region_restart<i_t, f_t>(hyper_params))
                     ? 0
                     : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-                  stream_view_},
+                  stream_view_,
+                  memory_resource},
     objective_vector_{(!is_trust_region_restart<i_t, f_t>(hyper_params))
                         ? 0
                         : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-                      stream_view_},
+                      stream_view_,
+                      memory_resource},
     unsorted_direction_full_{(!is_trust_region_restart<i_t, f_t>(hyper_params))
                                ? 0
                                : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-                             stream_view_},
+                             stream_view_,
+                             memory_resource},
     direction_full_{(!is_trust_region_restart<i_t, f_t>(hyper_params))
                       ? 0
                       : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-                    stream_view_},
+                    stream_view_,
+                    memory_resource},
     threshold_{(!is_trust_region_restart<i_t, f_t>(hyper_params))
                  ? 0
                  : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-               stream_view_},
+               stream_view_,
+               memory_resource},
     lower_bound_{(!is_trust_region_restart<i_t, f_t>(hyper_params))
                    ? 0
                    : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-                 stream_view_},
+                 stream_view_,
+                 memory_resource},
     upper_bound_{(!is_trust_region_restart<i_t, f_t>(hyper_params))
                    ? 0
                    : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-                 stream_view_},
+                 stream_view_,
+                 memory_resource},
     test_point_{(!is_trust_region_restart<i_t, f_t>(hyper_params))
                   ? 0
                   : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-                stream_view_},
+                stream_view_,
+                memory_resource},
     transformed_constraint_lower_bounds_{
       (!is_trust_region_restart<i_t, f_t>(hyper_params)) ? 0 : static_cast<size_t>(dual_size_h_),
-      stream_view_},
+      stream_view_,
+      memory_resource},
     transformed_constraint_upper_bounds_{
       (!is_trust_region_restart<i_t, f_t>(hyper_params)) ? 0 : static_cast<size_t>(dual_size_h_),
-      stream_view_},
-    shared_live_kernel_accumulator_{0, stream_view_},
-    target_threshold_{stream_view_},
-    low_radius_squared_{stream_view_},
-    high_radius_squared_{stream_view_},
-    test_threshold_{stream_view_},
-    test_radius_squared_{stream_view_},
-    testing_range_low_{stream_view_},
-    testing_range_high_{stream_view_},
-    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
-    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
-    reusable_device_scalar_value_0_i_t_{zero_v<i_t>, stream_view_},
-    reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_},
+      stream_view_,
+      memory_resource},
+    shared_live_kernel_accumulator_{0, stream_view_, memory_resource},
+    target_threshold_{stream_view_, memory_resource},
+    low_radius_squared_{stream_view_, memory_resource},
+    high_radius_squared_{stream_view_, memory_resource},
+    test_threshold_{stream_view_, memory_resource},
+    test_radius_squared_{stream_view_, memory_resource},
+    testing_range_low_{stream_view_, memory_resource},
+    testing_range_high_{stream_view_, memory_resource},
+    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_, memory_resource},
+    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_, memory_resource},
+    reusable_device_scalar_value_0_i_t_{zero_v<i_t>, stream_view_, memory_resource},
+    reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_, memory_resource},
     dot_product_storage(0, stream_view_),
     dot_product_bytes{0},
-    tmp_kkt_score_{stream_view_},
-    reusable_device_scalar_1_{stream_view_},
-    reusable_device_scalar_2_{stream_view_},
-    reusable_device_scalar_3_{stream_view_},
+    tmp_kkt_score_{stream_view_, memory_resource},
+    reusable_device_scalar_1_{stream_view_, memory_resource},
+    reusable_device_scalar_2_{stream_view_, memory_resource},
+    reusable_device_scalar_3_{stream_view_, memory_resource},
     fixed_point_error_(climber_strategies.size()),
     initial_fixed_point_error_(climber_strategies.size()),
     last_trial_fixed_point_error_(climber_strategies.size()),

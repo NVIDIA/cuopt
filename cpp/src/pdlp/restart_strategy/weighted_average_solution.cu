@@ -20,20 +20,22 @@
 
 namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
-weighted_average_solution_t<i_t, f_t>::weighted_average_solution_t(raft::handle_t const* handle_ptr,
-                                                                   i_t primal_size,
-                                                                   i_t dual_size,
-                                                                   bool is_batch_mode)
+weighted_average_solution_t<i_t, f_t>::weighted_average_solution_t(
+  raft::handle_t const* handle_ptr,
+  i_t primal_size,
+  i_t dual_size,
+  bool is_batch_mode,
+  cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     primal_size_h_(primal_size),
     dual_size_h_(dual_size),
-    sum_primal_solutions_{static_cast<size_t>(primal_size_h_), stream_view_},
-    sum_dual_solutions_{static_cast<size_t>(dual_size_h_), stream_view_},
-    sum_primal_solution_weights_{zero_v<f_t>, stream_view_},
-    sum_dual_solution_weights_{zero_v<f_t>, stream_view_},
+    sum_primal_solutions_{static_cast<size_t>(primal_size_h_), stream_view_, memory_resource},
+    sum_dual_solutions_{static_cast<size_t>(dual_size_h_), stream_view_, memory_resource},
+    sum_primal_solution_weights_{zero_v<f_t>, stream_view_, memory_resource},
+    sum_dual_solution_weights_{zero_v<f_t>, stream_view_, memory_resource},
     iterations_since_last_restart_{0},
-    d_iterations_since_last_restart_{zero_v<i_t>, stream_view_},
+    d_iterations_since_last_restart_{zero_v<i_t>, stream_view_, memory_resource},
     graph(stream_view_, is_batch_mode)
 {
   RAFT_CUDA_TRY(cudaMemsetAsync(

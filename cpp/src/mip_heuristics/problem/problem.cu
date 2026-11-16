@@ -297,14 +297,16 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_,
 }
 
 template <typename i_t, typename f_t>
-problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep_copy)
+problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_,
+                               bool no_deep_copy,
+                               cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource)
   : original_problem_ptr(problem_.original_problem_ptr),
     tolerances(problem_.tolerances),
     deterministic(problem_.deterministic),
     handle_ptr(problem_.handle_ptr),
     integer_fixed_problem(problem_.integer_fixed_problem),
-    integer_fixed_variable_map((!no_deep_copy) ? 0 : problem_.n_variables,
-                               handle_ptr->get_stream()),
+    integer_fixed_variable_map(
+      (!no_deep_copy) ? 0 : problem_.n_variables, handle_ptr->get_stream(), memory_resource),
     n_variables(problem_.n_variables),
     n_constraints(problem_.n_constraints),
     n_binary_vars(problem_.n_binary_vars),
@@ -325,62 +327,89 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     reverse_original_ids(problem_.reverse_original_ids),
     reverse_coefficients(
       (!no_deep_copy)
-        ? rmm::device_uvector<f_t>(problem_.reverse_coefficients, handle_ptr->get_stream())
-        : rmm::device_uvector<f_t>(problem_.reverse_coefficients.size(), handle_ptr->get_stream())),
+        ? rmm::device_uvector<f_t>(
+            problem_.reverse_coefficients, handle_ptr->get_stream(), memory_resource)
+        : rmm::device_uvector<f_t>(
+            problem_.reverse_coefficients.size(), handle_ptr->get_stream(), memory_resource)),
     reverse_constraints(
       (!no_deep_copy)
-        ? rmm::device_uvector<i_t>(problem_.reverse_constraints, handle_ptr->get_stream())
-        : rmm::device_uvector<i_t>(problem_.reverse_constraints.size(), handle_ptr->get_stream())),
-    reverse_offsets(
-      (!no_deep_copy)
-        ? rmm::device_uvector<i_t>(problem_.reverse_offsets, handle_ptr->get_stream())
-        : rmm::device_uvector<i_t>(problem_.reverse_offsets.size(), handle_ptr->get_stream())),
+        ? rmm::device_uvector<i_t>(
+            problem_.reverse_constraints, handle_ptr->get_stream(), memory_resource)
+        : rmm::device_uvector<i_t>(
+            problem_.reverse_constraints.size(), handle_ptr->get_stream(), memory_resource)),
+    reverse_offsets((!no_deep_copy)
+                      ? rmm::device_uvector<i_t>(
+                          problem_.reverse_offsets, handle_ptr->get_stream(), memory_resource)
+                      : rmm::device_uvector<i_t>(problem_.reverse_offsets.size(),
+                                                 handle_ptr->get_stream(),
+                                                 memory_resource)),
     coefficients(
       (!no_deep_copy)
-        ? rmm::device_uvector<f_t>(problem_.coefficients, handle_ptr->get_stream())
-        : rmm::device_uvector<f_t>(problem_.coefficients.size(), handle_ptr->get_stream())),
-    variables((!no_deep_copy)
-                ? rmm::device_uvector<i_t>(problem_.variables, handle_ptr->get_stream())
-                : rmm::device_uvector<i_t>(problem_.variables.size(), handle_ptr->get_stream())),
-    offsets((!no_deep_copy)
-              ? rmm::device_uvector<i_t>(problem_.offsets, handle_ptr->get_stream())
-              : rmm::device_uvector<i_t>(problem_.offsets.size(), handle_ptr->get_stream())),
+        ? rmm::device_uvector<f_t>(problem_.coefficients, handle_ptr->get_stream(), memory_resource)
+        : rmm::device_uvector<f_t>(
+            problem_.coefficients.size(), handle_ptr->get_stream(), memory_resource)),
+    variables(
+      (!no_deep_copy)
+        ? rmm::device_uvector<i_t>(problem_.variables, handle_ptr->get_stream(), memory_resource)
+        : rmm::device_uvector<i_t>(
+            problem_.variables.size(), handle_ptr->get_stream(), memory_resource)),
+    offsets(
+      (!no_deep_copy)
+        ? rmm::device_uvector<i_t>(problem_.offsets, handle_ptr->get_stream(), memory_resource)
+        : rmm::device_uvector<i_t>(
+            problem_.offsets.size(), handle_ptr->get_stream(), memory_resource)),
     objective_coefficients(
       (!no_deep_copy)
-        ? rmm::device_uvector<f_t>(problem_.objective_coefficients, handle_ptr->get_stream())
-        : rmm::device_uvector<f_t>(problem_.objective_coefficients.size(),
-                                   handle_ptr->get_stream())),
-    variable_bounds(
-      (!no_deep_copy)
-        ? rmm::device_uvector<f_t2>(problem_.variable_bounds, handle_ptr->get_stream())
-        : rmm::device_uvector<f_t2>(problem_.variable_bounds.size(), handle_ptr->get_stream())),
+        ? rmm::device_uvector<f_t>(
+            problem_.objective_coefficients, handle_ptr->get_stream(), memory_resource)
+        : rmm::device_uvector<f_t>(
+            problem_.objective_coefficients.size(), handle_ptr->get_stream(), memory_resource)),
+    variable_bounds((!no_deep_copy)
+                      ? rmm::device_uvector<f_t2>(
+                          problem_.variable_bounds, handle_ptr->get_stream(), memory_resource)
+                      : rmm::device_uvector<f_t2>(problem_.variable_bounds.size(),
+                                                  handle_ptr->get_stream(),
+                                                  memory_resource)),
     constraint_lower_bounds(
       (!no_deep_copy)
-        ? rmm::device_uvector<f_t>(problem_.constraint_lower_bounds, handle_ptr->get_stream())
-        : rmm::device_uvector<f_t>(problem_.constraint_lower_bounds.size(),
-                                   handle_ptr->get_stream())),
+        ? rmm::device_uvector<f_t>(
+            problem_.constraint_lower_bounds, handle_ptr->get_stream(), memory_resource)
+        : rmm::device_uvector<f_t>(
+            problem_.constraint_lower_bounds.size(), handle_ptr->get_stream(), memory_resource)),
     constraint_upper_bounds(
       (!no_deep_copy)
-        ? rmm::device_uvector<f_t>(problem_.constraint_upper_bounds, handle_ptr->get_stream())
-        : rmm::device_uvector<f_t>(problem_.constraint_upper_bounds.size(),
-                                   handle_ptr->get_stream())),
-    combined_bounds(
-      (!no_deep_copy)
-        ? rmm::device_uvector<f_t>(problem_.combined_bounds, handle_ptr->get_stream())
-        : rmm::device_uvector<f_t>(problem_.combined_bounds.size(), handle_ptr->get_stream())),
-    variable_types((!no_deep_copy) ? 0 : problem_.variable_types.size(), handle_ptr->get_stream()),
+        ? rmm::device_uvector<f_t>(
+            problem_.constraint_upper_bounds, handle_ptr->get_stream(), memory_resource)
+        : rmm::device_uvector<f_t>(
+            problem_.constraint_upper_bounds.size(), handle_ptr->get_stream(), memory_resource)),
+    combined_bounds((!no_deep_copy)
+                      ? rmm::device_uvector<f_t>(
+                          problem_.combined_bounds, handle_ptr->get_stream(), memory_resource)
+                      : rmm::device_uvector<f_t>(problem_.combined_bounds.size(),
+                                                 handle_ptr->get_stream(),
+                                                 memory_resource)),
+    variable_types((!no_deep_copy) ? 0 : problem_.variable_types.size(),
+                   handle_ptr->get_stream(),
+                   memory_resource),
     integer_indices((!no_deep_copy) ? 0 : problem_.integer_indices.size(),
-                    handle_ptr->get_stream()),
-    binary_indices((!no_deep_copy) ? 0 : problem_.binary_indices.size(), handle_ptr->get_stream()),
+                    handle_ptr->get_stream(),
+                    memory_resource),
+    binary_indices((!no_deep_copy) ? 0 : problem_.binary_indices.size(),
+                   handle_ptr->get_stream(),
+                   memory_resource),
     nonbinary_indices((!no_deep_copy) ? 0 : problem_.nonbinary_indices.size(),
-                      handle_ptr->get_stream()),
+                      handle_ptr->get_stream(),
+                      memory_resource),
     is_binary_variable((!no_deep_copy) ? 0 : problem_.is_binary_variable.size(),
-                       handle_ptr->get_stream()),
-    related_variables((!no_deep_copy) ? rmm::device_uvector<i_t>(0, handle_ptr->get_stream())
-                                      : rmm::device_uvector<i_t>(problem_.related_variables,
-                                                                 handle_ptr->get_stream())),
+                       handle_ptr->get_stream(),
+                       memory_resource),
+    related_variables((!no_deep_copy)
+                        ? rmm::device_uvector<i_t>(0, handle_ptr->get_stream(), memory_resource)
+                        : rmm::device_uvector<i_t>(
+                            problem_.related_variables, handle_ptr->get_stream(), memory_resource)),
     related_variables_offsets((!no_deep_copy) ? 0 : problem_.related_variables_offsets.size(),
-                              handle_ptr->get_stream()),
+                              handle_ptr->get_stream(),
+                              memory_resource),
     var_names(problem_.var_names),
     row_names(problem_.row_names),
     objective_name(problem_.objective_name),

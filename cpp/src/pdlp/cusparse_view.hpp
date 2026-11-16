@@ -8,6 +8,7 @@
 
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
+#include <pdlp/pdlp_memory_resource.hpp>
 #include <pdlp/saddle_point.hpp>
 
 #include <mip_heuristics/problem/problem.cuh>
@@ -142,43 +143,51 @@ cusparse_spmvop_plan_uptr make_spmvop_plan(cusparseHandle_t handle, cusparseSpMV
 template <typename i_t, typename f_t>
 class cusparse_view_t {
  public:
-  cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const mip::problem_t<i_t, f_t>& op_problem,
-                  saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
-                  rmm::device_uvector<f_t>& _tmp_primal,
-                  rmm::device_uvector<f_t>& _tmp_dual,
-                  rmm::device_uvector<f_t>& _potential_next_dual_solution,
-                  rmm::device_uvector<f_t>& _reflected_primal_solution,
-                  const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                  const pdlp::pdlp_hyper_params_t& hyper_params,
-                  bool enable_mixed_precision_spmv);
+  cusparse_view_t(
+    raft::handle_t const* handle_ptr,
+    const mip::problem_t<i_t, f_t>& op_problem,
+    saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
+    rmm::device_uvector<f_t>& _tmp_primal,
+    rmm::device_uvector<f_t>& _tmp_dual,
+    rmm::device_uvector<f_t>& _potential_next_dual_solution,
+    rmm::device_uvector<f_t>& _reflected_primal_solution,
+    const std::vector<pdlp_climber_strategy_t>& climber_strategies,
+    const pdlp::pdlp_hyper_params_t& hyper_params,
+    bool enable_mixed_precision_spmv,
+    device_memory_resource_t memory_resource = rmm::mr::get_current_device_resource_ref());
 
-  cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const mip::problem_t<i_t, f_t>& op_problem,
-                  rmm::device_uvector<f_t>& _primal_solution,
-                  rmm::device_uvector<f_t>& _dual_solution,
-                  rmm::device_uvector<f_t>& _tmp_primal,
-                  rmm::device_uvector<f_t>& _tmp_dual,
-                  rmm::device_uvector<f_t>& _potential_next_primal,
-                  rmm::device_uvector<f_t>& _potential_next_dual,
-                  const rmm::device_uvector<f_t>& _A_T,
-                  const rmm::device_uvector<i_t>& _A_T_offsets,
-                  const rmm::device_uvector<i_t>& _A_T_indices,
-                  const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                  const pdlp::pdlp_hyper_params_t& hyper_params);
+  cusparse_view_t(
+    raft::handle_t const* handle_ptr,
+    const mip::problem_t<i_t, f_t>& op_problem,
+    rmm::device_uvector<f_t>& _primal_solution,
+    rmm::device_uvector<f_t>& _dual_solution,
+    rmm::device_uvector<f_t>& _tmp_primal,
+    rmm::device_uvector<f_t>& _tmp_dual,
+    rmm::device_uvector<f_t>& _potential_next_primal,
+    rmm::device_uvector<f_t>& _potential_next_dual,
+    const rmm::device_uvector<f_t>& _A_T,
+    const rmm::device_uvector<i_t>& _A_T_offsets,
+    const rmm::device_uvector<i_t>& _A_T_indices,
+    const std::vector<pdlp_climber_strategy_t>& climber_strategies,
+    const pdlp::pdlp_hyper_params_t& hyper_params,
+    device_memory_resource_t memory_resource = rmm::mr::get_current_device_resource_ref());
 
-  cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const mip::problem_t<i_t, f_t>& op_problem,
-                  const cusparse_view_t<i_t, f_t>& existing_cusparse_view,
-                  f_t* _primal_solution,
-                  f_t* _dual_solution,
-                  f_t* _primal_gradient,
-                  f_t* _dual_gradient);
+  cusparse_view_t(
+    raft::handle_t const* handle_ptr,
+    const mip::problem_t<i_t, f_t>& op_problem,
+    const cusparse_view_t<i_t, f_t>& existing_cusparse_view,
+    f_t* _primal_solution,
+    f_t* _dual_solution,
+    f_t* _primal_gradient,
+    f_t* _dual_gradient,
+    device_memory_resource_t memory_resource = rmm::mr::get_current_device_resource_ref());
 
-  cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const rmm::device_uvector<f_t>&,               // Empty just to init the const&
-                  const rmm::device_uvector<i_t>&,               // Empty just to init the const&
-                  const std::vector<pdlp_climber_strategy_t>&);  // Empty just to init the const&
+  cusparse_view_t(
+    raft::handle_t const* handle_ptr,
+    const rmm::device_uvector<f_t>&,              // Empty just to init the const&
+    const rmm::device_uvector<i_t>&,              // Empty just to init the const&
+    const std::vector<pdlp_climber_strategy_t>&,  // Empty just to init the const&
+    device_memory_resource_t memory_resource = rmm::mr::get_current_device_resource_ref());
 
   const bool batch_mode_{false};
 

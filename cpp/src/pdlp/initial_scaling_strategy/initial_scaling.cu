@@ -72,7 +72,8 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   const pdlp::pdlp_hyper_params_t& hyper_params,
   i_t original_batch_size,
   bool running_mip,
-  bool skip_ruiz_pock_compute)
+  bool skip_ruiz_pock_compute,
+  cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     primal_size_h_(op_problem_scaled.n_variables),
@@ -84,15 +85,18 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
     A_T_indices_(A_T_indices),
     hyper_params_(hyper_params),
     running_mip_(running_mip),
-    iteration_constraint_matrix_scaling_{static_cast<size_t>(dual_size_h_), stream_view_},
-    iteration_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_},
+    iteration_constraint_matrix_scaling_{
+      static_cast<size_t>(dual_size_h_), stream_view_, memory_resource},
+    iteration_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_, memory_resource},
     original_batch_size_(original_batch_size),
-    bound_rescaling_(static_cast<size_t>(original_batch_size_), stream_view_),
-    objective_rescaling_(static_cast<size_t>(original_batch_size_), stream_view_),
+    bound_rescaling_(static_cast<size_t>(original_batch_size_), stream_view_, memory_resource),
+    objective_rescaling_(static_cast<size_t>(original_batch_size_), stream_view_, memory_resource),
     h_bound_rescaling_(static_cast<size_t>(original_batch_size_), f_t(1)),
     h_objective_rescaling_(static_cast<size_t>(original_batch_size_), f_t(1)),
-    cummulative_constraint_matrix_scaling_{static_cast<size_t>(dual_size_h_), stream_view_},
-    cummulative_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_}
+    cummulative_constraint_matrix_scaling_{
+      static_cast<size_t>(dual_size_h_), stream_view_, memory_resource},
+    cummulative_variable_scaling_{
+      static_cast<size_t>(primal_size_h_), stream_view_, memory_resource}
 {
   raft::common::nvtx::range fun_scope("Initializing initial_scaling_strategy");
 #ifdef PDLP_DEBUG_MODE

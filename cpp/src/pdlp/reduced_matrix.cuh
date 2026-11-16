@@ -9,6 +9,7 @@
 
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/cusparse_view.hpp>
+#include <pdlp/pdlp_memory_resource.hpp>
 
 #include <cuda/stream>
 #include <raft/core/handle.hpp>
@@ -48,9 +49,11 @@ bool reduced_matrix_enabled(const pdlp_hyper_params_t& hyper_params,
 template <typename i_t, typename f_t>
 class reduced_matrix_t {
  public:
-  reduced_matrix_t(raft::handle_t const* handle_ptr,
-                   mip::problem_t<i_t, f_t>& problem,
-                   bool enabled);
+  reduced_matrix_t(
+    raft::handle_t const* handle_ptr,
+    mip::problem_t<i_t, f_t>& problem,
+    bool enabled,
+    device_memory_resource_t memory_resource = rmm::mr::get_current_device_resource_ref());
 
   bool enabled() const { return enabled_; }
   bool active() const { return active_; }
