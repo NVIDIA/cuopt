@@ -144,9 +144,12 @@ def reason_signature(message):
     """Normalised reason used to group failures that share a cause.
 
     Drops the source location and digits so the same assertion at different
-    sizes or indices groups together. An empty reason never groups.
+    sizes or indices groups together. A crash keeps its signal number. An
+    empty reason never groups.
     """
     reason = split_message(message)[0]
+    if crash_reason(message):
+        return reason.strip().lower()
     return re.sub(r"\d+(\.\d+)?", "#", reason).strip().lower()
 
 

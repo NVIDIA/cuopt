@@ -48,15 +48,22 @@ def category(job):
 
 
 def load_jobs(path):
-    """Read one jobs response, or every *.json response in a directory."""
+    """Read one jobs response, or every *.json response in a directory.
+
+    If any page cannot be read, no jobs are returned, so the post says the
+    status is unavailable instead of reporting the pages that did load.
+    """
     p = Path(path)
     files = sorted(p.glob("*.json")) if p.is_dir() else [p]
     jobs = []
     for f in files:
         try:
-            jobs.extend(json.loads(f.read_text()).get("jobs", []))
-        except (OSError, ValueError, AttributeError):
-            continue
+            page = json.loads(f.read_text())["jobs"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return {"jobs": []}
+        if not isinstance(page, list):
+            return {"jobs": []}
+        jobs.extend(page)
     return {"jobs": jobs}
 
 

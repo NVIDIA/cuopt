@@ -310,6 +310,12 @@ def generate_consolidated_json(
     # Workflow-level CI job statuses
     wf_jobs = workflow_jobs or []
     failed_ci_jobs = [j for j in wf_jobs if j["conclusion"] == "failure"]
+    # Any job that did not pass blocks last-green selection.
+    unsuccessful_ci_jobs = [
+        j
+        for j in wf_jobs
+        if j["conclusion"] in ("failure", "timed_out", "startup_failure")
+    ]
     # Jobs without per-matrix S3 tracking (notebooks, JuMP, etc.)
     untracked_failed = [
         j for j in failed_ci_jobs if not j.get("has_test_details", False)
@@ -338,6 +344,7 @@ def generate_consolidated_json(
         "resolved_tests": agg["all_resolved_tests"],
         "workflow_jobs": wf_jobs,
         "failed_ci_jobs": failed_ci_jobs,
+        "unsuccessful_ci_jobs": unsuccessful_ci_jobs,
         "untracked_failed_ci_jobs": untracked_failed,
     }
 
@@ -663,7 +670,11 @@ def update_index(s3_index_uri, date_str, consolidated, output_dir):
         "date": date_str,
         "branch": branch,
         "sha": consolidated.get("sha", ""),
-        "ci_jobs_failed": len(consolidated.get("failed_ci_jobs", [])),
+        "ci_jobs_failed": len(
+            consolidated.get(
+                "unsuccessful_ci_jobs", consolidated.get("failed_ci_jobs", [])
+            )
+        ),
         "job_summary": consolidated.get("job_summary", {}),
         "test_totals": consolidated.get("test_totals", {}),
         "has_new_failures": consolidated.get("has_new_failures", False),
