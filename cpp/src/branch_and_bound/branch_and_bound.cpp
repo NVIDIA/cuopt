@@ -512,6 +512,11 @@ bool branch_and_bound_t<i_t, f_t>::accept_new_incumbent(f_t obj)
   f_t upper_bound = upper_bound_.load(std::memory_order::relaxed);
   if (!std::isfinite(upper_bound)) return true;
 
+  // If B&B does not contain a valid incumbent yet, accept one that have equal or
+  // better objective than the current upper bound. This happens when populating the
+  // incumbent from the early heuristics.
+  if (!incumbent_.has_incumbent) return obj <= upper_bound + settings_.primal_tol;
+
   f_t threshold = upper_bound - settings_.primal_tol;
   f_t step      = 0.0;
   if (original_lp_.objective_step.has_step()) {
@@ -4124,8 +4129,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (feasible) {
       const f_t computed_obj = compute_objective(original_lp_, crushed_guess);
       mutex_upper_.lock();
-      const f_t upper_bound   = upper_bound_.load(std::memory_order::relaxed);
+      const f_t upper_bound = upper_bound_.load(std::memory_order::relaxed);
+
+      // Populate the incumbent when its objective is equal or better than the current upper bound.
+      // This is quite common in sub-MIP (it is initialized with the current incumbent).
       const bool accept_guess = computed_obj <= upper_bound + settings_.primal_tol;
+
       if (accept_guess) {
         incumbent_.set_incumbent_solution(computed_obj, crushed_guess);
         upper_bound_ = std::min(upper_bound, computed_obj);
