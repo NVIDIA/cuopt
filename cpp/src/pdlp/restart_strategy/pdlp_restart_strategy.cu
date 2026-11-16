@@ -20,10 +20,6 @@
 
 #include <utilities/device_scalar_init.hpp>
 
-#ifdef CUPDLP_DEBUG_MODE
-#include <utilities/copy_helpers.hpp>
-#endif
-
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <cuda/stream>
 #include <raft/core/device_span.hpp>
@@ -523,24 +519,19 @@ bool pdlp_restart_strategy_t<i_t, f_t>::run_kkt_restart(
   const rmm::device_uvector<f_t>& step_size,
   i_t total_number_of_iterations)
 {
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "Running KKT scheme" << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("Running KKT scheme");
   // For KKT restart we need current and average convergeance information:
   // Primal / Dual residual and duality gap
   // Both of them are computed before to know if optimality has been reached
 
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "  Current convergeance information:"
-            << "    l2_primal_residual="
-            << current_convergence_information.get_l2_primal_residual().element(0, stream_view_)
-            << "    l2_dual_residual="
-            << current_convergence_information.get_l2_dual_residual().element(0, stream_view_)
-            << "    gap=" << current_convergence_information.get_gap().element(0, stream_view_)
-            << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("  Current convergeance information:");
+  PDLP_DEBUG_LOG("    l2_primal_residual",
+                 current_convergence_information.get_l2_primal_residual().element(0, stream_view_));
+  PDLP_DEBUG_LOG("    l2_dual_residual",
+                 current_convergence_information.get_l2_dual_residual().element(0, stream_view_));
+  PDLP_DEBUG_LOG("    gap", current_convergence_information.get_gap().element(0, stream_view_));
 
   const f_t current_kkt_score =
     compute_kkt_score(current_convergence_information.get_l2_primal_residual(),
@@ -551,9 +542,7 @@ bool pdlp_restart_strategy_t<i_t, f_t>::run_kkt_restart(
   // Before computing average, check if it's a first iteration after a restart
   // Then there is no average since it's reset after each restart and no kkt candidate yet
   if (weighted_average_solution_.get_iterations_since_last_restart() == 0) {
-#ifdef PDLP_DEBUG_MODE
-    std::cout << "    First call too kkt restart, returning:" << std::endl;
-#endif
+    PDLP_DEBUG_LOG("    First call too kkt restart, returning:");
     last_candidate_kkt_score = current_kkt_score;
     last_restart_kkt_score   = current_kkt_score;
     return false;
@@ -575,13 +564,11 @@ bool pdlp_restart_strategy_t<i_t, f_t>::run_kkt_restart(
     candidate_kkt_score = average_kkt_score;
   }
 
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "    current_kkt_score=" << current_kkt_score << "\n"
-            << "    average_kkt_score=" << average_kkt_score << "\n"
-            << "    candidate_kkt_score=" << candidate_kkt_score << "\n"
-            << "    restart_to_average=" << restart_to_average << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("    current_kkt_score", current_kkt_score);
+  PDLP_DEBUG_LOG("    average_kkt_score", average_kkt_score);
+  PDLP_DEBUG_LOG("    candidate_kkt_score", candidate_kkt_score);
+  PDLP_DEBUG_LOG("    restart_to_average", restart_to_average);
 
   bool has_restarted = false;
 
@@ -591,19 +578,15 @@ bool pdlp_restart_strategy_t<i_t, f_t>::run_kkt_restart(
     // If restart, need to compute distance travaled from last either from current or average
     // This is necessary to compute the new primal weight
 
-#ifdef PDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-    std::cout << "  Doing KKT restart" << std::endl;
-#endif
+    PDLP_DEBUG_SYNC();
+    PDLP_DEBUG_LOG("  Doing KKT restart");
 
     // Set which localized_duality_gap_container will be used for candidate
     // (We could save the container copy but compute_distance_traveled_from_last_restart works with
     // containers)
     if (restart_to_average && !hyper_params_.never_restart_to_average) {
-#ifdef PDLP_DEBUG_MODE
-      RAFT_CUDA_TRY(cudaDeviceSynchronize());
-      std::cout << "    KKT restart to average" << std::endl;
-#endif
+      PDLP_DEBUG_SYNC();
+      PDLP_DEBUG_LOG("    KKT restart to average");
 
       raft::copy(avg_duality_gap_.primal_solution_.data(),
                  primal_solution_avg.data(),
@@ -615,10 +598,8 @@ bool pdlp_restart_strategy_t<i_t, f_t>::run_kkt_restart(
                  stream_view_);
       candidate_duality_gap_ = &avg_duality_gap_;
     } else {
-#ifdef PDLP_DEBUG_MODE
-      RAFT_CUDA_TRY(cudaDeviceSynchronize());
-      std::cout << "    KKT no restart to average" << std::endl;
-#endif
+      PDLP_DEBUG_SYNC();
+      PDLP_DEBUG_LOG("    KKT no restart to average");
       raft::copy(current_duality_gap_.primal_solution_.data(),
                  pdhg_solver.get_saddle_point_state().get_primal_solution().data(),
                  primal_size_h_,
@@ -668,20 +649,16 @@ bool pdlp_restart_strategy_t<i_t, f_t>::run_kkt_restart(
     // Set last restart candidate
     last_restart_kkt_score = candidate_kkt_score;
   } else {
-#ifdef PDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-    std::cout << "KKT conditions not met for a restart" << std::endl;
-#endif
+    PDLP_DEBUG_SYNC();
+    PDLP_DEBUG_LOG("KKT conditions not met for a restart");
   }
 
   // Record last kkt candidate
   last_candidate_kkt_score = candidate_kkt_score;
 
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "last_restart_kkt_score=" << last_restart_kkt_score
-            << "last_candidate_kkt_score=" << last_candidate_kkt_score << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("last_restart_kkt_score", last_restart_kkt_score);
+  PDLP_DEBUG_LOG("last_candidate_kkt_score", last_candidate_kkt_score);
 
   return has_restarted;
 }
@@ -692,16 +669,12 @@ void pdlp_restart_strategy_t<i_t, f_t>::should_cupdlpx_restart(i_t total_number_
 {
   std::fill(should_restart.begin(), should_restart.end(), 0);
 
-#ifdef CUPDLP_DEBUG_MODE
   // Print the current stats of initial fixed point error and fixed point error
-  print("initial_fixed_point_error", initial_fixed_point_error_);
-  print("fixed_point_error", fixed_point_error_);
-#endif
+  PDLP_DEBUG_LOG("initial_fixed_point_error", initial_fixed_point_error_);
+  PDLP_DEBUG_LOG("fixed_point_error", fixed_point_error_);
 
   if (total_number_of_iterations == hyper_params_.major_iteration) {
-#ifdef CUPDLP_DEBUG_MODE
-    printf("forced restart at first major\n");
-#endif
+    PDLP_DEBUG_LOG("forced restart at first major");
     std::fill(should_restart.begin(), should_restart.end(), 1);
   } else if (total_number_of_iterations > hyper_params_.major_iteration) {
     // For now just taking the average and restarting everyone or no one
@@ -728,32 +701,21 @@ void pdlp_restart_strategy_t<i_t, f_t>::should_cupdlpx_restart(i_t total_number_
       !isnan(average_initial_fixed_point_error),
       "Numerical error: average_initial_fixed_point_error should not be at nan at this stage");
 
-#ifdef CUPDLP_DEBUG_MODE
-    printf(
-      "average_fixed_point_error %lf average_initial_fixed_point_error %lf "
-      "average_last_trial_fixed_point_error %lf\n",
-      average_fixed_point_error,
-      average_initial_fixed_point_error,
-      average_last_trial_fixed_point_error);
-#endif
+    PDLP_DEBUG_LOG("average_fixed_point_error", average_fixed_point_error);
+    PDLP_DEBUG_LOG("average_initial_fixed_point_error", average_initial_fixed_point_error);
+    PDLP_DEBUG_LOG("average_last_trial_fixed_point_error", average_last_trial_fixed_point_error);
 
     if (average_fixed_point_error <=
         hyper_params_.sufficient_reduction_for_restart * average_initial_fixed_point_error) {
-#ifdef CUPDLP_DEBUG_MODE
-      printf("sufficient restart\n");
-#endif
+      PDLP_DEBUG_LOG("sufficient restart");
       std::fill(should_restart.begin(), should_restart.end(), 1);
     } else if (average_fixed_point_error <= hyper_params_.necessary_reduction_for_restart *
                                               average_initial_fixed_point_error &&
                average_fixed_point_error > average_last_trial_fixed_point_error) {
-#ifdef CUPDLP_DEBUG_MODE
-      printf("neseccary restart\n");
-#endif
+      PDLP_DEBUG_LOG("neseccary restart");
       std::fill(should_restart.begin(), should_restart.end(), 1);
     } else if (should_do_artificial_restart(total_number_of_iterations)) {
-#ifdef CUPDLP_DEBUG_MODE
-      printf("artificial restart\n");
-#endif
+      PDLP_DEBUG_LOG("artificial restart");
       std::fill(should_restart.begin(), should_restart.end(), 1);
     }
   }
@@ -782,12 +744,11 @@ HDI void cupdlpx_new_primal_weight_computation(const f_t primal_distance,
   const f_t l2_primal_distance = cuda::std::sqrt(primal_distance);
   const f_t l2_dual_distance   = cuda::std::sqrt(dual_distance);
 
-#ifdef CUPDLP_DEBUG_MODE
-  printf("l2 primal distance: %lf l2 dual distance %lf\n", l2_primal_distance, l2_dual_distance);
-  printf("relative L2 primal residual %lf relative L2 dual residual %lf\n",
-         relative_l2_primal_residual_value,
-         relative_l2_dual_residual_value);
-#endif
+  PDLP_DEBUG_DEVICE_LOG(
+    "l2 primal distance: %lf l2 dual distance %lf\n", l2_primal_distance, l2_dual_distance);
+  PDLP_DEBUG_DEVICE_LOG("relative L2 primal residual %lf relative L2 dual residual %lf\n",
+                        relative_l2_primal_residual_value,
+                        relative_l2_dual_residual_value);
 
   const f_t ratio_infeas = (relative_l2_primal_residual_value == f_t(0.0))
                              ? std::numeric_limits<f_t>::infinity()
@@ -796,9 +757,7 @@ HDI void cupdlpx_new_primal_weight_computation(const f_t primal_distance,
   if (l2_primal_distance > f_t(1e-16) && l2_dual_distance > f_t(1e-16) &&
       l2_primal_distance < f_t(1e12) && l2_dual_distance < f_t(1e12) && ratio_infeas > f_t(1e-8) &&
       ratio_infeas < f_t(1e8)) {
-#ifdef CUPDLP_DEBUG_MODE
-    printf("Compute new primal weight\n");
-#endif
+    PDLP_DEBUG_DEVICE_LOG("Compute new primal weight\n");
     const f_t current_primal_weight = *primal_weight;
     const f_t error = cuda::std::log(l2_dual_distance) - cuda::std::log(l2_primal_distance) -
                       cuda::std::log(current_primal_weight);
@@ -815,9 +774,7 @@ HDI void cupdlpx_new_primal_weight_computation(const f_t primal_distance,
     *new_primal_step_size     = step_size / computed_new_primal_weight;
     *new_dual_step_size       = step_size * computed_new_primal_weight;
   } else {
-#ifdef CUPDLP_DEBUG_MODE
-    printf("Setting new primal weight to best primal weight\n");
-#endif
+    PDLP_DEBUG_DEVICE_LOG("Setting new primal weight to best primal weight\n");
     const f_t best_primal_weight_value = *best_primal_weight;
     *primal_weight                     = best_primal_weight_value;
     *primal_weight_error_sum           = f_t(0.0);
@@ -832,13 +789,12 @@ HDI void cupdlpx_new_primal_weight_computation(const f_t primal_distance,
     *best_primal_weight            = *primal_weight;
   }
 
-#ifdef CUPDLP_DEBUG_MODE
-  printf("New primal weight %lf\n", *primal_weight);
-  printf("New best_primal_weight %lf\n", *best_primal_weight);
-  printf("New primal_weight_error_sum_ %lf\n", *primal_weight_error_sum);
-  printf("New primal_weight_last_error_ %lf\n", *primal_weight_last_error);
-  printf("New best_primal_dual_residual_gap_ %lf\n", *best_primal_dual_residual_gap);
-#endif
+  PDLP_DEBUG_DEVICE_LOG("New primal weight %lf\n", *primal_weight);
+  PDLP_DEBUG_DEVICE_LOG("New best_primal_weight %lf\n", *best_primal_weight);
+  PDLP_DEBUG_DEVICE_LOG("New primal_weight_error_sum_ %lf\n", *primal_weight_error_sum);
+  PDLP_DEBUG_DEVICE_LOG("New primal_weight_last_error_ %lf\n", *primal_weight_last_error);
+  PDLP_DEBUG_DEVICE_LOG("New best_primal_dual_residual_gap_ %lf\n",
+                        *best_primal_dual_residual_gap);
 }
 
 template <typename i_t, typename f_t>
@@ -927,9 +883,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     RAFT_CUDA_TRY(cudaPeekAtLastError());
     RAFT_CUDA_TRY(cudaStreamSynchronize(
       stream_view_.get()));  // To make sure all the data is written from device to host
-#ifdef CUPDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-#endif
+    PDLP_DEBUG_SYNC();
   } else {
     // Extract those 4 out because the live on the device memory and we write those in the host
     // version of the function
@@ -1005,13 +959,12 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     commit_potential_next_as_last_restart(*this, pdhg_solver, stream_view_);
   }
 
-#ifdef CUPDLP_DEBUG_MODE
-  print("New last_restart_duality_gap_.primal_solution_",
-        last_restart_duality_gap_.primal_solution_);
-  print("New pdhg_solver.get_primal_solution", pdhg_solver.get_primal_solution());
-  print("New last_restart_duality_gap_.dual_solution_", last_restart_duality_gap_.dual_solution_);
-  print("New pdhg_solver.get_dual_solution", pdhg_solver.get_dual_solution());
-#endif
+  PDLP_DEBUG_LOG("New last_restart_duality_gap_.primal_solution_",
+                 last_restart_duality_gap_.primal_solution_);
+  PDLP_DEBUG_LOG("New pdhg_solver.get_primal_solution", pdhg_solver.get_primal_solution());
+  PDLP_DEBUG_LOG("New last_restart_duality_gap_.dual_solution_",
+                 last_restart_duality_gap_.dual_solution_);
+  PDLP_DEBUG_LOG("New pdhg_solver.get_dual_solution", pdhg_solver.get_dual_solution());
 
   // TODO later batch mode: remove if you have per climber restart
   weighted_average_solution_.reset_iterations_since_last_restart();
@@ -1183,19 +1136,16 @@ __global__ void compute_new_primal_weight_kernel(
   f_t primal_distance = raft::sqrt(duality_gap_view.primal_distance_traveled[0]);
   f_t dual_distance   = raft::sqrt(duality_gap_view.dual_distance_traveled[0]);
 
-#ifdef PDLP_DEBUG_MODE
-  printf("Compute new primal weight: primal_distance=%lf dual_distance=%lf\n",
-         primal_distance,
-         dual_distance);
-#endif
+  PDLP_DEBUG_DEVICE_LOG("Compute new primal weight: primal_distance=%lf dual_distance=%lf\n",
+                        primal_distance,
+                        dual_distance);
 
   if (primal_distance < 0.0 + safe_guard_for_extreme_values_in_primal_weight_computation<f_t> ||
       primal_distance >= 1 / safe_guard_for_extreme_values_in_primal_weight_computation<f_t> ||
       dual_distance < 0.0 + safe_guard_for_extreme_values_in_primal_weight_computation<f_t> ||
       dual_distance >= 1 / safe_guard_for_extreme_values_in_primal_weight_computation<f_t>) {
-#ifdef PDLP_DEBUG_MODE
-    printf("Compute new primal weight: Invalid distance, returning without updates\n");
-#endif
+    PDLP_DEBUG_DEVICE_LOG(
+      "Compute new primal weight: Invalid distance, returning without updates\n");
     return;
   }
 
@@ -1211,13 +1161,11 @@ __global__ void compute_new_primal_weight_kernel(
   cuopt_assert(!isinf(*primal_weight), "primal weight can't be inf");
   *primal_step_size = *step_size / *primal_weight;
   *dual_step_size   = *step_size * *primal_weight;
-#ifdef PDLP_DEBUG_MODE
-  printf(
+  PDLP_DEBUG_DEVICE_LOG(
     "Compute new primal weight: primal_ratio=%lf, log_primal_weight=%lf new_primal_weight=%lf\n",
     new_primal_weight_estimate,
     log_primal_weight,
     *primal_weight);
-#endif
 }
 
 template <typename i_t, typename f_t>
@@ -1434,9 +1382,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::should_do_adaptive_restart_normalized_du
   i_t& restart)
 {
   raft::common::nvtx::range fun_scope("should_do_adaptive_restart_normalized_duality_gap");
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "Should do adaptive restart normalized duality gap" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("Should do adaptive restart normalized duality gap");
 
   // potentially see if we can 'recompute' from cached version instead of the recomputation here
   // important to remember that it is with a potential new primal_weight -> new norms for both
@@ -1467,14 +1413,12 @@ i_t pdlp_restart_strategy_t<i_t, f_t>::should_do_artificial_restart(
   i_t total_number_of_iterations) const
 {
   // if long enough since last restart (artificial)
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "Artifical restart:\n"
-            << "    iterations_since_last_restart="
-            << weighted_average_solution_.get_iterations_since_last_restart() << "\n"
-            << "    total_number_of_iteration=" << total_number_of_iterations << "\n"
-            << "    hyper_params_.default_artificial_restart_threshold="
-            << hyper_params_.default_artificial_restart_threshold << std::endl;
-#endif
+  PDLP_DEBUG_LOG("Artifical restart:");
+  PDLP_DEBUG_LOG("    iterations_since_last_restart",
+                 weighted_average_solution_.get_iterations_since_last_restart());
+  PDLP_DEBUG_LOG("    total_number_of_iteration", total_number_of_iterations);
+  PDLP_DEBUG_LOG("    hyper_params_.default_artificial_restart_threshold",
+                 hyper_params_.default_artificial_restart_threshold);
   if (weighted_average_solution_.get_iterations_since_last_restart() >=
       hyper_params_.default_artificial_restart_threshold * total_number_of_iterations) {
 #ifdef PDLP_VERBOSE_MODE
@@ -1515,9 +1459,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_localized_duality_gaps(
   rmm::device_uvector<f_t>& tmp_dual)
 {
   raft::common::nvtx::range fun_scope("compute_localized_duality_gaps");
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "Compute localized duality gaps:" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("Compute localized duality gaps:");
 
   // copy avg solutions
   raft::copy(avg_duality_gap_.primal_solution_.data(),
@@ -1564,9 +1506,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::bound_optimal_objective(
   rmm::device_uvector<f_t>& tmp_dual)
 {
   raft::common::nvtx::range fun_scope("bound_optimal_objective");
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "Bound optimal objective:" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("Bound optimal objective:");
 
   compute_primal_gradient(duality_gap, cusparse_view);
   compute_dual_gradient(duality_gap, cusparse_view, tmp_dual);
@@ -1586,9 +1526,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_bound(const rmm::device_uvector<
                                                       rmm::device_scalar<f_t>& bound)
 {
   raft::common::nvtx::range fun_scope("compute_bound");
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "Compute bound" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("Compute bound");
   raft::linalg::eltwiseSub(
     tmp.data(), solution_tr.data(), solution.data(), size, stream_view_.get());
 
@@ -1929,9 +1867,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
   rmm::device_uvector<f_t>& tmp_dual)
 {
   raft::common::nvtx::range fun_scope("solve_bound_constrained_trust_region");
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "    Solve bound constrained trust region:" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("    Solve bound constrained trust region:");
 
   // center point [primal_solution; dual_solution]
   // objective is [primal_gradient; -dual_gradient]
@@ -2259,9 +2195,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_primal_gradient(
   cusparse_view_t<i_t, f_t>& cusparse_view)
 {
   raft::common::nvtx::range fun_scope("compute_primal_gradient");
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "    Compute primal gradient:" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("    Compute primal gradient:");
 
   // for QP add problem.objective_matrix * primal_solution as well
   // c - A^T*y (copy c to primal_gradient for correct writing of result)
@@ -2329,9 +2263,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_dual_gradient(
   rmm::device_uvector<f_t>& tmp_dual)
 {
   raft::common::nvtx::range fun_scope("compute_dual_gradient");
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "    Compute dual gradient:" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("    Compute dual gradient:");
 
   // b - A*x
   // is changed with the introduction of constraint upper and lower bounds
@@ -2373,9 +2305,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_lagrangian_value(
   rmm::device_uvector<f_t>& tmp_dual)
 {
   raft::common::nvtx::range fun_scope("compute_lagrangian_value");
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "    Compute lagrangian value:" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("    Compute lagrangian value:");
   // if QP
   //  0.5 * dot(primal_solution, problem.objective_matrix * primal_solution) +
   //  dot(primal_solution, problem.objective_vector) -

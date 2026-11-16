@@ -844,9 +844,9 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_cummulative_scaling_to_pro
     cuda::std::multiplies<f_t>{},
     stream_view_.get());
 
-#ifdef CUPDLP_DEBUG_MODE
-  print("constraint_lower_bound", op_problem_scaled_.constraint_lower_bounds);
-  print("constraint_upper_bound", op_problem_scaled_.constraint_upper_bounds);
+#ifdef PDLP_DEBUG_MODE
+  PDLP_DEBUG_LOG("constraint_lower_bound", op_problem_scaled_.constraint_lower_bounds);
+  PDLP_DEBUG_LOG("constraint_upper_bound", op_problem_scaled_.constraint_upper_bounds);
   std::vector<f_t2> variable_bounds = host_copy(op_problem_scaled_.variable_bounds, stream_view_);
   std::vector<f_t> lower_bounds;
   std::vector<f_t> upper_bounds;
@@ -854,13 +854,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_cummulative_scaling_to_pro
     lower_bounds.push_back(variable_bound.x);
     upper_bounds.push_back(variable_bound.y);
   }
-  print("variable_lower_bound", lower_bounds);
-  print("variable_upper_bound", upper_bounds);
-  print("objective_vector", op_problem_scaled_.objective_coefficients);
+  PDLP_DEBUG_LOG("variable_lower_bound", lower_bounds);
+  PDLP_DEBUG_LOG("variable_upper_bound", upper_bounds);
+  PDLP_DEBUG_LOG("objective_vector", op_problem_scaled_.objective_coefficients);
   if (pdhg_solver_ptr_ && pdhg_solver_ptr_->get_new_bounds_idx().size() != 0) {
-    print("New bounds idx", pdhg_solver_ptr_->get_new_bounds_idx());
-    print("New bounds lower", pdhg_solver_ptr_->get_new_bounds_lower());
-    print("New bounds upper", pdhg_solver_ptr_->get_new_bounds_upper());
+    PDLP_DEBUG_LOG("New bounds idx", pdhg_solver_ptr_->get_new_bounds_idx());
+    PDLP_DEBUG_LOG("New bounds lower", pdhg_solver_ptr_->get_new_bounds_lower());
+    PDLP_DEBUG_LOG("New bounds upper", pdhg_solver_ptr_->get_new_bounds_upper());
   }
 #endif
   op_problem_scaled_.is_scaled_ = true;
@@ -933,10 +933,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     // Coefficients are computed on the already scaled values
     bound_objective_rescaling();
 
-#ifdef CUPDLP_DEBUG_MODE
-    print("bound_rescaling", bound_rescaling_);
-    print("objective_rescaling", objective_rescaling_);
-#endif
+    PDLP_DEBUG_LOG("bound_rescaling", bound_rescaling_);
+    PDLP_DEBUG_LOG("objective_rescaling", objective_rescaling_);
 
     apply_bound_objective_rescaling_to_problem();
   }
