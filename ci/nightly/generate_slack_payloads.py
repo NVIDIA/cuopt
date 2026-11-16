@@ -46,6 +46,13 @@ def _job_prefix(job):
     return name.split(" / ")[0] if " / " in name else name
 
 
+def _shorten(text, limit):
+    """Cut ``text`` to ``limit`` characters, marking the cut with an ellipsis."""
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "\u2026"
+
+
 def clean_message(message, limit=140):
     """Turn a raw failure message into a short reason plus ``file:line``.
 
@@ -88,12 +95,12 @@ def clean_message(message, limit=140):
 
     reason = reason or tail
     if not location:
-        return reason[:limit]
+        return _shorten(reason, limit)
     # Truncate the reason, never the location.
     suffix = f" @ {location}"
     if not reason:
         return location[:limit]
-    return reason[: max(0, limit - len(suffix))] + suffix
+    return _shorten(reason, max(0, limit - len(suffix))) + suffix
 
 
 def reason_signature(message):
@@ -156,21 +163,30 @@ def issue_lines(entries, tag, detail=None, group_detail=None, limit=MAX_LINES):
     for members in groups.values():
         if len(members) >= GROUP_MIN:
             reason = _esc(clean_message(members[0].get("message", "")))
-            names = ", ".join(
-                f"`{_esc(m.get('name', 'unknown'))}`" for m in members[:3]
+            # One test failing on several configurations is not several tests.
+            tests = list(
+                dict.fromkeys(m.get("name", "unknown") for m in members)
             )
-            more = f" +{len(members) - 3} more" if len(members) > 3 else ""
             matrix = _esc(_matrix_summary(members))
             suffix = group_detail(members) if group_detail else ""
             # Use a new member for the marker so a group with a new flaky
             # test is not shown as already known.
             marker = next((m for m in members if m.get("is_new")), members[0])
             group_tag = tag(marker) if callable(tag) else tag
-            lines.append(
-                f"{group_tag}  *{len(members)} tests* ({matrix}) "
-                f"\u2014 {reason}{suffix}"
-                f"\n      e.g. {names}{more}"
-            )
+            if len(tests) == 1:
+                lines.append(
+                    f"{group_tag}  `{_esc(tests[0])}` "
+                    f"({len(members)} configs: {matrix}) "
+                    f"\u2014 {reason}{suffix}"
+                )
+            else:
+                names = ", ".join(f"`{_esc(t)}`" for t in tests[:3])
+                more = f" +{len(tests) - 3} more" if len(tests) > 3 else ""
+                lines.append(
+                    f"{group_tag}  *{len(tests)} tests* ({matrix}) "
+                    f"\u2014 {reason}{suffix}"
+                    f"\n      e.g. {names}{more}"
+                )
         else:
             for m in members:
                 line_tag = tag(m) if callable(tag) else tag
