@@ -26,7 +26,8 @@ GROUP_MIN = 3
 # Maximum lines listed per category and workflow before "+N more".
 MAX_LINES = 10
 
-_BUILD_PREFIX = re.compile(r"^.*?/work/")
+# Only a path at the start of a line; an "E ..." line can contain a path too.
+_BUILD_PREFIX = re.compile(r"^/\S*?/work/")
 _LOCATION = re.compile(r"^(\S+\.(?:cu|cuh|cpp|hpp|h|py|pyx)):(\d+)\b")
 
 
@@ -53,23 +54,23 @@ def _shorten(text, limit):
     return text[: max(0, limit - 1)].rstrip() + "\u2026"
 
 
-def clean_message(message, limit=140):
-    """Turn a raw failure message into a short reason plus ``file:line``.
+def split_message(message):
+    """Return (reason, location) for a raw failure message, reason untruncated.
 
     gtest failure text starts with the absolute build path of the source file
     and the line number, for example
     ``/tmp/conda-bld-output/bld/rattler-build_x/work/cpp/tests/a_test.cu:42``
-    followed by the assertion. Truncating that to 100 characters left only the
-    path. This drops the build prefix, keeps ``a_test.cu:42`` and the first
-    line that says what went wrong. For pytest, the first ``E`` line is used.
+    followed by the assertion. This drops the build prefix, keeps
+    ``a_test.cu:42`` and the first line that says what went wrong. For pytest,
+    the first ``E`` line is used.
     """
     lines = [
         _BUILD_PREFIX.sub("", ln.strip())
         for ln in str(message).splitlines()
-        if ln.strip()
+        if ln.strip() and ln.strip().lower() != "unknown file"
     ]
     if not lines:
-        return ""
+        return "", ""
 
     location = ""
     tail = ""  # text after "file:line:" on the same line, used as a fallback
@@ -93,10 +94,14 @@ def clean_message(message, limit=140):
         if reason.endswith(":") and len(rest) > 1:
             reason = " ".join([reason] + [r.strip() for r in rest[1:3]])
 
-    reason = reason or tail
+    return reason or tail, location
+
+
+def clean_message(message, limit=140):
+    """Short reason plus ``file:line``; the reason is cut, the location never."""
+    reason, location = split_message(message)
     if not location:
         return _shorten(reason, limit)
-    # Truncate the reason, never the location.
     suffix = f" @ {location}"
     if not reason:
         return location[:limit]
@@ -109,7 +114,7 @@ def reason_signature(message):
     Drops the source location and digits so the same assertion at different
     sizes or indices groups together. An empty reason never groups.
     """
-    reason = clean_message(message).split(" @ ")[0]
+    reason = split_message(message)[0]
     return re.sub(r"\d+(\.\d+)?", "#", reason).strip().lower()
 
 
@@ -196,6 +201,30 @@ def issue_lines(entries, tag, detail=None, group_detail=None, limit=MAX_LINES):
                     + (detail(m) if detail else "")
                 )
     return lines[:limit], max(0, len(lines) - limit)
+
+
+def split_entries(text, limit=2900):
+    """Split text into chunks under Slack's block limit, between entries.
+
+    An entry is a line plus any indented continuation lines after it, so an
+    "e.g." line is never separated from its entry.
+    """
+    entries = []
+    for line in text.splitlines():
+        if line.startswith(" ") and entries:
+            entries[-1] += "\n" + line
+        else:
+            entries.append(line)
+    chunks, current = [], ""
+    for entry in entries:
+        entry = entry[:limit]
+        if current and len(current) + len(entry) + 1 > limit:
+            chunks.append(current)
+            current = ""
+        current += entry + "\n"
+    if current.strip():
+        chunks.append(current)
+    return [c.rstrip() for c in chunks]
 
 
 def repo_base(github_run_url):
@@ -558,16 +587,10 @@ def main():
                     f":white_check_mark:  {len(recovered)} tests recovered\n"
                 )
 
-        wf_blocks = []
-        while wf_text:
-            chunk = wf_text[:2900]
-            wf_blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": chunk.rstrip()},
-                }
-            )
-            wf_text = wf_text[2900:]
+        wf_blocks = [
+            {"type": "section", "text": {"type": "mrkdwn", "text": chunk}}
+            for chunk in split_entries(wf_text)
+        ]
 
         print(make_payload(wf_blocks))
 
