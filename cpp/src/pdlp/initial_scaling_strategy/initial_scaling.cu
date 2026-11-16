@@ -16,6 +16,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp_constants.hpp>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 
 #include <raft/core/nvtx.hpp>
@@ -95,10 +96,8 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
     cummulative_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_}
 {
   raft::common::nvtx::range fun_scope("Initializing initial_scaling_strategy");
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "Initializing initial_scaling_strategy" << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("Initializing initial_scaling_strategy");
 
   if (!running_mip_) cuopt_assert(pdhg_solver_ptr_ != nullptr, "PDHG solver pointer is null");
   cuopt_assert(original_batch_size_ > 0, "Original batch size must be positive");
@@ -314,10 +313,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_inf_scaling(i_t number_of_ruiz_iterations)
 {
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "Doing ruiz_inf_scaling" << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("Doing ruiz_inf_scaling");
   for (int i = 0; i < number_of_ruiz_iterations; i++) {
     ruiz_iter_local();
   }
@@ -582,10 +579,8 @@ template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
   i_t number_of_curtis_reid_iterations)
 {
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "Doing curtis_reid_scaling" << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("Doing curtis_reid_scaling");
   // Reuse the iteration_* scratch buffers as this phase's row/col log-scale vectors --
   // same size, same "this phase's working value" role Ruiz/Pock-Chambolle give them.
   // curtis_reid_row_kernel/curtis_reid_col_kernel read op_problem_scaled_'s coefficients

@@ -13,6 +13,7 @@
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -426,8 +427,7 @@ __global__ void kernel_compute_kkt_score(const f_t* l2_primal_residual,
   const f_t weight_squared = *primal_weight * *primal_weight;
   *kkt_score               = raft::sqrt(weight_squared * *l2_primal_residual * *l2_primal_residual +
                           *l2_dual_residual * *l2_dual_residual / weight_squared + *gap * *gap);
-#ifdef PDLP_DEBUG_MODE
-  printf(
+  PDLP_DEBUG_DEVICE_LOG(
     "kernel_compute_kkt_score=%lf weight=%lf (^2 %lf), l2_primal_residual=%lf (^2 %lf), "
     "l2_dual_residual=%lf (^2 %lf), fap=%lf (^2 %lf)\n",
     *kkt_score,
@@ -439,7 +439,6 @@ __global__ void kernel_compute_kkt_score(const f_t* l2_primal_residual,
     (*l2_dual_residual * *l2_dual_residual),
     *gap,
     (*gap * *gap));
-#endif
 }
 
 template <typename i_t, typename f_t>
@@ -460,22 +459,16 @@ f_t pdlp_restart_strategy_t<i_t, f_t>::compute_kkt_score(
 template <typename i_t, typename f_t>
 bool pdlp_restart_strategy_t<i_t, f_t>::kkt_decay(f_t candidate_kkt_score)
 {
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "last_candidate_kkt_score=" << last_candidate_kkt_score << std::endl;
-  std::cout << "last_restart_kkt_score=" << last_restart_kkt_score << std::endl;
-#endif
+  PDLP_DEBUG_LOG("last_candidate_kkt_score", last_candidate_kkt_score);
+  PDLP_DEBUG_LOG("last_restart_kkt_score", last_restart_kkt_score);
   if (candidate_kkt_score <
       hyper_params_.sufficient_reduction_for_restart * last_restart_kkt_score) {
-#ifdef PDLP_DEBUG_MODE
-    std::cout << "kkt_sufficient_decay restart" << std::endl;
-#endif
+    PDLP_DEBUG_LOG("kkt_sufficient_decay restart");
     return true;
   } else if (candidate_kkt_score <
                hyper_params_.necessary_reduction_for_restart * last_restart_kkt_score &&
              candidate_kkt_score > last_candidate_kkt_score) {
-#ifdef PDLP_DEBUG_MODE
-    std::cout << "kkt_necessary_decay restart" << std::endl;
-#endif
+    PDLP_DEBUG_LOG("kkt_necessary_decay restart");
     return true;
   }
   return false;
@@ -1261,8 +1254,8 @@ void pdlp_restart_strategy_t<i_t, f_t>::distance_squared_moved_from_last_restart
 #ifdef PDLP_DEBUG_MODE
   rmm::device_scalar<f_t> debuga{stream_view_};
   rmm::device_scalar<f_t> debugb{stream_view_};
-  print("Old solution", old_solution);
-  print("New solution", new_solution);
+  PDLP_DEBUG_LOG("Old solution", old_solution);
+  PDLP_DEBUG_LOG("New solution", new_solution);
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
                                                   size_of_solutions_h,
                                                   old_solution.data(),
@@ -1279,9 +1272,8 @@ void pdlp_restart_strategy_t<i_t, f_t>::distance_squared_moved_from_last_restart
                                                   stride,
                                                   debugb.data(),
                                                   stream_view_.get()));
-  std::cout << "Distance squared moved:\n"
-            << "  Old location=" << debuga.value(stream_view_) << "\n"
-            << "  New location=" << debugb.value(stream_view_) << std::endl;
+  PDLP_DEBUG_LOG("Distance squared moved: old location", debuga.value(stream_view_));
+  PDLP_DEBUG_LOG("Distance squared moved: new location", debugb.value(stream_view_));
 #endif
 
   // TODO later batch mode: this will only work if all climbers restart together

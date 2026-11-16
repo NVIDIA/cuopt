@@ -1,0 +1,69 @@
+/* clang-format off */
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/* clang-format on */
+
+#pragma once
+
+// PDLP_DEBUG_MODE is toggled in pdlp_constants.hpp; it must be seen before the #ifdef below
+// regardless of include order in the including file.
+#include <pdlp/pdlp_constants.hpp>
+
+// PDLP debug helpers. They replace the former scattered PDLP_DEBUG_MODE printing code.
+//
+// Everything here is controlled by the single PDLP_DEBUG_MODE macro, enabled by uncommenting
+// `#define PDLP_DEBUG_MODE` in pdlp_constants.hpp (or by passing -DPDLP_DEBUG_MODE). When it is not
+// defined, every macro expands to ((void)0): their arguments are NOT evaluated, so expressions
+// with side effects or implicit synchronizations (e.g. device_scalar::value(), D2H copies) cost
+// nothing.
+//
+//   PDLP_DEBUG_LOG(...)             forwards to cuopt::print(...), written to stdout:
+//                                     PDLP_DEBUG_LOG("message")          a message
+//                                     PDLP_DEBUG_LOG("name", scalar)     name=value
+//                                     PDLP_DEBUG_LOG("name", container)  host/device container (D2H)
+//   PDLP_DEBUG_SYNC()               full cudaDeviceSynchronize() and error check, so an
+//                                   asynchronous failure is reported next to the debug output that
+//                                   precedes it
+//   PDLP_DEBUG_DEVICE_LOG(fmt, ...) printf from inside a kernel
+//
+// For blocks that mix several of the above, wrap them in `#ifdef PDLP_DEBUG_MODE`.
+// Do not use PDLP_DEBUG_SYNC / PDLP_DEBUG_LOG on containers inside a CUDA graph capture region.
+
+#ifdef PDLP_DEBUG_MODE
+
+#include <utilities/copy_helpers.hpp>
+
+#include <raft/util/cudart_utils.hpp>
+
+#include <cstdio>
+#include <iostream>
+#include <string_view>
+#include <type_traits>
+
+namespace cuopt {
+
+// Message only
+inline void print(std::string_view const message) { std::cout << message << std::endl; }
+
+// Scalar (the container overloads live in utilities/copy_helpers.hpp)
+template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, int> = 0>
+void print(std::string_view const name, T const value)
+{
+  std::cout << name << "=" << value << std::endl;
+}
+
+}  // namespace cuopt
+
+#define PDLP_DEBUG_LOG(...) ::cuopt::print(__VA_ARGS__)
+#define PDLP_DEBUG_SYNC() RAFT_CUDA_TRY(cudaDeviceSynchronize())
+#define PDLP_DEBUG_DEVICE_LOG(...) printf(__VA_ARGS__)
+
+#else
+
+#define PDLP_DEBUG_LOG(...) ((void)0)
+#define PDLP_DEBUG_SYNC() ((void)0)
+#define PDLP_DEBUG_DEVICE_LOG(...) ((void)0)
+
+#endif

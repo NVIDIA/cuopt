@@ -16,6 +16,7 @@
 #include <pdlp/pdlp.cuh>
 #include <pdlp/problem_memory.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 
 #include <linear_algebra/sparse_matrix.hpp>
@@ -757,18 +758,15 @@ const pdlp_solver_t<i_t, f_t>::primal_quality_adapter_t& pdlp_solver_t<i_t, f_t>
   const pdlp_solver_t<i_t, f_t>::primal_quality_adapter_t& current,
   const pdlp_solver_t<i_t, f_t>::primal_quality_adapter_t& other)
 {
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "  current.is_primal_feasible = " << current.is_primal_feasible << std::endl;
-  std::cout << "  current.nb_violated_constraints = " << current.nb_violated_constraints
-            << std::endl;
-  std::cout << "  current.primal_residual = " << current.primal_residual << std::endl;
-  std::cout << "  current.primal_objective = " << current.primal_objective << std::endl;
-  std::cout << "  other.is_primal_feasible = " << other.is_primal_feasible << std::endl;
-  std::cout << "  other.nb_violated_constraints = " << other.nb_violated_constraints << std::endl;
-  std::cout << "  other.primal_residual = " << other.primal_residual << std::endl;
-  std::cout << "  other.primal_objective = " << other.primal_objective << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("  current.is_primal_feasible", current.is_primal_feasible);
+  PDLP_DEBUG_LOG("  current.nb_violated_constraints", current.nb_violated_constraints);
+  PDLP_DEBUG_LOG("  current.primal_residual", current.primal_residual);
+  PDLP_DEBUG_LOG("  current.primal_objective", current.primal_objective);
+  PDLP_DEBUG_LOG("  other.is_primal_feasible", other.is_primal_feasible);
+  PDLP_DEBUG_LOG("  other.nb_violated_constraints", other.nb_violated_constraints);
+  PDLP_DEBUG_LOG("  other.primal_residual", other.primal_residual);
+  PDLP_DEBUG_LOG("  other.primal_objective", other.primal_objective);
 
   // Primal feasiblity is best
 
@@ -831,10 +829,8 @@ void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
 
   // Best overall is different (better) than last found
   if (best_overall != best_primal_quality_so_far_) {
-#ifdef PDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-    std::cout << "New best primal found" << std::endl;
-#endif
+    PDLP_DEBUG_SYNC();
+    PDLP_DEBUG_LOG("New best primal found");
     best_primal_quality_so_far_ = best_overall;
 
     // Record the new solution
@@ -842,24 +838,20 @@ void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
     rmm::device_uvector<f_t>* primal_to_set;
     rmm::device_uvector<f_t>* dual_to_set;
     pdlp::pdlp_termination_strategy_t<i_t, f_t>* termination_strategy_to_use;
-    std::string_view debug_string;
 
     if (best_overall == current_quality) {
       primal_to_set               = &pdhg_solver_.get_primal_solution();
       dual_to_set                 = &pdhg_solver_.get_dual_solution();
       termination_strategy_to_use = &current_termination_strategy_;
-      debug_string                = "  current is better";
+      PDLP_DEBUG_LOG("  current is better");
     } else {
       primal_to_set               = &unscaled_primal_avg_solution_;
       dual_to_set                 = &unscaled_dual_avg_solution_;
       termination_strategy_to_use = &average_termination_strategy_;
-      debug_string                = "  average is better";
+      PDLP_DEBUG_LOG("  average is better");
     }
 
-#ifdef PDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-    std::cout << debug_string << std::endl;
-#endif
+    PDLP_DEBUG_SYNC();
 
     best_primal_solution_so_far = termination_strategy_to_use->fill_return_problem_solution(
       internal_solver_iterations_,
@@ -870,10 +862,8 @@ void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
                                              pdlp_termination_status_t::TimeLimit),
       true);
   } else {
-#ifdef PDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-    std::cout << "Last best primal is still best" << std::endl;
-#endif
+    PDLP_DEBUG_SYNC();
+    PDLP_DEBUG_LOG("Last best primal is still best");
   }
 }
 

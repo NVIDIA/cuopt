@@ -11,6 +11,7 @@
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/termination_strategy/convergence_information.hpp>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 #include <utilities/device_scalar_init.hpp>
 
@@ -785,9 +786,7 @@ void convergence_information_t<i_t, f_t>::compute_primal_residual(
       stream_view_.get());
   }
 
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-#endif
+  PDLP_DEBUG_SYNC();
 }
 
 template <typename i_t, typename f_t>
