@@ -199,10 +199,9 @@ __global__ void compute_remaining_stats_kernel(
                         *infeasibility_information_view.reduced_cost_inf_norm,
                         scaling_factor);
 
-  PDLP_DEBUG_DEVICE_LOG(
-    "    Before max_dual_ray_infeasibility=%lf dual_ray_linear_objective=%lf\n",
-    infeasibility_information_view.max_dual_ray_infeasibility[0],
-    infeasibility_information_view.dual_ray_linear_objective[0]);
+  PDLP_DEBUG_DEVICE_LOG("    Before max_dual_ray_infeasibility=%lf dual_ray_linear_objective=%lf\n",
+                        infeasibility_information_view.max_dual_ray_infeasibility[0],
+                        infeasibility_information_view.dual_ray_linear_objective[0]);
   if (scaling_factor < 0.0 || scaling_factor > 0.0) {
     infeasibility_information_view.max_dual_ray_infeasibility[0] =
       infeasibility_information_view.max_dual_ray_infeasibility[0] / scaling_factor;
@@ -661,7 +660,8 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_dual_objective(
                            reduced_cost_dual_objective_.data(),
                            1,
                            stream_view_.get());
-  PDLP_DEBUG_LOG("  reduced_cost_dual_objective_", reduced_cost_dual_objective_.value(stream_view_));
+  PDLP_DEBUG_LOG("  reduced_cost_dual_objective_",
+                 reduced_cost_dual_objective_.value(stream_view_));
   PDLP_DEBUG_LOG("  dual_ray_linear_objective_ after",
                  dual_ray_linear_objective_.element(0, stream_view_));
 }

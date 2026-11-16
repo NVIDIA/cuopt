@@ -793,8 +793,7 @@ HDI void cupdlpx_new_primal_weight_computation(const f_t primal_distance,
   PDLP_DEBUG_DEVICE_LOG("New best_primal_weight %lf\n", *best_primal_weight);
   PDLP_DEBUG_DEVICE_LOG("New primal_weight_error_sum_ %lf\n", *primal_weight_error_sum);
   PDLP_DEBUG_DEVICE_LOG("New primal_weight_last_error_ %lf\n", *primal_weight_last_error);
-  PDLP_DEBUG_DEVICE_LOG("New best_primal_dual_residual_gap_ %lf\n",
-                        *best_primal_dual_residual_gap);
+  PDLP_DEBUG_DEVICE_LOG("New best_primal_dual_residual_gap_ %lf\n", *best_primal_dual_residual_gap);
 }
 
 template <typename i_t, typename f_t>
