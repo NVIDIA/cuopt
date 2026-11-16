@@ -11,26 +11,6 @@
 // regardless of include order in the including file.
 #include <pdlp/pdlp_constants.hpp>
 
-// PDLP debug helpers. They replace the former scattered PDLP_DEBUG_MODE printing code.
-//
-// Everything here is controlled by the single PDLP_DEBUG_MODE macro, enabled by uncommenting
-// `#define PDLP_DEBUG_MODE` in pdlp_constants.hpp (or by passing -DPDLP_DEBUG_MODE). When it is not
-// defined, every macro expands to ((void)0): their arguments are NOT evaluated, so expressions
-// with side effects or implicit synchronizations (e.g. device_scalar::value(), D2H copies) cost
-// nothing.
-//
-//   PDLP_DEBUG_LOG(...)             forwards to cuopt::print(...), written to stdout:
-//                                     PDLP_DEBUG_LOG("message")          a message
-//                                     PDLP_DEBUG_LOG("name", scalar)     name=value
-//                                     PDLP_DEBUG_LOG("name", container)  host/device container (D2H)
-//   PDLP_DEBUG_SYNC()               full cudaDeviceSynchronize() and error check, so an
-//                                   asynchronous failure is reported next to the debug output that
-//                                   precedes it
-//   PDLP_DEBUG_DEVICE_LOG(fmt, ...) printf from inside a kernel
-//
-// For blocks that mix several of the above, wrap them in `#ifdef PDLP_DEBUG_MODE`.
-// Do not use PDLP_DEBUG_SYNC / PDLP_DEBUG_LOG on containers inside a CUDA graph capture region.
-
 #ifdef PDLP_DEBUG_MODE
 
 #include <utilities/copy_helpers.hpp>
