@@ -1187,12 +1187,18 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_getReducedCosts(JNIEn
                                                                            jlong handle,
                                                                            jint size)
 {
-  std::vector<cuopt_float_t> values(static_cast<size_t>(size));
-  const cuopt_int_t status = cuOptGetReducedCosts(to_solution(handle), values.data());
-  // Same as getPrimalSolution: CUOPT_INVALID_ARGUMENT means the solve produced no values.
-  if (status == CUOPT_INVALID_ARGUMENT) { return to_double_array(env, {}); }
-  if (!check_status(env, status, "cuOptGetReducedCosts")) { return nullptr; }
-  return to_double_array(env, values);
+  try {
+    std::vector<cuopt_float_t> values(static_cast<size_t>(size));
+    const cuopt_int_t status = cuOptGetReducedCosts(to_solution(handle), values.data());
+    // Same as getPrimalSolution: CUOPT_INVALID_ARGUMENT means the solve produced no values.
+    if (status == CUOPT_INVALID_ARGUMENT) { return to_double_array(env, {}); }
+    if (!check_status(env, status, "cuOptGetReducedCosts")) { return nullptr; }
+    return to_double_array(env, values);
+  } catch (const std::exception& e) {
+    throw_cuopt_exception(
+      env, CUOPT_INVALID_ARGUMENT, std::string("getReducedCost failed: ") + e.what());
+    return nullptr;
+  }
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
@@ -1211,8 +1217,14 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_getDualObjectiveValue
                                                                                  jlong handle)
 {
   cuopt_float_t value = 0;
-  check_status(
-    env, cuOptGetDualObjectiveValue(to_solution(handle), &value), "cuOptGetDualObjectiveValue");
+  try {
+    check_status(
+      env, cuOptGetDualObjectiveValue(to_solution(handle), &value), "cuOptGetDualObjectiveValue");
+  } catch (const std::exception& e) {
+    throw_cuopt_exception(
+      env, CUOPT_INVALID_ARGUMENT, std::string("getDualObjective failed: ") + e.what());
+    return 0;
+  }
   return value;
 }
 
