@@ -2924,7 +2924,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   }
   if (!inside_mip_) {
     CUOPT_LOG_INFO(
-      "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
+      "   Iter   Primal Obj.      Dual Obj.     Gap        Primal Res.  Dual Res.  Rel Gap    "
+      "Rel P. Res   Rel D. Res   Time");
   }
   while (true) {
 #ifdef CUPDLP_DEBUG_MODE
