@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 4.3)
 project(cuopt_split_package_smoke LANGUAGES C CXX)
 
 set(COMPONENT "" CACHE STRING "cuOpt component to link: client, mathopt or routing")
