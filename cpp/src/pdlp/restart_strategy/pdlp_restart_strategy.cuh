@@ -118,7 +118,9 @@ class pdlp_restart_strategy_t {
                           const i_t dual_size,
                           bool is_legacy_batch_mode,
                           const std::vector<pdlp_climber_strategy_t>& climber_strategies_,
-                          const pdlp::pdlp_hyper_params_t& hyper_params);
+                          const pdlp::pdlp_hyper_params_t& hyper_params,
+                          cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource =
+                            rmm::mr::get_current_device_resource_ref());
 
   // Compute kkt score on passed argument using the container tmp_kkt score and stream view
   f_t compute_kkt_score(const rmm::device_uvector<f_t>& l2_primal_residual,

@@ -22,32 +22,39 @@ localized_duality_gap_container_t<i_t, f_t>::localized_duality_gap_container_t(
   i_t primal_size,
   i_t dual_size,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params,
+  device_memory_resource_t memory_resource)
   : primal_size_h_(primal_size),
     dual_size_h_(dual_size),
-    lagrangian_value_{handle_ptr->get_stream()},
-    lower_bound_value_{handle_ptr->get_stream()},
-    upper_bound_value_{handle_ptr->get_stream()},
-    distance_traveled_{handle_ptr->get_stream()},
-    primal_distance_traveled_(climber_strategies.size(), handle_ptr->get_stream()),
-    dual_distance_traveled_(climber_strategies.size(), handle_ptr->get_stream()),
-    normalized_gap_{handle_ptr->get_stream()},
+    lagrangian_value_{handle_ptr->get_stream(), memory_resource},
+    lower_bound_value_{handle_ptr->get_stream(), memory_resource},
+    upper_bound_value_{handle_ptr->get_stream(), memory_resource},
+    distance_traveled_{handle_ptr->get_stream(), memory_resource},
+    primal_distance_traveled_(climber_strategies.size(), handle_ptr->get_stream(), memory_resource),
+    dual_distance_traveled_(climber_strategies.size(), handle_ptr->get_stream(), memory_resource),
+    normalized_gap_{handle_ptr->get_stream(), memory_resource},
     primal_solution_{static_cast<size_t>(primal_size) * climber_strategies.size(),
-                     handle_ptr->get_stream()},  // Needed even in kkt
+                     handle_ptr->get_stream(),
+                     memory_resource},  // Needed even in kkt
     dual_solution_{static_cast<size_t>(dual_size) * climber_strategies.size(),
-                   handle_ptr->get_stream()},  // Needed even in kkt
+                   handle_ptr->get_stream(),
+                   memory_resource},  // Needed even in kkt
     primal_gradient_{
       !is_trust_region_restart<i_t, f_t>(hyper_params) ? 0 : static_cast<size_t>(primal_size),
-      handle_ptr->get_stream()},
+      handle_ptr->get_stream(),
+      memory_resource},
     dual_gradient_{
       !is_trust_region_restart<i_t, f_t>(hyper_params) ? 0 : static_cast<size_t>(dual_size),
-      handle_ptr->get_stream()},
+      handle_ptr->get_stream(),
+      memory_resource},
     primal_solution_tr_{
       !is_trust_region_restart<i_t, f_t>(hyper_params) ? 0 : static_cast<size_t>(primal_size),
-      handle_ptr->get_stream()},
+      handle_ptr->get_stream(),
+      memory_resource},
     dual_solution_tr_{
       !is_trust_region_restart<i_t, f_t>(hyper_params) ? 0 : static_cast<size_t>(dual_size),
-      handle_ptr->get_stream()}
+      handle_ptr->get_stream(),
+      memory_resource}
 {
   RAFT_CUDA_TRY(cudaMemsetAsync(primal_solution_.data(),
                                 f_t(0.0),

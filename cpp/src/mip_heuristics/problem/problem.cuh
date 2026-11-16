@@ -65,7 +65,10 @@ class problem_t {
   // copy constructor
   problem_t(const problem_t<i_t, f_t>& problem);
   problem_t(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr_);
-  problem_t(const problem_t<i_t, f_t>& problem, bool no_deep_copy);
+  problem_t(const problem_t<i_t, f_t>& problem,
+            bool no_deep_copy,
+            cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource =
+              rmm::mr::get_current_device_resource_ref());
   problem_t(problem_t<i_t, f_t>&& problem) = default;
   problem_t& operator=(problem_t&&)        = default;
   void op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_);

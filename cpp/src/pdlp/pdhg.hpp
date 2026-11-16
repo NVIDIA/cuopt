@@ -10,6 +10,7 @@
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
+#include <pdlp/pdlp_memory_resource.hpp>
 #include <pdlp/reduced_matrix.cuh>
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -34,15 +35,17 @@ struct multi_gpu_engine_t;
 template <typename i_t, typename f_t>
 class pdhg_solver_t {
  public:
-  pdhg_solver_t(raft::handle_t const* handle_ptr,
-                mip::problem_t<i_t, f_t>& op_problem,
-                bool is_legacy_batch_mode,
-                const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                const pdlp::pdlp_hyper_params_t& hyper_params,
-                const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
-                int reduced_matrix_nnz_cutoff,
-                bool enable_mixed_precision_spmv = false,
-                bool is_distributed              = false);
+  pdhg_solver_t(
+    raft::handle_t const* handle_ptr,
+    mip::problem_t<i_t, f_t>& op_problem,
+    bool is_legacy_batch_mode,
+    const std::vector<pdlp_climber_strategy_t>& climber_strategies,
+    const pdlp::pdlp_hyper_params_t& hyper_params,
+    const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
+    int reduced_matrix_nnz_cutoff,
+    bool enable_mixed_precision_spmv         = false,
+    bool is_distributed                      = false,
+    device_memory_resource_t memory_resource = rmm::mr::get_current_device_resource_ref());
 
   saddle_point_state_t<i_t, f_t>& get_saddle_point_state();
   cusparse_view_t<i_t, f_t>& get_cusparse_view();
@@ -86,7 +89,7 @@ class pdhg_solver_t {
                  bool last_restart_was_average,
                  i_t total_pdlp_iterations,
                  bool is_major_iteration);
-  // Only the experimental single-problem fixed-step path calls this, between checkpoints.
+  // Batch eligible single-problem fixed-step iterations between checkpoints.
   void take_ordinary_graph_batch(manual_cuda_graph_t& graph,
                                  i_t batch_size,
                                  rmm::device_uvector<f_t>& primal_step_size,
@@ -147,6 +150,14 @@ class pdhg_solver_t {
   i_t total_pdhg_iterations_;
 
  private:
+  void enqueue_ordinary_graph_batch(i_t batch_size,
+                                    rmm::device_uvector<f_t>& primal_step_size,
+                                    rmm::device_uvector<f_t>& dual_step_size,
+                                    rmm::device_uvector<f_t>& initial_primal,
+                                    rmm::device_uvector<f_t>& initial_dual,
+                                    i_t* d_iterations_since_last_restart,
+                                    rmm::device_uvector<f_t>& batched_halpern_weights);
+
   void compute_next_primal_dual_solution(rmm::device_uvector<f_t>& primal_step_size,
                                          i_t iterations_since_last_restart,
                                          bool last_restart_was_average,

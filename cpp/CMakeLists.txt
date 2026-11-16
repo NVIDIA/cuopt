@@ -1053,6 +1053,7 @@ target_link_libraries(cuopt_mathopt_objs
         CUDA::cusparse
         ${CUDSS_LIB_FILE}
         PRIVATE
+        CUDA::cuda_driver
         ${CUOPT_PRIVATE_CUDA_LIBS}
         OpenMP::OpenMP_CUDA
         simde::simde
@@ -1097,6 +1098,7 @@ target_link_libraries(cuopt_mathopt
         # Build tree only: the installed target must not carry this build-machine path.
         $<BUILD_INTERFACE:${CUDSS_LIB_FILE}>
         PRIVATE
+        CUDA::cuda_driver
         ${CUOPT_PRIVATE_CUDA_LIBS}
         OpenMP::OpenMP_CUDA
         simde::simde
@@ -1159,6 +1161,7 @@ if (BUILD_TESTS OR (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY) OR CUOPT_BUILD_S
             ${CUDSS_LIB_FILE}
             OpenMP::OpenMP_CXX
             PRIVATE
+            CUDA::cuda_driver
             ${CUOPT_PRIVATE_CUDA_LIBS}
             nccl_external
             $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
@@ -1680,7 +1683,6 @@ endif ()
 
 option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)
 if (BUILD_LP_BENCHMARKS)
-    add_subdirectory(../benchmarks/linear_programming/cuopt/pdlp_overhead pdlp_overhead)
     add_executable(solve_LP ../benchmarks/linear_programming/cuopt/run_pdlp.cu)
 
     set_target_properties(solve_LP

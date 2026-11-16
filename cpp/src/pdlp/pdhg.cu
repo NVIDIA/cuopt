@@ -56,7 +56,8 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
   const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
   int reduced_matrix_nnz_cutoff,
   bool enable_mixed_precision_spmv,
-  bool is_distributed)
+  bool is_distributed,
+  device_memory_resource_t memory_resource)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
@@ -67,26 +68,32 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
                                 problem_ptr->n_variables,
                                 problem_ptr->n_constraints,
                                 climber_strategies.size(),
-                                hyper_params},
-    tmp_primal_{(climber_strategies.size() * problem_ptr->n_variables), stream_view_},
-    tmp_dual_{(climber_strategies.size() * problem_ptr->n_constraints), stream_view_},
-    potential_next_primal_solution_{(climber_strategies.size() * problem_ptr->n_variables),
-                                    stream_view_},
-    potential_next_dual_solution_{(climber_strategies.size() * problem_ptr->n_constraints),
-                                  stream_view_},
+                                hyper_params,
+                                memory_resource},
+    tmp_primal_{
+      (climber_strategies.size() * problem_ptr->n_variables), stream_view_, memory_resource},
+    tmp_dual_{
+      (climber_strategies.size() * problem_ptr->n_constraints), stream_view_, memory_resource},
+    potential_next_primal_solution_{
+      (climber_strategies.size() * problem_ptr->n_variables), stream_view_, memory_resource},
+    potential_next_dual_solution_{
+      (climber_strategies.size() * problem_ptr->n_constraints), stream_view_, memory_resource},
     total_pdhg_iterations_{0},
     dual_slack_{static_cast<size_t>((hyper_params.use_reflected_primal_dual)
                                       ? problem_ptr->n_variables * climber_strategies.size()
                                       : 0),
-                stream_view_},
+                stream_view_,
+                memory_resource},
     reflected_primal_{static_cast<size_t>((hyper_params.use_reflected_primal_dual)
                                             ? problem_ptr->n_variables * climber_strategies.size()
                                             : 0),
-                      stream_view_},
+                      stream_view_,
+                      memory_resource},
     reflected_dual_{static_cast<size_t>((hyper_params.use_reflected_primal_dual)
                                           ? problem_ptr->n_constraints * climber_strategies.size()
                                           : 0),
-                    stream_view_},
+                    stream_view_,
+                    memory_resource},
     cusparse_view_{handle_ptr_,
                    op_problem_scaled,
                    current_saddle_point_state_,
@@ -96,7 +103,8 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
                    reflected_primal_,
                    climber_strategies,
                    hyper_params,
-                   enable_mixed_precision_spmv},
+                   enable_mixed_precision_spmv,
+                   memory_resource},
     reduced_matrix_{handle_ptr_,
                     op_problem_scaled,
                     reduced_matrix_enabled(hyper_params,
@@ -107,25 +115,26 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
                                            enable_mixed_precision_spmv,
                                            !op_problem_scaled.Q_values.empty(),
                                            is_distributed,
-                                           !new_bounds.empty())},
-    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
-    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
-    reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_},
-    reusable_device_scalar_1_{stream_view_},
+                                           !new_bounds.empty()),
+                    memory_resource},
+    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_, memory_resource},
+    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_, memory_resource},
+    reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_, memory_resource},
+    reusable_device_scalar_1_{stream_view_, memory_resource},
     // In both multi stream and SpMM PDLP CUDA Graphs are causing issue
     // Currently graph capture is not supported for cuSparse SpMM
     // TODO enable once cuSparse SpMM supports graph capture
     graph_all{stream_view_, is_legacy_batch_mode || batch_mode_},
     graph_prim_proj_gradient_dual{stream_view_, is_legacy_batch_mode},
-    d_total_pdhg_iterations_{zero_v<i_t>, stream_view_},
-    d_halpern_weight_{half_v<f_t>, stream_view_},
+    d_total_pdhg_iterations_{zero_v<i_t>, stream_view_, memory_resource},
+    d_halpern_weight_{half_v<f_t>, stream_view_, memory_resource},
     climber_strategies_(climber_strategies),
     hyper_params_(hyper_params),
-    new_bounds_climber_id_{new_bounds.size(), stream_view_},
-    new_bounds_idx_{new_bounds.size(), stream_view_},
-    new_bounds_lower_{new_bounds.size(), stream_view_},
-    new_bounds_upper_{new_bounds.size(), stream_view_},
-    new_bounds_primal_{new_bounds.size(), stream_view_},
+    new_bounds_climber_id_{new_bounds.size(), stream_view_, memory_resource},
+    new_bounds_idx_{new_bounds.size(), stream_view_, memory_resource},
+    new_bounds_lower_{new_bounds.size(), stream_view_, memory_resource},
+    new_bounds_upper_{new_bounds.size(), stream_view_, memory_resource},
+    new_bounds_primal_{new_bounds.size(), stream_view_, memory_resource},
     batch_size_divisor_(climber_strategies_.size())
 {
   if (!new_bounds.empty()) {
@@ -1703,75 +1712,94 @@ void pdhg_solver_t<i_t, f_t>::take_ordinary_graph_batch(
   cuopt_assert(batch_size > 0 && batched_halpern_weights.size() >= static_cast<size_t>(batch_size),
                "Graph batch requires one persistent Halpern weight per step");
   graph.run(stream_view_, [&]() {
-    // No restart or checkpoint occurs within this batch. Preserve the original
-    // device weight expression and keep all host bookkeeping outside capture.
-    detail::prepare_batched_halpern_weights(
-      d_iterations_since_last_restart, batched_halpern_weights.data(), batch_size, stream_view_);
-    for (i_t step = 0; step < batch_size; ++step) {
-      compute_At_y();
-      if (!detail::try_direct_reflected_projection(
-            !cusparse_view_.mixed_precision_enabled_ && !reduced_matrix_.active(),
-            current_saddle_point_state_.get_primal_solution().data(),
-            initial_primal.data(),
-            problem_ptr->objective_coefficients.data(),
-            current_saddle_point_state_.get_current_AtY().data(),
-            problem_ptr->variable_bounds.data(),
-            reflected_primal_.data(),
-            primal_size_h_,
-            primal_reflected_projection<f_t>(primal_step_size.data(),
-                                             batched_halpern_weights.data() + step,
-                                             hyper_params_.reflection_coefficient),
-            stream_view_)) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
-                                initial_primal.data(),
-                                problem_ptr->objective_coefficients.data(),
-                                current_saddle_point_state_.get_current_AtY().data(),
-                                problem_ptr->variable_bounds.data()),
-          thrust::make_zip_iterator(reflected_primal_.data(),
-                                    current_saddle_point_state_.get_primal_solution().data()),
+    enqueue_ordinary_graph_batch(batch_size,
+                                 primal_step_size,
+                                 dual_step_size,
+                                 initial_primal,
+                                 initial_dual,
+                                 d_iterations_since_last_restart,
+                                 batched_halpern_weights);
+  });
+  total_pdhg_iterations_ += batch_size;
+}
+
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::enqueue_ordinary_graph_batch(
+  i_t batch_size,
+  rmm::device_uvector<f_t>& primal_step_size,
+  rmm::device_uvector<f_t>& dual_step_size,
+  rmm::device_uvector<f_t>& initial_primal,
+  rmm::device_uvector<f_t>& initial_dual,
+  i_t* d_iterations_since_last_restart,
+  rmm::device_uvector<f_t>& batched_halpern_weights)
+{
+  // No restart or checkpoint occurs within this batch. Preserve the original
+  // device weight expression and keep all host bookkeeping outside capture.
+  detail::prepare_batched_halpern_weights(
+    d_iterations_since_last_restart, batched_halpern_weights.data(), batch_size, stream_view_);
+  for (i_t step = 0; step < batch_size; ++step) {
+    compute_At_y();
+    if (!detail::try_direct_reflected_projection(
+          !cusparse_view_.mixed_precision_enabled_ && !reduced_matrix_.active(),
+          current_saddle_point_state_.get_primal_solution().data(),
+          initial_primal.data(),
+          problem_ptr->objective_coefficients.data(),
+          current_saddle_point_state_.get_current_AtY().data(),
+          problem_ptr->variable_bounds.data(),
+          reflected_primal_.data(),
           primal_size_h_,
           primal_reflected_projection<f_t>(primal_step_size.data(),
                                            batched_halpern_weights.data() + step,
                                            hyper_params_.reflection_coefficient),
-          stream_view_.get());
-      }
-      compute_A_x();
-      if (!detail::try_direct_reflected_projection(
-            !cusparse_view_.mixed_precision_enabled_ && !reduced_matrix_.active(),
-            current_saddle_point_state_.get_dual_solution().data(),
-            initial_dual.data(),
-            current_saddle_point_state_.get_dual_gradient().data(),
-            problem_ptr->constraint_lower_bounds.data(),
-            problem_ptr->constraint_upper_bounds.data(),
-            reflected_dual_.data(),
-            dual_size_h_,
-            dual_reflected_projection<f_t>(dual_step_size.data(),
-                                           batched_halpern_weights.data() + step,
-                                           hyper_params_.reflection_coefficient),
-            stream_view_)) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
-                                initial_dual.data(),
-                                current_saddle_point_state_.get_dual_gradient().data(),
-                                problem_ptr->constraint_lower_bounds.data(),
-                                problem_ptr->constraint_upper_bounds.data()),
-          thrust::make_zip_iterator(reflected_dual_.data(),
-                                    current_saddle_point_state_.get_dual_solution().data()),
+          stream_view_)) {
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
+                              initial_primal.data(),
+                              problem_ptr->objective_coefficients.data(),
+                              current_saddle_point_state_.get_current_AtY().data(),
+                              problem_ptr->variable_bounds.data()),
+        thrust::make_zip_iterator(reflected_primal_.data(),
+                                  current_saddle_point_state_.get_primal_solution().data()),
+        primal_size_h_,
+        primal_reflected_projection<f_t>(primal_step_size.data(),
+                                         batched_halpern_weights.data() + step,
+                                         hyper_params_.reflection_coefficient),
+        stream_view_.get());
+    }
+    compute_A_x();
+    if (!detail::try_direct_reflected_projection(
+          !cusparse_view_.mixed_precision_enabled_ && !reduced_matrix_.active(),
+          current_saddle_point_state_.get_dual_solution().data(),
+          initial_dual.data(),
+          current_saddle_point_state_.get_dual_gradient().data(),
+          problem_ptr->constraint_lower_bounds.data(),
+          problem_ptr->constraint_upper_bounds.data(),
+          reflected_dual_.data(),
           dual_size_h_,
           dual_reflected_projection<f_t>(dual_step_size.data(),
                                          batched_halpern_weights.data() + step,
                                          hyper_params_.reflection_coefficient),
-          stream_view_.get());
-      }
+          stream_view_)) {
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
+                              initial_dual.data(),
+                              current_saddle_point_state_.get_dual_gradient().data(),
+                              problem_ptr->constraint_lower_bounds.data(),
+                              problem_ptr->constraint_upper_bounds.data()),
+        thrust::make_zip_iterator(reflected_dual_.data(),
+                                  current_saddle_point_state_.get_dual_solution().data()),
+        dual_size_h_,
+        dual_reflected_projection<f_t>(dual_step_size.data(),
+                                       batched_halpern_weights.data() + step,
+                                       hyper_params_.reflection_coefficient),
+        stream_view_.get());
     }
-    detail::finish_batched_halpern(d_iterations_since_last_restart,
-                                   d_halpern_weight_.data(),
-                                   batched_halpern_weights.data(),
-                                   batch_size,
-                                   stream_view_);
-  });
-  total_pdhg_iterations_ += batch_size;
+  }
+  detail::finish_batched_halpern(d_iterations_since_last_restart,
+                                 d_halpern_weight_.data(),
+                                 batched_halpern_weights.data(),
+                                 batch_size,
+                                 stream_view_);
 }
 
 template <typename i_t, typename f_t>

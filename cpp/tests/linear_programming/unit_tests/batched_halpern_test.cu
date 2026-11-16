@@ -5,6 +5,9 @@
  */
 /* clang-format on */
 
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
+
 #include <pdlp/batched_halpern.cuh>
 #include <pdlp/reflected_projection_direct.cuh>
 #include <utilities/manual_cuda_graph.cuh>
@@ -17,7 +20,11 @@
 
 #include <bit>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
+#include <optional>
+#include <string>
+#include <tuple>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::pdlp::test {
@@ -264,6 +271,134 @@ TEST(BatchedHalpern, DirectProjectionSequencePreservesBits)
   compare_projection_sequence<primal_reflected_projection>(primal_bounds);
   compare_projection_sequence<dual_reflected_projection>(dual_upper_bounds);
 }
+
+class OrdinaryGraphBatching : public testing::Test {
+ protected:
+  void SetUp() override
+  {
+    const char* value = std::getenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE");
+    if (value != nullptr) { previous_override_ = value; }
+    ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
+  }
+
+  void TearDown() override
+  {
+    if (previous_override_.has_value()) {
+      EXPECT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", previous_override_->c_str(), 1), 0);
+    } else {
+      EXPECT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
+    }
+  }
+
+  static io::mps_data_model_t<int, double> make_model()
+  {
+    // Nearly parallel equality constraints keep this solve active beyond the initial
+    // frequent-checkpoint phase, so the default path must actually replay graph batches.
+    io::mps_data_model_t<int, double> model;
+    model.set_maximize(false);
+    model.set_csr_constraint_matrix(std::vector<double>{1, 1, 1, 1.0001},
+                                    std::vector<int>{0, 1, 0, 1},
+                                    std::vector<int>{0, 2, 4});
+    model.set_objective_coefficients(std::vector<double>{1, 2.0001});
+    model.set_variable_lower_bounds(std::vector<double>{0, 0});
+    model.set_variable_upper_bounds(std::vector<double>{10, 10});
+    model.set_constraint_lower_bounds(std::vector<double>{5, 5.0002});
+    model.set_constraint_upper_bounds(std::vector<double>{5, 5.0002});
+    return model;
+  }
+
+  static pdlp_solver_settings_t<int, double> make_settings()
+  {
+    pdlp_solver_settings_t<int, double> settings;
+    settings.method          = method_t::PDLP;
+    settings.presolver       = presolver_t::None;
+    settings.log_to_console  = false;
+    settings.iteration_limit = 1400;
+    settings.time_limit      = 30;
+    settings.set_optimality_tolerance(1e-14);
+    return settings;
+  }
+
+ private:
+  std::optional<std::string> previous_override_;
+};
+
+TEST_F(OrdinaryGraphBatching, DefaultExecutionMatchesSingleIterationGraphs)
+{
+  raft::handle_t handle;
+  auto model    = make_model();
+  auto settings = make_settings();
+  ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", "1", 1), 0);
+  auto sequential = solve_lp(&handle, model, settings);
+  ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
+
+  auto batched = solve_lp(&handle, model, settings);
+  ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
+  EXPECT_EQ(batched.get_termination_status(), sequential.get_termination_status());
+  EXPECT_EQ(batched.get_additional_termination_information().number_of_steps_taken,
+            sequential.get_additional_termination_information().number_of_steps_taken);
+  expect_same_bits(download(sequential.get_primal_solution(), handle.get_stream()),
+                   download(batched.get_primal_solution(), handle.get_stream()));
+  expect_same_bits(download(sequential.get_dual_solution(), handle.get_stream()),
+                   download(batched.get_dual_solution(), handle.get_stream()));
+}
+
+TEST_F(OrdinaryGraphBatching, AutomaticColumnReductionPreservesSolutionAndIterationLimit)
+{
+  raft::handle_t handle;
+  auto model                   = make_model();
+  auto settings                = make_settings();
+  settings.large_nnz_threshold = 0;
+
+  ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", "1", 1), 0);
+  auto sequential = solve_lp(&handle, model, settings);
+  ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
+  auto automatic = solve_lp(&handle, model, settings);
+  ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
+  EXPECT_EQ(automatic.get_termination_status(), sequential.get_termination_status());
+  EXPECT_EQ(automatic.get_additional_termination_information().number_of_steps_taken,
+            sequential.get_additional_termination_information().number_of_steps_taken);
+  expect_same_bits(download(sequential.get_primal_solution(), handle.get_stream()),
+                   download(automatic.get_primal_solution(), handle.get_stream()));
+  expect_same_bits(download(sequential.get_dual_solution(), handle.get_stream()),
+                   download(automatic.get_dual_solution(), handle.get_stream()));
+}
+
+class OrdinaryGraphBatchingCheckpoints
+  : public OrdinaryGraphBatching,
+    public testing::WithParamInterface<std::tuple<int, int, bool>> {};
+
+TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitResults)
+{
+  raft::handle_t handle;
+  auto model                                  = make_model();
+  auto settings                               = make_settings();
+  settings.iteration_limit                    = std::get<0>(GetParam());
+  settings.hyper_params.major_iteration       = std::get<1>(GetParam());
+  settings.hyper_params.use_conditional_major = std::get<2>(GetParam());
+
+  // Preserve the test's checkpoint schedule instead of replacing it with a solver-mode preset.
+  ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", "1", 1), 0);
+  auto sequential = solve_lp(&handle, model, settings, true, false);
+  ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
+  auto batched = solve_lp(&handle, model, settings, true, false);
+
+  ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
+  EXPECT_EQ(batched.get_termination_status(), sequential.get_termination_status());
+  EXPECT_EQ(batched.get_additional_termination_information().number_of_steps_taken,
+            sequential.get_additional_termination_information().number_of_steps_taken);
+  expect_same_bits(download(sequential.get_primal_solution(), handle.get_stream()),
+                   download(batched.get_primal_solution(), handle.get_stream()));
+  expect_same_bits(download(sequential.get_dual_solution(), handle.get_stream()),
+                   download(batched.get_dual_solution(), handle.get_stream()));
+}
+
+INSTANTIATE_TEST_SUITE_P(CheckpointBoundaries,
+                         OrdinaryGraphBatchingCheckpoints,
+                         testing::Values(std::tuple{1407, 200, true},
+                                         std::tuple{1407, 211, true},
+                                         std::tuple{1407, 211, false},
+                                         std::tuple{10007, 200, true}));
 
 }  // namespace
 }  // namespace cuopt::mathematical_optimization::pdlp::test

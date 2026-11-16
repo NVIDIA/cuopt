@@ -23,20 +23,22 @@ saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handl
                                                      const i_t primal_size,
                                                      const i_t dual_size,
                                                      const size_t batch_size,
-                                                     const pdlp::pdlp_hyper_params_t& hyper_params)
+                                                     const pdlp::pdlp_hyper_params_t& hyper_params,
+                                                     device_memory_resource_t memory_resource)
   : primal_size_{primal_size},
     dual_size_{dual_size},
-    primal_solution_{batch_size * primal_size, handle_ptr->get_stream()},
-    dual_solution_{batch_size * dual_size, handle_ptr->get_stream()},
-    delta_primal_{batch_size * primal_size, handle_ptr->get_stream()},
-    delta_dual_{batch_size * dual_size, handle_ptr->get_stream()},
+    primal_solution_{batch_size * primal_size, handle_ptr->get_stream(), memory_resource},
+    dual_solution_{batch_size * dual_size, handle_ptr->get_stream(), memory_resource},
+    delta_primal_{batch_size * primal_size, handle_ptr->get_stream(), memory_resource},
+    delta_dual_{batch_size * dual_size, handle_ptr->get_stream(), memory_resource},
     // Primal gradient is only used in trust region restart mode which does not support batch mode
     primal_gradient_{
       !is_cupdlpx_restart<i_t, f_t>(hyper_params) ? static_cast<size_t>(primal_size) : 0,
-      handle_ptr->get_stream()},
-    dual_gradient_{batch_size * dual_size, handle_ptr->get_stream()},
-    current_AtY_{batch_size * primal_size, handle_ptr->get_stream()},
-    next_AtY_{batch_size * primal_size, handle_ptr->get_stream()}
+      handle_ptr->get_stream(),
+      memory_resource},
+    dual_gradient_{batch_size * dual_size, handle_ptr->get_stream(), memory_resource},
+    current_AtY_{batch_size * primal_size, handle_ptr->get_stream(), memory_resource},
+    next_AtY_{batch_size * primal_size, handle_ptr->get_stream(), memory_resource}
 {
   EXE_CUOPT_EXPECTS(primal_size >= 0, "Size of the primal problem must be non-negative");
   EXE_CUOPT_EXPECTS(dual_size >= 0, "Size of the dual problem must be non-negative");

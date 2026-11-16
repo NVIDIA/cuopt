@@ -22,7 +22,9 @@ class weighted_average_solution_t {
   weighted_average_solution_t(raft::handle_t const* handle_ptr,
                               i_t primal_size,
                               i_t dual_size,
-                              bool is_batch_mode);
+                              bool is_batch_mode,
+                              cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource =
+                                rmm::mr::get_current_device_resource_ref());
 
   void reset_weighted_average_solution();
   void add_current_solution_to_weighted_average_solution(const f_t* primal_solution,
@@ -35,7 +37,7 @@ class weighted_average_solution_t {
   i_t get_iterations_since_last_restart() const;
   rmm::device_scalar<i_t> const& get_d_iterations_since_last_restart() const;
 
-  // Experimental graph batches enqueue each device increment themselves.
+  // Graph batches advance the device age; update the matching host counter separately.
   i_t* mutable_device_iterations_since_last_restart()
   {
     return d_iterations_since_last_restart_.data();

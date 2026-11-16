@@ -8,6 +8,7 @@
 
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
+#include <pdlp/pdlp_memory_resource.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
 #include <raft/core/device_span.hpp>
@@ -20,11 +21,13 @@ namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 struct localized_duality_gap_container_t {
  public:
-  localized_duality_gap_container_t(raft::handle_t const* handle_ptr,
-                                    i_t primal_size,
-                                    i_t dual_size,
-                                    const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                                    const pdlp::pdlp_hyper_params_t& hyper_params);
+  localized_duality_gap_container_t(
+    raft::handle_t const* handle_ptr,
+    i_t primal_size,
+    i_t dual_size,
+    const std::vector<pdlp_climber_strategy_t>& climber_strategies,
+    const pdlp::pdlp_hyper_params_t& hyper_params,
+    device_memory_resource_t memory_resource = rmm::mr::get_current_device_resource_ref());
 
   struct view_t {
     /** size of primal problem */
