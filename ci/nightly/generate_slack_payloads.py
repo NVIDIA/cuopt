@@ -54,6 +54,35 @@ def _shorten(text, limit):
     return text[: max(0, limit - 1)].rstrip() + "\u2026"
 
 
+# Names the CI scripts give the record they write when a run dies mid-run.
+CRASH_NAMES = {"PROCESS_CRASH", "STEP_TIMEOUT"}
+_CRASHED = re.compile(r"terminated by (.+?) mid-run")
+_TIMED_OUT = re.compile(r"did not finish within its (\S+) time limit")
+
+
+def display_name(entry):
+    """Test name, or the suite for a crash record whose name says nothing."""
+    name = entry.get("name", "unknown")
+    if name in CRASH_NAMES:
+        return entry.get("suite") or entry.get("classname") or name
+    return name
+
+
+def crash_reason(message):
+    """'crashed with SIGSEGV (segfault)' or 'timed out', else empty."""
+    text = str(message)
+    match = _CRASHED.search(text)
+    if match:
+        sig = match.group(1)
+        if sig.startswith("timeout"):
+            return "timed out"
+        return f"crashed with {sig}"
+    match = _TIMED_OUT.search(text)
+    if match:
+        return f"timed out after the {match.group(1)} limit"
+    return ""
+
+
 def split_message(message):
     """Return (reason, location) for a raw failure message, reason untruncated.
 
@@ -64,6 +93,9 @@ def split_message(message):
     ``a_test.cu:42`` and the first line that says what went wrong. For pytest,
     the first ``E`` line is used.
     """
+    crash = crash_reason(message)
+    if crash:
+        return crash, ""
     lines = [
         _BUILD_PREFIX.sub("", ln.strip())
         for ln in str(message).splitlines()
@@ -169,9 +201,7 @@ def issue_lines(entries, tag, detail=None, group_detail=None, limit=MAX_LINES):
         if len(members) >= GROUP_MIN:
             reason = _esc(clean_message(members[0].get("message", "")))
             # One test failing on several configurations is not several tests.
-            tests = list(
-                dict.fromkeys(m.get("name", "unknown") for m in members)
-            )
+            tests = list(dict.fromkeys(display_name(m) for m in members))
             matrix = _esc(_matrix_summary(members))
             suffix = group_detail(members) if group_detail else ""
             # Use a new member for the marker so a group with a new flaky
@@ -196,7 +226,7 @@ def issue_lines(entries, tag, detail=None, group_detail=None, limit=MAX_LINES):
             for m in members:
                 line_tag = tag(m) if callable(tag) else tag
                 lines.append(
-                    f"{line_tag}  `{_esc(m.get('name', 'unknown'))}` "
+                    f"{line_tag}  `{_esc(display_name(m))}` "
                     f"({_esc(m.get('matrix_label', ''))})"
                     + (detail(m) if detail else "")
                 )
