@@ -20,8 +20,7 @@ template <typename f_t, bool is_device = true>
 struct VehicleInfo {
   constexpr bool has_time_matrix() const
   {
-    if (matrices.time_matrix_index != matrices.cost_matrix_index) { return true; }
-    return matrices.extent[1] == 2 && matrices.distance_matrix_index == matrices.cost_matrix_index;
+    return matrices.time_matrix_index != matrices.cost_matrix_index;
   }
 
   bool operator==(VehicleInfo<f_t, is_device> const& rhs) const

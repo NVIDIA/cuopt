@@ -61,7 +61,7 @@ void populate_matrices(data_model_view_t<i_t, f_t> const& data_model, d_mdarray_
         thrust::all_of(handle_ptr_->get_thrust_policy(),
                        distance_matrix,
                        distance_matrix + matrix_size,
-                       [] __device__(f_t value) { return value == value && value >= f_t{0}; });
+                       [] __device__(f_t value) { return value == value && value >= 0; });
       cuopt_expects(valid,
                     error_type_t::ValidationError,
                     "Distance matrix values must be non-negative and not NaN");

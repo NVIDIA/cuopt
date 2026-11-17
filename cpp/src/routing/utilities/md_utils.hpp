@@ -46,13 +46,7 @@ struct mdarray_view_t {
 
   constexpr auto get_time_matrix(uint8_t vehicle_type) const
   {
-    if (time_matrix_index != cost_matrix_index) {
-      return get_cost_matrix(vehicle_type, time_matrix_index);
-    }
-    if (extent[1] == 2 && distance_matrix_index == cost_matrix_index) {
-      return get_cost_matrix(vehicle_type, static_cast<uint8_t>(extent[1] - 1));
-    }
-    return get_cost_matrix(vehicle_type, cost_matrix_index);
+    return get_cost_matrix(vehicle_type, time_matrix_index);
   }
 
   f_t const* buffer_ptr{nullptr};
@@ -265,12 +259,6 @@ inline auto get_unique_vehicle_types(const raft::device_span<uint8_t const>& veh
 }
 
 template <typename i_t, typename f_t>
-bool has_distance_matrix(data_model_view_t<i_t, f_t> const& data_model)
-{
-  return !data_model.get_distance_matrices().empty();
-}
-
-template <typename i_t, typename f_t>
 bool has_transit_time_matrix(data_model_view_t<i_t, f_t> const& data_model)
 {
   auto vehicle_types_map = get_unique_vehicle_types(data_model.get_vehicle_types(),
@@ -285,58 +273,47 @@ template <typename i_t, typename f_t>
 auto get_cost_matrix_type_dim(data_model_view_t<i_t, f_t> const& data_model)
 {
   auto n_matrix_types = 1;
-  if (has_distance_matrix<i_t, f_t>(data_model)) { ++n_matrix_types; }
   if (has_transit_time_matrix<i_t, f_t>(data_model)) { ++n_matrix_types; }
   return n_matrix_types;
 }
 
 template <typename i_t, typename f_t>
-std::tuple<float const*, float const*, float const*> get_vehicle_matrices(
+std::tuple<float const*, float const*> get_vehicle_matrices(
   data_model_view_t<i_t, f_t> const& data_model, uint8_t vehicle_type)
 {
   auto cost_matrix = data_model.get_cost_matrix(vehicle_type);
   if (!cost_matrix)
     cuopt_expects(
       false, error_type_t::ValidationError, "Set vehicle types when using multiple matrices");
-  auto time_matrix     = data_model.get_transit_time_matrix(vehicle_type);
-  auto distance_matrix = data_model.get_distance_matrix(vehicle_type);
+  auto time_matrix = data_model.get_transit_time_matrix(vehicle_type);
   if (!time_matrix) time_matrix = cost_matrix;
-  return std::make_tuple(cost_matrix, distance_matrix, time_matrix);
+  return std::make_tuple(cost_matrix, time_matrix);
 }
 
 template <typename i_t, typename f_t>
 void fill_mdarray_from_data_model(d_mdarray_t<f_t>& matrices,
                                   data_model_view_t<i_t, f_t> const& data_model)
 {
-  auto stream                    = data_model.get_handle_ptr()->get_stream();
-  auto vehicle_types             = data_model.get_vehicle_types();
-  auto nlocations                = data_model.get_num_locations();
-  auto vehicle_types_map         = get_unique_vehicle_types(vehicle_types, stream);
-  const bool has_distance        = has_distance_matrix<i_t, f_t>(data_model);
-  const bool has_time            = has_transit_time_matrix<i_t, f_t>(data_model);
-  const size_t matrix_size       = static_cast<size_t>(nlocations) * nlocations;
-  matrices.cost_matrix_index     = 0;
-  uint8_t next_index             = 1;
-  matrices.distance_matrix_index = has_distance ? next_index++ : matrices.cost_matrix_index;
-  matrices.time_matrix_index     = has_time ? next_index++ : matrices.cost_matrix_index;
+  auto stream                = data_model.get_handle_ptr()->get_stream();
+  auto vehicle_types         = data_model.get_vehicle_types();
+  auto nlocations            = data_model.get_num_locations();
+  auto vehicle_types_map     = get_unique_vehicle_types(vehicle_types, stream);
+  const bool has_time        = has_transit_time_matrix<i_t, f_t>(data_model);
+  const size_t matrix_size   = static_cast<size_t>(nlocations) * nlocations;
+  matrices.cost_matrix_index = 0;
+  // Auxiliary distance inputs do not occupy solver matrix storage.
+  matrices.distance_matrix_index = matrices.cost_matrix_index;
+  matrices.time_matrix_index     = has_time ? 1 : matrices.cost_matrix_index;
 
   for (auto& [old_type, new_type] : vehicle_types_map) {
-    auto [cost_matrix, distance_matrix, time_matrix] =
-      get_vehicle_matrices<i_t, f_t>(data_model, old_type);
-    auto cost_matrix_span = matrices.get_cost_matrix(new_type);
+    auto [cost_matrix, time_matrix] = get_vehicle_matrices<i_t, f_t>(data_model, old_type);
+    auto cost_matrix_span           = matrices.get_cost_matrix(new_type);
     raft::copy(cost_matrix_span, cost_matrix, matrix_size, stream);
 
     if (limit_matrix_entries(cost_matrix_span, nlocations, data_model.get_handle_ptr())) {
       std::cout << "\nMax cost matrix value overriden to 1.0e+30";
     }
 
-    if (has_distance) {
-      auto distance_matrix_span = matrices.get_distance_matrix(new_type);
-      raft::copy(distance_matrix_span, distance_matrix, matrix_size, stream);
-      if (limit_matrix_entries(distance_matrix_span, nlocations, data_model.get_handle_ptr())) {
-        std::cout << "\nMax distance matrix value overriden to 1.0e+30";
-      }
-    }
     if (has_time) {
       auto time_matrix_span = matrices.get_time_matrix(new_type);
       raft::copy(time_matrix_span, time_matrix, matrix_size, stream);
