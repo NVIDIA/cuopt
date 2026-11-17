@@ -22,23 +22,29 @@
 #include <string_view>
 #include <type_traits>
 
+// Must be defined before the print overloads below, which use PDLP_DEBUG_SYNC.
+#define PDLP_DEBUG_SYNC()          RAFT_CUDA_TRY(cudaDeviceSynchronize())
+#define PDLP_DEBUG_LOG(...)        ::cuopt::print(__VA_ARGS__)
+#define PDLP_DEBUG_DEVICE_LOG(...) printf(__VA_ARGS__)
+
 namespace cuopt {
 
 // Message only
-inline void print(std::string_view const message) { std::cout << message << std::endl; }
+inline void print(std::string_view const message)
+{
+  PDLP_DEBUG_SYNC();
+  std::cout << message << std::endl;
+}
 
 // Scalar (the container overloads live in utilities/copy_helpers.hpp)
 template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, int> = 0>
 void print(std::string_view const name, T const value)
 {
+  PDLP_DEBUG_SYNC();
   std::cout << name << "=" << value << std::endl;
 }
 
 }  // namespace cuopt
-
-#define PDLP_DEBUG_LOG(...)        ::cuopt::print(__VA_ARGS__)
-#define PDLP_DEBUG_SYNC()          RAFT_CUDA_TRY(cudaDeviceSynchronize())
-#define PDLP_DEBUG_DEVICE_LOG(...) printf(__VA_ARGS__)
 
 #else
 
