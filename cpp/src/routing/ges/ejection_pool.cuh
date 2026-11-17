@@ -31,8 +31,8 @@ template <typename elemt_t>
 __global__ static void device_random_shuffle(elemt_t* data, int size, int64_t seed)
 {
   raft::random::PCGenerator thread_rng(seed + (threadIdx.x + blockIdx.x * blockDim.x), size, 0);
-  for (int i = 0; i < size * 2; ++i) {
-    raft::swapVals(data[size - 1], data[thread_rng.next_u32() % (size - 1)]);
+  for (int i = size - 1; i > 0; --i) {
+    raft::swapVals(data[i], data[thread_rng.next_u32() % (i + 1)]);
   }
 }
 

@@ -871,6 +871,7 @@ struct solve {
         if (!temp_pair.first.is_feasible() && !injection_state) { sol_gen_time += 20; }
 
         bool is_feasible_before_improve = temp_pair.first.is_feasible();
+        if (is_feasible_before_improve) { temp_pair.second = temp_pair.first; }
 
         lm.improve(temp_pair.first, final_weights, timer.remaining_time());
 
@@ -892,6 +893,10 @@ struct solve {
           a.add_solution(timer.elapsed_time(), temp_pair.first);
         }
         reserve_population.add_solution(timer.elapsed_time(), temp_pair.first);
+        if (is_feasible_before_improve && !temp_pair.first.is_feasible()) {
+          benchmark_print("Initial LS made a feasible seed infeasible, keeping the seed\n");
+          reserve_population.add_solution(timer.elapsed_time(), temp_pair.second);
+        }
         if (island_creation_timer.check_time_limit()) { break; }
       }
 

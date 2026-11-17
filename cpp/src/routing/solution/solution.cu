@@ -331,7 +331,8 @@ void solution_t<i_t, f_t, REQUEST>::random_init_routes()
   std::vector<i_t> indices(get_num_requests());
   rmm::device_uvector<i_t> d_indices(get_num_requests(), stream);
   thrust::sequence(indices.begin(), indices.end());
-  std::random_shuffle(indices.begin(), indices.end());
+  std::mt19937 rng(problem_ptr->seed_gen.get_seed());
+  std::shuffle(indices.begin(), indices.end(), rng);
   raft::copy(d_indices.data(), indices.data(), indices.size(), stream);
   // Do the updates to n_nodes in host side and device side
   // Other option of copying might be better

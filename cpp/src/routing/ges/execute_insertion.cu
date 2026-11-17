@@ -21,6 +21,10 @@
 #include "../route/route.cuh"
 
 #include <thrust/copy.h>
+#include <thrust/functional.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/pair.h>
+#include <thrust/transform_reduce.h>
 #include <cuda/atomic>
 
 namespace cuopt {
@@ -258,9 +262,27 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
   // route No need to check for reallocation here because we delete at least 1 request before
   // inserting
   i_t fragment_size = config.frag_eject_first ? 0 : request_info_t<i_t, REQUEST>::size();
-  for (; bit_cast<unsigned long long int, found_sol_t>(feasible_candidates_data_.front_element(
-           solution_ptr->sol_handle->get_stream())) == unset_val &&
-         !time_stop_condition_reached() && fragment_size + fragment_step <= max_fragment_size;) {
+  cuopt_assert(
+    bit_cast<unsigned long long int, found_sol_t>(
+      feasible_candidates_data_.front_element(solution_ptr->sol_handle->get_stream())) == unset_val,
+    "Candidate slot should be unset before the fragment search");
+  bool candidate_found = false;
+  i_t p_request        = 0;
+  for (; !candidate_found && !time_stop_condition_reached() &&
+         fragment_size + fragment_step <= max_fragment_size;) {
+    // A fragment of n requests has a p score sum of at least n and must stay below p[request], so
+    // the next launch is empty unless fragment_size + 1 < p[request]. p[request] >= 2: size 1 needs
+    // no read
+    if (fragment_size > 0) {
+      if (p_request == 0) {
+        request_info_t<i_t, REQUEST> h_request;
+        raft::update_host(&h_request, d_request, 1, solution_ptr->sol_handle->get_stream());
+        solution_ptr->sol_handle->sync_stream();
+        p_request =
+          p_scores_.element(h_request.info.node(), solution_ptr->sol_handle->get_stream());
+      }
+      if (fragment_size + 1 >= p_request) { break; }
+    }
     RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
     // Increment here and not in for loop to not have it incremented if conditions are not met
     fragment_size += fragment_step;
@@ -295,10 +317,13 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
         solution_ptr->sol_handle->get_stream());
     }
     RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
+    const found_sol_t best_candidate =
+      feasible_candidates_data_.front_element(solution_ptr->sol_handle->get_stream());
+    candidate_found = bit_cast<unsigned long long int, found_sol_t>(best_candidate) != unset_val;
   }
 
   // Didn't manage to insert even with deleting
-  if (fragment_size >= max_fragment_size || time_stop_condition_reached()) { return false; }
+  if (!candidate_found || time_stop_condition_reached()) { return false; }
   if (!set_shmem_of_kernel(select_tmp_and_execute_insert<1024, i_t, f_t, REQUEST>,
                            shared_for_delete_array + shared_for_tmp_route)) {
     return false;
@@ -328,25 +353,28 @@ template <typename i_t, typename f_t, request_t REQUEST>
 found_sol_t select_random_initialized(rmm::device_uvector<found_sol_t>& feasible_candidates,
                                       solution_t<i_t, f_t, REQUEST>* solution_ptr)
 {
-  rmm::device_scalar<int> flag(solution_ptr->sol_handle->get_stream());
-  flag.set_value_to_zero_async(solution_ptr->sol_handle->get_stream());
-
-  rmm::device_scalar<found_sol_t> random_selected_candidate(solution_ptr->sol_handle->get_stream());
-
-  uint64_t* feasible_cand = reinterpret_cast<uint64_t*>(feasible_candidates.data());
-  thrust::for_each(solution_ptr->sol_handle->get_thrust_policy(),
-                   feasible_cand,
-                   feasible_cand + feasible_candidates.size(),
-                   [output_ptr = reinterpret_cast<uint64_t*>(random_selected_candidate.data()),
-                    flag       = flag.data()] __device__(auto data) {
-                     int updated = 1;
-                     if (data != found_sol_t::uninitialized) {
-                       if (*flag == 0) { updated = atomicCAS(flag, 0, 1); }
-                     }
-                     if (!updated) { *output_ptr = data; }
-                   });
+  using keyed_cand_t            = thrust::pair<uint64_t, uint64_t>;
+  const uint64_t seed           = solution_ptr->problem_ptr->seed_gen.get_seed();
+  const uint64_t* feasible_cand = (const uint64_t*)feasible_candidates.data();
+  // smallest hash of (index, seed) over the initialized entries: a uniform, seeded pick
+  const keyed_cand_t selected = thrust::transform_reduce(
+    solution_ptr->sol_handle->get_thrust_policy(),
+    thrust::counting_iterator<uint64_t>(0),
+    thrust::counting_iterator<uint64_t>(feasible_candidates.size()),
+    [feasible_cand, seed] __device__(uint64_t idx) -> keyed_cand_t {
+      const uint64_t data = feasible_cand[idx];
+      if (data == found_sol_t::uninitialized) { return {data, data}; }
+      uint64_t key = idx + seed * 0x9E3779B97F4A7C15ULL;
+      key          = (key ^ (key >> 30)) * 0xBF58476D1CE4E5B9ULL;
+      key          = (key ^ (key >> 27)) * 0x94D049BB133111EBULL;
+      return {key ^ (key >> 31), data};
+    },
+    keyed_cand_t{found_sol_t::uninitialized, found_sol_t::uninitialized},
+    thrust::minimum<keyed_cand_t>());
   RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
-  return random_selected_candidate.value(solution_ptr->sol_handle->get_stream());
+  cuopt_assert(selected.second != found_sol_t::uninitialized,
+               "feasible candidate table has no initialized entry");
+  return bit_cast<found_sol_t, uint64_t>(selected.second);
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>

@@ -317,7 +317,7 @@ DI void find_all_delivery_insertions(typename solution_t<i_t, f_t, REQUEST>::vie
         // Handles undifined % 0, if not move was found, next if will not trigger and no atomic
         // will be performed
         if (thread_data != 0) {
-          selected_position = thread_rng.next_u32() % thread_data;
+          selected_position = thread_rng.next_u32() % thread_data + 1;
         } else {
           selected_position = -1;
         }

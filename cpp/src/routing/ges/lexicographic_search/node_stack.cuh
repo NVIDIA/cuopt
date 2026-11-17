@@ -100,7 +100,8 @@ struct node_stack_t {
                   i_t p_scores_of_pickup_,
                   node_t<i_t, f_t, REQUEST> delivery_node_,
                   i_t route_length_,
-                  typename route_t<i_t, f_t, REQUEST>::view_t& route_)
+                  typename route_t<i_t, f_t, REQUEST>::view_t& route_,
+                  int64_t seed_)
     : k_max(k_max_),
       delivery_insertion_idx_in_permutation(delivery_insertion_idx_in_permutation_),
       min_p_score(p_scores_of_pickup_ - 1),
@@ -108,7 +109,7 @@ struct node_stack_t {
       delivery_node(delivery_node_),
       dummy_node(delivery_node_.dimensions_info),
       route_length(route_length_),
-      thread_rng(2727, uint64_t((threadIdx.x + blockIdx.x * blockDim.x)), 0)
+      thread_rng(seed_, uint64_t((threadIdx.x + blockIdx.x * blockDim.x)), 0)
   {
     sh_ptr  = set_spans(sh_ptr);
     s_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(sh_ptr, route_, route_length);
@@ -181,8 +182,8 @@ struct node_stack_t {
   raft::device_span<i_t> gathered;
   raft::device_span<i_t> max_to_node;
 
-  raft::device_span<f_t> dim_buffer_route[size_t(dim_t::SIZE)];
-  raft::device_span<f_t> dim_delivery_to_all[size_t(dim_t::SIZE)];
+  raft::device_span<double> dim_buffer_route[size_t(dim_t::SIZE)];
+  raft::device_span<double> dim_delivery_to_all[size_t(dim_t::SIZE)];
 
   static size_t get_shared_size(solution_t<i_t, f_t, REQUEST>* solution_ptr,
                                 int added_size,
@@ -207,13 +208,13 @@ struct node_stack_t {
     if (solution_ptr->problem_ptr->dimensions_info.time_dim.has_constraints()) {
       const size_t shared_for_time_buffers =
         (2 + (max_neighbors<i_t, REQUEST>(k_max) + 1)) *
-        (solution_ptr->get_max_active_nodes_for_all_routes() + 1) * sizeof(f_t);
+        (solution_ptr->get_max_active_nodes_for_all_routes() + 1) * sizeof(double);
       sh_size += shared_for_time_buffers;
     }
     if (solution_ptr->problem_ptr->dimensions_info.cost_dim.has_constraints()) {
       const size_t shared_for_dist_buffers =
         (2 + (max_neighbors<i_t, REQUEST>(k_max) + 1)) *
-        (solution_ptr->get_max_active_nodes_for_all_routes() + 1) * sizeof(f_t);
+        (solution_ptr->get_max_active_nodes_for_all_routes() + 1) * sizeof(double);
       sh_size += shared_for_dist_buffers;
     }
 
@@ -235,9 +236,9 @@ struct node_stack_t {
     loop_over_constrained_dimensions(dim_info(), [&](auto I) {
       if constexpr ((I == size_t(dim_t::COST)) || (I == size_t(dim_t::TIME))) {
         thrust::tie(dim_delivery_to_all[I], sh_ptr) =
-          wrap_ptr_as_span<f_t>(sh_ptr, 2 * (route_length + 1));
+          wrap_ptr_as_span<double>(sh_ptr, 2 * (route_length + 1));
         thrust::tie(dim_buffer_route[I], sh_ptr) =
-          wrap_ptr_as_span<f_t>(sh_ptr, route_length * (max_neighbors<i_t, REQUEST>(k_max) + 1));
+          wrap_ptr_as_span<double>(sh_ptr, route_length * (max_neighbors<i_t, REQUEST>(k_max) + 1));
       }
     });
 
@@ -255,7 +256,8 @@ struct node_stack_t {
 
     loop_over_constrained_dimensions(dim_info(), [&](auto I) {
       if constexpr ((I == size_t(dim_t::COST)) || (I == size_t(dim_t::TIME))) {
-        total_bytes += (dim_delivery_to_all[I].size() + dim_buffer_route[I].size()) * sizeof(f_t);
+        total_bytes +=
+          (dim_delivery_to_all[I].size() + dim_buffer_route[I].size()) * sizeof(double);
       }
     });
     auto aligned_bytes = raft::alignTo(total_bytes, sizeof(infeasible_cost_t));
@@ -345,9 +347,9 @@ struct node_stack_t {
   }
 
   template <dim_t dim>
-  DI f_t get_dim_from_delivery(i_t intra_idx) const
+  DI double get_dim_from_delivery(i_t intra_idx) const
   {
-    if (!dim_info().has_dimension(dim)) { return f_t{}; }
+    if (!dim_info().has_dimension(dim)) { return double{}; }
 
     /*
      * Note that we are only storing dim_delivery_to_all for only the dimensions that have matrices
@@ -360,47 +362,47 @@ struct node_stack_t {
     if constexpr ((dim == dim_t::COST) || (dim == dim_t::TIME)) {
       return dim_delivery_to_all[size_t(dim)][intra_idx];
     } else {
-      return f_t{};
+      return double{};
     }
   }
 
   template <size_t dim>
-  DI f_t get_dim_from_delivery(i_t intra_idx) const
+  DI double get_dim_from_delivery(i_t intra_idx) const
   {
     return get_dim_from_delivery<dim_t(dim)>(intra_idx);
   }
 
   template <dim_t dim>
-  DI f_t get_dim_to_delivery(i_t intra_idx) const
+  DI double get_dim_to_delivery(i_t intra_idx) const
   {
-    if (!dim_info().has_dimension(dim)) { return f_t{}; }
+    if (!dim_info().has_dimension(dim)) { return double{}; }
     if constexpr ((dim == dim_t::COST) || (dim == dim_t::TIME)) {
       return dim_delivery_to_all[size_t(dim)][intra_idx + route_length + 1];
     } else {
-      return f_t{};
+      return double{};
     }
   }
 
   template <size_t dim>
-  DI f_t get_dim_to_delivery(i_t intra_idx) const
+  DI double get_dim_to_delivery(i_t intra_idx) const
   {
     return get_dim_to_delivery<dim_t(dim)>(intra_idx);
   }
 
   template <dim_t dim>
-  DI f_t get_dim_between(i_t intra_idx_1, i_t intra_idx_2) const
+  DI double get_dim_between(i_t intra_idx_1, i_t intra_idx_2) const
   {
-    if (!dim_info().has_dimension(dim)) { return f_t{}; }
+    if (!dim_info().has_dimension(dim)) { return double{}; }
     if constexpr ((dim == dim_t::COST) || (dim == dim_t::TIME)) {
       i_t gap_between = intra_idx_2 - intra_idx_1 - 1;
       return dim_buffer_route[size_t(dim)][intra_idx_1 + gap_between * route_length];
     } else {
-      return f_t{};
+      return double{};
     }
   }
 
   template <size_t dim>
-  DI f_t get_dim_between(i_t intra_idx_1, i_t intra_idx_2) const
+  DI double get_dim_between(i_t intra_idx_1, i_t intra_idx_2) const
   {
     return get_dim_between<dim_t(dim)>(intra_idx_1, intra_idx_2);
   }
@@ -519,8 +521,8 @@ struct node_stack_t {
       }
       // case where p scores and sequence size are equal
       else if (stack_top == best_sequence_size) {
-        if (thread_rng.next_u32() % random_counter == 0) { record = true; }
         ++random_counter;
+        if (thread_rng.next_u32() % random_counter == 0) { record = true; }
       }
       if (record) {
         best_sequence_size = stack_top;
@@ -556,8 +558,8 @@ struct node_stack_t {
         }
         // case where p scores and sequence size are equal
         else if (stack_top == best_sequence_size) {
-          if (thread_rng.next_u32() % random_counter == 0) { record = true; }
           ++random_counter;
+          if (thread_rng.next_u32() % random_counter == 0) { record = true; }
         }
         if (record) {
           best_sequence_size = stack_top;
@@ -857,15 +859,15 @@ struct node_stack_t {
   }
 
   template <int I>
-  DI bool check_dim_from_delivery(f_t dim_from_buffer, const NodeInfo<i_t> node_info) const
+  DI bool check_dim_from_delivery(double dim_from_buffer, const NodeInfo<i_t> node_info) const
   {
     if (!dim_info().has_dimension((dim_t)I)) { return true; }
     if constexpr (I == (size_t)dim_t::TIME) {
-      f_t orig_time = get_arc_of_dimension<i_t, f_t, I>(
+      double orig_time = get_arc_of_dimension<i_t, f_t, I>(
         delivery_node.node_info(), node_info, s_route.vehicle_info());
       return orig_time == dim_from_buffer;
     } else if constexpr (I == (size_t)dim_t::COST) {
-      f_t orig_cost = get_arc_of_dimension<i_t, f_t, I>(
+      double orig_cost = get_arc_of_dimension<i_t, f_t, I>(
         delivery_node.node_info(), node_info, s_route.vehicle_info());
       return orig_cost == dim_from_buffer;
     } else {
@@ -874,15 +876,15 @@ struct node_stack_t {
   }
 
   template <int I>
-  DI bool check_dim_to_delivery(f_t dim_from_buffer, const NodeInfo<i_t> node_info) const
+  DI bool check_dim_to_delivery(double dim_from_buffer, const NodeInfo<i_t> node_info) const
   {
     if (!dim_info().has_dimension((dim_t)I)) { return true; }
     if constexpr (I == (size_t)dim_t::TIME) {
-      f_t orig_time = get_arc_of_dimension<i_t, f_t, I>(
+      double orig_time = get_arc_of_dimension<i_t, f_t, I>(
         node_info, delivery_node.node_info(), s_route.vehicle_info());
       return orig_time == dim_from_buffer;
     } else if constexpr (I == (size_t)dim_t::COST) {
-      f_t orig_cost = get_arc_of_dimension<i_t, f_t, I>(
+      double orig_cost = get_arc_of_dimension<i_t, f_t, I>(
         node_info, delivery_node.node_info(), s_route.vehicle_info());
       return orig_cost == dim_from_buffer;
     } else {
@@ -891,17 +893,17 @@ struct node_stack_t {
   }
 
   template <int I>
-  DI bool check_dim_between(f_t dim_from_buffer,
+  DI bool check_dim_between(double dim_from_buffer,
                             const NodeInfo<i_t> node_info_1,
                             const NodeInfo<i_t> node_info_2) const
   {
     if (!dim_info().has_dimension((dim_t)I)) { return true; }
     if constexpr (I == (size_t)dim_t::TIME) {
-      f_t orig_time =
+      double orig_time =
         get_arc_of_dimension<i_t, f_t, I>(node_info_1, node_info_2, s_route.vehicle_info());
       return orig_time == dim_from_buffer;
     } else if constexpr (I == (size_t)dim_t::COST) {
-      f_t orig_cost =
+      double orig_cost =
         get_arc_of_dimension<i_t, f_t, I>(node_info_1, node_info_2, s_route.vehicle_info());
       return orig_cost == dim_from_buffer;
     } else {

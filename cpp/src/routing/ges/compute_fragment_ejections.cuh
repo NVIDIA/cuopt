@@ -60,7 +60,7 @@ DI i_t fill_to_delete(const typename solution_t<i_t, f_t, REQUEST>::view_t& solu
   const auto route_length = route.get_num_nodes();
   cuopt_assert(route_length >= 1, "Route length should be strictly positive");
 
-  if (intra_pickup_id + fragment_size >= route_length) {
+  if (intra_pickup_id + fragment_size > route_length) {
     // Not enough to delete vrp case
     return -1;
   }
