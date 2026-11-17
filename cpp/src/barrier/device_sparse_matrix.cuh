@@ -32,20 +32,6 @@ namespace cuopt::mathematical_optimization::barrier {
 template <typename IndexType, typename ValueType>
 class device_csr_matrix_t;
 
-template <typename f_t>
-struct f2_t {
-  f_t a;
-  f_t b;
-};
-
-template <typename f_t>
-struct f2_min_t {
-  HD f2_t<f_t> operator()(const f2_t<f_t>& lhs, const f2_t<f_t>& rhs) const
-  {
-    return f2_t<f_t>{cuda::std::min(lhs.a, rhs.a), cuda::std::min(lhs.b, rhs.b)};
-  }
-};
-
 template <typename i_t, typename f_t>
 struct csc_view_t {
   raft::device_span<i_t> col_start;

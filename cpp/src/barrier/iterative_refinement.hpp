@@ -28,8 +28,6 @@
 #include <array>
 #include <cmath>
 #include <limits>
-#include <tuple>
-#include <utility>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::barrier {
@@ -95,7 +93,7 @@ struct gmres_workspace_t {
   }
 
   // ||r||_inf and ||r||_2 of the residual r, read back together.
-  std::pair<f_t, f_t> residual_norms()
+  void residual_norms(f_t& residual_inf_norm, f_t& residual_2_norm)
   {
     const auto stream = r.stream();
     vector_norm_inf_async(raft::device_span<const f_t>(r.data(), r.size()),
@@ -108,7 +106,8 @@ struct gmres_workspace_t {
                              stream);
     raft::copy(h_residual_norms.data(), d_residual_norms.data(), 2, stream);
     stream.sync();
-    return {h_residual_norms[0], std::sqrt(h_residual_norms[1])};
+    residual_inf_norm = h_residual_norms[0];
+    residual_2_norm   = std::sqrt(h_residual_norms[1]);
   }
 
   void check_preconditioner_async(const rmm::device_uvector<f_t>& z)
@@ -280,7 +279,7 @@ f_t iterative_refinement_gmres(T& op,
 
   f_t norm_r;
   f_t norm2_r;  // ||r||_2 of the current r, for the next restart
-  std::tie(norm_r, norm2_r) = workspace.residual_norms();
+  workspace.residual_norms(norm_r, norm2_r);
   if (show_info) { CUOPT_LOG_INFO("GMRES IR: initial residual = %e, |b| = %e", norm_r, bnorm); }
   if (norm_r <= tol) { return norm_r; }
 
@@ -406,7 +405,7 @@ f_t iterative_refinement_gmres(T& op,
     raft::copy(r.data(), b.data(), b.size(), x.stream());
     op.a_multiply(-1.0, x, 1.0, r);
 
-    std::tie(residual, norm2_r) = workspace.residual_norms();
+    workspace.residual_norms(residual, norm2_r);
 
     if (show_info) {
       CUOPT_LOG_INFO("GMRES IR: after outer_iter %d residual = %e, l2_residual = %e",

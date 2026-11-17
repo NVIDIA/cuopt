@@ -186,22 +186,36 @@ template <typename f_t>
     stream.get());
 }
 
+// Primal and dual step lengths.
+template <typename f_t>
+struct step_lengths_t {
+  f_t primal;
+  f_t dual;
+};
+
+template <typename f_t>
+struct step_lengths_min_t {
+  HD step_lengths_t<f_t> operator()(const step_lengths_t<f_t>& lhs,
+                                    const step_lengths_t<f_t>& rhs) const
+  {
+    return step_lengths_t<f_t>{cuda::std::min(lhs.primal, rhs.primal),
+                               cuda::std::min(lhs.dual, rhs.dual)};
+  }
+};
+
 // Per-element maximum step lengths of two nonnegative pairs, e.g. (w, v) or (x, z).
 template <typename i_t, typename f_t>
 struct nonnegative_step_length_op_t {
   bool apply_direct_free_mask;
 
-  HD f2_t<f_t> operator()(const thrust::tuple<f_t, f_t, f_t, f_t, i_t>& t) const
+  HD step_lengths_t<f_t> operator()(const thrust::tuple<f_t, f_t, f_t, f_t, i_t>& t) const
   {
-    const f_t dx1_val = thrust::get<0>(t);
-    const f_t x1_val  = thrust::get<1>(t);
-    const f_t dx2_val = thrust::get<2>(t);
-    const f_t x2_val  = thrust::get<3>(t);
-    const i_t is_free = thrust::get<4>(t);
+    const auto [dx_primal, x_primal, dx_dual, x_dual, is_free] = t;
+
     const bool masked = apply_direct_free_mask && is_free;
-    const f_t a       = (!masked && dx1_val < f_t(0.0)) ? -x1_val / dx1_val : f_t(1.0);
-    const f_t b       = (!masked && dx2_val < f_t(0.0)) ? -x2_val / dx2_val : f_t(1.0);
-    return f2_t<f_t>{a, b};
+    const f_t primal  = (!masked && dx_primal < f_t(0.0)) ? -x_primal / dx_primal : f_t(1.0);
+    const f_t dual    = (!masked && dx_dual < f_t(0.0)) ? -x_dual / dx_dual : f_t(1.0);
+    return step_lengths_t<f_t>{primal, dual};
   }
 };
 
@@ -402,7 +416,9 @@ class barrier_reduce_helper_t {
   }
 
   // The cone limit caps both steps; with Q or cones the primal and dual steps are equal.
-  static HD f2_t<f_t> combine_step_lengths(const f_t* results, bool has_soc, bool equal_steps)
+  static HD step_lengths_t<f_t> combine_step_lengths(const f_t* results,
+                                                     bool has_soc,
+                                                     bool equal_steps)
   {
     f_t primal = cuda::std::min(results[kStepWvPrimal], results[kStepXzPrimal]);
     f_t dual   = cuda::std::min(results[kStepWvDual], results[kStepXzDual]);
@@ -411,7 +427,7 @@ class barrier_reduce_helper_t {
       dual   = cuda::std::min(dual, results[kStepCone]);
     }
     if (equal_steps) { primal = dual = cuda::std::min(primal, dual); }
-    return f2_t<f_t>{primal, dual};
+    return step_lengths_t<f_t>{primal, dual};
   }
 
   // Single batched device-to-host copy + the one stream synchronize needed before any accessor
@@ -435,7 +451,7 @@ class barrier_reduce_helper_t {
   f_t bTy() const { return h_results_[kBTy]; }
   f_t uTv() const { return h_results_[kUTv]; }
   f_t xTQx() const { return h_results_[kXTQx]; }
-  f2_t<f_t> step_lengths(bool has_soc, bool equal_steps) const
+  step_lengths_t<f_t> step_lengths(bool has_soc, bool equal_steps) const
   {
     return combine_step_lengths(h_results_.data(), has_soc, equal_steps);
   }
@@ -473,10 +489,12 @@ class barrier_reduce_helper_t {
     return raft::device_span<f_t>(d_results_.data() + slot, 1);
   }
 
-  raft::device_span<f2_t<f_t>> pair_slot(Slot first)
+  raft::device_span<step_lengths_t<f_t>> pair_slot(Slot first)
   {
-    static_assert(sizeof(f2_t<f_t>) == 2 * sizeof(f_t), "f2_t must be two packed f_t");
-    return raft::device_span<f2_t<f_t>>(reinterpret_cast<f2_t<f_t>*>(d_results_.data() + first), 1);
+    static_assert(sizeof(step_lengths_t<f_t>) == 2 * sizeof(f_t),
+                  "step_lengths_t must be two packed f_t");
+    return raft::device_span<step_lengths_t<f_t>>(
+      reinterpret_cast<step_lengths_t<f_t>*>(d_results_.data() + first), 1);
   }
 
   template <typename InputIteratorT, typename ReduceOpT, typename TransformOpT>
@@ -520,9 +538,9 @@ class barrier_reduce_helper_t {
     reductions_.transform_reduce_async(
       thrust::make_zip_iterator(
         dx1.data(), x1.data(), dx2.data(), x2.data(), is_direct_free_linear.data()),
-      f2_min_t<f_t>{},
+      step_lengths_min_t<f_t>{},
       nonnegative_step_length_op_t<i_t, f_t>{full_length},
-      f2_t<f_t>{f_t(1), f_t(1)},
+      step_lengths_t<f_t>{f_t(1), f_t(1)},
       len,
       pair_slot(first),
       stream_view);
@@ -4034,11 +4052,11 @@ struct affine_complementarity_op_t {
 
   HD f_t operator()(size_t idx) const
   {
-    const f2_t<f_t> alpha = barrier_reduce_helper_t<i_t, f_t>::combine_step_lengths(
+    const step_lengths_t<f_t> alpha = barrier_reduce_helper_t<i_t, f_t>::combine_step_lengths(
       step_results.data(), has_soc, equal_steps);
     dx_aff[idx] = dx[idx];
     dz_aff[idx] = dz[idx];
-    return (x[idx] + alpha.a * dx[idx]) * (z[idx] + alpha.b * dz[idx]);
+    return (x[idx] + alpha.primal * dx[idx]) * (z[idx] + alpha.dual * dz[idx]);
   }
 };
 
@@ -4197,10 +4215,11 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_step_length(iteration_data_
 
   max_step_lengths_async(data);
   data.reduce_helper_.sync(stream_view_);
-  const f2_t<f_t> max_step = data.reduce_helper_.step_lengths(has_soc, data.Q.n > 0 || has_soc);
+  const step_lengths_t<f_t> max_step =
+    data.reduce_helper_.step_lengths(has_soc, data.Q.n > 0 || has_soc);
 
-  step_primal = step_scale * max_step.a;
-  step_dual   = step_scale * max_step.b;
+  step_primal = step_scale * max_step.primal;
+  step_dual   = step_scale * max_step.dual;
 }
 
 template <typename i_t, typename f_t>
