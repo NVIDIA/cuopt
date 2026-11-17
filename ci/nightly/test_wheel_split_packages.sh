@@ -63,7 +63,7 @@ for component in "${COMPONENTS[@]}"; do
   set +e
   python -m venv "${venv}"
   . "${venv}/bin/activate"
-  pip install --upgrade pip cmake ninja
+  pip install --upgrade pip "cmake<4.5" ninja
   rapids-pip-retry install --prefer-binary --constraint "${PIP_CONSTRAINT}" "${package}"
 
   python "${REPO_ROOT}/ci/nightly/split_package_smoke/env_check.py" wheel-packages "${expected[@]}"

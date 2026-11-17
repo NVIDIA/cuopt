@@ -2,7 +2,8 @@
 # cuOpt - GPU-accelerated Optimization
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
-[![Version](https://img.shields.io/badge/version-26.12.00-blue)](https://github.com/NVIDIA/cuopt/releases)
+[![Dev](https://img.shields.io/badge/dev-26.12.00-blue)](https://github.com/NVIDIA/cuopt/tree/main)
+[![Release](https://img.shields.io/github/v/release/NVIDIA/cuopt?label=release&color=blue)](#latest-release)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 [![Docker Hub](https://img.shields.io/badge/docker-nvidia%2Fcuopt-blue?logo=docker)](https://hub.docker.com/r/nvidia/cuopt)
 [![Examples](https://img.shields.io/badge/examples-cuopt--examples-orange)](https://github.com/NVIDIA/cuopt-examples)
@@ -79,45 +80,41 @@ Note: WSL2 is tested to run cuOpt, but not for building.
 
 More details on system requirements can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html)
 
-[Latest release branch](https://github.com/NVIDIA/cuopt/tree/release/26.10)
+### Latest Release
 
-The sections below cover installing the latest release and nightly builds.
+**[Latest release](https://github.com/NVIDIA/cuopt/releases/latest)** | [Release notes](RELEASE-NOTES.md) | [Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 
-### Latest release
+> [!TIP]
+> **Want a different interface or install method?** The [install selector](https://docs.nvidia.com/cuopt/user-guide/latest/install.html#install-selector) in the docs builds the exact command for the C API, CLI, server, Java, pip, conda or Docker, for your CUDA version.
 
 #### Pip
 
 Pip wheels are easy to install and easy to configure. Users with existing workflows who uses pip as base to build their workflows can use pip to install cuOpt.
 
-cuOpt can be installed via `pip` from the NVIDIA Python Package Index.
+cuOpt can be installed via `pip` from [PyPI](https://pypi.org/project/cuopt-cu13/).
 Be sure to select the appropriate cuOpt package depending
 on the major version of CUDA available in your environment:
 
 For CUDA 12.x:
 
 ```bash
-pip install \
-  --extra-index-url=https://pypi.nvidia.com \
-  nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12 cuopt-sh-client
+pip install nvidia-cuda-runtime-cu12==12.9.* cuopt-cu12
 ```
 
 For CUDA 13.x:
 
 ```bash
-pip install \
-  --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13 cuopt-sh-client
+pip install cuopt-cu13
 ```
 
 #### Conda
 
 cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forge/miniforge)):
 
-All other dependencies are installed automatically when `cuopt-server` and `cuopt-sh-client` are installed.
+All other dependencies are installed automatically when `cuopt` is installed.
 
 ```bash
-conda install -c rapidsai -c conda-forge -c nvidia cuopt-server cuopt-sh-client
+conda install -c rapidsai -c conda-forge -c nvidia cuopt
 ```
 
 #### Container
@@ -153,22 +150,20 @@ Nightly packages are built from the HEAD of the development branch (26.12) and a
 ```bash
 # For CUDA 12.x
 pip install --pre \
-  --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
   nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12==26.12.* cuopt-sh-client==26.12.*
+  cuopt-cu12==26.12.*
 
 # For CUDA 13.x
 pip install --pre \
-  --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==26.12.* cuopt-sh-client==26.12.*
+  cuopt-cu13==26.12.*
 ```
 
 #### Conda
 
 ```bash
-conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt-server=26.12.* cuopt-sh-client=26.12.*
+conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt=26.12.*
 ```
 
 See the [nightly conda packages](https://anaconda.org/rapidsai-nightly) for the full list.

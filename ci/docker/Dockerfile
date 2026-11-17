@@ -102,12 +102,12 @@ RUN apt-get update \
         openjdk-17-jdk \
         build-essential \
         g++-12 \
-        cmake \
     && rm -rf /var/lib/apt/lists/*
 ENV CXX=/usr/bin/g++-12
 
 # raft needs headers from nvidia-cuda-cccl; the cuXY-suffixed packages pulled in transitively are too old.
-RUN python -m pip install --no-cache-dir --upgrade nvidia-cuda-cccl
+# cmake from PyPI: apt's 3.22 is older than the project's minimum (dependencies.yaml).
+RUN python -m pip install --no-cache-dir --upgrade nvidia-cuda-cccl "cmake>=4.3,<4.5"
 
 # CMake's find_package(CUDAToolkit REQUIRED) needs nvcc on PATH; reuse cuda-headers instead of
 # installing the toolkit again via apt.
