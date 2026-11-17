@@ -291,9 +291,10 @@
 #define CUOPT_MIP_SCALING_NO_OBJECTIVE 2
 
 /* @brief Iterative refinement for barrier method */
-#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF    0
-#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ALWAYS 1
-#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO   2
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_DEFAULT -1
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF     0
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ALWAYS  1
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_DYNAMIC 2
 
 /* @brief Scalar problem attribute selectors
  * Passed as cuopt_int_t; the valid set depends on the accessor's value type. */

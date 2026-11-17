@@ -2312,20 +2312,21 @@ class iteration_data_t {
   f_t complementarity_residual_norm_save;
 
   bool use_high_accuracy_ir = false;
-  auto_iterative_refinement_t<i_t, f_t> auto_ir;
+  dynamic_iterative_refinement_t<i_t, f_t> dynamic_ir;
 
-  bool auto_refinement() const
+  bool dynamic_iterative_refinement() const
   {
-    return settings_.barrier_iterative_refinement == CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO;
+    return settings_.barrier_iterative_refinement == CUOPT_BARRIER_ITERATIVE_REFINEMENT_DYNAMIC;
   }
 
-  // Whether KKT solves are refined: always in mode 1, in automatic mode once auto_ir switched on.
+  // Whether KKT solves are refined: always in the automatic and always-on modes, in dynamic mode
+  // once dynamic_ir switched on.
   bool refine_kkt_solves() const
   {
     if (settings_.barrier_iterative_refinement == CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF) {
       return false;
     }
-    return !auto_refinement() || auto_ir.on();
+    return !dynamic_iterative_refinement() || dynamic_ir.is_on();
   }
 
   dense_vector_t<i_t, f_t> diag;
@@ -4550,7 +4551,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
     }
 
     // Refinement state is per solve; a cached iteration_data still holds the previous solve's.
-    data.auto_ir = auto_iterative_refinement_t<i_t, f_t>{};
+    data.dynamic_ir = dynamic_iterative_refinement_t<i_t, f_t>{};
 
     i_t initial_status = initial_point(data);
     if (toc(start_time) > settings.time_limit) {
@@ -4902,12 +4903,12 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
         return lp_status_t::OPTIMAL;
       }
 
-      if (data.auto_refinement()) {
-        data.auto_ir.update(settings,
-                            relative_primal_residual,
-                            relative_dual_residual,
-                            relative_complementarity_residual,
-                            std::min(step_primal, step_dual));
+      if (data.dynamic_iterative_refinement()) {
+        data.dynamic_ir.update(settings,
+                               relative_primal_residual,
+                               relative_dual_residual,
+                               relative_complementarity_residual,
+                               std::min(step_primal, step_dual));
       }
 
       // Check if the solution is getting worse

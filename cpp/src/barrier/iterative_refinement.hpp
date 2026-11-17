@@ -450,12 +450,12 @@ f_t iterative_refinement(T& op,
   return iterative_refinement_gmres<i_t, f_t, T>(op, b, x, tol);
 }
 
-// Automatic iterative refinement (CUOPT_BARRIER_ITERATIVE_REFINEMENT_AUTO): each solve starts
+// Dynamic iterative refinement (CUOPT_BARRIER_ITERATIVE_REFINEMENT_DYNAMIC): each solve starts
 // without refinement, and GMRES refinement switches on (and stays on) once the iterate nears
 // convergence. Tolerances are the barrier's relative feasibility / optimality / complementarity
 // tolerances.
 template <typename i_t, typename f_t>
-struct auto_iterative_refinement_t {
+struct dynamic_iterative_refinement_t {
   enum class state_t { off, watch, on };
 
   state_t state = state_t::off;
@@ -463,7 +463,7 @@ struct auto_iterative_refinement_t {
   f_t prev_primal_residual = std::numeric_limits<f_t>::infinity();
   f_t prev_dual_residual   = std::numeric_limits<f_t>::infinity();
 
-  bool on() const { return state == state_t::on; }
+  bool is_on() const { return state == state_t::on; }
 
   // Advance off -> watch -> on for the current iterate. Call once per iteration.
   void update(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
@@ -472,7 +472,7 @@ struct auto_iterative_refinement_t {
               f_t complementarity_residual,
               f_t step_length)
   {
-    if (on()) { return; }
+    if (is_on()) { return; }
     const f_t primal_tol = settings.barrier_relative_feasibility_tol;
     const f_t dual_tol   = settings.barrier_relative_optimality_tol;
     const f_t gap_tol    = settings.barrier_relative_complementarity_tol;
