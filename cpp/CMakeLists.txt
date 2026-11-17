@@ -315,7 +315,7 @@ FetchContent_MakeAvailable(papilo)
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "c259a10b55f3019899f60d998389fbe098005204"
+        GIT_TAG "v0.3.1"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
