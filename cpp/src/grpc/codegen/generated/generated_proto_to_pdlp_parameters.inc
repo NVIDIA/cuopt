@@ -74,7 +74,7 @@
     settings.set_parameter("eliminate_dense_columns", pb_settings.eliminate_dense_columns());
   }
   if (pb_settings.has_barrier_iterative_refinement()) {
-    settings.set_parameter("barrier_iterative_refinement", pb_settings.barrier_iterative_refinement());
+    settings.set_parameter("barrier_iterative_refinement", static_cast<i_t>(pb_settings.barrier_iterative_refinement()));
   }
   if (pb_settings.has_barrier_adaptive_regularization()) {
     settings.set_parameter("barrier_adaptive_regularization", static_cast<i_t>(pb_settings.barrier_adaptive_regularization()));
