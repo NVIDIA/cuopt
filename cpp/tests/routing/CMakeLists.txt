@@ -43,6 +43,7 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_types.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/distance_breaks.cu
+      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/distance_matrices.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/heterogenous_breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_fixed_costs.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_order_match.cu
@@ -58,19 +59,6 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/set_shmem_of_kernel.cu
     LABELS routing
     STATIC_LIB)
-
-# Distance-matrix tests use the public routing API and inline matrix helpers.
-add_executable(DISTANCE_MATRIX_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/distance_matrices.cu
-)
-target_include_directories(DISTANCE_MATRIX_TEST PRIVATE "${CUOPT_SOURCE_DIR}/src")
-target_link_libraries(DISTANCE_MATRIX_TEST
-    PRIVATE cuopt_routing cuopt_client GTest::gtest_main OpenMP::OpenMP_CUDA
-)
-add_test(NAME DISTANCE_MATRIX_TEST COMMAND DISTANCE_MATRIX_TEST)
-set_tests_properties(DISTANCE_MATRIX_TEST PROPERTIES LABELS "routing")
-install(TARGETS DISTANCE_MATRIX_TEST COMPONENT testing
-    DESTINATION bin/gtests/libcuopt EXCLUDE_FROM_ALL)
 
 # ##################################################################################################
 # - gRPC VRP test driver ---------------------------------------------------------------------------
