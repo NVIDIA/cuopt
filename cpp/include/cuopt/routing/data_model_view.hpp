@@ -76,11 +76,13 @@ class data_model_view_t {
    */
   void add_cost_matrix(f_t const* matrix, uint8_t vehicle_type = 0);
 
-  /// @brief Register an optional physical distance matrix, separate from cost and time.
-  ///
-  /// @param[in] matrix Non-owning device pointer to a square row-major matrix.
-  /// @param[in] vehicle_type Vehicle-type identifier.
-  /// @throws cuopt::logic_error if matrix is null.
+  /**
+   * @brief Register an optional physical distance matrix, separate from cost and time.
+   *
+   * @param[in] matrix Non-owning device pointer to a square row-major matrix.
+   * @param[in] vehicle_type Vehicle-type identifier.
+   * @throws cuopt::logic_error if matrix is null.
+   */
   void add_distance_matrix(f_t const* matrix, uint8_t vehicle_type = 0);
 
   /**

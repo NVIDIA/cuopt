@@ -39,11 +39,6 @@ struct mdarray_view_t {
     return get_cost_matrix(vehicle_type, cost_matrix_index);
   }
 
-  constexpr auto get_distance_matrix(uint8_t vehicle_type) const
-  {
-    return get_cost_matrix(vehicle_type, distance_matrix_index);
-  }
-
   constexpr auto get_time_matrix(uint8_t vehicle_type) const
   {
     return get_cost_matrix(vehicle_type, time_matrix_index);
@@ -53,7 +48,6 @@ struct mdarray_view_t {
   // dim4(n_vehicle_types, n_matrix_types, n_loc, n_loc)
   size_t extent[NCON_DIMS];
   uint8_t cost_matrix_index{0};
-  uint8_t distance_matrix_index{0};
   uint8_t time_matrix_index{0};
 };
 
@@ -87,11 +81,6 @@ struct h_mdarray_t {
     return get_cost_matrix(vehicle_type, cost_matrix_index);
   }
 
-  constexpr auto get_distance_matrix(uint8_t vehicle_type)
-  {
-    return get_cost_matrix(vehicle_type, distance_matrix_index);
-  }
-
   constexpr auto get_time_matrix(uint8_t vehicle_type)
   {
     return get_cost_matrix(vehicle_type, time_matrix_index);
@@ -100,10 +89,9 @@ struct h_mdarray_t {
   auto view() const
   {
     mdarray_view_t<f_t> view;
-    view.buffer_ptr            = buffer.data();
-    view.cost_matrix_index     = cost_matrix_index;
-    view.distance_matrix_index = distance_matrix_index;
-    view.time_matrix_index     = time_matrix_index;
+    view.buffer_ptr        = buffer.data();
+    view.cost_matrix_index = cost_matrix_index;
+    view.time_matrix_index = time_matrix_index;
     for (size_t i = 0; i < NCON_DIMS; ++i) {
       view.extent[i] = extent[i];
     }
@@ -112,7 +100,6 @@ struct h_mdarray_t {
   size_t extent[NCON_DIMS];
   std::vector<f_t> buffer;
   uint8_t cost_matrix_index{0};
-  uint8_t distance_matrix_index{0};
   uint8_t time_matrix_index{0};
 };
 
@@ -147,11 +134,6 @@ struct d_mdarray_t {
     return get_cost_matrix(vehicle_type, cost_matrix_index);
   }
 
-  constexpr auto get_distance_matrix(uint8_t vehicle_type)
-  {
-    return get_cost_matrix(vehicle_type, distance_matrix_index);
-  }
-
   constexpr auto get_time_matrix(uint8_t vehicle_type)
   {
     return get_cost_matrix(vehicle_type, time_matrix_index);
@@ -160,10 +142,9 @@ struct d_mdarray_t {
   auto view() const
   {
     mdarray_view_t<f_t> view;
-    view.buffer_ptr            = buffer.data();
-    view.cost_matrix_index     = cost_matrix_index;
-    view.distance_matrix_index = distance_matrix_index;
-    view.time_matrix_index     = time_matrix_index;
+    view.buffer_ptr        = buffer.data();
+    view.cost_matrix_index = cost_matrix_index;
+    view.time_matrix_index = time_matrix_index;
     for (size_t i = 0; i < NCON_DIMS; ++i) {
       view.extent[i] = extent[i];
     }
@@ -174,7 +155,6 @@ struct d_mdarray_t {
   rmm::device_uvector<f_t> buffer;
   cuda::stream_ref stream;
   uint8_t cost_matrix_index{0};
-  uint8_t distance_matrix_index{0};
   uint8_t time_matrix_index{0};
 };
 
@@ -210,9 +190,6 @@ void fill_data_model_matrices(data_model_view_t<i_t, f_t>& data_model, d_mdarray
   i_t n_vehicle_types = matrices.extent[0];
   for (auto vehicle_type = 0; vehicle_type < n_vehicle_types; ++vehicle_type) {
     data_model.add_cost_matrix(matrices.get_cost_matrix(vehicle_type), vehicle_type);
-    if (matrices.distance_matrix_index != matrices.cost_matrix_index) {
-      data_model.add_distance_matrix(matrices.get_distance_matrix(vehicle_type), vehicle_type);
-    }
     if (matrices.time_matrix_index != matrices.cost_matrix_index) {
       data_model.add_transit_time_matrix(matrices.get_time_matrix(vehicle_type), vehicle_type);
     }
@@ -301,9 +278,7 @@ void fill_mdarray_from_data_model(d_mdarray_t<f_t>& matrices,
   const bool has_time        = has_transit_time_matrix<i_t, f_t>(data_model);
   const size_t matrix_size   = static_cast<size_t>(nlocations) * nlocations;
   matrices.cost_matrix_index = 0;
-  // Auxiliary distance inputs do not occupy solver matrix storage.
-  matrices.distance_matrix_index = matrices.cost_matrix_index;
-  matrices.time_matrix_index     = has_time ? 1 : matrices.cost_matrix_index;
+  matrices.time_matrix_index = has_time ? 1 : matrices.cost_matrix_index;
 
   for (auto& [old_type, new_type] : vehicle_types_map) {
     auto [cost_matrix, time_matrix] = get_vehicle_matrices<i_t, f_t>(data_model, old_type);

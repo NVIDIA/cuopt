@@ -96,9 +96,8 @@ class fleet_info_t {
     h.buckets                 = host_copy(v_buckets_, stream);
     h.matrices                = detail::create_host_mdarray<f_t>(
       matrices_.extent[2], matrices_.extent[0], matrices_.extent[1]);
-    h.matrices.cost_matrix_index     = matrices_.cost_matrix_index;
-    h.matrices.distance_matrix_index = matrices_.distance_matrix_index;
-    h.matrices.time_matrix_index     = matrices_.time_matrix_index;
+    h.matrices.cost_matrix_index = matrices_.cost_matrix_index;
+    h.matrices.time_matrix_index = matrices_.time_matrix_index;
     raft::copy(h.matrices.buffer.data(), matrices_.buffer.data(), matrices_.buffer.size(), stream);
     return h;
   }
