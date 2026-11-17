@@ -582,6 +582,11 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
     }
     timer_t lp_timer(lp_time_limit);
     auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
+    // One line for the PDLP bound, whatever stopped the root solve; every improvement already
+    // reached branch and bound and shows in the gap of the incumbent lines.
+    if (context.settings.heuristic_params.root_pdlp_dual_bound) {
+      branch_and_bound.log_root_pdlp_dual_bound();
+    }
 
     // The concurrent root LP can fail to produce a usable solution -- e.g. the barrier
     // hits a numerical error on an infeasible problem and PDLP returns NumericalError
