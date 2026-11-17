@@ -300,6 +300,8 @@ class pdlp_solver_settings_t {
   bool per_constraint_residual{false};
   bool crossover{false};
   bool cudss_deterministic{false};
+  i_t cudss_nd_nlevels{-1};
+  i_t cudss_hybrid_execute_mode{-1};
   i_t project_initial_primal_override{-1};
   i_t folding{-1};
   i_t augmented{-1};
