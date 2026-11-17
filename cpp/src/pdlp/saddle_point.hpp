@@ -15,7 +15,6 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-#include <pdlp/pdlp_memory_resource.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
 namespace cuopt::mathematical_optimization::pdlp {
@@ -64,13 +63,11 @@ class saddle_point_state_t {
    *
    * @throws cuopt::logic_error if the problem sizes are not larger than 0.
    */
-  saddle_point_state_t(
-    raft::handle_t const* handle_ptr,
-    i_t primal_size,
-    i_t dual_size,
-    size_t batch_size,
-    const pdlp::pdlp_hyper_params_t& hyper_params,
-    device_memory_resource_t memory_resource = rmm::mr::get_current_device_resource_ref());
+  saddle_point_state_t(raft::handle_t const* handle_ptr,
+                       i_t primal_size,
+                       i_t dual_size,
+                       size_t batch_size,
+                       const pdlp::pdlp_hyper_params_t& hyper_params);
 
   /**
    * @brief Copies the values of the solutions in another saddle_point_state_t

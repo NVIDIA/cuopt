@@ -8,6 +8,5 @@
 ConfigureTest(PDLP_OVERHEAD_TEST
     ${CMAKE_CURRENT_LIST_DIR}/unit_tests/reflected_projection_direct_test.cu
     ${CMAKE_CURRENT_LIST_DIR}/unit_tests/batched_halpern_test.cu
-    ${CMAKE_CURRENT_LIST_DIR}/unit_tests/pdlp_memory_resource_test.cu
     LABELS numopt
     STATIC_LIB)

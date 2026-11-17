@@ -10,7 +10,6 @@
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
-#include <pdlp/pdlp_memory_resource.hpp>
 #include <pdlp/reduced_matrix.cuh>
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -35,17 +34,15 @@ struct multi_gpu_engine_t;
 template <typename i_t, typename f_t>
 class pdhg_solver_t {
  public:
-  pdhg_solver_t(
-    raft::handle_t const* handle_ptr,
-    mip::problem_t<i_t, f_t>& op_problem,
-    bool is_legacy_batch_mode,
-    const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-    const pdlp::pdlp_hyper_params_t& hyper_params,
-    const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
-    int reduced_matrix_nnz_cutoff,
-    bool enable_mixed_precision_spmv         = false,
-    bool is_distributed                      = false,
-    device_memory_resource_t memory_resource = rmm::mr::get_current_device_resource_ref());
+  pdhg_solver_t(raft::handle_t const* handle_ptr,
+                mip::problem_t<i_t, f_t>& op_problem,
+                bool is_legacy_batch_mode,
+                const std::vector<pdlp_climber_strategy_t>& climber_strategies,
+                const pdlp::pdlp_hyper_params_t& hyper_params,
+                const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
+                int reduced_matrix_nnz_cutoff,
+                bool enable_mixed_precision_spmv = false,
+                bool is_distributed              = false);
 
   saddle_point_state_t<i_t, f_t>& get_saddle_point_state();
   cusparse_view_t<i_t, f_t>& get_cusparse_view();

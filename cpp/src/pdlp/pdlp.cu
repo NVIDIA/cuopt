@@ -168,12 +168,10 @@ static size_t batch_size_handler(const pdlp_solver_settings_t<i_t, f_t>& setting
 }
 
 template <typename i_t, typename f_t>
-pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
-  mip::problem_t<i_t, f_t>& op_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
-  bool is_legacy_batch_mode,
-  bool is_distributed_sub_pdlp,
-  cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource)
+pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
+                                       pdlp_solver_settings_t<i_t, f_t> const& settings,
+                                       bool is_legacy_batch_mode,
+                                       bool is_distributed_sub_pdlp)
   : original_batch_size_(batch_size_handler(settings)),
     climber_strategies_(original_batch_size_),
     batch_mode_(climber_strategies_.size() > 1),
@@ -181,22 +179,17 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     stream_view_(handle_ptr_->get_stream()),
     settings_(settings),
     problem_ptr(&op_problem),
-    memory_resource_(std::move(memory_resource)),
     op_problem_scaled_(
-      op_problem,
-      false,
-      memory_resource_),  // False to call the PDLP custom version of the problem copy constructor
-    unscaled_primal_avg_solution_{
-      static_cast<size_t>(op_problem.n_variables), stream_view_, memory_resource_},
-    unscaled_dual_avg_solution_{
-      static_cast<size_t>(op_problem.n_constraints), stream_view_, memory_resource_},
+      op_problem, false),  // False to call the PDLP custom version of the problem copy constructor
+    unscaled_primal_avg_solution_{static_cast<size_t>(op_problem.n_variables), stream_view_},
+    unscaled_dual_avg_solution_{static_cast<size_t>(op_problem.n_constraints), stream_view_},
     primal_size_h_(op_problem.n_variables),
     dual_size_h_(op_problem.n_constraints),
-    primal_step_size_{climber_strategies_.size(), stream_view_, memory_resource_},
-    dual_step_size_{climber_strategies_.size(), stream_view_, memory_resource_},
-    primal_weight_{climber_strategies_.size(), stream_view_, memory_resource_},
-    best_primal_weight_{climber_strategies_.size(), stream_view_, memory_resource_},
-    step_size_{climber_strategies_.size(), stream_view_, memory_resource_},
+    primal_step_size_{climber_strategies_.size(), stream_view_},
+    dual_step_size_{climber_strategies_.size(), stream_view_},
+    primal_weight_{climber_strategies_.size(), stream_view_},
+    best_primal_weight_{climber_strategies_.size(), stream_view_},
+    step_size_{climber_strategies_.size(), stream_view_},
     h_fixed_error_inputs_(5),
     step_size_strategy_{handle_ptr_,
                         &primal_weight_,
@@ -214,8 +207,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                  settings_.new_bounds,
                  settings_.large_nnz_threshold,
                  settings_.pdlp_precision == pdlp_precision_t::MixedPrecision,
-                 is_distributed_sub_pdlp,
-                 memory_resource_},
+                 is_distributed_sub_pdlp},
     initial_scaling_strategy_{handle_ptr_,
                               op_problem_scaled_,
                               settings_.hyper_params.default_l_inf_ruiz_iterations,
@@ -227,8 +219,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                               settings_.hyper_params,
                               static_cast<i_t>(original_batch_size_),
                               /*running_mip=*/false,
-                              /*skip_ruiz_pock_compute=*/is_distributed_sub_pdlp,
-                              memory_resource_},
+                              /*skip_ruiz_pock_compute=*/is_distributed_sub_pdlp},
     average_op_problem_evaluation_cusparse_view_{handle_ptr_,
                                                  op_problem,
                                                  unscaled_primal_avg_solution_,
@@ -241,8 +232,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                                                  op_problem.reverse_offsets,
                                                  op_problem.reverse_constraints,
                                                  climber_strategies_,
-                                                 settings_.hyper_params,
-                                                 memory_resource_},
+                                                 settings_.hyper_params},
     current_op_problem_evaluation_cusparse_view_{handle_ptr_,
                                                  op_problem,
                                                  pdhg_solver_.get_primal_solution(),
@@ -255,8 +245,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                                                  op_problem.reverse_offsets,
                                                  op_problem.reverse_constraints,
                                                  climber_strategies_,
-                                                 settings_.hyper_params,
-                                                 memory_resource_},
+                                                 settings_.hyper_params},
     restart_strategy_{handle_ptr_,
                       op_problem,
                       average_op_problem_evaluation_cusparse_view_,
@@ -264,8 +253,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                       dual_size_h_,
                       is_legacy_batch_mode,
                       climber_strategies_,
-                      settings_.hyper_params,
-                      memory_resource_},
+                      settings_.hyper_params},
     average_termination_strategy_{
       handle_ptr_,
       op_problem,
@@ -287,10 +275,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                                   initial_scaling_strategy_,
                                   settings_,
                                   climber_strategies_},
-    initial_primal_{0, stream_view_, memory_resource_},
-    initial_dual_{0, stream_view_, memory_resource_},
-    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_, memory_resource_},
-    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_, memory_resource_},
+    initial_primal_{0, stream_view_},
+    initial_dual_{0, stream_view_},
+    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
+    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
     batch_solution_to_return_{pdlp_termination_status_t::TimeLimit, stream_view_},
     best_primal_solution_so_far{pdlp_termination_status_t::TimeLimit, stream_view_},
     inside_mip_{false}
@@ -2720,15 +2708,10 @@ static int ordinary_graph_batch_size()
 
 template <typename f_t>
 struct ordinary_graph_batch_t {
-  ordinary_graph_batch_t(cuda::stream_ref stream,
-                         int requested,
-                         bool eligible,
-                         device_memory_resource_t memory_resource)
+  ordinary_graph_batch_t(cuda::stream_ref stream, int requested, bool eligible)
     : stream{stream},
       effective{eligible ? requested : 1},
-      halpern_weights{static_cast<size_t>(eligible && requested > 1 ? requested : 0),
-                      stream,
-                      std::move(memory_resource)}
+      halpern_weights{static_cast<size_t>(eligible && requested > 1 ? requested : 0), stream}
   {
     if (effective > 1) {
       CUOPT_LOG_INFO("PDLP graph batching: requested=%d effective=%d", requested, effective);
@@ -2815,18 +2798,18 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   if (!is_distributed_master()) {
     // Update FP32 matrix copies for mixed precision SpMV after scaling
     pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
-    // Keep compressible CSR indices in the private working resource for SpMV. Otherwise share
-    // the original structure and release the duplicate indices to save device memory.
-    if (!is_pdlp_memory_resource(memory_resource_)) {
-      pdhg_solver_.redirect_reduced_csr_structure(*problem_ptr);
-      pdhg_solver_.get_cusparse_view().redirect_cusparse_csr_structure_pointers(*problem_ptr);
-      release_workspace(op_problem_scaled_.variables);
-      release_workspace(op_problem_scaled_.offsets);
-      release_workspace(op_problem_scaled_.reverse_constraints);
-      release_workspace(op_problem_scaled_.reverse_offsets);
-    }
+    pdhg_solver_.redirect_reduced_csr_structure(*problem_ptr);
+
+    // Redirect cuSPARSE descriptors to use the original problem's structural data (offsets,
+    // indices), then free the duplicated structural vectors from the scaled copy to save device
+    // memory.
+    pdhg_solver_.get_cusparse_view().redirect_cusparse_csr_structure_pointers(*problem_ptr);
+    release_workspace(op_problem_scaled_.variables);
+    release_workspace(op_problem_scaled_.offsets);
+    release_workspace(op_problem_scaled_.reverse_constraints);
+    release_workspace(op_problem_scaled_.reverse_offsets);
   }
-  // Plans must capture the retained CSR structure.
+  // Plans must capture the final, shared CSR structure, not the released copies.
   create_spmv_op_plans();
 
   if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
@@ -3069,7 +3052,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   graph_batch_eligible = false;
 #endif
   ordinary_graph_batch_t<f_t> ordinary_batch{
-    stream_view_, ordinary_graph_batch_size(), graph_batch_eligible, memory_resource_};
+    stream_view_, ordinary_graph_batch_size(), graph_batch_eligible};
 
   while (true) {
 #ifdef CUPDLP_DEBUG_MODE

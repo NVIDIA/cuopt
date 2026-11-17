@@ -59,8 +59,7 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
   const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
   int reduced_matrix_nnz_cutoff,
   bool enable_mixed_precision_spmv,
-  bool is_distributed,
-  device_memory_resource_t memory_resource)
+  bool is_distributed)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
@@ -71,32 +70,26 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
                                 problem_ptr->n_variables,
                                 problem_ptr->n_constraints,
                                 climber_strategies.size(),
-                                hyper_params,
-                                memory_resource},
-    tmp_primal_{
-      (climber_strategies.size() * problem_ptr->n_variables), stream_view_, memory_resource},
-    tmp_dual_{
-      (climber_strategies.size() * problem_ptr->n_constraints), stream_view_, memory_resource},
-    potential_next_primal_solution_{
-      (climber_strategies.size() * problem_ptr->n_variables), stream_view_, memory_resource},
-    potential_next_dual_solution_{
-      (climber_strategies.size() * problem_ptr->n_constraints), stream_view_, memory_resource},
+                                hyper_params},
+    tmp_primal_{(climber_strategies.size() * problem_ptr->n_variables), stream_view_},
+    tmp_dual_{(climber_strategies.size() * problem_ptr->n_constraints), stream_view_},
+    potential_next_primal_solution_{(climber_strategies.size() * problem_ptr->n_variables),
+                                    stream_view_},
+    potential_next_dual_solution_{(climber_strategies.size() * problem_ptr->n_constraints),
+                                  stream_view_},
     total_pdhg_iterations_{0},
     dual_slack_{static_cast<size_t>((hyper_params.use_reflected_primal_dual)
                                       ? problem_ptr->n_variables * climber_strategies.size()
                                       : 0),
-                stream_view_,
-                memory_resource},
+                stream_view_},
     reflected_primal_{static_cast<size_t>((hyper_params.use_reflected_primal_dual)
                                             ? problem_ptr->n_variables * climber_strategies.size()
                                             : 0),
-                      stream_view_,
-                      memory_resource},
+                      stream_view_},
     reflected_dual_{static_cast<size_t>((hyper_params.use_reflected_primal_dual)
                                           ? problem_ptr->n_constraints * climber_strategies.size()
                                           : 0),
-                    stream_view_,
-                    memory_resource},
+                    stream_view_},
     cusparse_view_{handle_ptr_,
                    op_problem_scaled,
                    current_saddle_point_state_,
@@ -106,8 +99,7 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
                    reflected_primal_,
                    climber_strategies,
                    hyper_params,
-                   enable_mixed_precision_spmv,
-                   memory_resource},
+                   enable_mixed_precision_spmv},
     reduced_matrix_{handle_ptr_,
                     op_problem_scaled,
                     reduced_matrix_enabled(hyper_params,
@@ -118,26 +110,25 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
                                            enable_mixed_precision_spmv,
                                            !op_problem_scaled.Q_values.empty(),
                                            is_distributed,
-                                           !new_bounds.empty()),
-                    memory_resource},
-    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_, memory_resource},
-    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_, memory_resource},
-    reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_, memory_resource},
-    reusable_device_scalar_1_{stream_view_, memory_resource},
+                                           !new_bounds.empty())},
+    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
+    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
+    reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_},
+    reusable_device_scalar_1_{stream_view_},
     // In both multi stream and SpMM PDLP CUDA Graphs are causing issue
     // Currently graph capture is not supported for cuSparse SpMM
     // TODO enable once cuSparse SpMM supports graph capture
     graph_all{stream_view_, is_legacy_batch_mode || batch_mode_},
     graph_prim_proj_gradient_dual{stream_view_, is_legacy_batch_mode},
-    d_total_pdhg_iterations_{zero_v<i_t>, stream_view_, memory_resource},
-    d_halpern_weight_{half_v<f_t>, stream_view_, memory_resource},
+    d_total_pdhg_iterations_{zero_v<i_t>, stream_view_},
+    d_halpern_weight_{half_v<f_t>, stream_view_},
     climber_strategies_(climber_strategies),
     hyper_params_(hyper_params),
-    new_bounds_climber_id_{new_bounds.size(), stream_view_, memory_resource},
-    new_bounds_idx_{new_bounds.size(), stream_view_, memory_resource},
-    new_bounds_lower_{new_bounds.size(), stream_view_, memory_resource},
-    new_bounds_upper_{new_bounds.size(), stream_view_, memory_resource},
-    new_bounds_primal_{new_bounds.size(), stream_view_, memory_resource},
+    new_bounds_climber_id_{new_bounds.size(), stream_view_},
+    new_bounds_idx_{new_bounds.size(), stream_view_},
+    new_bounds_lower_{new_bounds.size(), stream_view_},
+    new_bounds_upper_{new_bounds.size(), stream_view_},
+    new_bounds_primal_{new_bounds.size(), stream_view_},
     batch_size_divisor_(climber_strategies_.size())
 {
   if (!new_bounds.empty()) {
