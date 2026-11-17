@@ -186,6 +186,14 @@ class mip_solver_settings_t {
    */
   bool indicator_strengthening{true};
   /**
+   * @brief Also report the valid lower bound from PDLP's dual iterate every 1000 iterations while
+   * the root LP is solving (pdlp/dual_bound.cuh).
+   *
+   * The bound is always computed once from the dual the root LP returns; this adds the periodic
+   * evaluations and logs each improvement.
+   */
+  bool root_pdlp_dual_bound{false};
+  /**
    * @brief Determinism mode for MIP solver.
    *
    * Controls the determinism behavior of the MIP solver:

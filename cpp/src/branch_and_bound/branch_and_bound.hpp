@@ -116,12 +116,9 @@ class branch_and_bound_t {
 
   // Set the root solution found by PDLP
   // A valid lower bound on the root LP (solver space) from a root solver still running (PDLP dual
-  // iterate, dual simplex). Keeps the best one; reported while no node bound exists yet. The best
-  // PDLP bound is also kept for log_root_pdlp_dual_bound().
+  // iterate, dual simplex). Keeps the best one; reported while no node bound exists yet. PDLP
+  // improvements are logged; dual simplex shows its progress in its own log.
   void set_root_lower_bound(f_t lower_bound, bool from_pdlp);
-
-  // Logs the best bound from the PDLP dual iterate, once, when the root PDLP solve stops.
-  void log_root_pdlp_dual_bound();
 
   void set_root_relaxation_solution(const std::vector<f_t>& primal,
                                     const std::vector<f_t>& dual,
@@ -262,7 +259,6 @@ class branch_and_bound_t {
   omp_atomic_t<f_t> root_lp_current_lower_bound_;
   omp_atomic_t<bool> solving_root_relaxation_{false};
   std::mutex root_lower_bound_mutex_;
-  f_t root_pdlp_dual_bound_{-std::numeric_limits<f_t>::infinity()};  // guarded by the mutex above
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
   std::atomic<int> node_concurrent_halt_{0};

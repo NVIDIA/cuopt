@@ -310,7 +310,6 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   upper_bound_                 = inf;
   root_objective_              = std::numeric_limits<f_t>::quiet_NaN();
   root_lp_current_lower_bound_ = -inf;
-  root_pdlp_dual_bound_        = -inf;
 }
 
 template <typename i_t, typename f_t>
@@ -343,22 +342,16 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::set_root_lower_bound(f_t lower_bound, bool from_pdlp)
 {
   std::lock_guard<std::mutex> lock(root_lower_bound_mutex_);
-  if (from_pdlp && lower_bound > root_pdlp_dual_bound_) { root_pdlp_dual_bound_ = lower_bound; }
   // keep only an improvement (also rejects -inf and NaN)
   if (!(lower_bound > root_lp_current_lower_bound_.load(std::memory_order::relaxed))) { return; }
   root_lp_current_lower_bound_.store(lower_bound, std::memory_order::relaxed);
+  if (from_pdlp) {
+    settings_.log.printf("PDLP dual bound: %+.6e. Time %.2f\n",
+                         compute_user_objective(original_lp_, lower_bound),
+                         toc(exploration_stats_.start_time));
+  }
   // Once the tree search runs, report() owns the user bound
   if (!is_running_) { update_user_bound(original_lp_, lower_bound); }
-}
-
-template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::log_root_pdlp_dual_bound()
-{
-  std::lock_guard<std::mutex> lock(root_lower_bound_mutex_);
-  if (!std::isfinite(root_pdlp_dual_bound_)) { return; }
-  settings_.log.printf("PDLP dual bound: %+.6e. Time %.2f\n",
-                       compute_user_objective(original_lp_, root_pdlp_dual_bound_),
-                       toc(exploration_stats_.start_time));
 }
 
 template <typename i_t, typename f_t>
@@ -4106,7 +4099,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   solver_status_                      = mip_status_t::UNSET;
   is_running_                         = false;
   root_lp_current_lower_bound_        = -inf;
-  root_pdlp_dual_bound_               = -inf;
   exploration_stats_.nodes_unexplored = 0;
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);

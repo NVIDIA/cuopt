@@ -129,7 +129,6 @@
 #define CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH \
   "mip_hyper_heuristic_cycle_detection_length"
 #define CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT "mip_hyper_heuristic_relaxed_lp_time_limit"
-#define CUOPT_MIP_HYPER_HEURISTIC_ROOT_PDLP_DUAL_BOUND  "mip_hyper_heuristic_root_pdlp_dual_bound"
 #define CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT \
   "mip_hyper_heuristic_related_vars_time_limit"
 
@@ -165,6 +164,9 @@
 /* @brief Indicator-strengthening step that runs before Papilo presolve on MIPs */
 #define CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING \
   "mip_hyper_presolve_indicator_strengthening"
+
+/* @brief Report the root PDLP dual bound every 1000 iterations while the root LP is solving */
+#define CUOPT_MIP_HYPER_ROOT_PDLP_DUAL_BOUND "mip_hyper_root_pdlp_dual_bound"
 
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"

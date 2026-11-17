@@ -19,6 +19,7 @@
 #include <presolve/probing_cache.cuh>
 #include <presolve/trivial_presolve.cuh>
 
+#include <pdlp/dual_bound.cuh>
 #include <pdlp/solve.cuh>
 
 #include <utilities/copy_helpers.hpp>
@@ -572,9 +573,9 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
     pdlp_settings.presolver               = presolver_t::None;
     pdlp_settings.per_constraint_residual = true;
     set_pdlp_solver_mode(pdlp_settings);
-    if (context.settings.heuristic_params.root_pdlp_dual_bound) {
-      // A valid lower bound from PDLP's dual iterate while the root LP is solving; PDLP reports
-      // it in user space, branch and bound keeps it in solver space.
+    if (context.settings.root_pdlp_dual_bound) {
+      // Opt-in: a valid lower bound from PDLP's dual iterate every 1000 iterations while the root LP
+      // is solving; PDLP reports it in user space, branch and bound keeps it in solver space.
       pdlp_settings.dual_bound_callback = [this, &branch_and_bound](f_t user_bound) {
         branch_and_bound.set_root_lower_bound(problem_ptr->get_solver_obj_from_user_obj(user_bound),
                                               true);
@@ -582,11 +583,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
     }
     timer_t lp_timer(lp_time_limit);
     auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
-    // One line for the PDLP bound, whatever stopped the root solve; every improvement already
-    // reached branch and bound and shows in the gap of the incumbent lines.
-    if (context.settings.heuristic_params.root_pdlp_dual_bound) {
-      branch_and_bound.log_root_pdlp_dual_bound();
-    }
 
     // The concurrent root LP can fail to produce a usable solution -- e.g. the barrier
     // hits a numerical error on an infeasible problem and PDLP returns NumericalError
@@ -598,6 +594,16 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
       lp_result.get_termination_status() != pdlp_termination_status_t::NumericalError &&
       lp_result.get_primal_solution().size() == lp_optimal_solution.size() &&
       lp_result.get_dual_solution().size() == lp_dual_optimal_solution.size();
+
+    // A valid lower bound from the dual the root LP returned, whatever stopped it. PDLP's primal
+    // objective is not one: at its tolerances it can lie above the LP optimum.
+    if (root_lp_usable) {
+      const auto stream = problem_ptr->handle_ptr->get_stream();
+      pdlp::lagrangian_dual_bound_t<i_t, f_t> dual_bound(
+        problem_ptr->n_constraints, problem_ptr->n_variables, stream);
+      branch_and_bound.set_root_lower_bound(
+        dual_bound.compute(*problem_ptr, lp_result.get_dual_solution().data(), stream), true);
+    }
 
     bool use_staged_simplex_solution = false;
     {
@@ -632,10 +638,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
                         (int)lp_result.get_termination_status());
         ls.lp_optimal_exists = false;
         branch_and_bound.set_root_concurrent_halt(1);
-      } else if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
-        // PDLP's primal objective is not a valid bound at its tolerances (it can lie above the LP
-        // optimum); the valid bound comes from the dual iterate (root_pdlp_dual_bound) or from
-        // branch and bound.
       } else if (lp_result.get_termination_status() ==
                  pdlp_termination_status_t::PrimalInfeasible) {
         CUOPT_LOG_ERROR("Problem is primal infeasible, continuing anyway!");

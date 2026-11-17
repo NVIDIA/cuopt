@@ -426,11 +426,6 @@
           "type": "integer",
           "description": "Ceiling on Papilo's probing.minbadgesize. Default: -1 (no override).",
           "x-parameter-name": "mip_hyper_heuristic_papilo_probing_max_badgesize"
-        },
-        "root_pdlp_dual_bound": {
-          "type": "boolean",
-          "description": "Report a valid lower bound from the root PDLP dual iterate while the root LP is solving. Default: true.",
-          "x-parameter-name": "mip_hyper_heuristic_root_pdlp_dual_bound"
         }
       },
       "additionalProperties": false

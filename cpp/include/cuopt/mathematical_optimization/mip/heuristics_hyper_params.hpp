@@ -41,9 +41,6 @@ struct mip_heuristics_hyper_params_t {
   i_t cycle_detection_length             = 30;      // FP assignment cycle ring buffer
   f_t relaxed_lp_time_limit              = 1.0;     // base relaxed LP time cap in heuristics
   f_t related_vars_time_limit            = 2.0;     // time for related-variable structure build
-
-  // Valid lower bound from PDLP's dual iterate while the root LP is solving (pdlp/dual_bound.cuh)
-  bool root_pdlp_dual_bound = true;
 };
 
 }  // namespace cuopt::mathematical_optimization

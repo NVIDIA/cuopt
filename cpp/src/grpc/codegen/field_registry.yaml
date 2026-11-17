@@ -1333,15 +1333,6 @@ mip_settings:
         field_num: 54
         type: int32
         optional: true
-    - root_pdlp_dual_bound:
-        param_name: mip_hyper_heuristic_root_pdlp_dual_bound
-        description: >-
-          Report a valid lower bound from the root PDLP dual iterate while the
-          root LP is solving.
-        default: "true"
-        field_num: 55
-        type: bool
-        optional: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Optimization Problem (cpu_optimization_problem_t)

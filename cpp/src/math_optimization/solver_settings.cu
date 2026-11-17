@@ -272,7 +272,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ, &mip_settings.submip_params.enable_cpufj, true, "run CPU FJ over the sub-MIP"},
     {CUOPT_MIP_HYPER_BLOCK_BVE, &mip_settings.block_bve, true, "eliminate blocks of binaries in cuOpt's MIP presolve (needs " CUOPT_MIP_PROBING ")"},
     {CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING, &mip_settings.indicator_strengthening, true, "append implied indicator rows and lift capacity rows before Papilo presolve"},
-    {CUOPT_MIP_HYPER_HEURISTIC_ROOT_PDLP_DUAL_BOUND, &mip_settings.heuristic_params.root_pdlp_dual_bound, true, "valid lower bound from the root PDLP dual iterate"},
+    {CUOPT_MIP_HYPER_ROOT_PDLP_DUAL_BOUND, &mip_settings.root_pdlp_dual_bound, false, "report the root PDLP dual bound every 1000 iterations"},
     // PDLP scaling hyper-parameter (hidden from default --help: name contains "hyper_")
     {CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, &pdlp_settings.hyper_params.do_curtis_reid_scaling, true, "Curtis-Reid prescaling, run before Ruiz/Pock-Chambolle scaling"},
   };
