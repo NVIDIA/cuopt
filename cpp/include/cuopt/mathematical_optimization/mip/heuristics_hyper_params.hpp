@@ -43,7 +43,7 @@ struct mip_heuristics_hyper_params_t {
   f_t related_vars_time_limit            = 2.0;     // time for related-variable structure build
 
   // Valid lower bound from PDLP's dual iterate while the root LP is solving (pdlp/dual_bound.cuh)
-  i_t root_pdlp_dual_bound = 1;  // 0 off, 1 on
+  bool root_pdlp_dual_bound = true;
 };
 
 }  // namespace cuopt::mathematical_optimization

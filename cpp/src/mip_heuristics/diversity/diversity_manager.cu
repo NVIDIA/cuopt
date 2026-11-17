@@ -572,7 +572,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
     pdlp_settings.presolver               = presolver_t::None;
     pdlp_settings.per_constraint_residual = true;
     set_pdlp_solver_mode(pdlp_settings);
-    if (context.settings.heuristic_params.root_pdlp_dual_bound != 0) {
+    if (context.settings.heuristic_params.root_pdlp_dual_bound) {
       // A valid lower bound from PDLP's dual iterate while the root LP is solving; PDLP reports
       // it in user space, branch and bound keeps it in solver space.
       pdlp_settings.dual_bound_callback = [this, &branch_and_bound](f_t user_bound) {

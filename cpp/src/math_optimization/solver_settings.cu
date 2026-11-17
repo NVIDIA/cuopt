@@ -228,7 +228,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_HEURISTIC_N_OF_MINIMUMS_FOR_EXIT, &mip_settings.heuristic_params.n_of_minimums_for_exit, 1, std::numeric_limits<i_t>::max(), 7000, "FJ baseline local-minima exit threshold"},
     {CUOPT_MIP_HYPER_HEURISTIC_ENABLED_RECOMBINERS, &mip_settings.heuristic_params.enabled_recombiners, 0, 15, 15, "bitmask: 1=BP 2=FP 4=LS 8=SubMIP"},
     {CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH, &mip_settings.heuristic_params.cycle_detection_length, 1, std::numeric_limits<i_t>::max(), 30, "FP assignment cycle ring buffer length"},
-    {CUOPT_MIP_HYPER_HEURISTIC_ROOT_PDLP_DUAL_BOUND, &mip_settings.heuristic_params.root_pdlp_dual_bound, 0, 1, 1, "valid lower bound from the root PDLP dual iterate (0 off, 1 on)"},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_LINE_SEARCH, &mip_settings.diving_params.line_search_diving, -1, 1, -1, "line-search diving toggle: -1 automatic, 0 disabled, 1 enabled"},
     {CUOPT_MIP_HYPER_DIVING_PSEUDOCOST, &mip_settings.diving_params.pseudocost_diving, -1, 1, -1, "pseudocost diving toggle: -1 automatic, 0 disabled, 1 enabled"},
@@ -273,6 +272,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ, &mip_settings.submip_params.enable_cpufj, true, "run CPU FJ over the sub-MIP"},
     {CUOPT_MIP_HYPER_BLOCK_BVE, &mip_settings.block_bve, true, "eliminate blocks of binaries in cuOpt's MIP presolve (needs " CUOPT_MIP_PROBING ")"},
     {CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING, &mip_settings.indicator_strengthening, true, "append implied indicator rows and lift capacity rows before Papilo presolve"},
+    {CUOPT_MIP_HYPER_HEURISTIC_ROOT_PDLP_DUAL_BOUND, &mip_settings.heuristic_params.root_pdlp_dual_bound, true, "valid lower bound from the root PDLP dual iterate"},
     // PDLP scaling hyper-parameter (hidden from default --help: name contains "hyper_")
     {CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, &pdlp_settings.hyper_params.do_curtis_reid_scaling, true, "Curtis-Reid prescaling, run before Ruiz/Pock-Chambolle scaling"},
   };

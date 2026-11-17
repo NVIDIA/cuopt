@@ -285,6 +285,7 @@ message MIPSolverSettings {
   optional int32 zero_half_cuts = 52 [deprecated = true];
   optional int32 presolve_max_rounds = 53 [deprecated = true];
   optional int32 papilo_probing_max_badgesize = 54 [deprecated = true];
+  optional bool root_pdlp_dual_bound = 55 [deprecated = true];
   // set_parameter() key/value store. Keys are the CUOPT_*
   // parameter strings; values are the textual form
   // set_parameter_from_string accepts. All or nothing, based

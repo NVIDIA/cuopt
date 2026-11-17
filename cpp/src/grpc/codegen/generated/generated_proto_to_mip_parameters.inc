@@ -148,3 +148,6 @@
   if (pb_settings.has_papilo_probing_max_badgesize()) {
     settings.set_parameter("mip_hyper_heuristic_papilo_probing_max_badgesize", static_cast<i_t>(pb_settings.papilo_probing_max_badgesize()));
   }
+  if (pb_settings.has_root_pdlp_dual_bound()) {
+    settings.set_parameter("mip_hyper_heuristic_root_pdlp_dual_bound", pb_settings.root_pdlp_dual_bound());
+  }
