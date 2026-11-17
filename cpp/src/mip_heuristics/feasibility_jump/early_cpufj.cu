@@ -41,7 +41,7 @@ early_cpufj_t<i_t, f_t>::~early_cpufj_t()
 template <typename i_t, typename f_t>
 void early_cpufj_t<i_t, f_t>::start(int n_lanes,
                                     bool low_latency,
-                                    const std::vector<f_t>& incumbent_assignment)
+                                    const std::vector<std::vector<f_t>>& seeds)
 {
   const bool threaded = !omp_in_parallel();
   // 1: presolve, 1: early GPU FJ, 1: early CPU FJ
@@ -64,9 +64,10 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes,
           1,
           std::min(CUOPT_MIP_EARLY_CPUFJ_MAX_LANES,
                    std::max(1, omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS)));
-  cuopt_assert(incumbent_assignment.empty() ||
-                 incumbent_assignment.size() == (size_t)this->problem_ptr_->get_n_variables(),
-               "incumbent assignment size mismatch");
+  for (const auto& seed : seeds) {
+    cuopt_assert(seed.size() == (size_t)this->problem_ptr_->get_n_variables(),
+                 "seed size mismatch");
+  }
   cuopt::splitmix64_t seed_rng(seed_);
   const int64_t base_seed = seed_rng.next_i64();
   climbers_.resize(n_lanes);
@@ -89,9 +90,9 @@ void early_cpufj_t<i_t, f_t>::start(int n_lanes,
       climbers_[k] = init_fj_cpu_clone(*climbers_[0], preemption_flag_, settings);
     }
     climbers_[k]->low_latency   = low_latency;
-    const bool incumbent_seeded = !incumbent_assignment.empty() && (n_lanes == 1 || k % 2 == 1);
+    const bool incumbent_seeded = !seeds.empty() && (n_lanes == 1 || k % 2 == 1);
     if (incumbent_seeded) {
-      climbers_[k]->h_assignment = incumbent_assignment;
+      climbers_[k]->h_assignment = seeds[(k / 2) % seeds.size()];
       recompute_lhs(*climbers_[k]);
       climbers_[k]->h_best_assignment = climbers_[k]->h_assignment;
     }
