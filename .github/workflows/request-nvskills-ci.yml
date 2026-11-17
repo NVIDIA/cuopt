@@ -14,7 +14,12 @@ on:
     types: [created]
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
+  # Only the NVSkills bot's signature push to a PR branch matters.
   push:
+    branches-ignore:
+      - main
+      - "release/**"
+      - "pull-request/**"
 
 permissions:
   contents: read

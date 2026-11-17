@@ -32,8 +32,8 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
 
   // Callers sharing the team with other work reserve its capacity before sizing this portfolio.
   void start(int n_lanes,
-             bool low_latency                             = false,
-             const std::vector<f_t>& incumbent_assignment = {});
+             bool low_latency                           = false,
+             const std::vector<std::vector<f_t>>& seeds = {});
   // Raises the stop flag without waiting. Call on every running early heuristic before any stop().
   void request_stop();
   void stop();
