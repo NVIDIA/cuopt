@@ -1233,6 +1233,13 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   pdlp_termination_status_t termination_average =
     average_termination_strategy_.get_termination_status(0);
 
+  // On convergence, also evaluate the bound on the final dual iterate: the periodic evaluation below
+  // can be up to 999 iterations old when PDLP stops between two of them.
+  if (termination_current == pdlp_termination_status_t::Optimal ||
+      termination_average == pdlp_termination_status_t::Optimal) {
+    report_dual_bound();
+  }
+
   // First check for pdlp_termination_reason_t::Optimality and handle the first primal feasible case
 
   if (settings_.first_primal_feasible) {
@@ -2637,8 +2644,9 @@ bool pdlp_solver_t<i_t, f_t>::reports_dual_bound()
          !is_distributed_master();
 }
 
-// Called from check_termination with the iteration log (iteration 0, then every 1000 iterations),
-// where the iterates are unscaled, so the dual iterate can be turned into a valid bound.
+// Called from check_termination with the iteration log (iteration 0, then every 1000 iterations) and
+// once on convergence, where the iterates are unscaled, so the dual iterate can be turned into a
+// valid bound.
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::report_dual_bound()
 {
