@@ -374,9 +374,15 @@ void branch_and_bound_t<i_t, f_t>::update_user_bound(const lp_problem_t<i_t, f_t
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::accept_new_incumbent(f_t obj)
 {
-  if (!incumbent_.has_incumbent) return true;
+  f_t upper_bound = upper_bound_.load(std::memory_order::relaxed);
+  if (!std::isfinite(upper_bound)) return true;
 
-  f_t threshold = incumbent_.objective - settings_.primal_tol;
+  // If B&B does not contain a valid incumbent yet, accept one that have equal or
+  // better objective than the current upper bound. This happens when populating the
+  // incumbent from the early heuristics.
+  if (!incumbent_.has_incumbent) return obj <= upper_bound + settings_.primal_tol;
+
+  f_t threshold = upper_bound - settings_.primal_tol;
   f_t step      = 0.0;
   if (original_lp_.objective_step.has_step()) {
     step = original_lp_.objective_step.step_size;
@@ -384,9 +390,9 @@ bool branch_and_bound_t<i_t, f_t>::accept_new_incumbent(f_t obj)
     step = 1.0;
   }
   if (step > 0.0) {
-    // Half a step above the greatest lattice value strictly below the incumbent.
+    // Half a step above the greatest lattice value strictly below the upper bound.
     const f_t lattice_below =
-      compute_node_cutoff(original_lp_, settings_, incumbent_.objective) - settings_.dual_tol;
+      compute_node_cutoff(original_lp_, settings_, upper_bound) - settings_.dual_tol;
     threshold = std::min(threshold, lattice_below + 0.5 * step);
   }
   return obj < threshold;
@@ -2771,12 +2777,27 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (feasible) {
       const f_t computed_obj = compute_objective(original_lp_, crushed_guess);
       mutex_upper_.lock();
-      incumbent_.set_incumbent_solution(computed_obj, crushed_guess);
-      upper_bound_ = computed_obj;
+      const f_t upper_bound = upper_bound_.load(std::memory_order::relaxed);
+
+      // Populate the incumbent when its objective is equal or better than the current upper bound.
+      // This is quite common in sub-MIP (it is initialized with the current incumbent).
+      const bool accept_guess = computed_obj <= upper_bound + settings_.primal_tol;
+
+      if (accept_guess) {
+        incumbent_.set_incumbent_solution(computed_obj, crushed_guess);
+        upper_bound_ = std::min(upper_bound, computed_obj);
+      }
       mutex_upper_.unlock();
 
-      settings_.log.print_format("Setting initial MIP start. Objective={:+.6e}",
-                                 compute_user_objective(original_lp_, computed_obj));
+      if (accept_guess) {
+        settings_.log.print_format("Setting initial MIP start. Objective={:+.6e}",
+                                   compute_user_objective(original_lp_, computed_obj));
+      } else {
+        settings_.log.print_format(
+          "Ignoring initial MIP start with objective {:+.6e}, worse than the upper bound {:+.6e}",
+          compute_user_objective(original_lp_, computed_obj),
+          compute_user_objective(original_lp_, upper_bound));
+      }
     }
   }
 
