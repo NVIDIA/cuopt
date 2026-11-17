@@ -286,8 +286,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
       // heuristic solution as it ties with the current upper bound (since we set it early
       // to the early solution's objective)
       if (is_feasible && problem_ptr->branch_and_bound_callback != nullptr) {
-        problem_ptr->branch_and_bound_callback(sol.get_host_assignment(),
-                                               heuristics_origin_t::HEURISTICS);
+        problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
       }
 
       initial_sol_vector.emplace_back(std::move(sol));

@@ -283,7 +283,7 @@ void branch_and_bound_t<i_t, f_t>::print_table_header()
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, heuristics_origin_t origin)
+void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, char symbol)
 {
   if (is_running_) {
     f_t lower_bound           = get_lower_bound();
@@ -294,7 +294,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, heuristics_origin_t
 
     std::string log_line =
       std::format("{} {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11} {:^11}",
-                  feasible_solution_symbol(origin),
+                  symbol,
                   "",  // nodes explored
                   "",  // nodes unexplored
                   user_obj,
@@ -400,7 +400,7 @@ bool branch_and_bound_t<i_t, f_t>::accept_new_incumbent(f_t obj)
 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vector<f_t>& solution,
-                                                                heuristics_origin_t origin)
+                                                                char symbol)
 {
   mutex_original_lp_.lock();
   if (solution.size() != original_problem_.num_cols) {
@@ -417,9 +417,8 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
   bool attempt_repair = false;
   bool success        = false;
 
-  settings_.log.debug_format("{} found solution with obj={:.4g}",
-                             feasible_solution_symbol(origin),
-                             compute_user_objective(original_lp_, obj));
+  settings_.log.debug_format(
+    "{} found solution with obj={:.4g}", symbol, compute_user_objective(original_lp_, obj));
 
   if (accept_new_incumbent(obj)) {
     f_t primal_err;
@@ -450,7 +449,7 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
         upper_bound_            = std::min(current_upper_bound, obj);
         incumbent_.set_incumbent_solution(obj, crushed_solution);
         if (current_upper_bound > upper_bound_.load(std::memory_order::relaxed)) {
-          report_heuristic(obj, origin);
+          report_heuristic(obj, symbol);
           success = true;
         }
       }
@@ -560,7 +559,8 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_cpu_fj(f_t obj,
     if (settings_.solution_callback != nullptr) {
       settings_.solution_callback(user_assignment, obj);
     }
-    set_solution_from_heuristics(user_assignment, heuristics_origin_t::HEURISTICS);
+    set_solution_from_heuristics(user_assignment,
+                                 settings_.mip_hyper_params.heuristic_show_type ? 'J' : 'H');
   }
 }
 
@@ -569,13 +569,11 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_cpu_fj(f_t obj,
 // expects a solution on the user space. So we go from presolved space -> augmented space ->
 // user space.
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
+bool branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
   const lp_problem_t<i_t, f_t>& lp,
   const std::vector<f_t>& solution,
   const third_party_presolve_t<i_t, f_t>& presolver,
-  submip_stats_t& submip_stats,
-  f_t fixrate,
-  [[maybe_unused]] std::string_view log_prefix)
+  search_strategy_t type)
 {
   bool check_postsolve = false;
   std::vector<f_t> leaf_sol;
@@ -587,15 +585,13 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
   uncrush_primal_solution(original_problem_, lp, leaf_sol, user_sol);
   mutex_original_lp_.unlock();
 
-  settings_.log.debug_format("{}Sub-MIP found a feasible solution with obj={:.4g}",
-                             log_prefix,
-                             compute_user_objective(lp, obj));
-
-  bool success = set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP);
+  bool success = set_solution_from_heuristics(
+    user_sol, feasible_solution_symbol(type, settings_.mip_hyper_params.heuristic_show_type));
   if (success) {
-    submip_stats.save_success(fixrate);
     if (settings_.solution_callback != nullptr) { settings_.solution_callback(user_sol, obj); }
   }
+
+  return success;
 }
 
 template <typename i_t, typename f_t>
@@ -703,7 +699,7 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
         if (accept_new_incumbent(repaired_obj)) {
           upper_bound_ = std::min(upper_bound_.load(std::memory_order::relaxed), repaired_obj);
           incumbent_.set_incumbent_solution(repaired_obj, repaired_solution);
-          report_heuristic(repaired_obj, heuristics_origin_t::HEURISTICS);
+          report_heuristic(repaired_obj, 'H');
 
           if (settings_.solution_callback != nullptr) {
             std::vector<f_t> original_x;
@@ -869,7 +865,7 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_worker(const lp_problem_t<i
   bool success = false;
   settings_.log.debug(
     "%c found a feasible solution with obj=%.10e.\n",
-    feasible_solution_symbol(thread_type, settings_.mip_hyper_params.diving_show_type),
+    feasible_solution_symbol(thread_type, settings_.mip_hyper_params.heuristic_show_type),
     compute_user_objective(lp, leaf_objective));
 
   mutex_upper_.lock();
@@ -878,7 +874,7 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_worker(const lp_problem_t<i
     upper_bound_.fetch_min(leaf_objective, std::memory_order::relaxed);
 
     char symbol =
-      feasible_solution_symbol(thread_type, settings_.mip_hyper_params.diving_show_type);
+      feasible_solution_symbol(thread_type, settings_.mip_hyper_params.heuristic_show_type);
     report(lp, symbol, leaf_objective, get_lower_bound(), leaf_depth, 0);
     success = true;
 
@@ -4159,7 +4155,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
 
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
       report(original_lp_,
-             feasible_solution_symbol(worker_type, settings_.mip_hyper_params.diving_show_type),
+             feasible_solution_symbol(worker_type, settings_.mip_hyper_params.heuristic_show_type),
              sol->objective,
              deterministic_lower,
              sol->depth,
@@ -4337,7 +4333,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
       }
 
       if (new_upper < std::numeric_limits<f_t>::infinity()) {
-        report_heuristic(new_upper, heuristics_origin_t::HEURISTICS);
+        report_heuristic(new_upper, 'H');
 
         if (settings_.solution_callback != nullptr) {
           std::vector<f_t> original_x;

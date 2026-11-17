@@ -136,14 +136,12 @@ class branch_and_bound_t {
   }
 
   // Set a solution based on the user problem during the course of the solve
-  bool set_solution_from_heuristics(const std::vector<f_t>& solution, heuristics_origin_t origin);
+  bool set_solution_from_heuristics(const std::vector<f_t>& solution, char symbol);
 
-  void set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
+  bool set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 const std::vector<f_t>& solution,
                                 const third_party_presolve_t<i_t, f_t>& presolver,
-                                submip_stats_t& submip_stats,
-                                f_t fixrate,
-                                std::string_view log_prefix);
+                                search_strategy_t type);
 
   // Update the incumbent solution with the new feasible solution
   // found during branch and bound.
@@ -319,7 +317,7 @@ class branch_and_bound_t {
   std::function<void(f_t)> user_bound_callback_;
 
   void print_table_header();
-  void report_heuristic(f_t obj, heuristics_origin_t origin);
+  void report_heuristic(f_t obj, char symbol);
   void report(const simplex::lp_problem_t<i_t, f_t>& lp,
               char symbol,
               f_t obj,

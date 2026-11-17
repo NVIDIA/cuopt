@@ -282,7 +282,7 @@ TEST(Population, ExternalQueueDrainAllowsReentrantProducerAndLeavesNewHeapPendin
   dm.population.allocate_solutions();
 
   bool produced                     = false;
-  problem.branch_and_bound_callback = [&](const auto&, auto) {
+  problem.branch_and_bound_callback = [&](const auto&) {
     if (produced) return true;
     produced = true;
     EXPECT_EQ(dm.population.get_external_solution_size(), 0);
