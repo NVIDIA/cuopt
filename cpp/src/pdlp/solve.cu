@@ -15,7 +15,6 @@
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
-#include <pdlp/pdlp_memory_resource.hpp>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <pdlp/translate.hpp>
@@ -793,46 +792,6 @@ optimization_problem_solution_t<i_t, f_t> run_primal(
                                   method_t::PrimalSimplex);
 }
 
-template <typename i_t, typename f_t>
-static optimization_problem_solution_t<i_t, f_t> run_pdlp_with_memory(
-  mip::problem_t<i_t, f_t>& problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
-  const timer_t& timer,
-  bool is_batch_mode)
-{
-  pdlp::device_memory_resource_t output_resource{rmm::mr::get_current_device_resource_ref()};
-  auto working_resource = output_resource;
-  if (!settings.inside_mip && !is_batch_mode && settings.fixed_batch_size == 0 &&
-      settings.new_bounds.empty()) {
-    working_resource = pdlp::make_pdlp_memory_resource(std::move(working_resource));
-  }
-  pdlp::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode, false, working_resource);
-  if (settings.inside_mip) { solver.set_inside_mip(true); }
-  auto solution = solver.run_solver(timer);
-  if (working_resource != output_resource) {
-    // The solution and warm start move some iteration buffers out of the solver. Detach those
-    // buffers so retaining a solution cannot retain the matrix and the rest of the working pool.
-    auto& warm_start = solution.get_pdlp_warm_start_data();
-    auto stream      = problem.handle_ptr->get_stream();
-    for (auto* buffer : {&solution.get_primal_solution(),
-                         &solution.get_dual_solution(),
-                         &solution.get_reduced_cost(),
-                         &warm_start.current_primal_solution_,
-                         &warm_start.current_dual_solution_,
-                         &warm_start.initial_primal_average_,
-                         &warm_start.initial_dual_average_,
-                         &warm_start.current_ATY_,
-                         &warm_start.sum_primal_solutions_,
-                         &warm_start.sum_dual_solutions_,
-                         &warm_start.last_restart_duality_gap_primal_solution_,
-                         &warm_start.last_restart_duality_gap_dual_solution_}) {
-      pdlp::detach_pdlp_buffer(*buffer, working_resource, output_resource, stream);
-    }
-    stream.sync();
-  }
-  return solution;
-}
-
 #if PDLP_INSTANTIATE_FLOAT || CUOPT_INSTANTIATE_FLOAT
 
 template <typename i_t>
@@ -909,7 +868,9 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.large_nnz_threshold                   = settings.large_nnz_threshold;
   fs.concurrent_halt                       = settings.concurrent_halt;
 
-  auto float_sol = run_pdlp_with_memory(float_problem, fs, timer, is_batch_mode);
+  pdlp::pdlp_solver_t<i_t, float> solver(float_problem, fs, is_batch_mode);
+  if (settings.inside_mip) { solver.set_inside_mip(true); }
+  auto float_sol = solver.run_solver(timer);
 
   // Convert float solution back to double on GPU (gpu_cast defined in optimization_problem.cu)
   auto dev_primal  = gpu_cast<float, double>(float_sol.get_primal_solution(), stream);
@@ -985,7 +946,9 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
     }
   }
 #endif
-  return run_pdlp_with_memory(problem, settings, timer, is_batch_mode);
+  pdlp::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
+  if (settings.inside_mip) { solver.set_inside_mip(true); }
+  return solver.run_solver(timer);
 }
 
 template <typename i_t, typename f_t>

@@ -69,9 +69,7 @@ class pdlp_solver_t {
   pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                 pdlp_solver_settings_t<i_t, f_t> const& settings,
                 bool is_batch_mode           = false,
-                bool is_distributed_sub_pdlp = false,
-                cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource =
-                  rmm::mr::get_current_device_resource_ref());
+                bool is_distributed_sub_pdlp = false);
 
   // Multi-GPU solver constructor. `index_t` is the model's index type and may be wider
   // than the solver's i_t: the problem is partitioned into per-GPU shards addressed in i_t.
@@ -196,7 +194,6 @@ class pdlp_solver_t {
   void report_dual_bound();
   std::unique_ptr<lagrangian_dual_bound_t<i_t, f_t>> dual_bound_;
   f_t best_dual_bound_{-std::numeric_limits<f_t>::infinity()};  // solver space
-  cuda::mr::any_resource<cuda::mr::device_accessible> memory_resource_;
   // Combined bounds in op_problem_scaled_ will only be scaled if
   // compute_initial_primal_weight_before_scaling is false because of compute_initial_primal_weight
   mip::problem_t<i_t, f_t> op_problem_scaled_;

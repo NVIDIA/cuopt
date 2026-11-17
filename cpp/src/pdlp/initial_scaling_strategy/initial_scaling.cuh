@@ -64,9 +64,7 @@ class pdlp_initial_scaling_strategy_t {
                                   const pdlp::pdlp_hyper_params_t& hyper_params,
                                   i_t original_batch_size,
                                   bool running_mip            = false,
-                                  bool skip_ruiz_pock_compute = false,
-                                  cuda::mr::any_resource<cuda::mr::device_accessible>
-                                    memory_resource = rmm::mr::get_current_device_resource_ref());
+                                  bool skip_ruiz_pock_compute = false);
 
   void scale_problem();
 
