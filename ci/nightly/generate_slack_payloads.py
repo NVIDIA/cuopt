@@ -58,6 +58,15 @@ def _shorten(text, limit):
 CRASH_NAMES = {"PROCESS_CRASH", "STEP_TIMEOUT"}
 _CRASHED = re.compile(r"terminated by (.+?) mid-run")
 _TIMED_OUT = re.compile(r"did not finish within its (\S+) time limit")
+# The step timeout record keeps this sentence in its body and the sentence
+# above only in the message attribute, which the parser drops.
+_KILLED_BY_TIMEOUT = re.compile(
+    r"killed by the 'timeout' command after (\S+?)\."
+)
+_COLLECT_CRASH = re.compile(r"terminated by (.+?)\. Could not collect")
+
+# GitHub job conclusions that mean the job did not succeed.
+FAILED_CONCLUSIONS = {"failure", "timed_out", "startup_failure"}
 
 
 def display_name(entry):
@@ -77,9 +86,12 @@ def crash_reason(message):
         if sig.startswith("timeout"):
             return "timed out"
         return f"crashed with {sig}"
-    match = _TIMED_OUT.search(text)
+    match = _TIMED_OUT.search(text) or _KILLED_BY_TIMEOUT.search(text)
     if match:
         return f"timed out after the {match.group(1)} limit"
+    match = _COLLECT_CRASH.search(text)
+    if match:
+        return f"crashed with {match.group(1)}"
     return ""
 
 
@@ -417,7 +429,7 @@ def main():
         prefix = _job_prefix(j)
         wf_counts.setdefault(prefix, {"failed": 0, "total": 0})
         wf_counts[prefix]["total"] += 1
-        if j.get("conclusion") == "failure":
+        if j.get("conclusion") in FAILED_CONCLUSIONS:
             wf_counts[prefix]["failed"] += 1
 
     # Build a lookup: workflow prefix -> list of failing matrix_labels from grid
@@ -631,7 +643,7 @@ def main():
     failed_job_links = [
         j
         for j in workflow_jobs
-        if j.get("conclusion") == "failure" and j.get("url")
+        if j.get("conclusion") in FAILED_CONCLUSIONS and j.get("url")
     ]
     if failed_job_links:
         link_blocks = []

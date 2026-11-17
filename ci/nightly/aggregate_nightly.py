@@ -34,6 +34,9 @@ sys.path.insert(
 )
 from s3_helpers import s3_download, s3_upload, s3_list  # noqa: E402
 
+# GitHub job conclusions that mean the job did not succeed.
+FAILED_CONCLUSIONS = {"failure", "timed_out", "startup_failure"}
+
 
 # ---------------------------------------------------------------------------
 # Download and merge summaries
@@ -309,12 +312,14 @@ def generate_consolidated_json(
 
     # Workflow-level CI job statuses
     wf_jobs = workflow_jobs or []
-    failed_ci_jobs = [j for j in wf_jobs if j["conclusion"] == "failure"]
-    # Any job that did not pass blocks last-green selection.
+    failed_ci_jobs = [
+        j for j in wf_jobs if j["conclusion"] in FAILED_CONCLUSIONS
+    ]
+    # A cancelled job did not pass either, so it also blocks last-green.
     unsuccessful_ci_jobs = [
         j
         for j in wf_jobs
-        if j["conclusion"] in ("failure", "timed_out", "startup_failure")
+        if j["conclusion"] in FAILED_CONCLUSIONS | {"cancelled"}
     ]
     # Jobs without per-matrix S3 tracking (notebooks, JuMP, etc.)
     untracked_failed = [
@@ -811,7 +816,9 @@ def main():
     # ---- Step 2b: Parse workflow job statuses ----
     workflow_jobs = parse_workflow_jobs(args.workflow_jobs)
     if workflow_jobs:
-        failed_wf = [j for j in workflow_jobs if j["conclusion"] == "failure"]
+        failed_wf = [
+            j for j in workflow_jobs if j["conclusion"] in FAILED_CONCLUSIONS
+        ]
         print(
             f"Workflow jobs: {len(workflow_jobs)} total, "
             f"{len(failed_wf)} failed"
