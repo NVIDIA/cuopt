@@ -548,7 +548,7 @@ class iteration_data_t {
       d_num_flag(lp.handle_ptr->get_stream()),
       d_inv_diag(lp.num_cols, lp.handle_ptr->get_stream()),
       d_cols_to_remove(0, lp.handle_ptr->get_stream()),
-      d_augmented_diagonal_indices_(0, lp.handle_ptr->get_stream()),
+      d_diagonal_indices_(0, lp.handle_ptr->get_stream()),
       cone_kkt_data_(lp.handle_ptr->get_stream()),
       use_augmented(false),
       has_factorization(false),
@@ -1130,7 +1130,7 @@ class iteration_data_t {
                                       raft::device_span<const f_t>{d_diag_.data(), d_diag_.size()},
                                       cone_views,
                                       cone_kkt_data_,
-                                      d_augmented_diagonal_indices_,
+                                      d_diagonal_indices_,
                                       device_augmented,
                                       stream_view_);
 
@@ -1161,7 +1161,7 @@ class iteration_data_t {
                          thrust::make_counting_iterator<i_t>(0),
                          linear_n,
                          [span_x             = cuopt::make_span(device_augmented.x),
-                          span_diag_indices  = cuopt::make_span(d_augmented_diagonal_indices_),
+                          span_diag_indices  = cuopt::make_span(d_diagonal_indices_),
                           span_q_diag        = cuopt::make_span(d_Q_diag_),
                           span_diag          = cuopt::make_span(d_diag_),
                           dual_perturb_value = dual_perturb] __device__(i_t j) {
@@ -1175,7 +1175,7 @@ class iteration_data_t {
                          thrust::make_counting_iterator<i_t>(n),
                          i_t(m),
                          [span_x               = cuopt::make_span(device_augmented.x),
-                          span_diag_indices    = cuopt::make_span(d_augmented_diagonal_indices_),
+                          span_diag_indices    = cuopt::make_span(d_diagonal_indices_),
                           primal_perturb_value = primal_perturb] __device__(i_t j) {
                            span_x[span_diag_indices[j]] = primal_perturb_value;
                          });
@@ -1252,6 +1252,8 @@ class iteration_data_t {
     raft::common::nvtx::range fun_scope("Barrier: Form ADAT");
     float64_t start_form_adat = tic();
     const i_t m               = AD.m;
+    // QPs factor A D^{-1} A^T with a small relative diagonal shift.
+    const bool regularize = Q.n > 0;
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: restore A");
@@ -1335,6 +1337,45 @@ class iteration_data_t {
       raft::common::nvtx::range scope("Barrier: Form ADAT: ADAT multiply");
       multiply_kernels<i_t, f_t>(handle_ptr, device_ADAT, spgemm_info());
       handle_ptr->sync_stream();
+    }
+
+    if (first_call && regularize) {
+      // The ADAT pattern is built once and reset_iterate_state keeps it, so locate the diagonals
+      // here and index them directly on every refactorization. A row with no stored diagonal
+      // keeps index 0; the regularize apply rejects it on the column check.
+      raft::common::nvtx::range scope("Barrier: Form ADAT: diagonal indices");
+      d_diagonal_indices_.resize(m, stream_view_);
+      thrust::for_each_n(rmm::exec_policy_nosync(stream_view_),
+                         thrust::make_counting_iterator<i_t>(0),
+                         m,
+                         [row_start = cuopt::make_span(device_ADAT.row_start),
+                          col_index = cuopt::make_span(device_ADAT.j),
+                          diag_idx  = cuopt::make_span(d_diagonal_indices_)] __device__(i_t i) {
+                           diag_idx[i] = 0;
+                           for (i_t p = row_start[i]; p < row_start[i + 1]; ++p) {
+                             if (col_index[p] == i) {
+                               diag_idx[i] = p;
+                               break;
+                             }
+                           }
+                         });
+      RAFT_CHECK_CUDA(stream_view_.get());
+    }
+    if (regularize && settings_.barrier_adat_regularization > 0) {
+      raft::common::nvtx::range scope("Barrier: Form ADAT: regularize");
+
+      const f_t relative_perturb = settings_.barrier_adat_regularization;
+      thrust::for_each_n(rmm::exec_policy_nosync(stream_view_),
+                         thrust::make_counting_iterator<i_t>(0),
+                         m,
+                         [col_index = cuopt::make_span(device_ADAT.j),
+                          values    = cuopt::make_span(device_ADAT.x),
+                          diag_idx  = cuopt::make_span(d_diagonal_indices_),
+                          relative_perturb] __device__(i_t i) {
+                           const i_t p = diag_idx[i];
+                           if (col_index[p] == i) { values[p] += relative_perturb * values[p]; }
+                         });
+      RAFT_CHECK_CUDA(stream_view_.get());
     }
 
     auto adat_nnz       = device_ADAT.row_start.element(device_ADAT.m, handle_ptr->get_stream());
@@ -2351,7 +2392,10 @@ class iteration_data_t {
   const csc_matrix_t<i_t, f_t>& Q;
   std::vector<f_t> Qdiag;
   bool Q_diagonal;
-  rmm::device_uvector<i_t> d_augmented_diagonal_indices_;
+  // Positions of the diagonal entries in the factorized matrix's values array. use_augmented
+  // picks exactly one of form_augmented / form_adat for the whole solve, so the two paths share
+  // this: it indexes device_augmented.x or device_ADAT.x accordingly.
+  rmm::device_uvector<i_t> d_diagonal_indices_;
 
   cusparse_info_t<i_t, f_t>& spgemm_info()
   {
