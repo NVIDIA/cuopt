@@ -700,7 +700,7 @@ void pdlp_termination_strategy_t<i_t, f_t>::print_termination_criteria(i_t itera
                                                                        i_t best_id) const
 {
   // TODO less critical batch mode: handle this
-  CUOPT_LOG_INFO("%7d %+.8e %+.8e  %8.2e     %8.2e        %8.2e      %.3fs",
+  CUOPT_LOG_INFO("%7d %+.8e %+.8e  %8.2e   %8.2e    %8.2e   %.3fs",
                  iteration,
                  convergence_information_.get_primal_objective().element(best_id, stream_view_),
                  convergence_information_.get_dual_objective().element(best_id, stream_view_),
