@@ -222,6 +222,7 @@ bool domain_propagation_t<i_t, f_t>::tighten_bounds(
   if (!tighten_lb) { new_lower = lb; }
   if (!tighten_ub) { new_upper = ub; }
 
+  // Bounds crossing by less than the tolerance are snapped together.
   if (new_lower > new_upper) {
     if (new_lower - new_upper > tol * std::max({1.0, std::abs(new_lower), std::abs(new_upper)})) {
       settings.log.debug(
@@ -358,6 +359,7 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
     f_t max_tol     = settings.primal_tol * std::max({1.0, std::abs(max_a), std::abs(lp.rhs[i])});
     f_t min_tol     = settings.primal_tol * std::max({1.0, std::abs(min_a), std::abs(lp.rhs[i])});
 
+    // a x = rhs is infeasible if rhs lies outside [min_a, max_a] beyond the tolerance.
     if ((activity.max_activity.num_infinite_bounds == 0 && lp.rhs[i] - max_a > max_tol) ||
         (activity.min_activity.num_infinite_bounds == 0 && min_a - lp.rhs[i] > min_tol)) {
       settings.log.debug(
@@ -393,8 +395,8 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
         max_a - rhs <= activity.capacity_threshold));
     if (!propagate_upper && !propagate_lower) { continue; }
 
-    i_t row_start = Arow.row_start[i];
-    i_t row_end   = Arow.row_start[i + 1];
+    const i_t row_start = Arow.row_start[i];
+    const i_t row_end   = Arow.row_start[i + 1];
     nnz_processed_ += row_end - row_start;
 
     // The capacity threshold is recomputed from the bounds seen during this scan.

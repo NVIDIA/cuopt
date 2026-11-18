@@ -16,15 +16,17 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
+// Where a bound change came from. backtrack_to_parent pops changes until it reaches a BRANCH.
 enum class bound_change_origin_t {
   BRANCH            = 0,  // Regular variable branching
   BOUND_PROPAGATION = 1,  // Bound propagation
   BOUND_IMPLICATION = 2,  // Derived from the implied bounds (via probing cache)
   CLIQUE            = 3,  // Derived from cliques
   OBJECTIVE         = 4,  // Objective cutoff
-  SYMMETRY          = 5
+  SYMMETRY          = 5   // Orbital fixing
 };
 
+// old_lower/old_upper are filled in by domain_propagation_t::apply (or apply_stack).
 template <typename i_t, typename f_t>
 struct bound_change_t {
   i_t var;
@@ -37,12 +39,10 @@ struct bound_change_t {
 
 // One side (min or max) of a row activity. The finite part is accumulated with compensated (Dot2)
 // summation: the activity is activity_sum + activity_sum_err, where activity_sum_err collects the
-// rounding of every product and addition. Infinite or huge contributions are counted in num_inf
-// instead.
+// rounding of every product and addition. Infinite or huge contributions are counted in
+// num_infinite_bounds instead.
 template <typename i_t, typename f_t>
 struct activity_t {
-  // Accumulate the activities for a given row. Track also the error for the compensated sum
-  // (Dot2).
   f_t activity_sum     = 0;
   f_t activity_sum_err = 0;
 
@@ -50,11 +50,9 @@ struct activity_t {
   // numerical cancellation.
   f_t activity_peak = 0;
 
-  // Count the number of variables with infinite lower/upper bound. We count them separately
-  // so it does not populate the regular activity sum. More specifically, if a row contain a single
-  // variable with infinite bound, then all residual activities for all variables will be
-  // infinite, but it is finite that variable. For two of more variables, then the activity
-  // is infinite.
+  // Number of variables with an infinite contribution, kept out of activity_sum. If a row contains
+  // a single such variable, the residual activity is infinite for every other variable but finite
+  // for that one. With two or more, every residual activity is infinite.
   i_t num_infinite_bounds = 0;
 };
 
@@ -63,27 +61,33 @@ struct row_activity_t {
   activity_t<i_t, f_t> min_activity;
   activity_t<i_t, f_t> max_activity;
 
-  // Largest slack for which some variable can still receive an accepted bound.
+  // Largest slack for which some variable can still receive an accepted bound. A side whose slack
+  // exceeds it cannot tighten any bound, so the row is not queued.
   f_t capacity_threshold = std::numeric_limits<f_t>::infinity();
 
+  // Set when cancellation is detected; the activity is rebuilt from the bounds before the row is
+  // used again.
   bool recompute = false;
 };
 
 // This object stores the row activities over the LP bounds as well as the stack of bound changes
 // that produced those bounds, in the order they were applied.
-// This is used for bound propagation and backtracking.
+// This is used for bound propagation and backtracking. Every row is treated as an equality
+// a x = rhs; inequalities must carry a slack column.
 template <typename i_t, typename f_t>
 class domain_propagation_t {
  public:
   domain_propagation_t() = default;
 
-  // Records a bound change on the stack.
+  // Records a bound change on the stack without applying it or updating the activities.
   void push(const bound_change_t<i_t, f_t>& bound_change)
   {
     bound_changes_.push_back(bound_change);
   }
 
-  // Apply the `bound_change` to `lp`, store in the stack and then update the activities.
+  // Sets the bounds of bound_change.var in lp to [new_lower, new_upper], records the previous
+  // bounds in old_lower/old_upper so backtrack_to_parent can restore them, pushes the change on the
+  // stack and updates the activities. A change that does not move any bound is ignored.
   bool apply(simplex::lp_problem_t<i_t, f_t>& lp, bound_change_t<i_t, f_t> bound_change)
   {
     if (bound_change.var < 0) { return false; }
@@ -112,7 +116,8 @@ class domain_propagation_t {
                            const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                            size_t start) const;
 
-  // Applies every recorded change to [lower, upper], in order, refreshing their old bounds.
+  // Applies every recorded change to [lower, upper], in order, refreshing their old bounds. The
+  // activities are not updated; call compute_activities afterwards.
   void apply_stack(std::vector<f_t>& lower, std::vector<f_t>& upper)
   {
     for (auto& bound_change : bound_changes_) {
@@ -137,13 +142,14 @@ class domain_propagation_t {
                          const bound_change_t<i_t, f_t>& bound_change);
 
   // Recomputes all activities from the bounds in lp and propagates every row, tightening the bounds
-  // in place.
+  // in place. Returns false if the propagation proves the problem infeasible.
   bool propagate_full(const csr_matrix_t<i_t, f_t>& Arow,
                       const std::vector<simplex::variable_type_t>& var_types,
                       const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                       simplex::lp_problem_t<i_t, f_t>& lp);
 
   // Recomputes all activities from the bounds in lp and propagates from the rows containing vars.
+  // Returns false if the propagation proves the problem infeasible.
   bool propagate_from_variables(const csr_matrix_t<i_t, f_t>& Arow,
                                 const std::vector<simplex::variable_type_t>& var_types,
                                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
@@ -151,7 +157,8 @@ class domain_propagation_t {
                                 const std::vector<i_t>& vars);
 
   // Propagates from the rows containing the variables of the bound changes from start onwards. The
-  // activities must already include these changes, as apply does.
+  // activities must already include these changes, as apply does. Returns false if the propagation
+  // proves the problem infeasible.
   bool propagate_from_stack(const csr_matrix_t<i_t, f_t>& Arow,
                             const std::vector<simplex::variable_type_t>& var_types,
                             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
@@ -159,20 +166,29 @@ class domain_propagation_t {
                             i_t start = 0);
 
   // Applies bound_change to lp and propagates from the rows containing its variable. A change that
-  // does not move any bound is neither recorded nor propagated.
+  // does not move any bound is neither recorded nor propagated. Returns false if the propagation
+  // proves the problem infeasible.
   bool apply_and_propagate(const csr_matrix_t<i_t, f_t>& Arow,
                            const std::vector<simplex::variable_type_t>& var_types,
                            const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                            bound_change_t<i_t, f_t> bound_change,
                            simplex::lp_problem_t<i_t, f_t>& lp);
 
+  // Nonzeros touched by the last propagation call, used as a work estimate.
   size_t last_nnz_processed{0};
 
  private:
-  static constexpr f_t huge_value               = 1e15;
-  static constexpr f_t recompute_factor         = 1e6;
+  // Contributions with |a_ij x_j| >= huge_value are counted as infinite.
+  static constexpr f_t huge_value = 1e15;
+
+  // An activity is recomputed once its peak exceeds it by this factor.
+  static constexpr f_t recompute_factor = 1e6;
+
+  // A continuous bound must shrink the domain by at least this fraction.
   static constexpr f_t min_relative_improvement = 0.3;
-  static constexpr f_t min_improvement_factor   = 1e3;
+
+  // Times primal_tol, the smallest absolute change accepted for a continuous bound.
+  static constexpr f_t min_improvement_factor = 1e3;
 
   std::vector<row_activity_t<i_t, f_t>> row_activities_;
   std::vector<uint8_t> row_queued_;
