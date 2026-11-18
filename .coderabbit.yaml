@@ -153,7 +153,8 @@ reviews:
           when pydocstyle format rules pass
         - Error messages that expose internals vs. user-actionable messages
         - Python tests check the API only; solver correctness belongs in cpp/tests (see
-          review_rules.md). Is there an existing test to extend instead? Phrase as a question.
+          skills/cuopt-developer/references/review_rules.md). Is there an existing test to
+          extend instead? Phrase as a question.
 
         Do not re-raise ruff/pydocstyle-covered issues.
 

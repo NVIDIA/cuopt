@@ -106,9 +106,9 @@ Before the line-by-line rules, look at the PR as a whole.
   contract. Use `TEST_P` (C++) or `pytest.mark.parametrize` (Python) rather than a loop over
   parameters.
 - **Test in the right layer.** `cpp/tests` owns correctness, determinism, algorithms and each
-  C API function. Python and the server only test the API: functions and options are called,
-  results convert, bad input raises the right error. Put a solver bug's reproducer in
-  `cpp/tests`.
+  C API function. Python, the server and any other API built on the core only test the API:
+  functions and options are called, results convert, bad input raises the right error. Put a
+  solver bug's reproducer in `cpp/tests`.
 - **Prefer extending an existing test.** If a test already covers the case or can be
   modified to cover it, change it instead of adding a new one.
 - **A skipped test links an open issue and is re-enabled, not removed.**
