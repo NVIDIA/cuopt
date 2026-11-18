@@ -152,9 +152,8 @@ reviews:
         - Docstring CONTENT on new public APIs — params, returns, raises — even
           when pydocstyle format rules pass
         - Error messages that expose internals vs. user-actionable messages
-        - Python tests check the API only (calls, conversion, return types, errors); solver
-          correctness and determinism belong in cpp/tests (see "Test in the right layer" in
-          skills/cuopt-developer/references/review_rules.md). Phrase this as a question.
+        - Python tests check the API only; solver correctness belongs in cpp/tests (see
+          review_rules.md). Is there an existing test to extend instead? Phrase as a question.
 
         Do not re-raise ruff/pydocstyle-covered issues.
 
