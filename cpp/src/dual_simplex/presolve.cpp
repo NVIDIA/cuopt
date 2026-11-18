@@ -7,7 +7,7 @@
 
 #include <dual_simplex/presolve.hpp>
 
-#include <dual_simplex/domain.hpp>
+#include <branch_and_bound/domain_propagation.hpp>
 #include <dual_simplex/folding.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solve.hpp>
@@ -1464,7 +1464,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 
     // Bound propagation assumes that the problem is in equality form.
     std::vector<variable_type_t> var_types(problem.num_cols, variable_type_t::CONTINUOUS);
-    full_bound_strengthening(Arow, var_types, settings, problem);
+    mip::full_bound_strengthening(Arow, var_types, settings, problem);
   }
 
   // Add artifical variables

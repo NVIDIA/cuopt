@@ -5,9 +5,10 @@
 
 set(BRANCH_AND_BOUND_SRC_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/branch_and_bound.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/degenerate_pivots.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/degenerate_pivots.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/pseudo_costs.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/diving_heuristics.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/domain_propagation.cpp
 )
 
 

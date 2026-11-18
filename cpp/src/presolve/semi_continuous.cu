@@ -9,7 +9,7 @@
 
 #include "bounds_presolve.cuh"
 
-#include <dual_simplex/domain.hpp>
+#include <branch_and_bound/domain_propagation.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
@@ -91,8 +91,9 @@ std::vector<f_t> call_host_bounds_strengthening(const optimization_problem_t<i_t
   csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
   lp_problem.A.to_compressed_row(Arow);
 
-  simplex::domain_t<i_t, f_t> domain;
-  if (!domain.propagate_from_variables(Arow, var_types, simplex_settings, lp_problem, sc_indices)) {
+  domain_propagation_t<i_t, f_t> domain_propagation;
+  if (!domain_propagation.propagate_from_variables(
+        Arow, var_types, simplex_settings, lp_problem, sc_indices)) {
     return op_problem.get_variable_upper_bounds_host();
   }
 

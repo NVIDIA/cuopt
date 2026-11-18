@@ -9,10 +9,10 @@
 
 #include <cuopt/mathematical_optimization/mip/mip_hyper_params.hpp>
 
+#include <branch_and_bound/domain_propagation.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
-#include <dual_simplex/domain.hpp>
 
 #include <vector>
 
