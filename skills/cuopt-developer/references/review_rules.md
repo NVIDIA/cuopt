@@ -105,9 +105,19 @@ Before the line-by-line rules, look at the PR as a whole.
   assertions). Do not test undocumented unsupported cases; documented errors are part of the
   contract. Use `TEST_P` (C++) or `pytest.mark.parametrize` (Python) rather than a loop over
   parameters.
+- **Test in the right layer.** The C and C++ core (`cpp/tests`) owns what the solver
+  computes: correctness, determinism, algorithms, numerics, and each C API function. Python,
+  server, client and MCP tests only check the API: every public function, method and option is
+  called, arguments and results convert, return types are right, and bad input raises the
+  right error. They do not re-check solution quality or determinism; one small instance is
+  enough. A solver bug gets its reproducer in `cpp/tests`, even if it was found through Python.
+- **A skipped test links an open issue and is re-enabled, not removed.** A skip means a
+  bug or a flaky test that still needs fixing. Do not delete the test, and re-enable it when
+  the issue is fixed or closed.
 - **Keep tests small and cheap.** Toy instances and tight time limits; justify anything
   large or slow. Skip tests of trivial plumbing.
-- **New paths get the coverage their siblings have.**
+- **New paths get the coverage their siblings have.** A new public API function, method or
+  option is called by at least one test.
 
 ## Docs, logs and PRs
 
