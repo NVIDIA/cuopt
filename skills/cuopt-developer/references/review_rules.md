@@ -106,7 +106,7 @@ Before the line-by-line rules, look at the PR as a whole.
   contract. Use `TEST_P` (C++) or `pytest.mark.parametrize` (Python) rather than a loop over
   parameters.
 - **Test in the right layer.** `cpp/tests` owns correctness, determinism, algorithms and each
-  C API function. Python, the server and any other API built on the core only test the API:
+  C API function. Python and any other API built on the core only test the API:
   functions and options are called, results convert, bad input raises the right error. Put a
   solver bug's reproducer in `cpp/tests`.
 - **Prefer extending an existing test.** If a test already covers the case or can be
