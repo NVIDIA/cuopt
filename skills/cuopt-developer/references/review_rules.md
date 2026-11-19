@@ -32,14 +32,16 @@ Before the line-by-line rules, look at the PR as a whole.
   commit hashes or PR numbers. See [conventions.md](conventions.md#comments).
 - **Comment only what the code cannot say.** Add a comment for a non-obvious reason, an
   invariant or a unit. Do not restate what the next line does, narrate the steps, or add a
-  header comment to trivial code. One or two plain lines is usually enough; a longer comment
-  needs a reason. Do not address comments to an agent. Define jargon or use the plain name.
+  header comment to trivial code. Keep it to one or two lines, and shorten a longer
+  one as far as it will go. Do not address comments to an agent. Define jargon or use the plain name.
 - **Non-trivial math is explained.** Say what the inputs are and what is computed.
 
 ## Naming and terminology
 
 - **Use the project vocabulary; do not coin new terms.** Use the existing words for a
-  concept everywhere (code, logs, docs, APIs). Current choices:
+  concept everywhere (code, logs, docs, APIs). Where the codebase has no term, use the name
+  from the literature (for example `min_activity`, `dot2`), not an invented one. Current
+  choices:
 
   | Use | Not |
   |---|---|
