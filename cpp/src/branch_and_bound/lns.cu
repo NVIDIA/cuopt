@@ -87,6 +87,7 @@ i_t extend_variable_fixings(const csr_matrix_t<i_t, f_t>& Arow,
                             const simplex_solver_settings_t<i_t, f_t>& settings,
                             const std::vector<f_t>& obj_coeffs,
                             const std::vector<i_t>& fractional,
+                            std::vector<uint8_t>& integer_blacklist,
                             const std::vector<f_t>& current_sol,
                             const std::vector<f_t>& root_solution,
                             i_t target_num_fixed,
@@ -96,6 +97,7 @@ i_t extend_variable_fixings(const csr_matrix_t<i_t, f_t>& Arow,
 {
   std::vector<std::tuple<f_t, i_t, f_t>> candidates;
   for (i_t j : fractional) {
+    if (integer_blacklist[j]) { continue; }
     if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) { continue; }
     if (toc(start_time) >= settings.time_limit || settings.received_halt_signal()) return -1;
 
@@ -132,11 +134,22 @@ i_t extend_variable_fixings(const csr_matrix_t<i_t, f_t>& Arow,
     fixed_val = std::clamp(fixed_val, lp.lower[j], lp.upper[j]);
     i_t start = domain_propagation.size();
     bound_change_t<i_t, f_t> bound_change{.var       = j,
+                                          .old_upper = lp.upper[j],
                                           .new_upper = fixed_val,
+                                          .old_lower = lp.lower[j],
                                           .new_lower = fixed_val,
                                           .origin    = bound_change_origin_t::BRANCH};
     if (!domain_propagation.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) {
-      return -1;
+      DEBUG_SUBMIP(
+        "Bound propagation detect infeasibility. var={}, lower={:.4g} -> {:.4g}, "
+        "upper={:.4g} -> {:.4g}",
+        j,
+        bound_change.old_lower,
+        bound_change.new_lower,
+        bound_change.old_upper,
+        bound_change.new_upper);
+      domain_propagation.backtrack_to_parent(lp);
+      integer_blacklist[j] = true;
     }
     num_fixed += domain_propagation.count_fixed_integers(var_types, settings, start);
 
@@ -532,18 +545,24 @@ void mutation(diving_worker_t<i_t, f_t>* worker,
     f_t fixed_val = std::clamp(std::round(incumbent[j]), lp.lower[j], lp.upper[j]);
     i_t start     = domain_propagation.size();
     bound_change_t<i_t, f_t> bound_change{.var       = j,
+                                          .old_upper = lp.upper[j],
                                           .new_upper = fixed_val,
+                                          .old_lower = lp.lower[j],
                                           .new_lower = fixed_val,
                                           .origin    = bound_change_origin_t::BRANCH};
 
     if (!domain_propagation.apply_and_propagate(
           worker->Arow, worker->var_types, settings, bound_change, lp)) {
-      DEBUG_SUBMIP("Bound propagation detected infeasibility. fixed={}/{}, target={} ({:.4g})",
-                   num_fixed,
-                   integer_list.size(),
-                   target_num_fixed,
-                   target_fixrate)
-      return;
+      DEBUG_SUBMIP(
+        "Bound propagation detect infeasibility. var={}, lower={:.4g} -> {:.4g}, "
+        "upper={:.4g} -> {:.4g}",
+        j,
+        bound_change.old_lower,
+        bound_change.new_lower,
+        bound_change.old_upper,
+        bound_change.new_upper);
+
+      domain_propagation.backtrack_to_parent(lp);
     }
 
     num_fixed += domain_propagation.count_fixed_integers(worker->var_types, settings, start);
@@ -606,6 +625,7 @@ void rins(diving_worker_t<i_t, f_t>* worker,
   std::vector<i_t> integer_list;
   get_unfixed_integer_variables(
     lp.lower, lp.upper, worker->var_types, settings.fixed_tol, integer_list);
+  std::vector<uint8_t> integer_blacklist(lp.num_cols, false);
 
   i_t num_integers = integer_list.size();
   f_t max_fixrate  = submip_get_max_fixrate(submip_stats, settings.mip_hyper_params, worker->rng);
@@ -650,25 +670,30 @@ void rins(diving_worker_t<i_t, f_t>* worker,
       }
 
       if (new_fixings >= round_num_fixed) break;
+      if (integer_blacklist[j]) continue;
       if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) continue;
       if (std::abs(current_sol[j] - incumbent[j]) <= settings.integer_tol) {
         f_t fixed_val = std::clamp(std::round(incumbent[j]), lp.lower[j], lp.upper[j]);
         i_t start     = domain_propagation.size();
         bound_change_t<i_t, f_t> bound_change{.var       = j,
+                                              .old_upper = lp.upper[j],
                                               .new_upper = fixed_val,
+                                              .old_lower = lp.lower[j],
                                               .new_lower = fixed_val,
                                               .origin    = bound_change_origin_t::BRANCH};
         if (!domain_propagation.apply_and_propagate(
               worker->Arow, worker->var_types, settings, bound_change, lp)) {
           DEBUG_SUBMIP(
-            "Bound propagation detected infeasibility. fixed={}/{}, max_fixrate={:.4g}, "
-            "min_fixrate={:.4g}",
-            num_fixed + new_fixings,
-            num_integers,
-            max_fixrate,
-            min_fixrate)
-          has_stopped = true;
-          break;
+            "Bound propagation detect infeasibility. var={}, lower={:.4g} -> {:.4g}, "
+            "upper={:.4g} -> {:.4g}",
+            j,
+            bound_change.old_lower,
+            bound_change.new_lower,
+            bound_change.old_upper,
+            bound_change.new_upper);
+
+          domain_propagation.backtrack_to_parent(lp);
+          integer_blacklist[j] = true;
         }
 
         new_fixings += domain_propagation.count_fixed_integers(worker->var_types, settings, start);
@@ -696,14 +721,20 @@ void rins(diving_worker_t<i_t, f_t>* worker,
                                             settings,
                                             worker->leaf_problem.objective,
                                             fractional,
+                                            integer_blacklist,
                                             current_sol,
                                             worker->root_solution,
                                             round_num_fixed,
                                             bnb_stats.start_time,
                                             worker->leaf_problem,
                                             domain_propagation);
+      if (new_fixings == 0) {
+        has_submip = fixrate > 0;
+        break;
+      }
+
       if (new_fixings < 0) {
-        DEBUG_SUBMIP("Round {}: stopped fixing (infeasible, halted or time limit reached).", round)
+        DEBUG_SUBMIP("Round {}: stopped fixing (halted or time limit reached).", round)
         break;
       }
 
@@ -803,6 +834,7 @@ void rens(diving_worker_t<i_t, f_t>* worker,
   std::vector<i_t> integer_list;
   get_unfixed_integer_variables(
     lp.lower, lp.upper, worker->var_types, settings.fixed_tol, integer_list);
+  std::vector<uint8_t> integer_blacklist(lp.num_cols, false);
 
   i_t num_integers = integer_list.size();
   f_t max_fixrate  = submip_get_max_fixrate(submip_stats, settings.mip_hyper_params, worker->rng);
@@ -849,9 +881,12 @@ void rens(diving_worker_t<i_t, f_t>* worker,
       }
 
       if (new_fixings >= round_num_fixed) break;
+      if (integer_blacklist[j]) continue;
       if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) continue;
 
       bound_change_t<i_t, f_t> bound_change{.var = j, .origin = bound_change_origin_t::BRANCH};
+      bound_change.old_lower = lp.lower[j];
+      bound_change.old_upper = lp.upper[j];
       bound_change.new_lower = std::clamp(std::floor(current_sol[j]), lp.lower[j], lp.upper[j]);
       bound_change.new_upper = std::clamp(std::ceil(current_sol[j]), lp.lower[j], lp.upper[j]);
 
@@ -860,14 +895,15 @@ void rens(diving_worker_t<i_t, f_t>* worker,
         if (!domain_propagation.apply_and_propagate(
               worker->Arow, worker->var_types, settings, bound_change, lp)) {
           DEBUG_SUBMIP(
-            "Bound propagation detected infeasibility. fixed={}/{}, max_fixrate={:.4g}, "
-            "min_fixrate={:.4g}",
-            num_fixed + new_fixings,
-            num_integers,
-            max_fixrate,
-            min_fixrate)
-          has_stopped = true;
-          break;
+            "Bound propagation detect infeasibility. var={}, lower={:.4g} -> {:.4g}, "
+            "upper={:.4g} -> {:.4g}",
+            j,
+            bound_change.old_lower,
+            bound_change.new_lower,
+            bound_change.old_upper,
+            bound_change.new_upper);
+          domain_propagation.backtrack_to_parent(lp);
+          integer_blacklist[j] = true;
         }
 
         new_fixings += domain_propagation.count_fixed_integers(worker->var_types, settings, start);
@@ -888,14 +924,20 @@ void rens(diving_worker_t<i_t, f_t>* worker,
                                             settings,
                                             worker->leaf_problem.objective,
                                             fractional,
+                                            integer_blacklist,
                                             current_sol,
                                             worker->root_solution,
                                             round_num_fixed,
                                             bnb_stats.start_time,
                                             worker->leaf_problem,
                                             domain_propagation);
+      if (new_fixings == 0) {
+        has_submip = fixrate > 0;
+        break;
+      }
+
       if (new_fixings < 0) {
-        DEBUG_SUBMIP("Round {}: stopped fixing (infeasible, halted or time limit reached).", round)
+        DEBUG_SUBMIP("Round {}: stopped fixing (halted or time limit reached).", round)
         break;
       }
 
