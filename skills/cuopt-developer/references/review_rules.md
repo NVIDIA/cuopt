@@ -30,8 +30,10 @@ Before the line-by-line rules, look at the PR as a whole.
 - **Describe the code as it is.** No history ("used to be", "previously", "fixes the
   bug where"), no failed attempts, no numbers from one benchmark instance, no line numbers,
   commit hashes or PR numbers. See [conventions.md](conventions.md#comments).
-- **Short and plain.** Say what or why in a line or two. Do not address comments to an
-  agent. Define jargon or use the plain name.
+- **Comment only what the code cannot say.** Add a comment for a non-obvious reason, an
+  invariant or a unit. Do not restate what the next line does, narrate the steps, or add a
+  header comment to trivial code. One or two plain lines is usually enough; a longer comment
+  needs a reason. Do not address comments to an agent. Define jargon or use the plain name.
 - **Non-trivial math is explained.** Say what the inputs are and what is computed.
 
 ## Naming and terminology
