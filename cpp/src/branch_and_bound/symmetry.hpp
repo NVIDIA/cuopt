@@ -7,8 +7,8 @@
 
 #pragma once
 
+#include <branch_and_bound/domain_propagation.hpp>
 #include <branch_and_bound/mip_node.hpp>
-#include <dual_simplex/domain.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/user_problem.hpp>
@@ -344,7 +344,7 @@ class orbital_fixing_t {
                      simplex::lp_problem_t<i_t, f_t>& problem,
                      const std::vector<f_t>& root_lower,
                      const std::vector<f_t>& root_upper,
-                     simplex::domain_t<i_t, f_t>& domain)
+                     domain_propagation_t<i_t, f_t>& domain_propagation)
   {
     // At the start of a new plunge, restore the parent's cumulative orbital
     // fixings into the problem.  These bound changes were derived during the
@@ -354,18 +354,18 @@ class orbital_fixing_t {
     // non-monotonic.
     if (start_plunge_) {
       for (i_t v : cumulative_fix_zero_) {
-        domain.apply(problem,
-                     {.var       = v,
-                      .new_upper = 0.0,
-                      .new_lower = 0.0,
-                      .origin    = simplex::bound_change_origin_t::SYMMETRY});
+        domain_propagation.apply(problem,
+                                 {.var       = v,
+                                  .new_upper = 0.0,
+                                  .new_lower = 0.0,
+                                  .origin    = bound_change_origin_t::SYMMETRY});
       }
       for (i_t v : cumulative_fix_one_) {
-        domain.apply(problem,
-                     {.var       = v,
-                      .new_upper = 1.0,
-                      .new_lower = 1.0,
-                      .origin    = simplex::bound_change_origin_t::SYMMETRY});
+        domain_propagation.apply(problem,
+                                 {.var       = v,
+                                  .new_upper = 1.0,
+                                  .new_lower = 1.0,
+                                  .origin    = bound_change_origin_t::SYMMETRY});
       }
     }
 
@@ -554,18 +554,14 @@ class orbital_fixing_t {
 
     // Apply the fixings from non-conflicting orbits
     for (i_t v : fix_zero_) {
-      domain.apply(problem,
-                   {.var       = v,
-                    .new_upper = 0.0,
-                    .new_lower = 0.0,
-                    .origin    = simplex::bound_change_origin_t::SYMMETRY});
+      domain_propagation.apply(
+        problem,
+        {.var = v, .new_upper = 0.0, .new_lower = 0.0, .origin = bound_change_origin_t::SYMMETRY});
     }
     for (i_t v : fix_one_) {
-      domain.apply(problem,
-                   {.var       = v,
-                    .new_upper = 1.0,
-                    .new_lower = 1.0,
-                    .origin    = simplex::bound_change_origin_t::SYMMETRY});
+      domain_propagation.apply(
+        problem,
+        {.var = v, .new_upper = 1.0, .new_lower = 1.0, .origin = bound_change_origin_t::SYMMETRY});
     }
 
     // Accumulate this node's fixings and store in the node so that
@@ -620,7 +616,7 @@ class lexical_reduction_t {
   i_t lexical_reduce(mip_symmetry_t<i_t, f_t>* symmetry,
                      mip_node_t<i_t, f_t>* node_ptr,
                      simplex::lp_problem_t<i_t, f_t>& problem,
-                     simplex::domain_t<i_t, f_t>& domain)
+                     domain_propagation_t<i_t, f_t>& domain_propagation)
   {
     reverse_branched_variables_.clear();
     mip_node_t<i_t, f_t>* node = node_ptr;
@@ -677,11 +673,11 @@ class lexical_reduction_t {
           break;
         }
         if (val_j == 0 && val_p_j == -1) {
-          domain.apply(problem,
-                       {.var       = p_j,
-                        .new_upper = 0.0,
-                        .new_lower = 0.0,
-                        .origin    = simplex::bound_change_origin_t::SYMMETRY});
+          domain_propagation.apply(problem,
+                                   {.var       = p_j,
+                                    .new_upper = 0.0,
+                                    .new_lower = 0.0,
+                                    .origin    = bound_change_origin_t::SYMMETRY});
           num_fixings++;
           continue;  // continue to the next pair
         }

@@ -108,7 +108,8 @@ class node_queue_t {
     return node;
   }
 
-  bool diving_init(mip_node_t<i_t, f_t>& start_node, simplex::domain_t<i_t, f_t>& domain)
+  bool diving_init(mip_node_t<i_t, f_t>& start_node,
+                   domain_propagation_t<i_t, f_t>& domain_propagation)
   {
     std::lock_guard lock(mutex_);
 
@@ -116,7 +117,7 @@ class node_queue_t {
     if (!node) return false;
 
     start_node = node->detach_copy();
-    node->rebuild_variable_bounds(domain);
+    node->rebuild_variable_bounds(domain_propagation);
     return true;
   }
 

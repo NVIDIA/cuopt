@@ -8,6 +8,7 @@
 #include <branch_and_bound/branch_and_bound.hpp>
 #include <branch_and_bound/degenerate_pivots.hpp>
 #include <branch_and_bound/diving_heuristics.hpp>
+#include <branch_and_bound/domain_propagation.hpp>
 #include <branch_and_bound/fractional.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
@@ -23,7 +24,6 @@
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/crossover.hpp>
-#include <dual_simplex/domain.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/phase2.hpp>
@@ -60,13 +60,11 @@
 namespace cuopt::mathematical_optimization::mip {
 
 using simplex::basis_update_mpf_t;
-using simplex::bound_change_origin_t;
 using simplex::compute_objective;
 using simplex::compute_user_objective;
 using simplex::crossover_status_t;
 using simplex::crush_primal_solution;
 using simplex::decompress_vstatus;
-using simplex::domain_t;
 using simplex::dual_phase2_with_advanced_basis;
 using simplex::dual_status_t;
 using simplex::logger_t;
@@ -510,9 +508,15 @@ f_t branch_and_bound_t<i_t, f_t>::compute_node_cutoff(const lp_problem_t<i_t, f_
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::accept_new_incumbent(f_t obj)
 {
-  if (!incumbent_.has_incumbent) return true;
+  f_t upper_bound = upper_bound_.load(std::memory_order::relaxed);
+  if (!std::isfinite(upper_bound)) return true;
 
-  f_t threshold = incumbent_.objective - settings_.primal_tol;
+  // If B&B does not contain a valid incumbent yet, accept one that have equal or
+  // better objective than the current upper bound. This happens when populating the
+  // incumbent from the early heuristics.
+  if (!incumbent_.has_incumbent) return obj <= upper_bound + settings_.primal_tol;
+
+  f_t threshold = upper_bound - settings_.primal_tol;
   f_t step      = 0.0;
   if (original_lp_.objective_step.has_step()) {
     step = original_lp_.objective_step.step_size;
@@ -520,10 +524,9 @@ bool branch_and_bound_t<i_t, f_t>::accept_new_incumbent(f_t obj)
     step = 1.0;
   }
   if (step > 0.0) {
-    // Half a step above the greatest lattice value strictly below the incumbent.
-    const f_t lattice_below =
-      compute_node_cutoff(original_lp_, incumbent_.objective) - settings_.dual_tol;
-    threshold = std::min(threshold, lattice_below + 0.5 * step);
+    // Half a step above the greatest lattice value strictly below the upper bound.
+    const f_t lattice_below = compute_node_cutoff(original_lp_, upper_bound) - settings_.dual_tol;
+    threshold               = std::min(threshold, lattice_below + 0.5 * step);
   }
   return obj < threshold;
 }
@@ -1554,7 +1557,7 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats)
 {
-  i_t start_stack_index = worker->domain.size();
+  i_t start_stack_index = worker->domain_propagation.size();
 
   // Perform orbital fixing
   auto* orbital_fixing = worker->orbital_fixing.get();
@@ -1566,7 +1569,7 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
                                                    worker->leaf_problem,
                                                    original_lp_.lower,
                                                    original_lp_.upper,
-                                                   worker->domain);
+                                                   worker->domain_propagation);
     i_t new_fix   = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
     if (new_fix > prev_fix) {
       ++stats.orbital_fixing_nodes;
@@ -1579,7 +1582,7 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
 
   if (settings_.symmetry == 2 && worker->lexical_reduction != nullptr) {
     i_t lexical_reductions_info = worker->lexical_reduction->lexical_reduce(
-      symmetry_, node_ptr, worker->leaf_problem, worker->domain);
+      symmetry_, node_ptr, worker->leaf_problem, worker->domain_propagation);
     if (lexical_reductions_info > 0) {
       stats.lexical_reduction_nodes++;
       stats.lexical_reduction_fixings_applied += lexical_reductions_info;
@@ -1590,7 +1593,7 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
     }
   }
 
-  return worker->domain.propagate_from_stack(
+  return worker->domain_propagation.propagate_from_stack(
     worker->Arow, worker->var_types, settings_, worker->leaf_problem, start_stack_index);
 }
 
@@ -1779,9 +1782,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   // The branching of the start node itself is applied when its LP is solved.
   if (start_node->parent != nullptr) {
-    start_node->parent->rebuild_variable_bounds(worker->domain);
+    start_node->parent->rebuild_variable_bounds(worker->domain_propagation);
   } else {
-    worker->domain.clear();
+    worker->domain_propagation.clear();
   }
 
   bool is_start_feasible = worker->rebuild_bounds_from_stack(original_lp_, settings_);
@@ -2311,8 +2314,8 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
   diving_worker_t<i_t, f_t>* diving_worker = diving_worker_pool_.pop_idle_worker();
   if (diving_worker == nullptr) { return false; }
 
-  bool success =
-    bfs_worker->node_queue.diving_init(diving_worker->start_node, diving_worker->domain);
+  bool success = bfs_worker->node_queue.diving_init(diving_worker->start_node,
+                                                    diving_worker->domain_propagation);
   if (!success) {
     diving_worker_pool_.return_worker_to_pool(diving_worker);
     return false;
@@ -2454,7 +2457,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     simplex_solver_settings_t<i_t, f_t> dfs_settings = submip_settings;
     dfs_settings.mip_hyper_params.diving_backtrack_limit =
       settings_.mip_hyper_params.submip_dfs_max_backtrack;
-    worker->domain.clear();
+    worker->domain_propagation.clear();
     dive_with(worker, dfs_settings);
     return;
   }
@@ -2744,26 +2747,6 @@ void get_unfixed_integer_variables(const std::vector<f_t>& lower,
 }
 
 template <typename i_t, typename f_t>
-i_t calculate_fixrate(const std::vector<variable_type_t>& var_types,
-                      const simplex_solver_settings_t<i_t, f_t>& settings,
-                      const domain_t<i_t, f_t>& domain,
-                      const size_t start)
-{
-  i_t num_fixed = 0;
-
-  for (size_t k = start; k < domain.size(); ++k) {
-    const simplex::bound_change_t<i_t, f_t>& change = domain[k];
-    if (var_types[change.var] != variable_type_t::CONTINUOUS &&
-        change.old_upper - change.old_lower > settings.fixed_tol &&
-        change.new_upper - change.new_lower <= settings.fixed_tol) {
-      ++num_fixed;
-    }
-  }
-
-  return num_fixed;
-}
-
-template <typename i_t, typename f_t>
 i_t apply_mutation(const csr_matrix_t<i_t, f_t>& Arow,
                    const std::vector<variable_type_t>& var_types,
                    const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -2772,7 +2755,7 @@ i_t apply_mutation(const csr_matrix_t<i_t, f_t>& Arow,
                    i_t target_num_fixed,
                    f_t start_time,
                    lp_problem_t<i_t, f_t>& lp,
-                   domain_t<i_t, f_t>& domain)
+                   domain_propagation_t<i_t, f_t>& domain_propagation)
 {
   i_t num_fixed = 0;
   for (i_t j : integer_list) {
@@ -2780,13 +2763,15 @@ i_t apply_mutation(const csr_matrix_t<i_t, f_t>& Arow,
     if (toc(start_time) >= settings.time_limit || settings.received_halt_signal()) return -1;
     if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) continue;
     f_t fixed_val = std::clamp(std::round(incumbent[j]), lp.lower[j], lp.upper[j]);
-    i_t start     = domain.size();
-    simplex::bound_change_t<i_t, f_t> bound_change{.var       = j,
-                                                   .new_upper = fixed_val,
-                                                   .new_lower = fixed_val,
-                                                   .origin    = bound_change_origin_t::BRANCH};
-    if (!domain.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) { return -1; }
-    num_fixed += calculate_fixrate(var_types, settings, domain, start);
+    i_t start     = domain_propagation.size();
+    bound_change_t<i_t, f_t> bound_change{.var       = j,
+                                          .new_upper = fixed_val,
+                                          .new_lower = fixed_val,
+                                          .origin    = bound_change_origin_t::BRANCH};
+    if (!domain_propagation.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) {
+      return -1;
+    }
+    num_fixed += domain_propagation.count_fixed_integers(var_types, settings, start);
   }
 
   return num_fixed;
@@ -2801,7 +2786,7 @@ i_t apply_rens_fixings(const csr_matrix_t<i_t, f_t>& Arow,
                        i_t target_num_fixed,
                        f_t start_time,
                        lp_problem_t<i_t, f_t>& lp,
-                       domain_t<i_t, f_t>& domain)
+                       domain_propagation_t<i_t, f_t>& domain_propagation)
 {
   i_t num_fixed = 0;
   for (i_t j : integer_list) {
@@ -2809,15 +2794,16 @@ i_t apply_rens_fixings(const csr_matrix_t<i_t, f_t>& Arow,
     if (toc(start_time) >= settings.time_limit || settings.received_halt_signal()) return -1;
     if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) continue;
 
-    simplex::bound_change_t<i_t, f_t> bound_change{.var    = j,
-                                                   .origin = bound_change_origin_t::BRANCH};
+    bound_change_t<i_t, f_t> bound_change{.var = j, .origin = bound_change_origin_t::BRANCH};
     bound_change.new_lower = std::clamp(std::floor(node_solution[j]), lp.lower[j], lp.upper[j]);
     bound_change.new_upper = std::clamp(std::ceil(node_solution[j]), lp.lower[j], lp.upper[j]);
 
     if (bound_change.new_lower != lp.lower[j] || bound_change.new_upper != lp.upper[j]) {
-      i_t start = domain.size();
-      if (!domain.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) { return -1; }
-      num_fixed += calculate_fixrate(var_types, settings, domain, start);
+      i_t start = domain_propagation.size();
+      if (!domain_propagation.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) {
+        return -1;
+      }
+      num_fixed += domain_propagation.count_fixed_integers(var_types, settings, start);
     }
   }
 
@@ -2834,7 +2820,7 @@ i_t apply_rins_fixings(const csr_matrix_t<i_t, f_t>& Arow,
                        i_t target_num_fixed,
                        f_t start_time,
                        lp_problem_t<i_t, f_t>& lp,
-                       domain_t<i_t, f_t>& domain)
+                       domain_propagation_t<i_t, f_t>& domain_propagation)
 {
   i_t num_fixed = 0;
   for (i_t j : integer_list) {
@@ -2843,13 +2829,15 @@ i_t apply_rins_fixings(const csr_matrix_t<i_t, f_t>& Arow,
     if (std::abs(lp.lower[j] - lp.upper[j]) <= settings.fixed_tol) continue;
     if (std::abs(current_sol[j] - incumbent[j]) <= settings.integer_tol) {
       f_t fixed_val = std::clamp(std::round(incumbent[j]), lp.lower[j], lp.upper[j]);
-      i_t start     = domain.size();
-      simplex::bound_change_t<i_t, f_t> bound_change{.var       = j,
-                                                     .new_upper = fixed_val,
-                                                     .new_lower = fixed_val,
-                                                     .origin    = bound_change_origin_t::BRANCH};
-      if (!domain.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) { return -1; }
-      num_fixed += calculate_fixrate(var_types, settings, domain, start);
+      i_t start     = domain_propagation.size();
+      bound_change_t<i_t, f_t> bound_change{.var       = j,
+                                            .new_upper = fixed_val,
+                                            .new_lower = fixed_val,
+                                            .origin    = bound_change_origin_t::BRANCH};
+      if (!domain_propagation.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) {
+        return -1;
+      }
+      num_fixed += domain_propagation.count_fixed_integers(var_types, settings, start);
     }
   }
 
@@ -2868,7 +2856,7 @@ i_t extend_variable_fixings(const csr_matrix_t<i_t, f_t>& Arow,
                             i_t target_num_fixed,
                             f_t start_time,
                             lp_problem_t<i_t, f_t>& lp,
-                            domain_t<i_t, f_t>& domain)
+                            domain_propagation_t<i_t, f_t>& domain_propagation)
 {
   std::vector<std::tuple<f_t, i_t, f_t>> candidates;
   for (i_t j : fractional) {
@@ -2906,13 +2894,15 @@ i_t extend_variable_fixings(const csr_matrix_t<i_t, f_t>& Arow,
     if (toc(start_time) >= settings.time_limit || settings.received_halt_signal()) return -1;
 
     fixed_val = std::clamp(fixed_val, lp.lower[j], lp.upper[j]);
-    i_t start = domain.size();
-    simplex::bound_change_t<i_t, f_t> bound_change{.var       = j,
-                                                   .new_upper = fixed_val,
-                                                   .new_lower = fixed_val,
-                                                   .origin    = bound_change_origin_t::BRANCH};
-    if (!domain.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) { return -1; }
-    num_fixed += calculate_fixrate(var_types, settings, domain, start);
+    i_t start = domain_propagation.size();
+    bound_change_t<i_t, f_t> bound_change{.var       = j,
+                                          .new_upper = fixed_val,
+                                          .new_lower = fixed_val,
+                                          .origin    = bound_change_origin_t::BRANCH};
+    if (!domain_propagation.apply_and_propagate(Arow, var_types, settings, bound_change, lp)) {
+      return -1;
+    }
+    num_fixed += domain_propagation.count_fixed_integers(var_types, settings, start);
 
     // Limit the amount of fixing to the current LP.
     accumulate_change += dist;
@@ -2947,7 +2937,7 @@ void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
   get_unfixed_integer_variables(
     lower, upper, worker->var_types, submip_settings.fixed_tol, integer_list);
   worker->rng.shuffle(integer_list);
-  worker->domain.compute_activities(worker->Arow, worker->leaf_problem);
+  worker->domain_propagation.compute_activities(worker->Arow, worker->leaf_problem);
 
   f_t target_fixrate =
     submip_get_max_fixrate(mutation_stats_, submip_settings.mip_hyper_params, worker->rng);
@@ -2960,7 +2950,7 @@ void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
                                  target_num_fixed,
                                  exploration_stats_.start_time,
                                  worker->leaf_problem,
-                                 worker->domain);
+                                 worker->domain_propagation);
   f_t fixrate          = static_cast<f_t>(num_fixed) / integer_list.size();
 
   DEBUG_SUBMIP("{} fixed variables = {:.0f} ({:.2f}), target fixrate = {} ({:.2f})",
@@ -3032,7 +3022,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
   std::vector<f_t>& lower       = worker->leaf_problem.lower;
   std::vector<f_t>& upper       = worker->leaf_problem.upper;
   std::vector<f_t>& current_sol = worker->leaf_solution.x;
-  worker->domain.compute_activities(worker->Arow, worker->leaf_problem);
+  worker->domain_propagation.compute_activities(worker->Arow, worker->leaf_problem);
 
   std::vector<i_t> fractional;
   i_t num_frac = fractional_variables(submip_settings, current_sol, worker->var_types, fractional);
@@ -3053,7 +3043,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
 
   while (solver_status_ == mip_status_t::UNSET && is_running_ &&
          !submip_settings.received_halt_signal()) {
-    f_t prev_stack_size = worker->domain.size();
+    f_t prev_stack_size = worker->domain_propagation.size();
     f_t prev_fixrate    = fixrate;
     f_t target_fixrate  = worker->search_strategy == search_strategy_t::RINS
                             ? max_fixrate
@@ -3088,7 +3078,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
                                        round_num_fixed,
                                        exploration_stats_.start_time,
                                        worker->leaf_problem,
-                                       worker->domain);
+                                       worker->domain_propagation);
       if (new_fixings < 0) {
         DEBUG_SUBMIP("{}Round {}: stopped fixing (infeasible, halted or time limit reached).",
                      submip_settings.log.log_prefix,
@@ -3115,7 +3105,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
                                        round_num_fixed,
                                        exploration_stats_.start_time,
                                        worker->leaf_problem,
-                                       worker->domain);
+                                       worker->domain_propagation);
       if (new_fixings < 0) {
         DEBUG_SUBMIP("{}Round {}: stopped fixing (infeasible, halted or time limit reached).",
                      submip_settings.log.log_prefix,
@@ -3130,7 +3120,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
     // Even considering the entire integer list, we were unable to fix a single variable in this
     // iteration. Iterate over the fractional variables again and fixing those that closest to
     // an integer solution first in order to reach the fixing threshold.
-    if (fixrate == prev_fixrate && prev_stack_size == worker->domain.size()) {
+    if (fixrate == prev_fixrate && prev_stack_size == worker->domain_propagation.size()) {
       new_fixings = extend_variable_fixings(worker->Arow,
                                             worker->var_types,
                                             submip_settings,
@@ -3142,7 +3132,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
                                             round_num_fixed,
                                             exploration_stats_.start_time,
                                             worker->leaf_problem,
-                                            worker->domain);
+                                            worker->domain_propagation);
       if (new_fixings < 0) {
         DEBUG_SUBMIP("{}Round {}: stopped fixing (infeasible, halted or time limit reached).",
                      submip_settings.log.log_prefix,
@@ -3364,8 +3354,8 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
                                               lp_solution.x,
                                               strategy,
                                               root_heuristics.seed_rng_);
-    worker->domain.implied_bounds = &probing_implied_bound_;
-    worker->domain.clique_table   = clique_table_.get();
+    worker->domain_propagation.implied_bounds = &probing_implied_bound_;
+    worker->domain_propagation.clique_table   = clique_table_.get();
 
     if (use_rins) {
       mutex_upper_.lock();
@@ -3405,8 +3395,8 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
                                                 root_vstatus_,
                                                 lp_solution.x,
                                                 root_heuristics.seed_rng_);
-    worker->domain.implied_bounds = &probing_implied_bound_;
-    worker->domain.clique_table   = clique_table_.get();
+    worker->domain_propagation.implied_bounds = &probing_implied_bound_;
+    worker->domain_propagation.clique_table   = clique_table_.get();
     mutex_upper_.lock();
     worker->current_incumbent = incumbent_.x;
     mutex_upper_.unlock();
@@ -3472,8 +3462,8 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 
       diving_worker_t<i_t, f_t>* worker = current_heuristic->create_diving_worker(
         cut_pass, lp, settings_, root_node, strategy, root_heuristics.seed_rng_);
-      worker->domain.implied_bounds = &probing_implied_bound_;
-      worker->domain.clique_table   = clique_table_.get();
+      worker->domain_propagation.implied_bounds = &probing_implied_bound_;
+      worker->domain_propagation.clique_table   = clique_table_.get();
 
       if (strategy == search_strategy_t::GUIDED_DIVING) {
         mutex_upper_.lock();
@@ -3886,7 +3876,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
 
   f_t node_presolve_start_time = tic();
   mutex_original_lp_.lock();
-  bool feasible = simplex::full_bound_strengthening(Arow_, var_types_, settings_, original_lp_);
+  bool feasible = full_bound_strengthening(Arow_, var_types_, settings_, original_lp_);
   mutex_original_lp_.unlock();
   f_t node_presolve_time = toc(node_presolve_start_time);
   if (node_presolve_time > 1.0) {
@@ -4137,12 +4127,27 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (feasible) {
       const f_t computed_obj = compute_objective(original_lp_, crushed_guess);
       mutex_upper_.lock();
-      incumbent_.set_incumbent_solution(computed_obj, crushed_guess);
-      upper_bound_ = computed_obj;
+      const f_t upper_bound = upper_bound_.load(std::memory_order::relaxed);
+
+      // Populate the incumbent when its objective is equal or better than the current upper bound.
+      // This is quite common in sub-MIP (it is initialized with the current incumbent).
+      const bool accept_guess = computed_obj <= upper_bound + settings_.primal_tol;
+
+      if (accept_guess) {
+        incumbent_.set_incumbent_solution(computed_obj, crushed_guess);
+        upper_bound_ = std::min(upper_bound, computed_obj);
+      }
       mutex_upper_.unlock();
 
-      settings_.log.print_format("Setting initial MIP start. Objective={:+.6e}",
-                                 compute_user_objective(original_lp_, computed_obj));
+      if (accept_guess) {
+        settings_.log.print_format("Setting initial MIP start. Objective={:+.6e}",
+                                   compute_user_objective(original_lp_, computed_obj));
+      } else {
+        settings_.log.print_format(
+          "Ignoring initial MIP start with objective {:+.6e}, worse than the upper bound {:+.6e}",
+          compute_user_objective(original_lp_, computed_obj),
+          compute_user_objective(original_lp_, upper_bound));
+      }
     }
   }
 
@@ -4671,7 +4676,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       mutex_original_lp_.lock();
       original_lp_.lower = lower_bounds;
       original_lp_.upper = upper_bounds;
-      bool feasible = simplex::full_bound_strengthening(Arow_, var_types_, settings_, original_lp_);
+      bool feasible      = full_bound_strengthening(Arow_, var_types_, settings_, original_lp_);
       mutex_original_lp_.unlock();
       if (!feasible) {
         settings_.log.printf("Bound strengthening failed\n");
@@ -5022,14 +5027,14 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
   scoped_context_registrations_t context_registrations(*deterministic_scheduler_);
   for (auto& worker : *deterministic_workers_) {
     context_registrations.add(worker.work_context);
-    worker.domain.implied_bounds = &probing_implied_bound_;
-    worker.domain.clique_table   = clique_table_.get();
+    worker.domain_propagation.implied_bounds = &probing_implied_bound_;
+    worker.domain_propagation.clique_table   = clique_table_.get();
   }
   if (deterministic_diving_workers_) {
     for (auto& worker : *deterministic_diving_workers_) {
       context_registrations.add(worker.work_context);
-      worker.domain.implied_bounds = &probing_implied_bound_;
-      worker.domain.clique_table   = clique_table_.get();
+      worker.domain_propagation.implied_bounds = &probing_implied_bound_;
+      worker.domain_propagation.clique_table   = clique_table_.get();
     }
   }
 
@@ -5168,13 +5173,15 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
 
       bool is_child             = (node->parent == worker.last_solved_node);
       worker.recompute_basis    = !is_child;
-      const size_t domain_start = worker.domain.size();
+      const size_t domain_start = worker.domain_propagation.size();
 
       node_status_t status = solve_node_deterministic(worker, node, search_tree);
 
       if (status == node_status_t::PENDING) {
         // Undo the branching of this node, so the retry applies it again on the parent's domain.
-        if (is_child && worker.domain.size() > domain_start) { worker.backtrack_bound_changes(); }
+        if (is_child && worker.domain_propagation.size() > domain_start) {
+          worker.backtrack_bound_changes();
+        }
         deterministic_scheduler_->wait_for_next_sync(worker.work_context);
         continue;
       }
@@ -5375,13 +5382,14 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   if (node_ptr->parent == worker.last_solved_node) {
     feasible = worker.update_variable_bounds(node_ptr, settings_);
   } else {
-    node_ptr->rebuild_variable_bounds(worker.domain);
+    node_ptr->rebuild_variable_bounds(worker.domain_propagation);
     feasible = worker.rebuild_bounds_from_stack(original_lp_, settings_);
   }
 
   if (settings_.deterministic) {
     // TEMP APPROXIMATION;
-    worker.work_context.record_work_sync_on_horizon(worker.domain.last_nnz_processed / 1e8);
+    worker.work_context.record_work_sync_on_horizon(worker.domain_propagation.last_nnz_processed /
+                                                    1e8);
   }
 
   if (!feasible) {
@@ -5945,12 +5953,13 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
   // made during the dive.
   worker.leaf_problem.lower = std::move(entry.resolved_lower);
   worker.leaf_problem.upper = std::move(entry.resolved_upper);
-  worker.domain.clear();
-  bool feasible =
-    worker.domain.propagate_full(worker.Arow, worker.var_types, settings_, worker.leaf_problem);
+  worker.domain_propagation.clear();
+  bool feasible = worker.domain_propagation.propagate_full(
+    worker.Arow, worker.var_types, settings_, worker.leaf_problem);
 
   if (settings_.deterministic) {
-    worker.work_context.record_work_sync_on_horizon(worker.domain.last_nnz_processed / 1e8);
+    worker.work_context.record_work_sync_on_horizon(worker.domain_propagation.last_nnz_processed /
+                                                    1e8);
   }
   if (!feasible) { return; }
 
@@ -5997,7 +6006,8 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 
     if (settings_.deterministic) {
       // TEMP APPROXIMATION;
-      worker.work_context.record_work_sync_on_horizon(worker.domain.last_nnz_processed / 1e8);
+      worker.work_context.record_work_sync_on_horizon(worker.domain_propagation.last_nnz_processed /
+                                                      1e8);
     }
 
     if (!feasible) {

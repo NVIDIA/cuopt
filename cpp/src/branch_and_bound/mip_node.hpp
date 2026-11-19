@@ -8,8 +8,8 @@
 #pragma once
 
 #include <branch_and_bound/constants.hpp>
+#include <branch_and_bound/domain_propagation.hpp>
 
-#include <dual_simplex/domain.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <math_optimization/types.hpp>
 
@@ -134,9 +134,9 @@ class mip_node_t {
 
   // Rebuild the variable bounds from the tree, traversing from this node
   // to the root node.
-  void rebuild_variable_bounds(simplex::domain_t<i_t, f_t>& domain) const
+  void rebuild_variable_bounds(domain_propagation_t<i_t, f_t>& domain_propagation) const
   {
-    domain.clear();
+    domain_propagation.clear();
 
     std::vector<const mip_node_t*> path;
     path.reserve(depth);
@@ -145,15 +145,15 @@ class mip_node_t {
       path.push_back(node);
     }
     for (auto it = path.rbegin(); it != path.rend(); ++it) {
-      domain.push((*it)->update_variable_bounds());
+      domain_propagation.push((*it)->update_variable_bounds());
     }
   }
 
-  simplex::bound_change_t<i_t, f_t> update_variable_bounds() const
+  bound_change_t<i_t, f_t> update_variable_bounds() const
   {
-    simplex::bound_change_t<i_t, f_t> bound_change;
+    bound_change_t<i_t, f_t> bound_change;
     bound_change.var    = branch_var;
-    bound_change.origin = simplex::bound_change_origin_t::BRANCH;
+    bound_change.origin = bound_change_origin_t::BRANCH;
 
     if (branch_var >= 0) {
       bound_change.new_lower = branch_var_lower;

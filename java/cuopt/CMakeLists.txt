@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 4.3)
 project(cuopt_java_native LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -109,7 +109,7 @@ if(CUOPT_STATIC_BUILD_DIR)
   target_link_libraries(cuopt_jni PRIVATE
     -Wl,--whole-archive "${CUOPT_STATIC_ARCHIVE}" -Wl,--no-whole-archive
     ${CUOPT_STATIC_DEP_ARCHIVES}
-    CUDA::cublas CUDA::cusparse CUDA::cusolver CUDA::cudart_static
+    CUDA::cublas CUDA::cusparse CUDA::cudart_static
     OpenMP::OpenMP_CXX
     rmm::rmm
     rapids_logger::rapids_logger
