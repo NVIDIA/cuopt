@@ -106,7 +106,9 @@ class recombiner_t {
                                      offspring.problem_ptr->n_integer_vars,
                                      a.handle_ptr->get_stream());
     std::vector<i_t> objective_indices;
-    // integer_indices is sorted, so objective_indices stays sorted for set_difference
+    // sorted input keeps objective_indices sorted for set_difference
+    cuopt_assert(std::is_sorted(integer_indices.begin(), integer_indices.end()),
+                 "integer indices should be sorted!");
     for (auto var : integer_indices) {
       if (vec_objective_coeffs[var] != 0) { objective_indices.push_back(var); }
     }
