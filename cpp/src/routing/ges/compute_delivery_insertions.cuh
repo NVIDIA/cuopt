@@ -252,13 +252,27 @@ DI void find_all_delivery_insertions(typename solution_t<i_t, f_t, REQUEST>::vie
     bool th_move_found = feasible_move.cost_counter.counter > 1;
     i_t insertion_pos  = insertion_2;
     if constexpr (store_all) {
+      // Increase size in global struct
+      typedef cub::BlockScan<i_t, BLOCK_SIZE> BlockScan;
+      __shared__ typename BlockScan::TempStorage temp_storage;
+      __shared__ i_t block_offset;
+      i_t rank = th_move_found;
+      i_t number_of_feasible_moves;
+      BlockScan(temp_storage).ExclusiveSum(rank, rank, number_of_feasible_moves);
+      if (threadIdx.x == 0 && number_of_feasible_moves > 0) {
+        block_offset = atomicAdd(feasible_candidates.size_, number_of_feasible_moves);
+      }
+      __syncthreads();
+
+      // Write to global
       if (th_move_found) {
         cuopt_assert(insertion_pos < std::numeric_limits<uint16_t>::max(),
                      "Delivery location value should be < 65536");
         cuopt_assert(curr_route.get_id() < view.n_routes,
                      "Can't write a route id greater than number of routes");
 
-        feasible_candidates.append(found_sol_t(0,
+        feasible_candidates.record(block_offset + rank,
+                                   found_sol_t(0,
                                                static_cast<uint16_t>(curr_route.get_id()),
                                                static_cast<uint16_t>(pickup_insertion_idx),
                                                static_cast<uint16_t>(insertion_pos)));

@@ -67,9 +67,8 @@ struct feasible_move_t {
   // Does not own the data
   feasible_move_t(raft::device_span<found_sol_t> data, int* size) : data_(data), size_(size) {}
 
-  DI void append(const found_sol_t found_sol)
+  DI void record(const int index, const found_sol_t found_sol)
   {
-    const int index = atomicAdd(size_, 1);
     cuopt_assert(index < (int)data_.size(), "Candidate count should stay below the table size");
     data_[index] = found_sol;
   }
