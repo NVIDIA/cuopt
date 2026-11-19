@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 namespace cuopt::mathematical_optimization {
 
@@ -116,6 +117,9 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
           CUOPT_LOG_INFO("Setting parameter %s to %e", name.c_str(), value_float);
           output = true;
         }
+        if (param.deprecated && value_float != param.default_value) {
+          CUOPT_LOG_WARN("Parameter %s is deprecated and has no effect", name.c_str());
+        }
       } else {
         throw std::invalid_argument("Parameter " + name + " value " + value + " is not a float");
       }
@@ -130,6 +134,9 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
         if (!output) {
           CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value_bool ? "true" : "false");
           output = true;
+        }
+        if (param.deprecated && value_bool != param.default_value) {
+          CUOPT_LOG_WARN("Parameter %s is deprecated and has no effect", name.c_str());
         }
       } else {
         throw std::invalid_argument("Parameter " + name + " value " + value +
@@ -148,6 +155,7 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
       found = true;
     }
   }
+
   if (!found) { throw std::invalid_argument("Parameter " + name + " not found"); }
 }
 
@@ -184,6 +192,9 @@ void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value
           output = true;
         }
         found = true;
+        if (param.deprecated && value != param.default_value) {
+          CUOPT_LOG_WARN("Parameter %s is deprecated and has no effect", name.c_str());
+        }
       }
     }
   }
@@ -196,6 +207,9 @@ void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value
           output = true;
         }
         found = true;
+        if (param.deprecated && value != param.default_value) {
+          CUOPT_LOG_WARN("Parameter %s is deprecated and has no effect", name.c_str());
+        }
       }
     }
   }

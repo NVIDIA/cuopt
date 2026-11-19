@@ -13,6 +13,7 @@
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solver.cuh>
 #include <pdlp/utils.cuh>
+#include <presolve/bounds_presolve.cuh>
 #include <presolve/third_party_presolve.hpp>
 #include <presolve/trivial_presolve.cuh>
 #include <utilities/common_utils.hpp>
@@ -68,6 +69,128 @@ TEST(problem, find_implied_integers)
   // Ensure it is an implied integer
   EXPECT_EQ(problem.presolve_data.var_flags.element(it - var_types.begin(), handle_.get_stream()),
             ((int)mip::problem_t<int, double>::var_flags_t::VAR_IMPLIED_INTEGER));
+}
+
+TEST(presolve, substitution_cancellation_preserves_binary_feasibility)
+{
+  const raft::handle_t handle{};
+  auto model      = cuopt::test::parse_inline_lp(R"LP(
+Minimize
+ obj: x
+Subject To
+ link: x - 1.4419880250174197 z = -6.2758387909538564
+ choice: z + w = 1
+Bounds
+ -7 <= x <= -4
+Binaries
+ z w
+End
+)LP");
+  auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
+  mip::problem_t<int, double> problem(op_problem);
+  ASSERT_EQ(problem.n_variables, 3);
+  problem.preprocess_problem();
+
+  // Probing fixes x at these endpoints for z=0 and z=1. Substitution into link
+  // leaves -1.11e-15*z = -8.88e-16; dividing that roundoff would fix z to 0.8.
+  problem.substitute_variables({0}, {1}, {-6.2758387909538556}, {1.4419880250174186});
+  mip::trivial_presolve(problem, true);
+
+  mip_solver_settings_t<int, double> settings;
+  mip::mip_solver_t<int, double> solver(problem, settings, timer_t(10));
+  mip::bound_presolve_t<int, double> bounds(solver.context);
+  bounds.solve(problem);
+  EXPECT_EQ(bounds.infeas_constraints_count, 0);
+  const auto lower = host_copy(bounds.upd.lb, handle.get_stream());
+  const auto upper = host_copy(bounds.upd.ub, handle.get_stream());
+  ASSERT_EQ(lower.size(), 2);
+  for (int j = 0; j < 2; ++j) {
+    EXPECT_DOUBLE_EQ(lower[j], 0.0);
+    EXPECT_DOUBLE_EQ(upper[j], 1.0);
+  }
+}
+
+TEST(presolve, substitution_preserves_significant_residual)
+{
+  const raft::handle_t handle{};
+  auto model      = cuopt::test::parse_inline_lp(R"LP(
+Minimize
+ obj: x
+Subject To
+ link: x - 1.4 z = -6.2
+ choice: z + w = 1
+Bounds
+ -7 <= x <= -4
+Binaries
+ z w
+End
+)LP");
+  auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
+  mip::problem_t<int, double> problem(op_problem);
+  problem.preprocess_problem();
+  // The residual 0.1*z = 0 is meaningful and must still force z=0.
+  problem.substitute_variables({0}, {1}, {-6.2}, {1.5});
+  mip::trivial_presolve(problem, true);
+
+  mip_solver_settings_t<int, double> settings;
+  mip::mip_solver_t<int, double> solver(problem, settings, timer_t(10));
+  mip::bound_presolve_t<int, double> bounds(solver.context);
+  bounds.solve(problem);
+  EXPECT_EQ(bounds.infeas_constraints_count, 0);
+  const auto lower = host_copy(bounds.upd.lb, handle.get_stream());
+  const auto upper = host_copy(bounds.upd.ub, handle.get_stream());
+  ASSERT_EQ(lower.size(), 2);
+  EXPECT_DOUBLE_EQ(lower[0], 0.0);
+  EXPECT_DOUBLE_EQ(upper[0], 0.0);
+  EXPECT_DOUBLE_EQ(lower[1], 1.0);
+  EXPECT_DOUBLE_EQ(upper[1], 1.0);
+}
+
+TEST(presolve, substitution_preserves_small_coefficient_with_large_domain)
+{
+  const raft::handle_t handle{};
+  for (const std::string z_bound : {"0 <= z <= 1000000000000", "z >= 0"}) {
+    SCOPED_TRACE(z_bound);
+    auto model = cuopt::test::parse_inline_lp(
+      "Minimize\n obj: x\nSubject To\n link: x - z = 0\nBounds\n 0 <= x <= 2000000000000\n " +
+      z_bound + "\nGenerals\n z\nEnd\n");
+    auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
+    mip::problem_t<int, double> problem(op_problem);
+    problem.preprocess_problem();
+    // This small residual can have a large activity, so the row must be retained.
+    problem.substitute_variables({0}, {1}, {0.0}, {1.000000000001});
+    mip::trivial_presolve(problem, true);
+    EXPECT_EQ(problem.n_constraints, 1);
+    ASSERT_EQ(problem.coefficients.size(), 1);
+    EXPECT_GT(problem.coefficients.element(0, handle.get_stream()), 0.0);
+  }
+}
+
+TEST(presolve, substitution_preserves_other_columns)
+{
+  const raft::handle_t handle{};
+  auto model      = cuopt::test::parse_inline_lp(R"LP(
+Minimize
+ obj: x
+Subject To
+ link: x - 1.4419880250174197 z + y = -6.2758387909538564
+Bounds
+ -7 <= x <= -4
+ -1 <= y <= 1
+Binaries
+ z
+End
+)LP");
+  auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
+  mip::problem_t<int, double> problem(op_problem);
+  problem.preprocess_problem();
+  // The z terms nearly cancel, but the remaining y term still restricts the solution.
+  problem.substitute_variables({0}, {1}, {-6.2758387909538556}, {1.4419880250174186});
+  mip::trivial_presolve(problem, true);
+  EXPECT_EQ(problem.n_constraints, 1);
+  const auto coefficients = host_copy(problem.coefficients, handle.get_stream());
+  ASSERT_EQ(coefficients.size(), 2);
+  EXPECT_NE(std::find(coefficients.begin(), coefficients.end(), 1.0), coefficients.end());
 }
 
 TEST(presolve, duplicate_substitution)

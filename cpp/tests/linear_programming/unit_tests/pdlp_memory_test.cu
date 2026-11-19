@@ -135,7 +135,10 @@ optimization_problem_t<int, double> make_presolved_csr_test_problem(const raft::
   optimization_problem_t<int, double> op(&handle);
   const std::vector<double> values{1, 1, 1, 1, 1, 1, 1};
   const std::vector<int> columns{0, 1, 3, 1, 2, 0, 2}, offsets{0, 3, 5, 7};
-  const std::vector<double> objective{1, 1, 1, 3}, lower{0, 0, 0, 2}, upper{1, 1, 1, 2};
+  // Distinct costs keep PSLP's LP fold from merging the symmetric rows and solving the whole
+  // problem in presolve. They satisfy the triangle inequality, so x = (0.5, 0.5, 0.5, 2) stays
+  // the unique optimum.
+  const std::vector<double> objective{2, 3, 4, 3}, lower{0, 0, 0, 2}, upper{1, 1, 1, 2};
   const std::vector<double> row_lower{3, 1, 1};
   const std::vector<double> row_upper(3, std::numeric_limits<double>::infinity());
   op.set_csr_constraint_matrix(
@@ -186,7 +189,7 @@ TEST_P(PdlpMemoryPresolvedCsr, PostsolveAndMpsOutputPreserveCallerMatrix)
   for (int repeat = 0; repeat < 2; ++repeat) {
     auto result = solve_lp(op, settings);
     ASSERT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
-    EXPECT_NEAR(result.get_objective_value(), 7.5, 1e-5);
+    EXPECT_NEAR(result.get_objective_value(), 10.5, 1e-5);
     const auto primal = host_copy(result.get_primal_solution(), handle.get_stream());
     ASSERT_EQ(primal.size(), 4);
     EXPECT_NEAR(primal[0], 0.5, 1e-5);
@@ -226,7 +229,7 @@ TEST(PdlpMemoryProblem, PresolvedCsrRemainsAvailableForFp32Conversion)
   settings.set_optimality_tolerance(1e-5);
   auto result = solve_lp(op, settings);
   ASSERT_EQ(result.get_termination_status(), pdlp_termination_status_t::Optimal);
-  EXPECT_NEAR(result.get_objective_value(), 7.5, 1e-4);
+  EXPECT_NEAR(result.get_objective_value(), 10.5, 1e-4);
   EXPECT_EQ(result.get_primal_solution().size(), 4);
   EXPECT_EQ(op.get_nnz(), 7);
 }

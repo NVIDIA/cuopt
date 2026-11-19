@@ -362,21 +362,6 @@
           "description": "Hard cap in seconds on the root LP solve. Default: 15.0.",
           "x-parameter-name": "mip_hyper_heuristic_root_lp_max_time"
         },
-        "rins_time_limit": {
-          "type": "number",
-          "description": "Per-call time budget in seconds for the RINS sub-MIP. Default: 3.0.",
-          "x-parameter-name": "mip_hyper_heuristic_rins_time_limit"
-        },
-        "rins_max_time_limit": {
-          "type": "number",
-          "description": "Ceiling in seconds on the adaptive RINS time budget. Default: 20.0.",
-          "x-parameter-name": "mip_hyper_heuristic_rins_max_time_limit"
-        },
-        "rins_fix_rate": {
-          "type": "number",
-          "description": "Fraction of variables RINS fixes before solving the sub-MIP. Default: 0.5.",
-          "x-parameter-name": "mip_hyper_heuristic_rins_fix_rate"
-        },
         "stagnation_trigger": {
           "type": "integer",
           "description": "Number of Feasibility Pump loops without improvement before recombination is triggered. Default: 3.",

@@ -275,6 +275,16 @@ void presolve_data_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_
   stream.sync();
 }
 
+template <typename i_t, typename f_t>
+void presolve_data_t<i_t, f_t>::papilo_uncrush_assignment(const std::vector<f_t>& assignment,
+                                                          std::vector<f_t>& full_assignment) const
+{
+  cuopt_assert(papilo_presolve_ptr != nullptr, "Papilo presolve data not set");
+  papilo_presolve_ptr->uncrush_primal_solution(assignment, full_assignment);
+  cuopt_assert(full_assignment.size() == (size_t)papilo_original_num_variables,
+               "Papilo uncrush assignment size mismatch");
+}
+
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class presolve_data_t<int, float>;
 #endif

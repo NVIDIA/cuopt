@@ -28,20 +28,44 @@ on:
 permissions: {}
 
 jobs:
-  conda-cpp-tests:
+  conda-cpp-tests-mathopt:
     permissions:
       actions: read
       contents: read
       id-token: write
       packages: read
       pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@release/26.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      script: ci/test_cpp.sh
+      script: ci/test_cpp_mathopt.sh
+      matrix_type: nightly
+    secrets:
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+
+  conda-cpp-tests-routing:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@release/26.12
+    with:
+      build_type: ${{ inputs.build_type }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      script: ci/test_cpp_routing.sh
+      matrix_type: nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -57,7 +81,7 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@release/26.12
     with:
       run_codecov: false
       build_type: ${{ inputs.build_type }}
@@ -65,6 +89,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_python.sh
+      matrix_type: nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -81,7 +106,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -97,11 +122,12 @@ jobs:
   java-static-build-matrix:
     permissions:
       contents: read
-    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@release/26.12
     with:
       build_type: ${{ inputs.build_type }}
       matrix_name: conda-cpp-build
       matrix_filter: 'map(. + {CUDA_MAJOR: (.CUDA_VER | split(".") | .[0])}) | unique_by([.ARCH, .CUDA_MAJOR])'
+      matrix_type: nightly
 
   # Runs the full Java suite against each classifier JAR build.yaml's java-static-build produced,
   # on a GPU, with no libcuopt installed, so a JAR that loads but computes wrong answers fails
@@ -118,7 +144,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.12
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
@@ -141,13 +167,14 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_cuopt.sh
+      matrix_type: nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -163,13 +190,14 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_cuopt_server.sh
+      matrix_type: nightly
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -188,14 +216,15 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@release/26.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      script: ci/test_conda_split_packages.sh
+      script: ci/nightly/test_conda_split_packages.sh
       matrix_filter: 'map(select(.ARCH == "amd64")) | sort_by(.CUDA_VER, .PY_VER) | [last]'
+      matrix_type: nightly
 
   wheel-split-package-tests:
     if: ${{ inputs.build_type == 'nightly' }}
@@ -205,14 +234,15 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      script: ci/test_wheel_split_packages.sh
+      script: ci/nightly/test_wheel_split_packages.sh
       matrix_filter: 'map(select(.ARCH == "amd64")) | sort_by(.CUDA_VER, .PY_VER) | [last]'
+      matrix_type: nightly
 
   conda-notebook-tests:
     permissions:
@@ -222,7 +252,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -253,7 +283,8 @@ jobs:
       contents: read
     if: ${{ always() && inputs.build_type == 'nightly' }}
     needs:
-      - conda-cpp-tests
+      - conda-cpp-tests-mathopt
+      - conda-cpp-tests-routing
       - conda-python-tests
       - conda-java-tests
       - java-static-test

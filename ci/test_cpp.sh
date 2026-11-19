@@ -34,16 +34,27 @@ rapids-print-env
 rapids-logger "Check GPU usage"
 nvidia-smi
 
-rapids-logger "Download datasets"
-./datasets/linear_programming/download_pdlp_test_dataset.sh
-./datasets/mip/download_miplib_test_dataset.sh
-./datasets/quadratic_programming/download_qplib_test_dataset.sh
+# CUOPT_CPP_TEST_GROUP: all (default), routing or mathopt; see run_ctests.sh
+CUOPT_CPP_TEST_GROUP="${CUOPT_CPP_TEST_GROUP:-all}"
+export CUOPT_CPP_TEST_GROUP
+
+# LP/MIP/QP datasets are for mathopt tests; get_test_data.sh fetches the routing datasets.
+if [[ "${CUOPT_CPP_TEST_GROUP}" != "routing" ]]; then
+    rapids-logger "Download mathopt datasets"
+    ./datasets/linear_programming/download_pdlp_test_dataset.sh
+    ./datasets/mip/download_miplib_test_dataset.sh
+    ./datasets/quadratic_programming/download_qplib_test_dataset.sh
+fi
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
-pushd "${RAPIDS_DATASET_ROOT_DIR}"
-./get_test_data.sh
-popd
+
+if [[ "${CUOPT_CPP_TEST_GROUP}" != "mathopt" ]]; then
+    rapids-logger "Download routing datasets"
+    pushd "${RAPIDS_DATASET_ROOT_DIR}"
+    ./get_test_data.sh
+    popd
+fi
 
 EXITCODE=0
 FAILED_STEPS=()
@@ -66,7 +77,10 @@ run_step_with_timeout "gtests (run_ctests.sh)" 90m "" \
 
 rapids-logger "Generate nightly test report"
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
-generate_nightly_report "cpp"
+# Separate report type per group so routing/mathopt keep separate history.
+REPORT_TYPE="cpp"
+[[ "${CUOPT_CPP_TEST_GROUP}" != "all" ]] && REPORT_TYPE="cpp-${CUOPT_CPP_TEST_GROUP}"
+generate_nightly_report "${REPORT_TYPE}"
 
 if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
     EXITCODE=1

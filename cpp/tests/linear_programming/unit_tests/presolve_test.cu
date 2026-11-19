@@ -406,26 +406,38 @@ TEST(pslp_presolve, compare_with_no_presolve)
   EXPECT_NEAR(obj_no_presolve, obj_pslp, obj_tolerance * fabs(obj_no_presolve))
     << "PSLP presolve should give same objective as no presolve";
 
-  // Also test the solution vector (primal) and dual solution vector for equality
-
-  // Get the primal solution for both solves
+  // afiro's optimal face is not a single point (one variable can move between ~5.9 and ~383.9
+  // at the same objective), so the two primal vectors need not match. Instead check that the
+  // postsolved PSLP primal is an optimal point of the original problem: feasible, and with the
+  // no-presolve objective when evaluated on the original data.
+  constexpr double feas_tolerance = 1e-5;
   auto h_primal_no_presolve =
     host_copy(solution_no_presolve.get_primal_solution(), handle_.get_stream());
   auto h_primal_pslp = host_copy(solution_pslp.get_primal_solution(), handle_.get_stream());
 
   ASSERT_EQ(h_primal_no_presolve.size(), h_primal_pslp.size())
     << "Primal solution sizes must match";
-  // Compute relative L2 error between h_primal_no_presolve and h_primal_pslp
-  double num   = 0.0;
-  double denom = 0.0;
-  for (size_t i = 0; i < h_primal_no_presolve.size(); ++i) {
-    double diff = h_primal_no_presolve[i] - h_primal_pslp[i];
-    num += diff * diff;
-    denom += h_primal_no_presolve[i] * h_primal_no_presolve[i];
-  }
-  double rel_l2_err = denom > 0 ? sqrt(num) / sqrt(denom) : sqrt(num);
-  EXPECT_LT(rel_l2_err, 1e-2) << "Relative L2 error in primal solution is too large (" << rel_l2_err
-                              << ")";
+
+  double pslp_obj_on_original = compute_objective(mps_data_model.get_objective_coefficients(),
+                                                  h_primal_pslp,
+                                                  mps_data_model.get_objective_offset());
+  EXPECT_NEAR(obj_no_presolve, pslp_obj_on_original, obj_tolerance * fabs(obj_no_presolve))
+    << "Postsolved PSLP primal should reach the no-presolve objective on the original problem";
+
+  check_variable_bounds(h_primal_pslp,
+                        mps_data_model.get_variable_lower_bounds(),
+                        mps_data_model.get_variable_upper_bounds(),
+                        feas_tolerance);
+  std::vector<double> residuals;
+  compute_constraint_residuals(mps_data_model.get_constraint_matrix_values(),
+                               mps_data_model.get_constraint_matrix_indices(),
+                               mps_data_model.get_constraint_matrix_offsets(),
+                               h_primal_pslp,
+                               residuals);
+  check_constraint_satisfaction(residuals,
+                                mps_data_model.get_constraint_lower_bounds(),
+                                mps_data_model.get_constraint_upper_bounds(),
+                                feas_tolerance);
 }
 
 // Test PSLP postsolve with reduced costs
@@ -1055,6 +1067,9 @@ TEST_P(pslp_crush_warmstart, round_trip)
 
   sort_csr(op_problem);
   mip::third_party_presolve_t<int, double> presolver;
+  // This test is about crushing and warm starting. PSLP's LP fold can remove a whole problem
+  // (e.g. krka), which leaves nothing to warm start, so keep it off here.
+  presolver.set_pslp_lp_fold(false);
   auto result = presolver.apply_presolve_from_op_problem(op_problem,
                                                          problem_category_t::LP,
                                                          presolver_t::PSLP,

@@ -15,12 +15,63 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cuopt::mathematical_optimization {
+
+TEST(SolverSettingsTest, DeprecatedRinsParameters)
+{
+  solver_settings_t<int, double> settings;
+  solver_settings_t<int, double> other_settings;
+  const auto names = settings.get_parameter_names();
+  for (const auto& [name, default_value] :
+       {std::pair{CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT, 3.0},
+        std::pair{CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT, 20.0},
+        std::pair{CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE, 0.5}}) {
+    EXPECT_EQ(std::count(names.begin(), names.end(), name), 1);
+    EXPECT_DOUBLE_EQ(settings.get_parameter<double>(name), default_value);
+    EXPECT_EQ(settings.get_parameter_as_string(name), std::to_string(default_value));
+
+    settings.set_parameter<double>(name, 0.25);
+    EXPECT_DOUBLE_EQ(settings.get_parameter<double>(name), 0.25);
+    EXPECT_EQ(settings.get_parameter_as_string(name), std::to_string(0.25));
+
+    settings.set_parameter_from_string(name, "0.75");
+    EXPECT_DOUBLE_EQ(settings.get_parameter<double>(name), 0.75);
+    EXPECT_EQ(settings.get_parameter_as_string(name), std::to_string(0.75));
+    EXPECT_THROW(settings.set_parameter_from_string(name, "invalid"), std::invalid_argument);
+    EXPECT_THROW(settings.set_parameter_from_string(name, "nan"), std::invalid_argument);
+    EXPECT_DOUBLE_EQ(settings.get_parameter<double>(name), 0.75);
+    EXPECT_DOUBLE_EQ(other_settings.get_parameter<double>(name), default_value);
+  }
+
+  EXPECT_EQ(std::count(names.begin(), names.end(), CUOPT_MIP_HEURISTICS_ONLY), 1);
+  EXPECT_FALSE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_EQ(settings.get_parameter_as_string(CUOPT_MIP_HEURISTICS_ONLY), "false");
+
+  settings.set_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY, true);
+  EXPECT_TRUE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_EQ(settings.get_parameter_as_string(CUOPT_MIP_HEURISTICS_ONLY), "true");
+  EXPECT_FALSE(other_settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+
+  settings.set_parameter_from_string(CUOPT_MIP_HEURISTICS_ONLY, "false");
+  EXPECT_FALSE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_EQ(settings.get_parameter_as_string(CUOPT_MIP_HEURISTICS_ONLY), "false");
+
+  settings.set_parameter_from_string(CUOPT_MIP_HEURISTICS_ONLY, "true");
+  EXPECT_TRUE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_EQ(settings.get_parameter_as_string(CUOPT_MIP_HEURISTICS_ONLY), "true");
+  EXPECT_THROW(settings.set_parameter_from_string(CUOPT_MIP_HEURISTICS_ONLY, "invalid"),
+               std::invalid_argument);
+  EXPECT_TRUE(settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+  EXPECT_FALSE(other_settings.get_parameter<bool>(CUOPT_MIP_HEURISTICS_ONLY));
+}
 
 TEST(SolverSettingsTest, TestSetGet)
 {

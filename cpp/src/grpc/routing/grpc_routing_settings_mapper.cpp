@@ -19,9 +19,8 @@ void map_proto_to_routing_settings(const cuopt::remote::RoutingSolverSettings& p
   if (pb.has_time_limit()) { settings.set_time_limit(pb.time_limit()); }
   settings.set_verbose_mode(pb.verbose());
   settings.set_error_logging_mode(pb.error_logging());
-  if (!pb.dump_best_results_path().empty()) {
-    settings.dump_best_results(pb.dump_best_results_path(), pb.dump_best_results_interval());
-  }
+  // dump_best_results_path is a filesystem path the routing solver would open
+  // on this host. Leave dump disabled. The interval is only used with that path.
 }
 
 void map_routing_settings_to_proto(const cuopt::routing::solver_settings_t<int, float>& settings,

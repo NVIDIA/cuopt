@@ -74,7 +74,8 @@ set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 # ################################################################ ------------------------------------------------------------------
 # ConfigureTest(NAME source1.cu source2.cu [STATIC_LIB] [LABELS label1 label2 ...])
 #
-# LABELS sets CTest labels for selective local test execution via `ctest -L <label>`.
+# LABELS (routing or numopt) select the CI test group via ci/run_ctests.sh. Tests registered outside
+# ConfigureTest must use rapids_test_add, or they are missing from the installed package.
 # STATIC_LIB links cuopt_static instead of cuopt (for tests needing internal symbols).
 function(ConfigureTest CMAKE_TEST_NAME)
     cmake_parse_arguments(CT "STATIC_LIB" "" "LABELS" ${ARGN})

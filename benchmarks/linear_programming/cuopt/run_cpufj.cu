@@ -285,7 +285,7 @@ int main(int argc, char** argv)
 
     const auto probing_features = mip::probing_presolve_features(problem);
     const auto probing_budget =
-      mip::evaluate_presolve_budget(probing_settings.heuristic_params, probing_features);
+      mip::evaluate_presolve_budget(probing_settings.mip_hyper_params, probing_features);
     const int probing_threads            = std::max(1, (int)allowed_cpus().size());
     probing_presolve->settings.num_tasks = std::max(1, probing_threads - 1);
 
