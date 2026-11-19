@@ -643,6 +643,20 @@ def test_problem_update():
     prob.solve()
     assert prob.ObjValue == pytest.approx(5)
 
+    # Variable setters: minimize x1 + 3*x2 + 5 with 2 <= x1 <= 3
+    x1.setLowerBound(2)
+    x1.setUpperBound(3)
+    x1.setVariableName("y1")
+    prob.solve()
+    assert prob.ObjValue == pytest.approx(7)
+    assert prob.getVariable("y1").Value == pytest.approx(2)
+
+    # Maximizing 5*x1 + 3*x2 + 5 pushes x1 to its new upper bound
+    prob.updateObjective(coeffs=[(x1, 5.0)], sense=MAXIMIZE)
+    prob.solve()
+    assert prob.ObjValue == pytest.approx(41)
+    assert prob.getVariable("y1").Value == pytest.approx(3)
+
 
 def test_problem_update_accepts_zero_values():
     prob = Problem()
