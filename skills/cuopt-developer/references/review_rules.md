@@ -3,7 +3,7 @@
 One rule set for two consumers: the author (human or agent) before `git push`, and CodeRabbit
 during review.
 
-- **Author / agent (self-review loop):** before every `git commit`, check `git diff` against
+- **Author / agent (self-review loop):** before every `git commit`, check `git diff HEAD` (staged and unstaged) against
   this list, fix each violation, and repeat until nothing is found. Before `git push`, do the
   same on `git diff origin/<target-branch>...<branch-you-push>` if anything changed.
 - **CodeRabbit:** raise a violation as a short nit that names the rule. Do not raise style
