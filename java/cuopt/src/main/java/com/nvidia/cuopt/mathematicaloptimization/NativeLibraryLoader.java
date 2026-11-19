@@ -51,7 +51,7 @@ final class NativeLibraryLoader {
    * the dynamic linker, so this is normally a no-op; see {@link #preloadCudaLibraries}.
    */
   private static final String[] CUDA_RUNTIME_LIBRARIES = {
-    "libcublas.so", "libcublasLt.so", "libcusparse.so", "libcusolver.so", "libnvJitLink.so"
+    "libcublas.so", "libcublasLt.so", "libcusparse.so", "libnvJitLink.so"
   };
 
   /**
