@@ -280,7 +280,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
     {CUOPT_MIP_HEURISTICS_ONLY, &deprecated_heuristics_only, false, "deprecated; has no effect", true},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
-    {CUOPT_MIP_HYPER_DIVING_SHOW_TYPE, &mip_settings.mip_hyper_params.diving_show_type, false, "log diving heuristic type when it finds a new incumbent"},
+    {CUOPT_MIP_HYPER_HEURISTIC_SHOW_TYPE, &mip_settings.mip_hyper_params.heuristic_show_type, false, "log the diving, sub-MIP or CPU FJ heuristic type when it finds a new incumbent"},
     // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ, &mip_settings.mip_hyper_params.submip_enable_cpufj, true, "run CPU FJ over the sub-MIP"},
     {CUOPT_MIP_HYPER_BLOCK_BVE, &mip_settings.mip_hyper_params.presolve_block_bve, true, "eliminate blocks of binaries in cuOpt's MIP presolve (needs " CUOPT_MIP_PROBING ")"},
