@@ -7,7 +7,7 @@
 
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <mip_heuristics/diversity/diversity_manager.cuh>
-#include <mip_heuristics/lns/population_feed.cuh>
+#include <mip_heuristics/ruin-repair-lns/population_feed.cuh>
 #include <mip_heuristics/utils.cuh>
 #include <presolve/semi_continuous.cuh>
 #include <presolve/third_party_presolve.hpp>
