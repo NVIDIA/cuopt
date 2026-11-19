@@ -106,11 +106,9 @@ class recombiner_t {
                                      offspring.problem_ptr->n_integer_vars,
                                      a.handle_ptr->get_stream());
     std::vector<i_t> objective_indices;
-    for (size_t i = 0; i < vec_objective_coeffs.size(); ++i) {
-      if (vec_objective_coeffs[i] != 0 &&
-          std::find(integer_indices.begin(), integer_indices.end(), i) != integer_indices.end()) {
-        objective_indices.push_back(i);
-      }
+    // integer_indices is sorted, so objective_indices stays sorted for set_difference
+    for (auto var : integer_indices) {
+      if (vec_objective_coeffs[var] != 0) { objective_indices.push_back(var); }
     }
     std::vector<i_t> objective_indices_in_subproblem;
     for (auto var : vec_remaining_indices) {
