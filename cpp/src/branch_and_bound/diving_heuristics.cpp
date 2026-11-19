@@ -111,8 +111,13 @@ void diving_worker_t<i_t, f_t>::dive(const simplex::simplex_solver_settings_t<i_
     decompress_vstatus(node_ptr->packed_vstatus, this->leaf_problem.num_cols, this->leaf_vstatus);
     assert(this->leaf_vstatus.size() == this->leaf_problem.num_cols);
 
-    simplex::dual_status_t lp_status = this->solve_node_lp(
-      settings, node_ptr, dive_stats, log, max_iter, bnb_stats.start_time, upper_bound);
+    simplex::dual_status_t lp_status = this->solve_node_lp(settings,
+                                                           node_ptr,
+                                                           dive_stats,
+                                                           log,
+                                                           max_iter,
+                                                           bnb_stats.start_time,
+                                                           bnb_ptr->get_upper_bound());
     ++dive_stats.nodes_explored;
 
     if (lp_status == simplex::dual_status_t::TIME_LIMIT) { break; }
@@ -122,8 +127,8 @@ void diving_worker_t<i_t, f_t>::dive(const simplex::simplex_solver_settings_t<i_
     const i_t depth = node_ptr->depth;
     f_t leaf_obj;
     std::vector<i_t> fractional;
-    node_status_t node_status =
-      classify_node(node_ptr, lp_status, upper_bound, settings, fractional, leaf_obj);
+    node_status_t node_status = classify_node(
+      node_ptr, lp_status, bnb_ptr->get_upper_bound(), settings, fractional, leaf_obj);
     if (node_status == node_status_t::INTEGER_FEASIBLE) {
       bnb_ptr->set_solution_from_worker(this->leaf_problem,
                                         leaf_obj,
