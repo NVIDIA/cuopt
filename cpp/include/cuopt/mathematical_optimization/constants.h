@@ -142,8 +142,8 @@
 #define CUOPT_MIP_HYPER_DIVING_NODE_LIMIT             "mip_hyper_diving_node_limit"
 #define CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR "mip_hyper_diving_iteration_limit_factor"
 #define CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT        "mip_hyper_diving_backtrack_limit"
-/* @brief Show per-strategy diving symbol in logs instead of a generic 'D' */
-#define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
+/* @brief Show per-strategy diving/sub-MIP/FJ symbol in logs instead of a generic 'D'/'S'/'H' */
+#define CUOPT_MIP_HYPER_HEURISTIC_SHOW_TYPE "mip_hyper_heuristic_show_type"
 
 /* @brief Recursive sub-MIP (RINS) hyper-parameters */
 #define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE    "mip_hyper_submip_base_target_fixrate"
