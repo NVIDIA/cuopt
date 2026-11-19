@@ -152,9 +152,6 @@ reviews:
         - Docstring CONTENT on new public APIs — params, returns, raises — even
           when pydocstyle format rules pass
         - Error messages that expose internals vs. user-actionable messages
-        - Python tests check the API only; solver correctness belongs in cpp/tests (see
-          skills/cuopt-developer/references/review_rules.md). Is there an existing test to
-          extend instead? Phrase as a question.
 
         Do not re-raise ruff/pydocstyle-covered issues.
 
@@ -183,10 +180,12 @@ reviews:
     - path: "python/**/tests/**"
       instructions: |
         Python tests (pytest). Focus on:
-        - Numerical correctness validation
+        - API behavior only (calls, conversion, return types, errors); solver correctness
+          belongs in cpp/tests
         - Edge cases: empty, infeasible, unbounded, degenerate problems
         - No leaked GPU state across tests
-        - Regression coverage for fixed bugs
+        - Regression coverage for fixed Python API bugs; solver bug reproducers go in cpp/tests
+        - Is there an existing test to extend instead of a new one?
         - Tests rules from skills/cuopt-developer/references/review_rules.md (tests must be
           able to fail, test the contract, stay cheap); phrase these as questions
 
