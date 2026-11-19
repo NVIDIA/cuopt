@@ -550,6 +550,16 @@ cuopt_int_t burglar_problem()
   }
   printf("Time limit: %s\n", buffer);
 
+  {
+    // A feasible start (items 1, 2 and 3, weight 70 <= 102); the optimum is unchanged.
+    cuopt_float_t mip_start[NUM_ITEMS] = {0, 1, 1, 1, 0, 0, 0, 0};
+    status                             = cuOptAddMIPStart(settings, mip_start, NUM_ITEMS);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error adding the MIP start\n");
+      goto DONE;
+    }
+  }
+
   status = cuOptSolve(problem, settings, &solution);
   if (status != CUOPT_SUCCESS) {
     printf("Error solving problem\n");
@@ -1466,6 +1476,80 @@ DONE:
   return status;
 }
 
+// Solves the quadratic problem below through the one-call creators
+// cuOptCreateQuadraticProblem / cuOptCreateQuadraticRangedProblem and returns its objective.
+// minimize x1^2 + 4*x2^2 - 8*x1 - 16*x2 subject to x1 + x2 >= 5, 3 <= x1 <= 10, 0 <= x2 <= 10
+static cuopt_int_t solve_with_quadratic_creator(cuopt_int_t ranged, cuopt_float_t* objective_ptr)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+
+  cuopt_float_t objective_coefficients[] = {-8.0, -16.0};
+  cuopt_int_t Q_row_offsets[]            = {0, 1, 2};
+  cuopt_int_t Q_col_index[]              = {0, 1};
+  cuopt_float_t Q_coeff[]                = {1.0, 4.0};
+  cuopt_int_t row_offsets[]              = {0, 2};
+  cuopt_int_t column_indices[]           = {0, 1};
+  cuopt_float_t values[]                 = {1.0, 1.0};
+  cuopt_float_t var_lower_bounds[]       = {3.0, 0.0};
+  cuopt_float_t var_upper_bounds[]       = {10.0, 10.0};
+  cuopt_int_t status;
+
+  if (ranged) {
+    cuopt_float_t constraint_lower_bounds[] = {5.0};
+    cuopt_float_t constraint_upper_bounds[] = {100.0};
+    status = cuOptCreateQuadraticRangedProblem(1,
+                                               2,
+                                               CUOPT_MINIMIZE,
+                                               0.0,
+                                               objective_coefficients,
+                                               Q_row_offsets,
+                                               Q_col_index,
+                                               Q_coeff,
+                                               row_offsets,
+                                               column_indices,
+                                               values,
+                                               constraint_lower_bounds,
+                                               constraint_upper_bounds,
+                                               var_lower_bounds,
+                                               var_upper_bounds,
+                                               &problem);
+  } else {
+    char constraint_sense[]           = {'G'};
+    cuopt_float_t constraint_bounds[] = {5.0};
+    status = cuOptCreateQuadraticProblem(1,
+                                         2,
+                                         CUOPT_MINIMIZE,
+                                         0.0,
+                                         objective_coefficients,
+                                         Q_row_offsets,
+                                         Q_col_index,
+                                         Q_coeff,
+                                         row_offsets,
+                                         column_indices,
+                                         values,
+                                         constraint_sense,
+                                         constraint_bounds,
+                                         var_lower_bounds,
+                                         var_upper_bounds,
+                                         &problem);
+  }
+  if (status != CUOPT_SUCCESS) { goto DONE; }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) { goto DONE; }
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) { goto DONE; }
+  status = cuOptGetObjectiveValue(solution, objective_ptr);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
 cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr,
                                    cuopt_float_t* objective_ptr)
 {
@@ -1551,6 +1635,21 @@ cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr,
   if (status != CUOPT_SUCCESS) {
     printf("Error getting objective value: %d\n", status);
     goto DONE;
+  }
+
+  {
+    cuopt_float_t other_objective;
+    status = solve_with_quadratic_creator(0, &other_objective);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error solving with the quadratic creator: %d\n", status);
+      goto DONE;
+    }
+    if (other_objective - *objective_ptr > 1e-4 || *objective_ptr - other_objective > 1e-4) {
+      printf("Objective %f from the quadratic creator differs from %f\n",
+             other_objective,
+             *objective_ptr);
+      status = CUOPT_INVALID_ARGUMENT;
+    }
   }
 
 DONE:
@@ -1644,6 +1743,21 @@ cuopt_int_t test_quadratic_ranged_problem(cuopt_int_t* termination_status_ptr,
   if (status != CUOPT_SUCCESS) {
     printf("Error getting objective value: %d\n", status);
     goto DONE;
+  }
+
+  {
+    cuopt_float_t other_objective;
+    status = solve_with_quadratic_creator(1, &other_objective);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error solving with the quadratic creator: %d\n", status);
+      goto DONE;
+    }
+    if (other_objective - *objective_ptr > 1e-4 || *objective_ptr - other_objective > 1e-4) {
+      printf("Objective %f from the quadratic creator differs from %f\n",
+             other_objective,
+             *objective_ptr);
+      status = CUOPT_INVALID_ARGUMENT;
+    }
   }
 
 DONE:
@@ -2289,6 +2403,20 @@ cuopt_int_t test_maximize_problem_dual_variables(cuopt_int_t method,
   if (status != CUOPT_SUCCESS) {
     printf("Error setting parameter\n");
     goto DONE;
+  }
+  if (method == CUOPT_METHOD_PDLP) {
+    cuopt_float_t initial_primal[] = {0.0, 0.0, 0.0, 0.0};
+    cuopt_float_t initial_dual[]   = {0.0, 0.0, 0.0};
+    status                         = cuOptSetInitialPrimalSolution(settings, initial_primal, 4);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error setting the initial primal solution\n");
+      goto DONE;
+    }
+    status = cuOptSetInitialDualSolution(settings, initial_dual, 3);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error setting the initial dual solution\n");
+      goto DONE;
+    }
   }
   status = cuOptSolve(problem, settings, &solution);
   if (status != CUOPT_SUCCESS) {
