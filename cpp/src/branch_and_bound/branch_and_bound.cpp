@@ -3491,18 +3491,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (!std::isfinite(lower_bound)) { lower_bound = search_tree_.root.lower_bound; }
   }
 
-  settings_.log.debug_format("RINS: success={}, infeasible={}, empty={}, calls={}",
-                             rins_stats_.total_success.load(std::memory_order::relaxed),
-                             rins_stats_.total_infeasible.load(std::memory_order::relaxed),
-                             rins_stats_.total_empty.load(std::memory_order::relaxed),
-                             rins_stats_.total_calls.load(std::memory_order::relaxed));
-
-  settings_.log.debug_format("RENS: success={}, infeasible={}, empty={}, calls={}",
-                             rens_stats_.total_success.load(std::memory_order::relaxed),
-                             rens_stats_.total_infeasible.load(std::memory_order::relaxed),
-                             rens_stats_.total_empty.load(std::memory_order::relaxed),
-                             rens_stats_.total_calls.load(std::memory_order::relaxed));
-
   set_final_solution(solution, lower_bound);
   return solver_status_;
 }
