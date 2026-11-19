@@ -10,6 +10,7 @@ set(BRANCH_AND_BOUND_SRC_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/worker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/diving_heuristics.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/domain_propagation.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/lns.cu
 )
 
 

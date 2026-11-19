@@ -36,6 +36,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <branch_and_bound/diving_heuristics.hpp>
+#include <branch_and_bound/lns.cuh>
 #include <branch_and_bound/root_heuristics.hpp>
 #include <presolve/third_party_presolve.hpp>
 
@@ -146,6 +147,11 @@ class branch_and_bound_t {
                                 const std::vector<f_t>& leaf_solution,
                                 i_t leaf_depth,
                                 search_strategy_t thread_type);
+
+  // Map a sub-MIP solution back to the user space and try it as a new incumbent.
+  bool set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                const std::vector<f_t>& solution,
+                                const third_party_presolve_t<i_t, f_t>& presolver);
 
   // Apply a solution found by a CPU FJ worker.
   void set_solution_from_cpu_fj(f_t obj, const std::vector<f_t>& assignment, double work_units);
@@ -380,25 +386,6 @@ class branch_and_bound_t {
 
   // Launch a new RINS worker
   bool launch_submip_worker(const std::vector<f_t>& sol);
-  void set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
-                                const std::vector<f_t>& solution,
-                                const third_party_presolve_t<i_t, f_t>& presolver,
-                                submip_stats_t& submip_stats,
-                                f_t fixrate,
-                                std::string_view log_prefix);
-
-  // Solve the RINS sub-MIP.
-  void solve_submip(diving_worker_t<i_t, f_t>* worker,
-                    submip_stats_t& submip_stats,
-                    f_t fixrate,
-                    i_t simplex_iter_used,
-                    simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
-
-  void mutation(diving_worker_t<i_t, f_t>* worker,
-                simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
-  // Creates and solves the RINS/RENS sub-MIP.
-  void recursive_submip(diving_worker_t<i_t, f_t>* worker,
-                        simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
   void launch_root_heuristics(const simplex::lp_problem_t<i_t, f_t>& lp,
                               const simplex::lp_solution_t<i_t, f_t>& lp_solution,
@@ -430,6 +417,14 @@ class branch_and_bound_t {
     branch_and_bound_worker_t<i_t, f_t>* worker,
     simplex::dual_status_t lp_status,
     simplex::logger_t& log);
+
+  friend void solve_submip<i_t, f_t>(diving_worker_t<i_t, f_t>* worker,
+                                     branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+                                     const simplex::user_problem_t<i_t, f_t>& original_problem,
+                                     submip_stats_t& submip_stats,
+                                     f_t fixrate,
+                                     int64_t simplex_iter_used,
+                                     simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
   // ============================================================================
   // Deterministic BSP (Bulk Synchronous Parallel) methods for deterministic parallel B&B
