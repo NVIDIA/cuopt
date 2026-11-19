@@ -53,7 +53,6 @@ guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_t(
     ges_loop_save_state(solution),  // cpy ctr
     squeeze_save_state(solution),   // cpy ctr
     local_search_ptr_(local_search_ptr),
-    // One unique for each pickup/delivery id pairs + handle route beginning + handle break node
     feasible_candidates_data_(
       solution.get_num_orders() *
           (solution.get_num_orders() + solution.problem_ptr->get_max_break_dimensions()) +

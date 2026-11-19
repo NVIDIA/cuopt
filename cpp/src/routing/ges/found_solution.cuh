@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -21,8 +21,6 @@ namespace detail {
 // delivery indices on the reamining 48 LSB bits P_score used filed through atomicMin inside the
 // kernel, remaning information allows to execute the move
 struct found_sol_t {
-  static constexpr uint64_t uninitialized = static_cast<uint64_t>(-1);
-
   found_sol_t()
     : p_val(static_cast<uint16_t>(-1)),
       route_id(static_cast<uint16_t>(-1)),
@@ -67,49 +65,17 @@ static_assert(sizeof(found_sol_t) == sizeof(uint64_t));
  */
 struct feasible_move_t {
   // Does not own the data
-  feasible_move_t(raft::device_span<found_sol_t> data,
-                  int* size,
-                  const int num_orders,
-                  const int break_dims,
-                  const int num_routes)
-    : data_(data),
-      size_(size),
-      num_orders_(num_orders),
-      break_dims_(break_dims),
-      num_routes_(num_routes)
-  {
-  }
+  feasible_move_t(raft::device_span<found_sol_t> data, int* size) : data_(data), size_(size) {}
 
-  DI void record(const NodeInfo<> pickup_insertion_node_info,
-                 const int route_id,
-                 const int insertion_pos,
-                 const found_sol_t found_sol)
+  DI void append(const found_sol_t found_sol)
   {
-    // Number of possible insertion positions. This is extreme and achieved only when there is a
-    // single route
-    const int n_insertion_pos = num_orders_ + break_dims_;
-    // any insertion after service node (not including depot or break)
-    // are recorded in first norders X (norders + nbreak_dims) memory space,
-    // any insertion after depot is recorded in next
-    // nroutes (norders + nbreak_dims) memory space
-    // any insertion after break node is recorded in the next
-    // nroutes (norders + nbreak_dims) memory space
-    if (pickup_insertion_node_info.is_depot()) {
-      data_[num_orders_ * n_insertion_pos + route_id * n_insertion_pos + insertion_pos] = found_sol;
-    } else if (pickup_insertion_node_info.is_break()) {
-      data_[num_orders_ * n_insertion_pos + (num_routes_ + route_id) * n_insertion_pos +
-            insertion_pos] = found_sol;
-    } else {
-      data_[pickup_insertion_node_info.node() * n_insertion_pos + insertion_pos] = found_sol;
-    }
+    const int index = atomicAdd(size_, 1);
+    cuopt_assert(index < (int)data_.size(), "Candidate count should stay below the table size");
+    data_[index] = found_sol;
   }
 
   raft::device_span<found_sol_t> data_{};
   int* size_{nullptr};
-
-  const int num_orders_{0};
-  const int break_dims_{0};
-  const int num_routes_{0};
 };
 
 }  // namespace detail

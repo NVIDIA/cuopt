@@ -124,7 +124,7 @@ class guided_ejection_search_t {
   void reset_p_scores();
   template <request_t r_t = REQUEST, std::enable_if_t<r_t == request_t::PDP, bool> = true>
   void reset_p_scores();
-  bool perform_insertion(const request_info_t<i_t, REQUEST>* request);
+  bool perform_insertion(const request_info_t<i_t, REQUEST>* request, i_t n_found_candidates);
   bool try_single_insert_with_perturbation(const request_info_t<i_t, REQUEST>* request);
   i_t find_single_insertion(const request_info_t<i_t, REQUEST>* request);
   void dump_to_file(std::string msg);

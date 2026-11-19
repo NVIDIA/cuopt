@@ -21,10 +21,6 @@
 #include "../route/route.cuh"
 
 #include <thrust/copy.h>
-#include <thrust/functional.h>
-#include <thrust/iterator/counting_iterator.h>
-#include <thrust/pair.h>
-#include <thrust/transform_reduce.h>
 #include <cuda/atomic>
 
 namespace cuopt {
@@ -262,10 +258,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
   // route No need to check for reallocation here because we delete at least 1 request before
   // inserting
   i_t fragment_size = config.frag_eject_first ? 0 : request_info_t<i_t, REQUEST>::size();
-  cuopt_assert(
-    bit_cast<unsigned long long int, found_sol_t>(
-      feasible_candidates_data_.front_element(solution_ptr->sol_handle->get_stream())) == unset_val,
-    "Candidate slot should be unset before the fragment search");
+  feasible_candidates_data_.set_element(0, found_sol_t{}, solution_ptr->sol_handle->get_stream());
   bool candidate_found = false;
   i_t p_request        = 0;
   for (; !candidate_found && !time_stop_condition_reached() &&
@@ -299,10 +292,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
     {
       auto sol_view         = solution_ptr->view();
       auto fc_move          = feasible_move_t(cuopt::make_span(feasible_candidates_data_),
-                                     feasible_candidates_size_.data(),
-                                     solution_ptr->get_num_orders(),
-                                     solution_ptr->problem_ptr->get_max_break_dimensions(),
-                                     solution_ptr->get_n_routes());
+                                     feasible_candidates_size_.data());
       int64_t seed          = solution_ptr->problem_ptr->seed_gen.get_seed();
       i_t* p_scores         = p_scores_.data();
       i_t fragment_size_arg = fragment_size;
@@ -350,41 +340,13 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
-found_sol_t select_random_initialized(rmm::device_uvector<found_sol_t>& feasible_candidates,
-                                      solution_t<i_t, f_t, REQUEST>* solution_ptr)
-{
-  using keyed_cand_t            = thrust::pair<uint64_t, uint64_t>;
-  const uint64_t seed           = solution_ptr->problem_ptr->seed_gen.get_seed();
-  const uint64_t* feasible_cand = (const uint64_t*)feasible_candidates.data();
-  // smallest hash of (index, seed) over the initialized entries: a uniform, seeded pick
-  const keyed_cand_t selected = thrust::transform_reduce(
-    solution_ptr->sol_handle->get_thrust_policy(),
-    thrust::counting_iterator<uint64_t>(0),
-    thrust::counting_iterator<uint64_t>(feasible_candidates.size()),
-    [feasible_cand, seed] __device__(uint64_t idx) -> keyed_cand_t {
-      const uint64_t data = feasible_cand[idx];
-      if (data == found_sol_t::uninitialized) { return {data, data}; }
-      uint64_t key = idx + seed * 0x9E3779B97F4A7C15ULL;
-      key          = (key ^ (key >> 30)) * 0xBF58476D1CE4E5B9ULL;
-      key          = (key ^ (key >> 27)) * 0x94D049BB133111EBULL;
-      return {key ^ (key >> 31), data};
-    },
-    keyed_cand_t{found_sol_t::uninitialized, found_sol_t::uninitialized},
-    thrust::minimum<keyed_cand_t>());
-  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
-  cuopt_assert(selected.second != found_sol_t::uninitialized,
-               "feasible candidate table has no initialized entry");
-  return bit_cast<found_sol_t, uint64_t>(selected.second);
-}
-
-template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::perform_insertion(
-  const request_info_t<i_t, REQUEST>* request)
+  const request_info_t<i_t, REQUEST>* request, i_t n_found_candidates)
 {
   raft::common::nvtx::range fun_scope("perform_insertion");
   // Picks a random one and execute the move
-  const found_sol_t selected_candidate =
-    select_random_initialized(feasible_candidates_data_, solution_ptr);
+  const found_sol_t selected_candidate = feasible_candidates_data_.element(
+    dist_candidate(gen_candidate) % n_found_candidates, solution_ptr->sol_handle->get_stream());
 
   size_t shared_for_tmp_route =
     solution_ptr->check_routes_can_insert_and_get_sh_size(request_info_t<i_t, REQUEST>::size());
@@ -411,11 +373,6 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::find_single_insertion(
   // Init feasible candidate
   constexpr i_t init_size = 0;
   feasible_candidates_size_.set_value_async(init_size, solution_ptr->sol_handle->get_stream());
-  thrust::uninitialized_fill(
-    solution_ptr->sol_handle->get_thrust_policy(),
-    (uint64_t*)feasible_candidates_data_.data(),
-    (uint64_t*)(feasible_candidates_data_.data() + feasible_candidates_data_.size()),
-    found_sol_t::uninitialized);
 
   size_t shared_for_tmp_route = solution_ptr->check_routes_can_insert_and_get_sh_size();
   if (!set_shmem_of_kernel(get_all_feasible_insertion<threads_per_block, i_t, f_t, REQUEST>,
@@ -430,10 +387,7 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::find_single_insertion(
       solution_ptr->view(),
       request,
       feasible_move_t(cuopt::make_span(feasible_candidates_data_),
-                      feasible_candidates_size_.data(),
-                      solution_ptr->get_num_orders(),
-                      solution_ptr->problem_ptr->get_max_break_dimensions(),
-                      solution_ptr->get_n_routes()),
+                      feasible_candidates_size_.data()),
       solution_ptr->problem_ptr->seed_gen.get_seed());
 
   RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
@@ -457,7 +411,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_single_insert_with_perturb
     local_search_ptr_->run_random_local_search(*solution_ptr, false);
   }
   auto n_found_candidates = find_single_insertion(request);
-  if (n_found_candidates != 0) { return perform_insertion(request); }
+  if (n_found_candidates != 0) { return perform_insertion(request, n_found_candidates); }
   return false;
 }
 
