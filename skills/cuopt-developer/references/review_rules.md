@@ -3,7 +3,9 @@
 One rule set for two consumers: the author (human or agent) before `git push`, and CodeRabbit
 during review.
 
-- **Author / agent:** go through this list against `git diff origin/<target-branch>...<branch-you-push>` before pushing.
+- **Author / agent:** before every `git commit`, check `git diff` against this list, fix each
+  violation naming the rule, and repeat until nothing is found. Before `git push`, review
+  `git diff origin/<target-branch>...<branch-you-push>` the same way if anything changed.
 - **CodeRabbit:** raise a violation as a short nit that names the rule. Do not raise style
   that is not listed here, or anything `clang-format` or `ruff` already enforces.
 - **Reviewer:** name the rule instead of re-explaining. If a rule is wrong or missing, change this
