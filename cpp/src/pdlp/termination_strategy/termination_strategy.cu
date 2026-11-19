@@ -700,7 +700,8 @@ void pdlp_termination_strategy_t<i_t, f_t>::print_termination_criteria(i_t itera
                                                                        i_t best_id) const
 {
   // TODO less critical batch mode: handle this
-  // Choose the residual to print based on the settings, linf_primal_residual is computed and stored as relative
+  // Choose the residual to print based on the settings, linf_primal_residual is computed and stored
+  // as relative
   const f_t primal_res =
     settings_.per_constraint_residual
       ? convergence_information_.get_relative_linf_primal_residual().element(best_id, stream_view_)
