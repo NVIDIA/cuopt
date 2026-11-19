@@ -241,7 +241,7 @@ For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions 
 
 ## Pre-commit review loop
 
-Before every `git commit`, run the review loop in [references/review_rules.md](references/review_rules.md) (and [references/conventions.md](references/conventions.md) for C++). CodeRabbit applies the same rules, so a miss here comes back as a review comment.
+Before every `git commit`, run the self-review loop (check the diff against the rules, fix violations, repeat) in [references/review_rules.md](references/review_rules.md) (and [references/conventions.md](references/conventions.md) for C++).
 
 ## OpenMP task/runtime compatibility
 
