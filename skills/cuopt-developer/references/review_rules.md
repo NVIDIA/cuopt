@@ -63,6 +63,8 @@ Before the line-by-line rules, look at the PR as a whole.
   reason, `std::span` over pointer plus size, no raw owning pointers.
 - **Plain control flow.** Avoid lambdas; use one only for sorting. No scope guards or hidden
   cleanup without a comment. A condition used in two places is one named function.
+- **Follow the C++ style rules in [conventions.md](conventions.md#c-implementation-style)**
+  (lambdas, local structs, work-estimate gating, `long double`). Name the rule.
 - **Sparse-matrix index names.** `i` is a row, `j` is a column, and `p` or `q` indexes the
   nonzero arrays. Never use `j` for a row or `i` for a column. If those are taken, use `k`,
   `h`, `r`, `s`.
