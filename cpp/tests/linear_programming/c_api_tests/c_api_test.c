@@ -592,6 +592,11 @@ cuopt_int_t burglar_problem()
          termination_status,
          time);
   printf("Objective value: %f\n", objective_value);
+  // Items 0, 1, 2, 3 and 5 weigh 102 and are worth 280.
+  if (objective_value < 280.0 - 1e-4 || objective_value > 280.0 + 1e-4) {
+    printf("Expected objective 280, got %f\n", objective_value);
+    status = CUOPT_INVALID_ARGUMENT;
+  }
 DONE:
   cuOptDestroyProblem(&problem);
   cuOptDestroySolverSettings(&settings);
