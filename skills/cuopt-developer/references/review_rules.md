@@ -1,11 +1,12 @@
 # Review Rules — Pre-PR Self-Review and CodeRabbit
 
-One rule set for two consumers: the author (human or agent) before `git push`, and CodeRabbit
-during review.
+One rule set for two consumers: the author (human or agent) before `git commit` and `git push`,
+and CodeRabbit during review.
 
-- **Author / agent (self-review loop):** before every `git commit`, check `git diff HEAD` (staged and unstaged) against
-  this list, fix each violation, and repeat until nothing is found. Before `git push`, do the
-  same on `git diff origin/<target-branch>...<branch-you-push>` if anything changed.
+- **Author / agent (self-review loop):** before every `git commit`, stage your changes and
+  check `git diff --staged` against this list, fix each violation, stage the fix, and repeat
+  until nothing is found. Before `git push`, do the same on
+  `git diff origin/<target-branch>...<branch-you-push>` if anything changed.
 - **CodeRabbit:** raise a violation as a short nit that names the rule. Do not raise style
   that is not listed here, or anything `clang-format` or `ruff` already enforces.
 - **Reviewer:** name the rule instead of re-explaining. If a rule is wrong or missing, change this
@@ -32,8 +33,9 @@ Before the line-by-line rules, look at the PR as a whole.
   commit hashes or PR numbers. See [conventions.md](conventions.md#comments).
 - **Comment only what the code cannot say.** Add a comment for a non-obvious reason, an
   invariant or a unit. Do not restate what the next line does, narrate the steps, or add a
-  header comment to trivial code. Keep it to one or two lines, and shorten a longer
-  one as far as it will go. Do not address comments to an agent. Define jargon or use the plain name.
+  header comment to trivial code. Keep it to one or two lines, and shorten a longer one as
+  far as it will go. Do not address comments to an agent. Define jargon or use the plain
+  name.
 - **Non-trivial math is explained.** Say what the inputs are and what is computed.
 
 ## Naming and terminology
@@ -70,7 +72,7 @@ Before the line-by-line rules, look at the PR as a whole.
 - **Plain control flow.** Avoid lambdas; use one only for sorting. No scope guards or hidden
   cleanup without a comment. A condition used in two places is one named function.
 - **Follow the C++ style rules in [conventions.md](conventions.md#c-implementation-style)**
-  (lambdas, local structs, work-estimate gating, `long double`). Name the rule.
+  (lambdas, local structs, work-estimate gating, `long double`).
 - **Sparse-matrix index names.** `i` is a row, `j` is a column, and `p` or `q` indexes the
   nonzero arrays. Never use `j` for a row or `i` for a column. If those are taken, use `k`,
   `h`, `r`, `s`.
@@ -114,9 +116,9 @@ Before the line-by-line rules, look at the PR as a whole.
   contract. Use `TEST_P` (C++) or `pytest.mark.parametrize` (Python) rather than a loop over
   parameters.
 - **Test in the right layer.** `cpp/tests` owns correctness, determinism, algorithms and each
-  C API function. Python and any other API built on the core only test the API:
-  functions and options are called, results convert, bad input raises the right error. Put a
-  solver bug's reproducer in `cpp/tests`.
+  C API function. Python and any other API built on the core only test the API: functions
+  and options are called, results convert, bad input raises the right error. Put a solver
+  bug's reproducer in `cpp/tests`.
 - **Prefer extending an existing test.** If a test already covers the case or can be
   modified to cover it, change it instead of adding a new one.
 - **A skipped test links an open issue and is re-enabled, not removed.**
