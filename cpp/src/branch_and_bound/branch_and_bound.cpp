@@ -1301,6 +1301,7 @@ struct deterministic_bfs_policy_t
                          branch_direction_t dir) override
   {
     switch (status) {
+      case node_status_t::INFEASIBLE: this->worker.record_infeasible(node); break;
       case node_status_t::FATHOMED: this->worker.record_fathomed(node, node->lower_bound); break;
       case node_status_t::INTEGER_FEASIBLE:
         this->worker.record_integer_solution(node, node->lower_bound);
@@ -1452,7 +1453,7 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   if (lp_status == dual_status_t::DUAL_UNBOUNDED) {
     node_ptr->lower_bound = upper_bound;
     policy.graphviz(search_tree, node_ptr, "infeasible", upper_bound);
-    status = node_status_t::FATHOMED;
+    status = node_status_t::INFEASIBLE;
 
   } else if (lp_status == dual_status_t::CUTOFF) {
     node_ptr->lower_bound = upper_bound;
@@ -5388,12 +5389,12 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
 
   if (!feasible) {
     node_ptr->lower_bound = worker.local_upper_bound;
-    worker.record_fathomed(node_ptr, worker.local_upper_bound);
-    node_ptr->set_status(node_status_t::FATHOMED);
+    worker.record_infeasible(node_ptr);
+    node_ptr->set_status(node_status_t::INFEASIBLE);
     --exploration_stats_.nodes_unexplored;
     ++exploration_stats_.nodes_explored;
     worker.recompute_bounds_and_basis = true;
-    return node_status_t::FATHOMED;
+    return node_status_t::INFEASIBLE;
   }
 
   // Solve LP relaxation
