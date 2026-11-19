@@ -88,7 +88,7 @@ outputs:
         - librmm =${{ minor_version }}
         - rapids-logger =0.3
         - cuda-nvtx-dev
-        - libcudss-dev >=0.7,<0.8
+        - libcudss-dev >=1.0,<1.1
         - libcusparse-dev
         - libnvjitlink-dev
         - libboost-devel
@@ -229,7 +229,7 @@ outputs:
         - rapids-logger =0.3
         - librmm =${{ minor_version }}
         - libcublas
-        - libcudss-dev >=0.7,<0.8
+        - libcudss-dev >=1.0,<1.1
         - libcusparse-dev
         - libnvjitlink-dev
         - nccl >=2.19
@@ -243,7 +243,7 @@ outputs:
         - libraft-headers =${{ minor_version }}
         - cuda-nvrtc
         - libcublas
-        - libcudss >=0.7,<0.8
+        - libcudss >=1.0,<1.1
         - libcusparse
         - libgomp >=11
         - nccl >=2.19
@@ -490,7 +490,7 @@ outputs:
         - libgomp >=${{ c_compiler_version }}
         - libboost-devel
         - libcublas
-        - libcudss-dev >=0.7,<0.8
+        - libcudss-dev >=1.0,<1.1
         - libcusparse-dev
         - nccl >=2.19
         - openssl
@@ -500,7 +500,7 @@ outputs:
         - libabseil
       run:
         - libcublas
-        - libcudss >=0.7,<0.8
+        - libcudss >=1.0,<1.1
         - libgomp >=11
         - librmm =${{ minor_version }}
         - rapids-logger =0.3

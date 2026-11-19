@@ -1174,6 +1174,58 @@ TEST(cuts, test_duplicate_cuts_detection)
   EXPECT_EQ(cut_pool.pool_size(), 5);
 }
 
+TEST(cuts, mir_zero_variable_lower_bound_preserves_feasible_points)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.inside_submip = true;
+  simplex::lp_problem_t<int, double> lp(nullptr, 0, 3, 0);
+  lp.lower = {-1.0, 0.0, 0.0};
+  lp.upper = {1.0, 1.0, 1.0};
+  std::vector<simplex::variable_type_t> types{simplex::variable_type_t::CONTINUOUS,
+                                              simplex::variable_type_t::INTEGER,
+                                              simplex::variable_type_t::INTEGER};
+  std::vector<int> slacks;
+  csr_matrix_t<int, double> rows(0, 3, 0);
+  mip::variable_bounds_t<int, double> bounds(lp, settings, types, rows, slacks);
+  // -y <= v <= y, with both variable bounds evaluating to zero at xstar.
+  bounds.lower_offsets   = {0, 1, 1, 1};
+  bounds.lower_variables = {1};
+  bounds.lower_weights   = {-1.0};
+  bounds.lower_biases    = {0.0};
+  bounds.upper_offsets   = {0, 1, 1, 1};
+  bounds.upper_variables = {1};
+  bounds.upper_weights   = {1.0};
+  bounds.upper_biases    = {0.0};
+  mip::complemented_mixed_integer_rounding_cut_t<int, double> mir(lp, settings, slacks);
+  std::vector<double> xstar{0.0, 0.0, 0.5}, transformed_xstar;
+  mir.bound_substitution(lp, bounds, types, xstar, transformed_xstar);
+
+  // z - v + 0.2 y >= 0.5 contains xstar and the integer point (-0.5, 1, 0).
+  mip::inequality_t<int, double> inequality, cut;
+  inequality.push_back(0, -1.0);
+  inequality.push_back(1, 0.2);
+  inequality.push_back(2, 1.0);
+  inequality.rhs = 0.5;
+  mir.transform_inequality(bounds, types, inequality);
+  ASSERT_TRUE(mir.generate_cut_nonnegative_maintain_indicies(inequality, types, cut));
+  mir.untransform_inequality(bounds, types, cut);
+  EXPECT_GT(mir.compute_violation(cut, xstar), 0.0);
+  EXPECT_LE(mir.compute_violation(cut, std::vector<double>{-0.5, 1.0, 0.0}), 1e-12);
+
+  // Check both endpoints of every feasible interval for the two binary variables.
+  for (int y = 0; y <= 1; ++y) {
+    for (int z = 0; z <= 1; ++z) {
+      const double lower = -y;
+      const double upper = std::min(double(y), z + 0.2 * y - 0.5);
+      if (lower > upper) { continue; }
+      for (double v : {lower, upper}) {
+        EXPECT_LE(mir.compute_violation(cut, std::vector<double>{v, double(y), double(z)}), 1e-12)
+          << "v=" << v << " y=" << y << " z=" << z;
+      }
+    }
+  }
+}
+
 TEST(cuts, mir_candidate_search_stops_inside_dense_row)
 {
   // Every scaling and complement produces an integral RHS, so no candidate cuts off xstar.

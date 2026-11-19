@@ -235,7 +235,7 @@ TEST_F(cli_test_t, cudss_threading_layer_fallback_does_not_crash)
                             "0",
                             "--solution-file",
                             expected_sol_file.string()},
-                           "CUDSS_THREADING_LIB=/nonexistent/libcudss_mtlayer_gomp.so.0",
+                           "CUDSS_THREADING_LIB=/nonexistent/libcudss_mtlayer_gomp.so.1",
                            exit_code);
   std::cout << "Output: " << output << std::endl;
 

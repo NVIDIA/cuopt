@@ -60,9 +60,10 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
     rng(derive_seed(context.base_seed, rng_id_t::local_search)),
     problem_with_objective_cut(*context.problem_ptr, context.problem_ptr->handle_ptr)
 {
-  const int n_cpufj = context.settings.heuristic_params.num_cpufj_threads;
+  const int n_cpufj = context.settings.mip_hyper_params.heuristic_num_cpufj_threads;
   ls_cpu_fj.resize(n_cpufj);
-  fj.settings.n_of_minimums_for_exit = context.settings.heuristic_params.n_of_minimums_for_exit;
+  fj.settings.n_of_minimums_for_exit =
+    context.settings.mip_hyper_params.heuristic_n_of_minimums_for_exit;
 }
 
 template <typename i_t, typename f_t>
@@ -849,9 +850,9 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   f_t& best_objective)
 {
   raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
-  const auto& hp                               = context.settings.heuristic_params;
-  const i_t iterations_for_stagnation          = hp.stagnation_trigger;
-  const i_t max_iterations_without_improvement = hp.max_iterations_without_improvement;
+  const auto& hp                               = context.settings.mip_hyper_params;
+  const i_t iterations_for_stagnation          = hp.heuristic_stagnation_trigger;
+  const i_t max_iterations_without_improvement = hp.heuristic_max_iterations_without_improvement;
   population_ptr->add_external_solutions_to_population();
   if (population_ptr->current_size() > 1 &&
       i - last_improved_iteration > iterations_for_stagnation) {

@@ -301,6 +301,8 @@ class pdlp_solver_settings_t {
   bool per_constraint_residual{false};
   bool crossover{false};
   bool cudss_deterministic{false};
+  i_t cudss_nd_nlevels{-1};
+  i_t cudss_hybrid_execute_mode{-1};
   i_t project_initial_primal_override{-1};
   i_t folding{-1};
   i_t augmented{-1};
@@ -325,6 +327,7 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
+  bool barrier_adaptive_iterative_refinement{false};
   i_t barrier_adaptive_regularization{-1};  // -1 automatic, 0 disabled, 1 enabled
   // Initial regularization for the barrier method's augmented KKT system, applied to the first
   // factorization only (adaptive regularization, if enabled, still scales it up/down on later

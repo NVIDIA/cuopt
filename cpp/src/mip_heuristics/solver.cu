@@ -282,11 +282,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (run_presolve && context.problem_ptr->n_integer_vars == 0) {
     CUOPT_LOG_INFO("Problem reduced to a LP, running concurrent LP");
     pdlp_solver_settings_t<i_t, f_t> settings{};
-    settings.time_limit          = timer_.remaining_time();
-    auto lp_timer                = timer_t(settings.time_limit);
-    settings.method              = method_t::Concurrent;
-    settings.large_nnz_threshold = context.settings.large_nnz_threshold;
-    settings.presolver           = presolver_t::None;
+    settings.time_limit                           = timer_.remaining_time();
+    auto lp_timer                                 = timer_t(settings.time_limit);
+    settings.method                               = method_t::Concurrent;
+    settings.large_nnz_threshold                  = context.settings.large_nnz_threshold;
+    settings.presolver                            = presolver_t::None;
+    settings.per_constraint_residual              = true;
+    settings.tolerances.absolute_primal_tolerance = context.settings.tolerances.absolute_tolerance;
+    settings.tolerances.relative_primal_tolerance = context.settings.tolerances.relative_tolerance;
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 
@@ -423,8 +426,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.settings.dual_degenerate_pivots == -1 ? 0 : context.settings.dual_degenerate_pivots;
   branch_and_bound_settings.symmetry = context.settings.symmetry;
 
-  branch_and_bound_settings.diving_settings = context.settings.diving_params;
-  branch_and_bound_settings.submip_settings = context.settings.submip_params;
+  branch_and_bound_settings.mip_hyper_params = context.settings.mip_hyper_params;
 
   // Set the branch and bound -> primal heuristics callback
   branch_and_bound_settings.solution_callback =
@@ -477,8 +479,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound->set_concurrent_lp_root_solve(true);
 
     context.problem_ptr->branch_and_bound_callback =
-      [bb = branch_and_bound.get()](const std::vector<f_t>& solution, heuristics_origin_t origin) {
-        return bb->set_solution_from_heuristics(solution, origin);
+      [bb = branch_and_bound.get()](const std::vector<f_t>& solution) {
+        return bb->set_solution_from_heuristics(solution, 'H');
       };
   } else if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
     branch_and_bound->set_concurrent_lp_root_solve(false);

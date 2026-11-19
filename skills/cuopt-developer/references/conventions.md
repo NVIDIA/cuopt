@@ -29,7 +29,7 @@ This applies to all comment types: inline comments, block comments, suppression 
 |---------|------------|---------|
 | Variables | `snake_case` | `num_locations` |
 | Functions | `snake_case` | `solve_problem()` |
-| Classes | `snake_case` | `data_model` |
+| Classes / structs | `snake_case_t` | `solver_settings_t` |
 | Test cases | `PascalCase` | `SolverTest` |
 | Device data | `d_` prefix | `d_locations_` |
 | Host data | `h_` prefix | `h_data_` |

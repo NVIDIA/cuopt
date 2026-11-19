@@ -13,7 +13,7 @@ Runs as a post-test job after all matrix CI jobs finish.  It:
   5. Uploads the consolidated report to S3
 
 Usage:
-  python ci/utils/aggregate_nightly.py \\
+  python ci/nightly/aggregate_nightly.py \\
       --s3-summaries-prefix s3://bucket/ci_test_reports/nightly/summaries/2026-04-13/ \\
       --s3-reports-prefix s3://bucket/ci_test_reports/nightly/reports/2026-04-13/ \\
       --output-dir /tmp/aggregate-output \\
@@ -28,9 +28,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Ensure ci/utils is importable when invoked as a script
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# s3_helpers lives in ci/utils, which is shared with the per-job test scripts
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "utils")
+)
 from s3_helpers import s3_download, s3_upload, s3_list  # noqa: E402
+
+# GitHub job conclusions that mean the job did not succeed.
+FAILED_CONCLUSIONS = {"failure", "timed_out", "startup_failure"}
 
 
 # ---------------------------------------------------------------------------
@@ -249,8 +254,53 @@ def parse_workflow_jobs(workflow_jobs_path):
         return []
 
 
+def commit_sha(agg):
+    """Return the commit SHA the nightly ran against (from the matrix grid)."""
+    for g in agg["matrix_grid"]:
+        if g.get("sha"):
+            return g["sha"]
+    return ""
+
+
+def find_last_green_sha(s3_index_uri, date_str, branch, output_dir):
+    """Return the SHA of the most recent earlier night with no failed jobs.
+
+    Reads index.json (the same file update_index maintains). Returns an empty
+    string when there is no earlier green night that recorded a SHA, for
+    example on the first run after SHAs were added to the index.
+    """
+    if not s3_index_uri:
+        return ""
+    local_index = str(output_dir / "index_previous.json")
+    if not s3_download(s3_index_uri, local_index):
+        return ""
+    try:
+        with open(local_index) as f:
+            dates = json.load(f).get("dates", {})
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+    best_date, best_sha = "", ""
+    for entry in dates.values():
+        if entry.get("branch") != branch or entry.get("date", "") >= date_str:
+            continue
+        if entry.get("job_summary", {}).get("failed", 0) != 0:
+            continue
+        # A night where a CI job failed without per-test details is not green.
+        if entry.get("ci_jobs_failed", 0) != 0:
+            continue
+        if entry.get("sha") and entry["date"] > best_date:
+            best_date, best_sha = entry["date"], entry["sha"]
+    return best_sha
+
+
 def generate_consolidated_json(
-    agg, date_str, branch, github_run_url="", workflow_jobs=None
+    agg,
+    date_str,
+    branch,
+    github_run_url="",
+    workflow_jobs=None,
+    last_green_sha="",
 ):
     """Generate the consolidated JSON for Slack and dashboard."""
     total_jobs = len(agg["matrix_grid"])
@@ -262,7 +312,15 @@ def generate_consolidated_json(
 
     # Workflow-level CI job statuses
     wf_jobs = workflow_jobs or []
-    failed_ci_jobs = [j for j in wf_jobs if j["conclusion"] == "failure"]
+    failed_ci_jobs = [
+        j for j in wf_jobs if j["conclusion"] in FAILED_CONCLUSIONS
+    ]
+    # A cancelled job did not pass either, so it also blocks last-green.
+    unsuccessful_ci_jobs = [
+        j
+        for j in wf_jobs
+        if j["conclusion"] in FAILED_CONCLUSIONS | {"cancelled"}
+    ]
     # Jobs without per-matrix S3 tracking (notebooks, JuMP, etc.)
     untracked_failed = [
         j for j in failed_ci_jobs if not j.get("has_test_details", False)
@@ -272,6 +330,8 @@ def generate_consolidated_json(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "date": date_str,
         "branch": branch,
+        "sha": commit_sha(agg),
+        "last_green_sha": last_green_sha,
         "github_run_url": github_run_url,
         "job_summary": {
             "total": total_jobs,
@@ -289,6 +349,7 @@ def generate_consolidated_json(
         "resolved_tests": agg["all_resolved_tests"],
         "workflow_jobs": wf_jobs,
         "failed_ci_jobs": failed_ci_jobs,
+        "unsuccessful_ci_jobs": unsuccessful_ci_jobs,
         "untracked_failed_ci_jobs": untracked_failed,
     }
 
@@ -613,6 +674,12 @@ def update_index(s3_index_uri, date_str, consolidated, output_dir):
     index["dates"][entry_key] = {
         "date": date_str,
         "branch": branch,
+        "sha": consolidated.get("sha", ""),
+        "ci_jobs_failed": len(
+            consolidated.get(
+                "unsuccessful_ci_jobs", consolidated.get("failed_ci_jobs", [])
+            )
+        ),
         "job_summary": consolidated.get("job_summary", {}),
         "test_totals": consolidated.get("test_totals", {}),
         "has_new_failures": consolidated.get("has_new_failures", False),
@@ -749,19 +816,25 @@ def main():
     # ---- Step 2b: Parse workflow job statuses ----
     workflow_jobs = parse_workflow_jobs(args.workflow_jobs)
     if workflow_jobs:
-        failed_wf = [j for j in workflow_jobs if j["conclusion"] == "failure"]
+        failed_wf = [
+            j for j in workflow_jobs if j["conclusion"] in FAILED_CONCLUSIONS
+        ]
         print(
             f"Workflow jobs: {len(workflow_jobs)} total, "
             f"{len(failed_wf)} failed"
         )
 
     # ---- Step 3: Generate outputs ----
+    last_green_sha = find_last_green_sha(
+        args.s3_index_uri, args.date, args.branch, output_dir
+    )
     consolidated = generate_consolidated_json(
         agg,
         args.date,
         args.branch,
         args.github_run_url,
         workflow_jobs,
+        last_green_sha,
     )
 
     json_path = output_dir / "consolidated_summary.json"
