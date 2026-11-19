@@ -239,9 +239,18 @@ AArch64, and binary64 on other ARM64 targets.
 
 For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), CCCL bit/math helpers in device code, test-impact rules, volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), **no large local lambdas** (extract named helpers instead), and **coarse work-estimate / time-limit gating** (phase/outer-loop only; no fine inner-loop or double checks), see [references/conventions.md](references/conventions.md).
 
-## Pre-PR self-review
+## Pre-commit review loop
 
-Before every `git push`, review `git diff origin/<target-branch>...<branch-you-push>` (the target is usually `main`) against [references/review_rules.md](references/review_rules.md), starting with its Whole-PR review section. The rules (comment content, terminology, types and ownership, reuse, public API surface, test quality, docs wording, PR hygiene) are the ones reviewers repeat most; CodeRabbit applies the same file, so a miss here comes back as a review comment.
+Before every `git commit`, run this loop on the diff (`git diff`, or `git diff --staged`):
+
+1. Check the diff against [references/review_rules.md](references/review_rules.md), starting with its Whole-PR review section, and against [references/conventions.md](references/conventions.md) for C++ changes.
+2. Fix each violation. Name the rule you applied.
+3. Repeat from step 1 until a pass finds nothing. A fix can add a new violation, for example a new helper that needs a test.
+4. Commit.
+
+Stop after 3 passes. If a rule conflicts with the code around it or a violation is intentional, say so in the PR description instead of looping.
+
+Before every `git push`, review `git diff origin/<target-branch>...<branch-you-push>` (the target is usually `main`) against the same rules, and run the loop again if anything changed since the last pass. These rules are the ones reviewers repeat most, and CodeRabbit applies the same files, so a miss here comes back as a review comment.
 
 ## OpenMP task/runtime compatibility
 
