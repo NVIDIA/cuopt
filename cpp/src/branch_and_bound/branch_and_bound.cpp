@@ -2400,11 +2400,8 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                                        variable_bounds,
                                                        exploration_stats_.start_time);
   if (!problem_feasible) {
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
-    }
-
     solver_status_ = mip_status_t::INFEASIBLE;
+    set_final_solution(solution, inf);
     return cut_pass_action_t::RETURN;
   }
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
@@ -2509,6 +2506,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
       settings_.log.printf("row %d cut type %d\n", i, cut_types[i]);
     }
     solver_status_ = mip_status_t::NUMERICAL;
+    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
 #endif
@@ -2547,6 +2545,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   if (add_cuts_status != 0) {
     settings_.log.printf("Failed to add cuts\n");
     solver_status_ = mip_status_t::NUMERICAL;
+    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
 
@@ -2598,6 +2597,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
     original_lp_.write_mps("bound_strengthening_infeasible.mps");
 #endif
     solver_status_ = mip_status_t::INFEASIBLE;
+    set_final_solution(solution, inf);
     return cut_pass_action_t::RETURN;
   }
 
@@ -2672,6 +2672,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
       original_lp_.write_mps("cut_infeasible.mps");
 #endif
       solver_status_ = mip_status_t::NUMERICAL;
+      set_final_solution(solution, root_objective_);
       return cut_pass_action_t::RETURN;
     }
   }
@@ -2744,6 +2745,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   }
   if (remove_cuts_status != 0) {
     solver_status_ = mip_status_t::NUMERICAL;
+    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
 
@@ -2990,15 +2992,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("The root LP relaxation is infeasible\n",
                          lp_status_to_string(root_status).c_str());
+    solver_status_ = mip_status_t::INFEASIBLE;
+    set_final_solution(solution, inf);
     return mip_status_t::INFEASIBLE;
   }
 
   if (root_status == lp_status_t::UNBOUNDED) {
     settings_.log.printf("The root relaxation is unbounded\n",
                          lp_status_to_string(root_status).c_str());
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
-    }
+    solver_status_ = mip_status_t::UNBOUNDED;
+    set_final_solution(solution, -inf);
     return mip_status_t::UNBOUNDED;
   }
 
@@ -3391,8 +3394,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       mutex_original_lp_.unlock();
       if (!feasible) {
         settings_.log.printf("Bound strengthening failed\n");
-        return mip_status_t::NUMERICAL;  // We had a feasible integer solution, but bound
-                                         // strengthening thinks we are infeasible.
+        // We had a feasible integer solution, but bound strengthening thinks we are infeasible.
+        solver_status_ = mip_status_t::NUMERICAL;
+        set_final_solution(solution, root_objective_);
+        return solver_status_;
       }
       // Go through and check the fractional variables and remove any that are now fixed to their
       // bounds
