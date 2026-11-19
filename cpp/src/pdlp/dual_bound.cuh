@@ -96,9 +96,9 @@ struct repair_entry_t {
 //   LB = sum_i (y_i > 0 ? y_i * row_lb_i : y_i * row_ub_i)
 //      + sum_j (d_j > 0 ? d_j * l_j : d_j * u_j).
 // A dual infeasible column (d_j has the wrong sign for an infinite bound) makes LB = -inf. Up to
-// max_dual_infeasible_columns of them are fixed, in one round, by shifting the dual of one row in
-// their column so that d_j becomes 0 (the row keeps a sign its finite sides allow), and the whole
-// bound is recomputed.
+// max_dual_infeasible_columns of them are fixed by shifting the dual of one row in their column so
+// that d_j becomes 0 (the row keeps a sign its finite sides allow), and the whole bound is
+// recomputed, for up to max_repair_rounds rounds.
 // A relative margin covers the rounding of the double-precision sums.
 // The quality of the bound follows the dual residual of y, not the duality gap: a PDLP iterate far
 // from its termination tolerances can already give a bound close to the LP optimum.
@@ -106,7 +106,7 @@ template <typename i_t, typename f_t>
 class lagrangian_dual_bound_t {
  public:
   static constexpr i_t max_dual_infeasible_columns = 64;
-  static constexpr i_t max_repair_rounds           = 1;
+  static constexpr i_t max_repair_rounds           = 3;
   static constexpr f_t relative_margin             = 1e-9;
 
   lagrangian_dual_bound_t(i_t n_rows, i_t n_cols, cuda::stream_ref stream)
@@ -154,7 +154,8 @@ class lagrangian_dual_bound_t {
       if (n_dual_infeasible_columns > max_dual_infeasible_columns || round == max_repair_rounds) {
         return -inf;
       }
-      repair(problem, n_dual_infeasible_columns, policy, stream);
+      // A shift can make another column of its row dual infeasible; the next round handles it.
+      if (!repair(problem, n_dual_infeasible_columns, policy, stream)) { return -inf; }
     }
   }
 
@@ -250,9 +251,9 @@ class lagrangian_dual_bound_t {
   // the column's reduced cost becomes zero: among the rows whose dual may take the shift (by the
   // row's finite sides) and that no earlier column of this round has shifted, the one with the
   // smallest shift. The columns' data is gathered on the GPU and copied in bulk, the choice is made
-  // on the host, and the shifts are written back in one copy. Whether the round fixed every dual
-  // infeasible column is seen by the next evaluation.
-  void repair(const mip::problem_t<i_t, f_t>& problem,
+  // on the host, and the shifts are written back in one copy. Returns whether any shift was
+  // applied; whether the round fixed every dual infeasible column is seen by the next evaluation.
+  bool repair(const mip::problem_t<i_t, f_t>& problem,
               i_t n_columns,
               const rmm::exec_policy_nosync& policy,
               cuda::stream_ref stream)
@@ -342,7 +343,7 @@ class lagrangian_dual_bound_t {
       shift_values.push_back(entry[best].y + dj[b] / entry[best].coeff);
       shifted_rows.insert(entry[best].row);
     }
-    if (shift_rows.empty()) { return; }
+    if (shift_rows.empty()) { return false; }
 
     // Write the new duals back in one copy.
     const i_t n_shifts = static_cast<i_t>(shift_rows.size());
@@ -352,6 +353,7 @@ class lagrangian_dual_bound_t {
     raft::copy(d_values.data(), shift_values.data(), n_shifts, stream);
     thrust::scatter(policy, d_values.begin(), d_values.end(), d_rows.begin(), y_.begin());
     stream.sync();  // the host vectors above are the copy sources
+    return true;
   }
 
  private:
