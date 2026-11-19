@@ -241,7 +241,7 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
       cuopt_assert(node_stack.top().intra_idx < route_length,
                    "curr_idx in lexico loop should be smaller that route_length");
       if (!advance) {
-        double time_between;
+        f_t time_between;
         node_t<i_t, f_t, REQUEST> from_node(dimensions_info);
         // if the top is ejection but the hole behind it starts with delivery or the top is a
         // delivery
@@ -673,10 +673,6 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
 {
   auto stream = solution_ptr->sol_handle->get_stream();
   RAFT_CHECK_CUDA(stream.get());
-
-  // copy_device_solution does not restore the host-side max active size, so after a failed squeeze
-  // it can be smaller than the longest route and the shared memory below would be undersized
-  solution_ptr->compute_max_active();
 
   i_t average_route_size = solution_ptr->get_num_orders() / solution_ptr->n_routes;
 
