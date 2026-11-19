@@ -1455,16 +1455,19 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       break;
     }
 
-    if (exploration_stats_.nodes_explored + exploration_stats_.nodes_being_solved >
-        settings_.node_limit) {
+    int64_t nodes_explored =
+      exploration_stats_.nodes_explored + exploration_stats_.nodes_being_solved;
+    if (settings_.inside_submip) nodes_explored += heuristic_stats_.nodes_explored;
+    if (nodes_explored > settings_.node_limit) {
       solver_status_ = mip_status_t::NODE_LIMIT;
       stack.push_front(node_ptr);
       --exploration_stats_.nodes_being_solved;
       break;
     }
 
-    if (exploration_stats_.total_simplex_iters >
-        settings_.mip_hyper_params.bnb_simplex_iteration_limit) {
+    int64_t simplex_iter = exploration_stats_.total_simplex_iters;
+    if (settings_.inside_submip) simplex_iter += heuristic_stats_.total_simplex_iters;
+    if (simplex_iter > settings_.mip_hyper_params.bnb_simplex_iteration_limit) {
       solver_status_ = mip_status_t::ITERATION_LIMIT;
       stack.push_front(node_ptr);
       --exploration_stats_.nodes_being_solved;
@@ -1800,7 +1803,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 #pragma omp task affinity(*diving_worker) priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) \
   firstprivate(diving_worker)
   {
-    diving_worker->dive(settings_, exploration_stats_);
+    diving_worker->dive(settings_, exploration_stats_, heuristic_stats_);
     diving_worker_pool_.return_worker_to_pool(diving_worker);
   }
 
@@ -1820,6 +1823,14 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
   if (!enable_rins && !enable_rens && !enable_mutation) return false;
   if (!enable_rens && !incumbent_.has_incumbent) return false;
   if (submip_worker_pool_.num_idle() == 0) return false;
+
+  int64_t bnb_iters       = exploration_stats_.total_simplex_iters;
+  int64_t heuristic_iters = heuristic_stats_.total_simplex_iters;
+  f_t heuristic_ratio     = settings_.mip_hyper_params.submip_heuristic_ratio;
+  if (settings_.inside_submip &&
+      heuristic_iters > heuristic_ratio * (bnb_iters + heuristic_iters)) {
+    return false;
+  }
 
   diving_worker_t<i_t, f_t>* worker = submip_worker_pool_.pop_idle_worker();
   if (!worker) return false;
@@ -1851,7 +1862,12 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
     worker->search_strategy = search_strategy_t::MUTATION;
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) firstprivate(worker)
     {
-      mutation(worker, exploration_stats_, original_problem_, mutation_stats_, submip_settings);
+      mutation(worker,
+               exploration_stats_,
+               heuristic_stats_,
+               original_problem_,
+               mutation_stats_,
+               submip_settings);
       submip_worker_pool_.return_worker_to_pool(worker);
     }
     return true;
@@ -1862,13 +1878,23 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      rins(worker, exploration_stats_, original_problem_, rins_stats_, submip_settings);
+      rins(worker,
+           exploration_stats_,
+           heuristic_stats_,
+           original_problem_,
+           rins_stats_,
+           submip_settings);
       submip_worker_pool_.return_worker_to_pool(worker);
     } else {
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(worker, submip_settings)
       {
-        rins(worker, exploration_stats_, original_problem_, rins_stats_, submip_settings);
+        rins(worker,
+             exploration_stats_,
+             heuristic_stats_,
+             original_problem_,
+             rins_stats_,
+             submip_settings);
         submip_worker_pool_.return_worker_to_pool(worker);
       }
     }
@@ -1879,13 +1905,23 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
   if (settings_.inside_submip) {
     // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
     // function for included tasks.
-    rens(worker, exploration_stats_, original_problem_, rens_stats_, submip_settings);
+    rens(worker,
+         exploration_stats_,
+         heuristic_stats_,
+         original_problem_,
+         rens_stats_,
+         submip_settings);
     submip_worker_pool_.return_worker_to_pool(worker);
   } else {
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(worker, submip_settings)
     {
-      rens(worker, exploration_stats_, original_problem_, rens_stats_, submip_settings);
+      rens(worker,
+           exploration_stats_,
+           heuristic_stats_,
+           original_problem_,
+           rens_stats_,
+           submip_settings);
       submip_worker_pool_.return_worker_to_pool(worker);
     }
   }
@@ -2000,9 +2036,19 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
       if (use_rins) {
-        rins(worker, exploration_stats_, original_problem_, rins_stats_, submip_settings);
+        rins(worker,
+             exploration_stats_,
+             heuristic_stats_,
+             original_problem_,
+             rins_stats_,
+             submip_settings);
       } else {
-        rens(worker, exploration_stats_, original_problem_, rens_stats_, submip_settings);
+        rens(worker,
+             exploration_stats_,
+             heuristic_stats_,
+             original_problem_,
+             rens_stats_,
+             submip_settings);
       }
       worker->cleanup();
     } else {
@@ -2012,9 +2058,19 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   firstprivate(current_heuristic, worker_count, submip_settings) depend(out : *worker)
       {
         if (use_rins) {
-          rins(worker, exploration_stats_, original_problem_, rins_stats_, submip_settings);
+          rins(worker,
+               exploration_stats_,
+               heuristic_stats_,
+               original_problem_,
+               rins_stats_,
+               submip_settings);
         } else {
-          rens(worker, exploration_stats_, original_problem_, rens_stats_, submip_settings);
+          rens(worker,
+               exploration_stats_,
+               heuristic_stats_,
+               original_problem_,
+               rens_stats_,
+               submip_settings);
         }
         worker->cleanup();
         --(*worker_count);
@@ -2048,7 +2104,12 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      mutation(worker, exploration_stats_, original_problem_, mutation_stats_, submip_settings);
+      mutation(worker,
+               exploration_stats_,
+               heuristic_stats_,
+               original_problem_,
+               mutation_stats_,
+               submip_settings);
       worker->cleanup();
     } else {
       ++current_heuristic->active_workers_;
@@ -2056,7 +2117,12 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(current_heuristic, worker_count, submip_settings) depend(out : *worker)
       {
-        mutation(worker, exploration_stats_, original_problem_, mutation_stats_, submip_settings);
+        mutation(worker,
+                 exploration_stats_,
+                 heuristic_stats_,
+                 original_problem_,
+                 mutation_stats_,
+                 submip_settings);
         worker->cleanup();
         --(*worker_count);
         --current_heuristic->active_workers_;
@@ -2124,7 +2190,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
         dive_settings.concurrent_halt                         = &current_heuristic->halt_;
         dive_settings.inside_root_node                        = true;
         dive_settings.mip_hyper_params.diving_backtrack_limit = 1;
-        worker->dive(dive_settings, exploration_stats_);
+        worker->dive(dive_settings, exploration_stats_, heuristic_stats_);
         --(*worker_count);
         --current_heuristic->active_workers_;
       }

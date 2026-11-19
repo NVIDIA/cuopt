@@ -211,6 +211,7 @@ bool solve_lp(const branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
 template <typename i_t, typename f_t>
 void solve_submip(diving_worker_t<i_t, f_t>* worker,
                   branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+                  branch_and_bound_stats_t<i_t, f_t>& heuristic_stats,
                   const user_problem_t<i_t, f_t>& original_problem,
                   submip_stats_t& submip_stats,
                   f_t fixrate,
@@ -255,7 +256,7 @@ void solve_submip(diving_worker_t<i_t, f_t>* worker,
     dfs_settings.mip_hyper_params.diving_backtrack_limit =
       dfs_settings.mip_hyper_params.submip_dfs_max_backtrack;
     worker->domain_propagation.clear();
-    worker->dive(dfs_settings, bnb_stats);
+    worker->dive(dfs_settings, bnb_stats, heuristic_stats);
     return;
   }
 
@@ -273,7 +274,11 @@ void solve_submip(diving_worker_t<i_t, f_t>* worker,
   settings.mip_hyper_params.submip_rens =
     settings.mip_hyper_params.submip_rens != 0 && !max_recursion;
 
-  settings.node_limit = settings.mip_hyper_params.submip_node_limit_offset + explored / 20;
+  i_t num_bfs_workers =
+    std::max(settings.num_threads * settings.mip_hyper_params.bnb_bfs_workers_ratio, 1.0);
+  i_t thread_adjust   = std::max(1, num_bfs_workers / 4);
+  i_t node_offset     = settings.mip_hyper_params.submip_node_limit_offset;
+  settings.node_limit = node_offset + explored / (20 * thread_adjust);
 
   // Add offset only on the top call, we want number of simplex iteration to decay
   // as we go down the recursion to avoid spending too much time in the deeper levels.
@@ -466,6 +471,17 @@ void solve_submip(diving_worker_t<i_t, f_t>* worker,
     presolve_time,
     submip_time);
 
+  // Charge the sub-MIP work (tree + heuristics) to the parent, scaled by the size of the
+  // presolved sub-MIP relative to the parent LP.
+  f_t submip_cols       = submip_bnb.original_lp_.num_cols;
+  f_t effort_adjustment = submip_cols / worker->leaf_problem.num_cols;
+  int64_t submip_iters =
+    submip_solution.simplex_iterations + submip_bnb.heuristic_stats_.total_simplex_iters;
+  int64_t submip_nodes =
+    submip_solution.nodes_explored + submip_bnb.heuristic_stats_.nodes_explored;
+  heuristic_stats.total_simplex_iters += effort_adjustment * submip_iters;
+  heuristic_stats.nodes_explored += effort_adjustment * submip_nodes;
+
   if (submip_status == mip_status_t::NUMERICAL) { return; }
   if (submip_status == mip_status_t::INFEASIBLE || submip_status == mip_status_t::UNBOUNDED) {
     submip_stats.save_infeasible(fixrate);
@@ -477,14 +493,12 @@ void solve_submip(diving_worker_t<i_t, f_t>* worker,
       submip_stats.save_success(fixrate);
     }
   }
-
-  // Accumulate simplex iterations to determine when to stop exploring the sub-MIP
-  if (inside_submip) { bnb_stats.total_simplex_iters += submip_solution.simplex_iterations; }
 }
 
 template <typename i_t, typename f_t>
 void mutation(diving_worker_t<i_t, f_t>* worker,
               branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+              branch_and_bound_stats_t<i_t, f_t>& heuristic_stats,
               const user_problem_t<i_t, f_t>& original_problem,
               submip_stats_t& submip_stats,
               simplex_solver_settings_t<i_t, f_t> settings)
@@ -557,7 +571,8 @@ void mutation(diving_worker_t<i_t, f_t>* worker,
                target_num_fixed,
                target_fixrate);
 
-  solve_submip(worker, bnb_stats, original_problem, submip_stats, fixrate, 0, settings);
+  solve_submip(
+    worker, bnb_stats, heuristic_stats, original_problem, submip_stats, fixrate, 0, settings);
 
   DEBUG_SUBMIP(
     "success={}, infeasible={}, calls={}, fixrate={:.4g} ({:.0f}/{}), max_fixrate={:.4g}\n",
@@ -573,6 +588,7 @@ void mutation(diving_worker_t<i_t, f_t>* worker,
 template <typename i_t, typename f_t>
 void rins(diving_worker_t<i_t, f_t>* worker,
           branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+          branch_and_bound_stats_t<i_t, f_t>& heuristic_stats,
           const user_problem_t<i_t, f_t>& original_problem,
           submip_stats_t& submip_stats,
           simplex_solver_settings_t<i_t, f_t> settings)
@@ -742,12 +758,12 @@ void rins(diving_worker_t<i_t, f_t>* worker,
     ++round;
   }
 
-  // Accumulate the iterations for sub-MIP so it stops when it reaches the allocated budget.
-  if (settings.inside_submip) { bnb_stats.total_simplex_iters += stats.total_simplex_iters; }
+  heuristic_stats.total_simplex_iters += stats.total_simplex_iters;
 
   if (has_submip) {
     solve_submip(worker,
                  bnb_stats,
+                 heuristic_stats,
                  original_problem,
                  submip_stats,
                  fixrate,
@@ -771,6 +787,7 @@ void rins(diving_worker_t<i_t, f_t>* worker,
 template <typename i_t, typename f_t>
 void rens(diving_worker_t<i_t, f_t>* worker,
           branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+          branch_and_bound_stats_t<i_t, f_t>& heuristic_stats,
           const user_problem_t<i_t, f_t>& original_problem,
           submip_stats_t& submip_stats,
           simplex_solver_settings_t<i_t, f_t> settings)
@@ -934,12 +951,12 @@ void rens(diving_worker_t<i_t, f_t>* worker,
     ++round;
   }
 
-  // Accumulate the iterations for sub-MIP so it stops when it reaches the allocated budget.
-  if (settings.inside_submip) { bnb_stats.total_simplex_iters += stats.total_simplex_iters; }
+  heuristic_stats.total_simplex_iters += stats.total_simplex_iters;
 
   if (has_submip) {
     solve_submip(worker,
                  bnb_stats,
+                 heuristic_stats,
                  original_problem,
                  submip_stats,
                  fixrate,
@@ -964,6 +981,7 @@ void rens(diving_worker_t<i_t, f_t>* worker,
 
 template void solve_submip(diving_worker_t<int, double>* worker,
                            branch_and_bound_stats_t<int, double>& bnb_stats,
+                           branch_and_bound_stats_t<int, double>& heuristic_stats,
                            const user_problem_t<int, double>& original_problem,
                            submip_stats_t& submip_stats,
                            double fixrate,
@@ -972,18 +990,21 @@ template void solve_submip(diving_worker_t<int, double>* worker,
 
 template void mutation(diving_worker_t<int, double>* worker,
                        branch_and_bound_stats_t<int, double>& bnb_stats,
+                       branch_and_bound_stats_t<int, double>& heuristic_stats,
                        const user_problem_t<int, double>& original_problem,
                        submip_stats_t& submip_stats,
                        simplex_solver_settings_t<int, double> submip_settings);
 
 template void rins(diving_worker_t<int, double>* worker,
                    branch_and_bound_stats_t<int, double>& bnb_stats,
+                   branch_and_bound_stats_t<int, double>& heuristic_stats,
                    const user_problem_t<int, double>& original_problem,
                    submip_stats_t& submip_stats,
                    simplex_solver_settings_t<int, double> settings);
 
 template void rens(diving_worker_t<int, double>* worker,
                    branch_and_bound_stats_t<int, double>& bnb_stats,
+                   branch_and_bound_stats_t<int, double>& heuristic_stats,
                    const user_problem_t<int, double>& original_problem,
                    submip_stats_t& submip_stats,
                    simplex_solver_settings_t<int, double> settings);

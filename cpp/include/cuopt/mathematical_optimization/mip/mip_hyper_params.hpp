@@ -170,6 +170,9 @@ struct mip_hyper_params_t {
   // (1 - current fixrate).
   f_t submip_round_close_ratio = 0.8;
 
+  // Indicate the ratio of the simplex iterations dedicated to heuristics within the sub-MIP
+  f_t submip_heuristic_ratio = 0.8;
+
   // Run CPU FJ over the sub-MIP
   bool submip_enable_cpufj = true;
 };

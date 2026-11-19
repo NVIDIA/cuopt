@@ -50,7 +50,8 @@ node_status_t diving_worker_t<i_t, f_t>::classify_node(
 
 template <typename i_t, typename f_t>
 void diving_worker_t<i_t, f_t>::dive(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                                     const branch_and_bound_stats_t<i_t, f_t>& bnb_stats)
+                                     const branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+                                     branch_and_bound_stats_t<i_t, f_t>& heuristic_stats)
 {
   raft::common::nvtx::range scope("BB::diving_thread");
   if (this->orbital_fixing) { this->orbital_fixing->disable(); }
@@ -180,6 +181,9 @@ void diving_worker_t<i_t, f_t>::dive(const simplex::simplex_solver_settings_t<i_
     rel_gap     = user_relative_gap(user_obj, user_lower);
     abs_gap     = compute_user_abs_gap(this->leaf_problem, upper_bound, lower_bound);
   }
+
+  heuristic_stats.nodes_explored += dive_stats.nodes_explored;
+  heuristic_stats.total_simplex_iters += dive_stats.total_simplex_iters;
 }
 
 template <typename i_t, typename f_t>
