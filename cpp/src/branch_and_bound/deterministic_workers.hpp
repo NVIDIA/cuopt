@@ -344,7 +344,7 @@ class deterministic_diving_worker_t
     dive_queue_entry_t<i_t, f_t> entry;
     entry.resolved_lower = original_lp.lower;
     entry.resolved_upper = original_lp.upper;
-    simplex::domain_t<i_t, f_t> path;
+    domain_propagation_t<i_t, f_t> path;
     node->rebuild_variable_bounds(path);
     path.apply_stack(entry.resolved_lower, entry.resolved_upper);
     entry.node = node->detach_copy();

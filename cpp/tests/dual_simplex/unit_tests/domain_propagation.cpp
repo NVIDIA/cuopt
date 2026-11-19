@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <dual_simplex/domain.hpp>
+#include <branch_and_bound/domain_propagation.hpp>
 
 #include <gtest/gtest.h>
 
@@ -13,7 +13,11 @@
 
 namespace cuopt::mathematical_optimization::simplex::test {
 
-class domain : public ::testing::Test {
+using mip::bound_change_origin_t;
+using mip::bound_change_t;
+using mip::domain_propagation_t;
+
+class domain_propagation : public ::testing::Test {
  protected:
   void SetUp() override
   {
@@ -30,11 +34,11 @@ class domain : public ::testing::Test {
   lp_problem_t<int, double> lp{nullptr, 2, 4, 6};
   csr_matrix_t<int, double> Arow{1, 1, 1};
   simplex_solver_settings_t<int, double> settings;
-  domain_t<int, double> local_domain;
+  domain_propagation_t<int, double> local_domain;
   std::vector<variable_type_t> var_types;
 };
 
-TEST_F(domain, continuous_upper_bounds)
+TEST_F(domain_propagation, continuous_upper_bounds)
 {
   // Row 0 gives x0, x1, s0 <= 4, then row 1 gives s1 <= 2 + x1 <= 6.
   lp.A.to_compressed_row(Arow);
@@ -43,7 +47,7 @@ TEST_F(domain, continuous_upper_bounds)
   EXPECT_EQ(lp.upper, (std::vector<double>{4.0, 4.0, 4.0, 6.0}));
 }
 
-TEST_F(domain, apply_and_propagate)
+TEST_F(domain_propagation, apply_and_propagate)
 {
   lp.A.to_compressed_row(Arow);
   ASSERT_TRUE(local_domain.propagate_full(Arow, var_types, settings, lp));
@@ -58,7 +62,7 @@ TEST_F(domain, apply_and_propagate)
   EXPECT_GT(local_domain.last_nnz_processed, 0u);
 }
 
-TEST_F(domain, backtrack_to_parent)
+TEST_F(domain_propagation, backtrack_to_parent)
 {
   lp.A.to_compressed_row(Arow);
   ASSERT_TRUE(local_domain.propagate_full(Arow, var_types, settings, lp));
@@ -81,7 +85,7 @@ TEST_F(domain, backtrack_to_parent)
   EXPECT_EQ(lp.upper, (std::vector<double>{3.0, 1.0, 4.0, 6.0}));
 }
 
-TEST_F(domain, propagate_from_stack)
+TEST_F(domain_propagation, propagate_from_stack)
 {
   lp.A.to_compressed_row(Arow);
   ASSERT_TRUE(local_domain.propagate_full(Arow, var_types, settings, lp));
@@ -94,7 +98,7 @@ TEST_F(domain, propagate_from_stack)
   EXPECT_EQ(lp.upper, (std::vector<double>{3.0, 1.0, 4.0, 6.0}));
 }
 
-TEST_F(domain, propagate_from_variables)
+TEST_F(domain_propagation, propagate_from_variables)
 {
   lp.A.to_compressed_row(Arow);
   ASSERT_TRUE(local_domain.propagate_full(Arow, var_types, settings, lp));
@@ -105,7 +109,7 @@ TEST_F(domain, propagate_from_variables)
   EXPECT_EQ(lp.upper, (std::vector<double>{3.0, 1.0, 4.0, 6.0}));
 }
 
-TEST_F(domain, integer_rounding_and_gauss_seidel)
+TEST_F(domain_propagation, integer_rounding_and_gauss_seidel)
 {
   // 2 x0 + x1 = 3 and x0 + x1 + s = 10 with x0 integer in [0, 10] and x1 in [0, 2]. Row 0 gives
   // x0 in [0.5, 1.5], rounded to x0 = 1, and x1 sees x0 = 1 in the same pass, giving x1 = 1. Row 1
@@ -125,7 +129,7 @@ TEST_F(domain, integer_rounding_and_gauss_seidel)
   EXPECT_EQ(integer_lp.upper, (std::vector<double>{1.0, 1.0, 8.0}));
 }
 
-TEST_F(domain, infeasible_row)
+TEST_F(domain_propagation, infeasible_row)
 {
   // With s0 fixed at 0, the activity of row 0 is at most 20 < 30.
   lp.rhs   = {30.0, 2.0};
@@ -139,7 +143,7 @@ TEST_F(domain, infeasible_row)
   EXPECT_EQ(lp.upper, (std::vector<double>{4.0, 4.0, 0.0, 6.0}));
 }
 
-TEST_F(domain, infeasible_integer_bounds)
+TEST_F(domain_propagation, infeasible_integer_bounds)
 {
   // 2 x0 + x1 + s0 = 1 with x1 and s0 fixed at 0 and x0 integer: x0 = 0.5 rounds to [1, 0].
   lp.A.x    = {2.0, 1.0, 1.0, -1.0, 1.0, 1.0};
