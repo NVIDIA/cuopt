@@ -31,9 +31,16 @@ jobs:
 def rules():
     """Provide a small set of shared and solver-specific paths."""
     return {
-        "common_exclusions": ["docs/**"],
-        "mathopt_only": ["cpp/src/pdlp/**"],
-        "routing_only": ["cpp/src/routing/**"],
+        "sets": {
+            "common_exclusions": ["docs/**"],
+            "mathopt_only": ["cpp/src/pdlp/**"],
+            "routing_only": ["cpp/src/routing/**"],
+        },
+        "groups": {
+            "test_cpp": ["common_exclusions"],
+            "test_cpp_routing": ["common_exclusions", "mathopt_only"],
+            "test_cpp_mathopt": ["common_exclusions", "routing_only"],
+        },
     }
 
 
@@ -95,7 +102,7 @@ def test_missing_or_duplicate_group(rules, header):
 def test_invalid_rules(rules, paths, message):
     """Reject malformed paths and duplicate exclusions."""
 
-    rules["common_exclusions"] = paths
+    rules["sets"]["common_exclusions"] = paths
 
     with pytest.raises(ValueError, match=message):
         generate(WORKFLOW, rules)
@@ -107,7 +114,14 @@ def test_invalid_rules(rules, paths, message):
 def test_duplicate_yaml_keys(rules, section):
     """Reject a repeated section instead of silently replacing its paths."""
 
-    text = yaml.safe_dump(rules) + f"{section}: []\n"
+    text = (
+        "sets:\n"
+        + "".join(
+            "  " + line
+            for line in yaml.safe_dump(rules["sets"]).splitlines(keepends=True)
+        )
+        + f"  {section}: []\n"
+    )
 
     with pytest.raises(
         yaml.constructor.ConstructorError, match="duplicate key"
@@ -127,3 +141,30 @@ def test_unsafe_yaml_tag():
 
     with pytest.raises(yaml.constructor.ConstructorError):
         yaml.load("!!python/tuple [1, 2]", Loader=UniqueKeySafeLoader)
+
+
+def test_configured_group(rules):
+    """Generate an additional group without hard-coding its name."""
+    rules["groups"]["test_python"] = ["routing_only"]
+    output = yaml.safe_load(generate(WORKFLOW, rules))
+    groups = yaml.safe_load(
+        output["jobs"]["changed-files"]["with"]["files_yaml"]
+    )
+    assert groups["test_python"] == ["**", "!cpp/src/routing/**"]
+
+
+def test_overlapping_sets(rules):
+    """Remove shared paths across sets without changing their order."""
+    rules["sets"]["mathopt_only"].append("docs/**")
+    output = yaml.safe_load(generate(WORKFLOW, rules))
+    groups = yaml.safe_load(
+        output["jobs"]["changed-files"]["with"]["files_yaml"]
+    )
+    assert groups["test_cpp_routing"] == ["**", "!docs/**", "!cpp/src/pdlp/**"]
+
+
+def test_unknown_set(rules):
+    """Fail rather than omit exclusions when a set name is misspelled."""
+    rules["groups"]["test_cpp"] = ["missing"]
+    with pytest.raises(KeyError, match="missing"):
+        generate(WORKFLOW, rules)

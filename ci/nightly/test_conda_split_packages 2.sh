@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPONENTS=(client mathopt routing)
 
 . "$(conda info --base)/etc/profile.d/conda.sh"
@@ -38,12 +38,12 @@ for component in "${COMPONENTS[@]}"; do
     "${package}" "cuda-version=${CUDA_VERSION}" \
     cmake ninja cxx-compiler cuda-nvcc cuda-cudart-dev
 
-  python "${REPO_ROOT}/ci/split_package_smoke/env_check.py" conda-packages "${env_dir}" "${expected[@]}"
+  python "${REPO_ROOT}/ci/nightly/split_package_smoke/env_check.py" conda-packages "${env_dir}" "${expected[@]}"
 
   set +u
   conda activate "${env_dir}"
   set -u
-  bash "${REPO_ROOT}/ci/split_package_smoke/build_and_run.sh" "${component}" "${env_dir}"
+  bash "${REPO_ROOT}/ci/nightly/split_package_smoke/build_and_run.sh" "${component}" "${env_dir}"
   conda deactivate
   set -e
 done

@@ -563,6 +563,11 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   const raft::handle_t* handle_ptr,
   cuopt::mathematical_optimization::barrier_cache_t<i_t, f_t>* cache = nullptr)
 {
+  cuopt_expects(!(settings.cudss_deterministic && settings.cudss_hybrid_execute_mode == 1),
+                error_type_t::ValidationError,
+                "cudss_hybrid_execute_mode=1 is not supported with cudss_deterministic. "
+                "Set cudss_hybrid_execute_mode to -1 or 0, or disable cudss_deterministic.");
+
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
@@ -593,16 +598,20 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.crossover                        = settings.crossover;
   barrier_settings.eliminate_dense_columns          = settings.eliminate_dense_columns;
   barrier_settings.barrier_iterative_refinement     = settings.barrier_iterative_refinement;
-  barrier_settings.barrier_adaptive_regularization  = settings.barrier_adaptive_regularization;
-  barrier_settings.barrier_primal_regularization    = settings.barrier_primal_regularization;
-  barrier_settings.barrier_dual_regularization      = settings.barrier_dual_regularization;
-  barrier_settings.barrier_soc_threshold            = settings.barrier_soc_threshold;
-  barrier_settings.barrier_step_scale               = settings.barrier_step_scale;
-  barrier_settings.qcqp_ruiz_equilibration          = settings.qcqp_ruiz_equilibration;
-  barrier_settings.gpu_ruiz_nnz_threshold           = settings.gpu_ruiz_nnz_threshold;
-  barrier_settings.cudss_deterministic              = settings.cudss_deterministic;
-  barrier_settings.barrier_relaxed_feasibility_tol  = settings.tolerances.relative_primal_tolerance;
-  barrier_settings.barrier_relaxed_optimality_tol   = settings.tolerances.relative_dual_tolerance;
+  barrier_settings.barrier_adaptive_iterative_refinement =
+    settings.barrier_adaptive_iterative_refinement;
+  barrier_settings.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
+  barrier_settings.barrier_primal_regularization   = settings.barrier_primal_regularization;
+  barrier_settings.barrier_dual_regularization     = settings.barrier_dual_regularization;
+  barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
+  barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
+  barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;
+  barrier_settings.gpu_ruiz_nnz_threshold          = settings.gpu_ruiz_nnz_threshold;
+  barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
+  barrier_settings.cudss_nd_nlevels                = settings.cudss_nd_nlevels;
+  barrier_settings.cudss_hybrid_execute_mode       = settings.cudss_hybrid_execute_mode;
+  barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
+  barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;
   barrier_settings.barrier_relaxed_relative_objective_gap_tol =
     settings.tolerances.relative_gap_tolerance;
@@ -832,31 +841,32 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
     static_cast<float>(settings.tolerances.primal_infeasible_tolerance);
   fs.tolerances.dual_infeasible_tolerance =
     static_cast<float>(settings.tolerances.dual_infeasible_tolerance);
-  fs.detect_infeasibility            = settings.detect_infeasibility;
-  fs.strict_infeasibility            = settings.strict_infeasibility;
-  fs.iteration_limit                 = settings.iteration_limit;
-  fs.time_limit                      = static_cast<float>(settings.time_limit);
-  fs.pdlp_solver_mode                = settings.pdlp_solver_mode;
-  fs.log_to_console                  = settings.log_to_console;
-  fs.log_file                        = settings.log_file;
-  fs.per_constraint_residual         = settings.per_constraint_residual;
-  fs.save_best_primal_so_far         = settings.save_best_primal_so_far;
-  fs.first_primal_feasible           = settings.first_primal_feasible;
-  fs.all_primal_feasible             = settings.all_primal_feasible;
-  fs.eliminate_dense_columns         = settings.eliminate_dense_columns;
-  fs.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
-  fs.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
-  fs.barrier_primal_regularization   = settings.barrier_primal_regularization;
-  fs.barrier_dual_regularization     = settings.barrier_dual_regularization;
-  fs.barrier_step_scale              = settings.barrier_step_scale;
-  fs.pdlp_precision                  = pdlp_precision_t::DefaultPrecision;
-  fs.method                          = method_t::PDLP;
-  fs.inside_mip                      = settings.inside_mip;
-  fs.hyper_params                    = settings.hyper_params;
-  fs.presolver                       = settings.presolver;
-  fs.num_gpus                        = settings.num_gpus;
-  fs.large_nnz_threshold             = settings.large_nnz_threshold;
-  fs.concurrent_halt                 = settings.concurrent_halt;
+  fs.detect_infeasibility                  = settings.detect_infeasibility;
+  fs.strict_infeasibility                  = settings.strict_infeasibility;
+  fs.iteration_limit                       = settings.iteration_limit;
+  fs.time_limit                            = static_cast<float>(settings.time_limit);
+  fs.pdlp_solver_mode                      = settings.pdlp_solver_mode;
+  fs.log_to_console                        = settings.log_to_console;
+  fs.log_file                              = settings.log_file;
+  fs.per_constraint_residual               = settings.per_constraint_residual;
+  fs.save_best_primal_so_far               = settings.save_best_primal_so_far;
+  fs.first_primal_feasible                 = settings.first_primal_feasible;
+  fs.all_primal_feasible                   = settings.all_primal_feasible;
+  fs.eliminate_dense_columns               = settings.eliminate_dense_columns;
+  fs.barrier_iterative_refinement          = settings.barrier_iterative_refinement;
+  fs.barrier_adaptive_iterative_refinement = settings.barrier_adaptive_iterative_refinement;
+  fs.barrier_adaptive_regularization       = settings.barrier_adaptive_regularization;
+  fs.barrier_primal_regularization         = settings.barrier_primal_regularization;
+  fs.barrier_dual_regularization           = settings.barrier_dual_regularization;
+  fs.barrier_step_scale                    = settings.barrier_step_scale;
+  fs.pdlp_precision                        = pdlp_precision_t::DefaultPrecision;
+  fs.method                                = method_t::PDLP;
+  fs.inside_mip                            = settings.inside_mip;
+  fs.hyper_params                          = settings.hyper_params;
+  fs.presolver                             = settings.presolver;
+  fs.num_gpus                              = settings.num_gpus;
+  fs.large_nnz_threshold                   = settings.large_nnz_threshold;
+  fs.concurrent_halt                       = settings.concurrent_halt;
 
   pdlp::pdlp_solver_t<i_t, float> solver(float_problem, fs, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
@@ -2068,7 +2078,8 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      op_problem.write_to_mps(settings.user_problem_file);
+      op_problem.write_to_file(settings.user_problem_file,
+                               dump_file_format_from_path(settings.user_problem_file));
     }
     simplex::user_problem_t<i_t, f_t> dual_simplex_problem(op_problem.get_handle_ptr());
     if (reuse_from_cache) {
@@ -2459,11 +2470,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      op_problem.write_to_mps(settings.user_problem_file);
+      op_problem.write_to_file(settings.user_problem_file,
+                               dump_file_format_from_path(settings.user_problem_file));
     }
     if (run_presolve && settings.presolve_file != "") {
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
-      result->reduced_problem.write_to_mps(settings.presolve_file);
+      result->reduced_problem.write_to_file(settings.presolve_file,
+                                            dump_file_format_from_path(settings.presolve_file));
     }
 
     // problem owns the presolved device data. Release the staging buffers after

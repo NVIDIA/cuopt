@@ -102,16 +102,9 @@ def replace_filters(workflow, groups):
 
 
 def generate(workflow, rules):
-    """Replace the three C++ filters, preserving other workflow text."""
+    """Build configured groups from named path sets and update the workflow."""
 
-    expected = {"common_exclusions", "mathopt_only", "routing_only"}
-
-    if not isinstance(rules, dict) or set(rules) != expected:
-        raise ValueError(
-            f"Expected exactly these rule sections: {sorted(expected)}"
-        )
-
-    for name, paths in rules.items():
+    for name, paths in rules["sets"].items():
         if not isinstance(paths, list):
             raise ValueError(f"{name}: expected a list of paths")
 
@@ -130,11 +123,15 @@ def generate(workflow, rules):
         if len(paths) != len(set(paths)):
             raise ValueError(f"{name}: duplicate paths")
 
-    groups = {
-        "test_cpp": rules["common_exclusions"],
-        "test_cpp_routing": rules["common_exclusions"] + rules["mathopt_only"],
-        "test_cpp_mathopt": rules["common_exclusions"] + rules["routing_only"],
-    }
+    groups = {}
+
+    for group_name, set_names in rules["groups"].items():
+        paths = []
+
+        for set_name in set_names:
+            paths.extend(rules["sets"][set_name])
+
+        groups[group_name] = list(dict.fromkeys(paths))
 
     return replace_filters(workflow, groups)
 

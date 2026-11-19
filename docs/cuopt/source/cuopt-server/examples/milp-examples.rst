@@ -217,11 +217,11 @@ Aborting a Running Job In CLI
 
 UUID that is returned by the solver while the solver is trying to find a solution so users can come back and check the status or query for results.
 
-This aborts a job with UUID if it's in running state.
+This aborts a job with UUID if it's queued or running.
 
 .. code-block:: bash
 
    # Please update ip and port if the server is running on a different IP address or port
    export ip="localhost"
    export port=5000
-   cuopt_sh -d -r -q <UUID> -i $ip -p $port
+   cuopt_sh -d <UUID> -i $ip -p $port

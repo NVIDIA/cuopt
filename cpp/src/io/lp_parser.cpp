@@ -1055,13 +1055,13 @@ void LpParseEngine<i_t, f_t>::parse_constraints_section()
                          peek().text.c_str());
     }
 
-    // Quadratic constraints currently only support '≤' in the data model
+    // The data model accepts only '<=' and '>=' quadratic rows
     // (see mps_data_model_t::quadratic_constraint_t docs).
     if (is_quadratic_row) {
-      mps_parser_expects(row_type == LesserThanOrEqual,
+      mps_parser_expects(row_type == LesserThanOrEqual || row_type == GreaterThanOrEqual,
                          error_type_t::ValidationError,
                          "LP parse error at line %d: quadratic constraint '%s' must use "
-                         "'<=' (only convex '≤' quadratic constraints are supported)",
+                         "'<=' or '>=' (quadratic equality constraints are not supported)",
                          peek().line,
                          row_name.c_str());
     }

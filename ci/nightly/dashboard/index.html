@@ -1,0 +1,696 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cuOpt Nightly Test Dashboard</title>
+<style>
+/* ------------------------------------------------------------------ */
+/* Design tokens                                                      */
+/* ------------------------------------------------------------------ */
+:root {
+  --fail:    #d32f2f; --fail-bg:    #ffebee;
+  --pass:    #388e3c; --pass-bg:    #e8f5e9;
+  --flaky:   #f9a825; --flaky-bg:   #fff8e1;
+  --skip:    #757575; --skip-bg:    #f5f5f5;
+  --new:     #d32f2f;
+  --recur:   #e65100;
+  --bg:      #fafafa; --card: #fff; --border: #e0e0e0; --text: #212121;
+  --sidebar: #263238; --sidebar-text: #eceff1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reset & base                                                        */
+/* ------------------------------------------------------------------ */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               Helvetica, Arial, sans-serif;
+  background: var(--bg); color: var(--text);
+  display: flex; min-height: 100vh;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sidebar                                                             */
+/* ------------------------------------------------------------------ */
+.sidebar {
+  width: 240px; background: var(--sidebar); color: var(--sidebar-text);
+  padding: 20px 16px; flex-shrink: 0; display: flex; flex-direction: column;
+}
+.sidebar h1 { font-size: 1.1rem; margin-bottom: 20px; }
+.sidebar label { font-size: 0.8rem; text-transform: uppercase; color: #90a4ae;
+                 margin-bottom: 4px; display: block; }
+.sidebar select, .sidebar input {
+  width: 100%; padding: 6px 8px; margin-bottom: 16px; border-radius: 4px;
+  border: 1px solid #455a64; background: #37474f; color: #eceff1;
+  font-size: 0.85rem;
+}
+.sidebar .filter-group { margin-bottom: 12px; }
+.sidebar .filter-chip {
+  display: inline-block; padding: 3px 8px; border-radius: 12px;
+  font-size: 0.75rem; margin: 2px 2px; cursor: pointer;
+  border: 1px solid #546e7a; color: #b0bec5;
+}
+.sidebar .filter-chip.active { background: #455a64; color: #fff; border-color: #90a4ae; }
+.sidebar .status-legend { margin-top: auto; font-size: 0.75rem; }
+.sidebar .status-legend div { margin: 3px 0; }
+.sidebar .dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 4px; vertical-align: middle;
+}
+
+/* ------------------------------------------------------------------ */
+/* Main content                                                        */
+/* ------------------------------------------------------------------ */
+.main { flex: 1; padding: 24px; overflow-y: auto; }
+.main h2 { font-size: 1.15rem; margin-bottom: 10px; }
+
+/* Loading / empty states */
+.loading, .empty-state {
+  text-align: center; padding: 60px 20px; color: #9e9e9e;
+  font-size: 0.95rem;
+}
+.loading::after { content: ""; display: block; margin: 16px auto 0;
+  width: 28px; height: 28px; border: 3px solid #e0e0e0;
+  border-top-color: #1565c0; border-radius: 50%;
+  animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Status bar */
+.status-bar { padding: 12px 16px; border-radius: 8px; color: #fff;
+              font-weight: 600; margin-bottom: 20px; font-size: 1rem; }
+
+/* Summary cards */
+.summary-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px; margin-bottom: 24px;
+}
+.summary-card { background: var(--card); border: 1px solid var(--border);
+                border-radius: 8px; padding: 14px; text-align: center; }
+.summary-card .num { font-size: 1.6rem; font-weight: 700; }
+.summary-card .lbl { font-size: 0.72rem; color: #757575; text-transform: uppercase; }
+
+/* Tables */
+section { margin-bottom: 24px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+th { background: #f5f5f5; text-align: left; padding: 7px 10px; font-weight: 600;
+     position: sticky; top: 0; z-index: 1; cursor: pointer; user-select: none; }
+th:hover { background: #eeeeee; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:hover td { background: #f5f5f5; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 7px; border-radius: 4px;
+         font-size: 0.7rem; font-weight: 600; color: #fff; }
+.badge-pass { background: var(--pass); }
+.badge-fail-new { background: var(--new); }
+.badge-fail-recurring { background: var(--recur); }
+.badge-flaky { background: var(--flaky); color: #212121; }
+.badge-no-results { background: var(--skip); }
+
+/* Error detail toggle */
+details summary { cursor: pointer; color: #1565c0; font-size: 0.78rem; }
+pre.error { background: #263238; color: #e0e0e0; padding: 10px; border-radius: 6px;
+            font-size: 0.75rem; overflow-x: auto; white-space: pre-wrap;
+            word-break: break-word; max-height: 250px; margin-top: 4px; }
+
+/* Trend chart area */
+.chart-container { background: var(--card); border: 1px solid var(--border);
+                   border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+.chart-bar-row { display: flex; align-items: center; margin: 3px 0; font-size: 0.78rem; }
+.chart-bar-row .date-label { width: 80px; flex-shrink: 0; color: #757575; }
+.chart-bar-row .bar-track { flex: 1; height: 18px; background: #f5f5f5;
+                            border-radius: 3px; display: flex; overflow: hidden; }
+.chart-bar-row .bar-segment { height: 100%; transition: width 0.3s; }
+.chart-bar-row .bar-count { width: 50px; text-align: right; flex-shrink: 0;
+                            font-size: 0.72rem; color: #757575; margin-left: 6px; }
+
+/* Tabs */
+.tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab-btn { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px;
+           background: var(--card); cursor: pointer; font-size: 0.82rem;
+           transition: all 0.15s; }
+.tab-btn:hover { background: #f5f5f5; }
+.tab-btn.active { background: #1565c0; color: #fff; border-color: #1565c0; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  body { flex-direction: column; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; padding: 12px; }
+  .sidebar h1 { width: 100%; }
+  .sidebar .status-legend { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ================================================================ -->
+<!-- Sidebar                                                          -->
+<!-- ================================================================ -->
+<aside class="sidebar">
+  <h1>cuOpt Nightly</h1>
+
+  <label for="date-select">Date</label>
+  <div id="date-info" style="display:none;padding:6px 0;font-size:0.9rem;font-weight:600;"></div>
+  <select id="date-select"><option>Loading...</option></select>
+
+  <label for="branch-select">Branch</label>
+  <div id="branch-info" style="display:none;padding:6px 0;font-size:0.9rem;font-weight:600;"></div>
+  <select id="branch-select"><option value="main">main</option></select>
+
+  <div class="filter-group">
+    <label>Test Type</label>
+    <div id="test-type-filters"></div>
+  </div>
+
+
+  <div class="status-legend">
+    <div><span class="dot" style="background:var(--pass)"></span> Passed</div>
+    <div><span class="dot" style="background:var(--new)"></span> New failure</div>
+    <div><span class="dot" style="background:var(--recur)"></span> Recurring</div>
+    <div><span class="dot" style="background:var(--flaky)"></span> Flaky</div>
+    <div><span class="dot" style="background:var(--skip)"></span> No data</div>
+  </div>
+</aside>
+
+<!-- ================================================================ -->
+<!-- Main content                                                     -->
+<!-- ================================================================ -->
+<div class="main" id="main-content">
+  <div class="loading" id="loading-indicator">Loading dashboard data...</div>
+</div>
+
+<!-- ================================================================ -->
+<!-- Templates (hidden)                                               -->
+<!-- ================================================================ -->
+<template id="tmpl-dashboard">
+  <div class="status-bar" id="status-bar"></div>
+
+  <div class="summary-grid" id="summary-cards"></div>
+
+  <div class="tab-bar" id="tab-bar">
+    <button class="tab-btn active" data-tab="failures">Failures</button>
+    <button class="tab-btn" data-tab="flaky">Flaky</button>
+    <button class="tab-btn" data-tab="resolved">Stabilized</button>
+    <button class="tab-btn" data-tab="matrix">Matrix Grid</button>
+    <button class="tab-btn" data-tab="trends">Trends</button>
+  </div>
+
+  <div id="tab-content"></div>
+</template>
+
+<script>
+/* ================================================================== */
+/* State                                                               */
+/* ================================================================== */
+const S = {
+  baseUrl: '',          // Set by config or URL param
+  index: null,          // index.json data
+  current: null,        // Current day's consolidated_summary.json
+  activeTab: 'failures',
+  filters: { testType: new Set(), status: 'all' },
+};
+
+/* ================================================================== */
+/* Init                                                                */
+/* ================================================================== */
+async function init() {
+  // Use embedded data if available (injected by aggregate_nightly.py)
+  if (window.__EMBEDDED_INDEX__) {
+    S.index = window.__EMBEDDED_INDEX__;
+    S.embedded = true;
+    if (window.__EMBEDDED_CONSOLIDATED__) {
+      S.current = window.__EMBEDDED_CONSOLIDATED__;
+    }
+  } else {
+    // Fall back to fetching from S3
+    const params = new URLSearchParams(window.location.search);
+    S.baseUrl = params.get('base_url') || deriveBaseUrl();
+
+    if (!S.baseUrl) {
+      showEmpty('Set <code>?base_url=https://...</code> to the S3 base URL for ci_test_reports/nightly/');
+      return;
+    }
+
+    if (!S.baseUrl.endsWith('/')) S.baseUrl += '/';
+
+    try {
+      const indexResp = await fetch(S.baseUrl + 'index.json');
+      if (!indexResp.ok) throw new Error(`index.json: ${indexResp.status}`);
+      S.index = await indexResp.json();
+    } catch (e) {
+      showEmpty(`Failed to load index.json from <code>${esc(S.baseUrl)}</code>.<br>${esc(e.message)}`);
+      return;
+    }
+  }
+
+  populateDateSelector();
+  setupEventListeners();
+
+  if (S.current) {
+    // Already have consolidated data from embedding
+    populateTestTypeFilters();
+    render();
+    if (S.embedded) {
+      // Show branch and date as info labels, hide dropdowns
+      document.getElementById('date-select').style.display = 'none';
+      document.getElementById('branch-select').style.display = 'none';
+      const dateInfo = document.getElementById('date-info');
+      const branchInfo = document.getElementById('branch-info');
+      dateInfo.textContent = S.current.date || 'unknown';
+      dateInfo.style.display = 'block';
+      branchInfo.textContent = S.current.branch || 'unknown';
+      branchInfo.style.display = 'block';
+    }
+  } else {
+    const dates = Object.keys(S.index.dates || {}).sort().reverse();
+    if (dates.length > 0) {
+      await loadDate(dates[0]);
+    } else {
+      showEmpty('No nightly data available yet.');
+    }
+  }
+}
+
+function deriveBaseUrl() {
+  // If dashboard is hosted at .../ci_test_reports/nightly/dashboard/index.html
+  const loc = window.location.href;
+  const match = loc.match(/(.*\/ci_test_reports\/nightly\/)/);
+  return match ? match[1] : '';
+}
+
+/* ================================================================== */
+/* Data loading                                                        */
+/* ================================================================== */
+async function loadDate(entryKey) {
+  const main = document.getElementById('main-content');
+
+  // entryKey can be "date/branch" or just "date" (legacy)
+  const entry = S.index?.dates?.[entryKey] || {};
+  const dateStr = entry.date || entryKey.split('/')[0] || entryKey;
+  const branch = entry.branch || entryKey.split('/')[1] || 'main';
+  const branchSlug = branch.replace(/\//g, '-');
+
+  // If embedded and this matches the embedded data, use it
+  if (S.embedded && S.current && S.current.date === dateStr && S.current.branch === branch) {
+    populateTestTypeFilters();
+    render();
+    return;
+  }
+
+  // If embedded with no S3 access, can't load other entries
+  if (S.embedded && !S.baseUrl) {
+    showEmpty(`Only the latest run (${esc(S.current?.date || 'unknown')} / ${esc(S.current?.branch || 'unknown')}) is available in this view.`);
+    return;
+  }
+
+  main.innerHTML = '<div class="loading">Loading data for ' + esc(dateStr) + ' / ' + esc(branch) + '...</div>';
+
+  try {
+    const url = S.baseUrl + 'summaries/' + dateStr + '/' + branchSlug + '/consolidated.json';
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    S.current = await resp.json();
+  } catch (e) {
+    showEmpty(`No data for ${esc(dateStr)}. (${esc(e.message)})`);
+    return;
+  }
+
+  document.getElementById('date-select').value = dateStr;
+  populateTestTypeFilters();
+  render();
+}
+
+/* ================================================================== */
+/* Rendering                                                           */
+/* ================================================================== */
+function render() {
+  const main = document.getElementById('main-content');
+  const tmpl = document.getElementById('tmpl-dashboard');
+  main.innerHTML = '';
+  main.appendChild(tmpl.content.cloneNode(true));
+
+  renderStatusBar();
+  renderSummaryCards();
+  renderTab(S.activeTab);
+  bindTabEvents();
+}
+
+function renderStatusBar() {
+  const el = document.getElementById('status-bar');
+  const d = S.current;
+  const jobs = d.job_summary || {};
+  const failed = jobs.failed || 0;
+  const total = jobs.total || 0;
+
+  if (failed > 0 && d.has_new_failures) {
+    el.style.background = 'var(--fail)';
+    el.textContent = `${failed} of ${total} matrix jobs have NEW failures — ${d.branch} — ${d.date}`;
+  } else if (failed > 0) {
+    el.style.background = 'var(--recur)';
+    el.textContent = `${failed} of ${total} matrix jobs have recurring failures — ${d.branch} — ${d.date}`;
+  } else if ((d.test_totals || {}).flaky > 0) {
+    el.style.background = 'var(--flaky)';
+    el.style.color = '#212121';
+    el.textContent = `All ${total} jobs passed (flaky tests detected) — ${d.branch} — ${d.date}`;
+  } else {
+    el.style.background = 'var(--pass)';
+    el.textContent = `All ${total} matrix jobs passed — ${d.branch} — ${d.date}`;
+  }
+}
+
+function renderSummaryCards() {
+  const el = document.getElementById('summary-cards');
+  const t = S.current.test_totals || {};
+  const cards = [
+    { num: t.total || 0, lbl: 'Total Tests', cls: '' },
+    { num: t.passed || 0, lbl: 'Passed', cls: 'pass' },
+    { num: t.failed || 0, lbl: 'Failed', cls: 'fail' },
+    { num: t.flaky || 0, lbl: 'Flaky', cls: 'flaky' },
+    { num: t.skipped || 0, lbl: 'Skipped', cls: 'skip' },
+    { num: t.resolved || 0, lbl: 'Stabilized', cls: 'pass' },
+  ];
+  el.innerHTML = cards.map(c =>
+    `<div class="summary-card"><div class="num ${c.cls}">${c.num}</div><div class="lbl">${c.lbl}</div></div>`
+  ).join('');
+}
+
+/* ------------------------------------------------------------------ */
+/* Tab: Matrix Grid                                                    */
+/* ------------------------------------------------------------------ */
+function renderMatrixGrid() {
+  const grid = filterGrid(S.current.matrix_grid || []);
+  if (!grid.length) return '<p class="empty-state">No matching matrix jobs.</p>';
+
+  let html = '<section><h2>Matrix Overview</h2><table>';
+  html += '<tr><th>Test Type</th><th>Matrix</th><th>Status</th><th>Passed</th><th>Failed</th><th>Flaky</th><th>Total</th></tr>';
+  for (const g of grid) {
+    const c = g.counts || {};
+    html += `<tr>
+      <td><strong>${esc(g.test_type)}</strong></td>
+      <td><code>${esc(g.matrix_label)}</code></td>
+      <td>${statusBadge(g.status)}</td>
+      <td>${c.passed||0}</td><td>${c.failed||0}</td><td>${c.flaky||0}</td><td>${c.total||0}</td>
+    </tr>`;
+  }
+  html += '</table></section>';
+  return html;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tab: Failures                                                       */
+/* ------------------------------------------------------------------ */
+function renderFailures() {
+  const newF = filterEntries(S.current.new_failures || []);
+  const recF = filterEntries(S.current.recurring_failures || []);
+
+  if (!newF.length && !recF.length)
+    return '<p class="empty-state">No failures matching current filters.</p>';
+
+  let html = '';
+  if (newF.length) {
+    html += '<section><h2>New Failures</h2><table>';
+    html += '<tr><th>Test Type</th><th>Matrix</th><th>Suite</th><th>Test</th><th>Error</th></tr>';
+    for (const e of newF) {
+      const msg = esc(e.message || '');
+      const short = esc((e.message || '').slice(0, 100));
+      html += `<tr>
+        <td>${esc(e.test_type||'')}</td>
+        <td><code>${esc(e.matrix_label||'')}</code></td>
+        <td>${esc(e.suite)}</td>
+        <td><code>${esc(e.name)}</code> <span class="badge badge-fail-new">NEW</span></td>
+        <td><details><summary>${short}</summary><pre class="error">${msg}</pre></details></td>
+      </tr>`;
+    }
+    html += '</table></section>';
+  }
+  if (recF.length) {
+    html += '<section><h2>Recurring Failures</h2><table>';
+    html += '<tr><th>Test Type</th><th>Matrix</th><th>Suite</th><th>Test</th><th>Since</th><th>Error</th></tr>';
+    for (const e of recF) {
+      const msg = esc(e.message || '');
+      const short = esc((e.message || '').slice(0, 100));
+      html += `<tr>
+        <td>${esc(e.test_type||'')}</td>
+        <td><code>${esc(e.matrix_label||'')}</code></td>
+        <td>${esc(e.suite)}</td>
+        <td><code>${esc(e.name)}</code> <span class="badge badge-fail-recurring">RECURRING</span></td>
+        <td>${esc(e.first_seen||'?')}</td>
+        <td><details><summary>${short}</summary><pre class="error">${msg}</pre></details></td>
+      </tr>`;
+    }
+    html += '</table></section>';
+  }
+  return html;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tab: Flaky                                                          */
+/* ------------------------------------------------------------------ */
+function renderFlaky() {
+  const items = filterEntries(S.current.flaky_tests || []);
+  if (!items.length)
+    return '<p class="empty-state">No flaky tests matching current filters.</p>';
+
+  let html = '<section><h2>Flaky Tests (passed on retry)</h2><table>';
+  html += '<tr><th>Test Type</th><th>Matrix</th><th>Suite</th><th>Test</th><th>Flake Count</th><th>Error</th></tr>';
+  for (const e of items) {
+    const msg = esc(e.message || '');
+    const short = esc((e.message || '').split('\n').filter(l=>l.trim()).pop() || '').slice(0, 150);
+    html += `<tr>
+      <td>${esc(e.test_type||'')}</td>
+      <td><code>${esc(e.matrix_label||'')}</code></td>
+      <td>${esc(e.suite)}</td>
+      <td><code>${esc(e.name)}</code> <span class="badge badge-flaky">FLAKY</span></td>
+      <td>${e.retry_count||'?'}</td>
+      <td><details><summary>${short || '—'}</summary><pre class="error">${msg}</pre></details></td>
+    </tr>`;
+  }
+  html += '</table></section>';
+  return html;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tab: Resolved                                                       */
+/* ------------------------------------------------------------------ */
+function renderResolved() {
+  const items = filterEntries(S.current.resolved_tests || []);
+  if (!items.length)
+    return '<p class="empty-state">No stabilized tests matching current filters.</p>';
+
+  let html = '<section><h2>Stabilized Tests (were failing, now passing)</h2><table>';
+  html += '<tr><th>Test Type</th><th>Matrix</th><th>Suite</th><th>Test</th><th>Failing Since</th><th>Failure Count</th></tr>';
+  for (const e of items) {
+    html += `<tr>
+      <td>${esc(e.test_type||'')}</td>
+      <td><code>${esc(e.matrix_label||'')}</code></td>
+      <td>${esc(e.suite)}</td>
+      <td><code>${esc(e.name)}</code> <span class="badge badge-pass">FIXED</span></td>
+      <td>${esc(e.first_seen||'?')}</td>
+      <td>${e.failure_count||'?'}</td>
+    </tr>`;
+  }
+  html += '</table></section>';
+  return html;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tab: Trends                                                         */
+/* ------------------------------------------------------------------ */
+function renderTrends() {
+  if (!S.index || !S.index.dates) return '<p class="empty-state">No trend data available.</p>';
+
+  // Filter to current branch and sort by date
+  const currentBranch = S.current?.branch || 'main';
+  const entries = Object.entries(S.index.dates)
+    .filter(([_, v]) => (v.branch || 'main') === currentBranch)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-14);
+  if (!entries.length) return '<p class="empty-state">No trend data available.</p>';
+
+  let html = `<section><h2>Test Results — Last 14 Runs (${esc(currentBranch)})</h2>`;
+  html += '<div class="chart-container">';
+
+  // Find max total for scaling
+  let maxTotal = 1;
+  for (const [_, val] of entries) {
+    const t = val.test_totals || {};
+    maxTotal = Math.max(maxTotal, t.total || 0);
+  }
+
+  for (const [key, val] of entries) {
+    const d = val.date || key.split('/')[0] || key;
+    const t = val.test_totals || {};
+    const total = t.total || 0;
+    const passed = t.passed || 0;
+    const failed = t.failed || 0;
+    const flaky = t.flaky || 0;
+    const skipped = t.skipped || 0;
+
+    const pct = (n) => total > 0 ? (n / maxTotal * 100).toFixed(1) : 0;
+
+    html += `<div class="chart-bar-row">
+      <span class="date-label">${d.slice(5)}</span>
+      <div class="bar-track">
+        <div class="bar-segment" style="width:${pct(passed)}%;background:var(--pass)"></div>
+        <div class="bar-segment" style="width:${pct(failed)}%;background:var(--fail)"></div>
+        <div class="bar-segment" style="width:${pct(flaky)}%;background:var(--flaky)"></div>
+        <div class="bar-segment" style="width:${pct(skipped)}%;background:var(--skip)"></div>
+      </div>
+      <span class="bar-count">${total} tests</span>
+    </div>`;
+  }
+
+  html += '</div></section>';
+
+  // Job pass rate trend
+  html += `<section><h2>Matrix Job Pass Rate — Last 14 Runs (${esc(currentBranch)})</h2>`;
+  html += '<div class="chart-container">';
+
+  for (const [key, val] of entries) {
+    const d = val.date || key.split('/')[0] || key;
+    const j = val.job_summary || {};
+    const total = j.total || 0;
+    const passed = j.passed || 0;
+    const failed = j.failed || 0;
+    const flaky = j.flaky || 0;
+    const pctOf = (n) => total > 0 ? (n / total * 100).toFixed(1) : 0;
+
+    html += `<div class="chart-bar-row">
+      <span class="date-label">${d.slice(5)}</span>
+      <div class="bar-track">
+        <div class="bar-segment" style="width:${pctOf(passed)}%;background:var(--pass)"></div>
+        <div class="bar-segment" style="width:${pctOf(flaky)}%;background:var(--flaky)"></div>
+        <div class="bar-segment" style="width:${pctOf(failed)}%;background:var(--fail)"></div>
+      </div>
+      <span class="bar-count">${passed}/${total}</span>
+    </div>`;
+  }
+
+  html += '</div></section>';
+  return html;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tab router                                                          */
+/* ------------------------------------------------------------------ */
+function renderTab(tab) {
+  const container = document.getElementById('tab-content');
+  const renderers = {
+    matrix: renderMatrixGrid,
+    failures: renderFailures,
+    flaky: renderFlaky,
+    resolved: renderResolved,
+    trends: renderTrends,
+  };
+  container.innerHTML = (renderers[tab] || renderMatrixGrid)();
+}
+
+function bindTabEvents() {
+  for (const btn of document.querySelectorAll('.tab-btn')) {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      S.activeTab = btn.dataset.tab;
+      renderTab(S.activeTab);
+    });
+  }
+}
+
+/* ================================================================== */
+/* Filters                                                             */
+/* ================================================================== */
+function populateTestTypeFilters() {
+  const container = document.getElementById('test-type-filters');
+  const types = new Set((S.current.matrix_grid || []).map(g => g.test_type));
+  S.filters.testType = new Set(types); // all active by default
+
+  container.innerHTML = '';
+  for (const t of [...types].sort()) {
+    const chip = document.createElement('span');
+    chip.className = 'filter-chip active';
+    chip.textContent = t;
+    chip.dataset.type = t;
+    chip.addEventListener('click', () => {
+      chip.classList.toggle('active');
+      if (chip.classList.contains('active')) {
+        S.filters.testType.add(t);
+      } else {
+        S.filters.testType.delete(t);
+      }
+      renderTab(S.activeTab);
+    });
+    container.appendChild(chip);
+  }
+}
+
+function filterGrid(grid) {
+  return grid.filter(g => {
+    if (S.filters.testType.size && !S.filters.testType.has(g.test_type)) return false;
+    if (S.filters.status !== 'all' && g.status !== S.filters.status) return false;
+    return true;
+  });
+}
+
+function filterEntries(entries) {
+  return entries.filter(e => {
+    if (S.filters.testType.size && !S.filters.testType.has(e.test_type)) return false;
+    return true;
+  });
+}
+
+/* ================================================================== */
+/* UI helpers                                                          */
+/* ================================================================== */
+function populateDateSelector() {
+  const sel = document.getElementById('date-select');
+  const entries = Object.entries(S.index.dates || {}).sort((a, b) => b[0].localeCompare(a[0]));
+  sel.innerHTML = entries.map(([key, val]) => {
+    const date = val.date || key.split('/')[0] || key;
+    const branch = val.branch || key.split('/')[1] || '';
+    const label = branch ? `${date} — ${branch}` : date;
+    return `<option value="${key}">${label}</option>`;
+  }).join('');
+}
+
+function setupEventListeners() {
+  document.getElementById('date-select').addEventListener('change', (e) => {
+    loadDate(e.target.value);
+  });
+
+}
+
+function statusBadge(status) {
+  const map = {
+    'passed':           ['badge-pass', 'PASS'],
+    'failed-new':       ['badge-fail-new', 'NEW FAIL'],
+    'failed-recurring': ['badge-fail-recurring', 'RECURRING'],
+    'flaky':            ['badge-flaky', 'FLAKY'],
+    'no-results':       ['badge-no-results', 'NO DATA'],
+  };
+  const [cls, label] = map[status] || ['badge-no-results', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function showEmpty(msg) {
+  document.getElementById('main-content').innerHTML =
+    `<div class="empty-state">${msg}</div>`;
+}
+
+function esc(s) {
+  const el = document.createElement('span');
+  el.textContent = String(s || '');
+  return el.innerHTML;
+}
+
+/* ================================================================== */
+/* Boot                                                                */
+/* ================================================================== */
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
