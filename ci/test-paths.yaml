@@ -1,0 +1,194 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Source of truth for exclusion groups in .github/workflows/pr.yaml.
+# Edit this file, then run: pre-commit run generate-test-paths --all-files
+# Sets define reusable exclusions; groups select which sets to exclude.
+# Unlisted paths keep triggering tests. test_java remains hand-written.
+
+sets:
+
+  # Excluded by all six generated groups.
+  common:
+    - '.ai/**'
+    - '.clang-format'
+    - '.claude-plugin/**'
+    - '.coderabbit.yaml'
+    - '.cursor-plugin/**'
+    - '.gitattributes'
+    - '.github/.ai/**'
+    - '.github/.coderabbit_review_guide.md'
+    - '.github/CODEOWNERS'
+    - '.github/CODE_OF_CONDUCT.md'
+    - '.github/ISSUE_TEMPLATE/**'
+    - '.github/PULL_REQUEST_TEMPLATE.md'
+    - '.github/SECURITY.md'
+    - '.github/agents/**'
+    - '.github/copy-pr-bot.yaml'
+    - '.github/ops-bot.yaml'
+    - '.github/release.yml'
+    - '.github/workflows/build.yaml'
+    - '.github/workflows/build_images.yaml'
+    - '.github/workflows/build_test_publish_images.yaml'
+    - '.github/workflows/cloud_ci.yaml'
+    - '.github/workflows/kitmaker_portal.yaml'
+    - '.github/workflows/maven-publish.yaml'
+    - '.github/workflows/nightly-summary.yaml'
+    - '.github/workflows/nightly.yaml'
+    - '.github/workflows/request-nvskills-ci.yml'
+    - '.github/workflows/test.yaml'
+    - '.github/workflows/test_images.yaml'
+    - '.github/workflows/trigger-breaking-change-alert.yaml'
+    - '.gitignore'
+    - '.pre-commit-config.yaml'
+    - '.yamllint.yaml'
+    - 'agents/**'
+    - 'benchmarks/**'
+    - 'ci/nightly/**'
+    - 'ci/utils/pr_test_summary.py'
+    - 'codecov.yml'
+    - 'AGENTS.md'
+    - 'CONTRIBUTING.md'
+    - 'LICENSE'
+    - 'README.md'
+    - 'SECURITY.md'
+    - 'ci/build_java.sh'
+    - 'ci/build_java_static.sh'
+    - 'ci/check_style.sh'
+    - 'ci/docker/**'
+    - 'ci/release/**'
+    - 'ci/run-vale.sh'
+    - 'ci/test_java.sh'
+    - 'ci/thirdparty-testing/**'
+    - 'container-builder/**'
+    - 'gemini-extension.json'
+    - 'helmchart/**'
+    - 'java/**'
+    - 'ngc/**'
+    - 'sonar-project.properties'
+    - 'sonarqube/**'
+    - 'ucf/**'
+    - 'utilities/**'
+
+  # Additional exclusions shared by the three C++ groups.
+  non_cpp:
+    - 'skills/**'
+    - '**/*.md'
+    - '.github/workflows/self_hosted_service_test.yaml'
+    - 'ci/build_docs.sh'
+    - 'ci/build_python.sh'
+    - 'ci/build_wheel*.sh'
+    - 'ci/test_python.sh'
+    - 'ci/test_self_hosted_service.sh'
+    - 'ci/test_wheel*.sh'
+    - 'ci/utils/sync_skills_version.sh'
+    - 'ci/utils/validate_skills.sh'
+    - 'docs/**'
+    - 'img/**'
+    - 'notebooks/**'
+    - 'python/**'
+
+  # Mathopt paths excluded from routing tests.
+  mathopt_only:
+    - 'cpp/include/cuopt/linear_programming/**'
+    - 'cpp/include/cuopt/mathematical_optimization/**'
+    - 'cpp/src/barrier/**'
+    - 'cpp/src/branch_and_bound/**'
+    - 'cpp/src/cuts/**'
+    - 'cpp/src/dual_simplex/**'
+    - 'cpp/src/io/*'
+    - 'cpp/src/io/experimental_mps_fast/**'
+    - 'cpp/src/linear_algebra/**'
+    - 'cpp/src/math_optimization/**'
+    - 'cpp/src/mip_heuristics/**'
+    - 'cpp/src/pdlp/**'
+    - 'cpp/src/presolve/**'
+    - 'cpp/tests/dual_simplex/**'
+    - 'cpp/tests/internal/**'
+    - 'cpp/tests/linear_programming/c_api_tests/**'
+    - 'cpp/tests/linear_programming/grpc/**'
+    - 'cpp/tests/linear_programming/experimental_mps_fast/**'
+    - 'cpp/tests/linear_programming/unit_tests/**'
+    - 'cpp/tests/linear_programming/utilities/**'
+    - 'cpp/tests/linear_programming/*.cpp'
+    - 'cpp/tests/linear_programming/*.cu'
+    - 'cpp/tests/mip/**'
+    - 'cpp/tests/qp/**'
+    - 'cpp/tests/socp/**'
+
+  # Routing paths excluded from mathopt tests.
+  routing_only:
+    - 'cpp/include/cuopt/routing/assignment.hpp'
+    - 'cpp/include/cuopt/routing/cython/**'
+    - 'cpp/include/cuopt/routing/data_model_view.hpp'
+    - 'cpp/include/cuopt/routing/distance_engine/**'
+    - 'cpp/include/cuopt/routing/routing_structures.hpp'
+    - 'cpp/include/cuopt/routing/solve.hpp'
+    - 'cpp/src/distance/**'
+    - 'cpp/src/routing/**'
+    - 'cpp/tests/distance_engine/**'
+    - 'cpp/tests/examples/routing/**'
+    - 'cpp/tests/routing/**'
+
+  # Additional exclusions shared by docs and both Python groups.
+  docs_python:
+    - '.github/workflows/multi_gpu_cpp_test.yaml'
+    - 'ci/run_ctests.sh'
+    - 'ci/test_cpp*.sh'
+    - 'cpp/tests/**'
+
+  docs_extra:
+    - '.github/workflows/self_hosted_service_test.yaml'
+    - 'CHANGELOG.md'
+    - 'ci/build_wheel*.sh'
+    - 'ci/run_*.pytests.sh'
+    - 'ci/test_notebooks.sh'
+    - 'ci/test_python.sh'
+    - 'ci/test_self_hosted_service.sh'
+    - 'ci/test_wheel*.sh'
+    - 'skills/**'
+
+  python_conda_extra:
+    - '**/*.md'
+    - '.github/workflows/self_hosted_service_test.yaml'
+    - 'ci/build_docs.sh'
+    - 'ci/build_wheel*.sh'
+    - 'ci/test_self_hosted_service.sh'
+    - 'ci/test_wheel*.sh'
+    - 'ci/utils/sync_skills_version.sh'
+    - 'ci/utils/validate_skills.sh'
+    - 'docs/**'
+    - 'img/**'
+    - 'notebooks/**'
+    - 'python/cuopt_mcp/**'
+    - 'skills/**/SKILL.md'
+    - 'skills/**/skill-card.md'
+    - 'skills/**/skill.oms.sig'
+    - 'skills/**/evals/**'
+    - 'skills/**/benchmark/**'
+    - 'skills/**/references/**'
+
+  python_wheels_extra:
+    - '**/*.md'
+    - 'ci/build_cpp.sh'
+    - 'ci/build_docs.sh'
+    - 'ci/build_python.sh'
+    - 'ci/test_python.sh'
+    - 'ci/utils/sync_skills_version.sh'
+    - 'ci/utils/validate_skills.sh'
+    - 'conda/**'
+    - 'docs/**/*.rst'
+    - 'docs/cuopt/source/conf.py'
+    - 'docs/cuopt/source/versions1.json'
+    - 'img/**'
+    - 'notebooks/**'
+    - 'python/cuopt_mcp/**'
+    - 'skills/**'
+
+groups:
+  build_docs: [common, docs_python, docs_extra]
+  test_cpp: [common, non_cpp]
+  test_cpp_routing: [common, non_cpp, mathopt_only]
+  test_cpp_mathopt: [common, non_cpp, routing_only]
+  test_python_conda: [common, docs_python, python_conda_extra]
+  test_python_wheels: [common, docs_python, python_wheels_extra]
