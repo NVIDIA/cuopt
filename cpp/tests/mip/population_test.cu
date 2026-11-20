@@ -7,7 +7,7 @@
 
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <mip_heuristics/diversity/diversity_manager.cuh>
-#include <mip_heuristics/lns/population_feed.cuh>
+#include <mip_heuristics/ruin-repair-lns/population_feed.cuh>
 #include <mip_heuristics/utils.cuh>
 #include <presolve/semi_continuous.cuh>
 #include <presolve/third_party_presolve.hpp>
@@ -282,7 +282,7 @@ TEST(Population, ExternalQueueDrainAllowsReentrantProducerAndLeavesNewHeapPendin
   dm.population.allocate_solutions();
 
   bool produced                     = false;
-  problem.branch_and_bound_callback = [&](const auto&, auto) {
+  problem.branch_and_bound_callback = [&](const auto&) {
     if (produced) return true;
     produced = true;
     EXPECT_EQ(dm.population.get_external_solution_size(), 0);

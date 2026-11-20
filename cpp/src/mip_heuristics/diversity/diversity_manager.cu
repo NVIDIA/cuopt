@@ -9,8 +9,8 @@
 #include "diversity_manager.cuh"
 
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
-#include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/ruin-repair-lns/thread_budget.hpp>
 #include <presolve/third_party_presolve.hpp>
 
 #include <mip_heuristics/problem/problem_helpers.cuh>
@@ -19,6 +19,7 @@
 #include <presolve/probing_cache.cuh>
 #include <presolve/trivial_presolve.cuh>
 
+#include <pdlp/dual_bound.cuh>
 #include <pdlp/solve.cuh>
 
 #include <utilities/copy_helpers.hpp>
@@ -31,6 +32,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <new>
 #include <numeric>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -286,8 +288,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
       // heuristic solution as it ties with the current upper bound (since we set it early
       // to the early solution's objective)
       if (is_feasible && problem_ptr->branch_and_bound_callback != nullptr) {
-        problem_ptr->branch_and_bound_callback(sol.get_host_assignment(),
-                                               heuristics_origin_t::HEURISTICS);
+        problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
       }
 
       initial_sol_vector.emplace_back(std::move(sol));
@@ -581,6 +582,14 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
     pdlp_settings.presolver               = presolver_t::None;
     pdlp_settings.per_constraint_residual = true;
     set_pdlp_solver_mode(pdlp_settings);
+    if (context.settings.mip_hyper_params.bnb_root_pdlp_dual_bound) {
+      // Opt-in: a valid lower bound from PDLP's dual iterate every 1000 iterations while the root
+      // LP is solving; PDLP reports it in user space, branch and bound keeps it in solver space.
+      pdlp_settings.dual_bound_callback = [this, &branch_and_bound](f_t user_bound) {
+        branch_and_bound.set_root_lower_bound(problem_ptr->get_solver_obj_from_user_obj(user_bound),
+                                              true);
+      };
+    }
     timer_t lp_timer(lp_time_limit);
     auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
 
@@ -594,6 +603,21 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
       lp_result.get_termination_status() != pdlp_termination_status_t::NumericalError &&
       lp_result.get_primal_solution().size() == lp_optimal_solution.size() &&
       lp_result.get_dual_solution().size() == lp_dual_optimal_solution.size();
+
+    // A valid lower bound from the dual the root LP returned, whatever stopped it. PDLP's primal
+    // objective is not one: at its tolerances it can lie above the LP optimum.
+    // A failed allocation skips the bound; the root LP result is still used below.
+    if (root_lp_usable) {
+      try {
+        const auto stream = problem_ptr->handle_ptr->get_stream();
+        pdlp::lagrangian_dual_bound_t<i_t, f_t> dual_bound(
+          problem_ptr->n_constraints, problem_ptr->n_variables, stream);
+        branch_and_bound.set_root_lower_bound(
+          dual_bound.compute(*problem_ptr, lp_result.get_dual_solution().data(), stream), true);
+      } catch (const std::bad_alloc& e) {
+        CUOPT_LOG_DEBUG("Skipping the root PDLP dual bound, allocation failed: %s", e.what());
+      }
+    }
 
     bool use_staged_simplex_solution = false;
     {
@@ -628,12 +652,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
                         (int)lp_result.get_termination_status());
         ls.lp_optimal_exists = false;
         branch_and_bound.set_root_concurrent_halt(1);
-      } else if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
-        solution_t<i_t, f_t> lp_sol(*problem_ptr);
-        lp_sol.copy_new_assignment(lp_optimal_solution);
-        const bool consider_integrality = false;
-        lp_sol.compute_feasibility(consider_integrality);
-        if (lp_sol.get_feasible()) { set_new_user_bound(lp_result.get_objective_value()); }
       } else if (lp_result.get_termination_status() ==
                  pdlp_termination_status_t::PrimalInfeasible) {
         CUOPT_LOG_ERROR("Problem is primal infeasible, continuing anyway!");

@@ -22,6 +22,7 @@
 #include <thrust/gather.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/logical.h>
+#include <thrust/sequence.h>
 #include <thrust/sort.h>
 #include <thrust/tuple.h>
 

@@ -7,12 +7,12 @@
 
 #pragma once
 
-#include <branch_and_bound/worker.hpp>
+#include <branch_and_bound/diving_heuristics.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/splitmix64.hpp>
-#include "feasibility_jump/fj_cpu_worker.cuh"
 
 #include <algorithm>
 #include <cstdint>
@@ -100,6 +100,7 @@ struct cut_pass_heuristics_t {
     const std::vector<simplex::variable_status_t>& root_vstatus,
     const std::vector<f_t>& sol,
     search_strategy_t type,
+    branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr,
     splitmix64_t& seed_gen)
   {
     submip_worker_                  = std::make_unique<diving_worker_t<i_t, f_t>>(id,
@@ -111,6 +112,7 @@ struct cut_pass_heuristics_t {
                                                                  root_solution_,
                                                                  root_edge_norm_,
                                                                  new_slacks_,
+                                                                 branch_and_bound_ptr,
                                                                  seed_gen);
     submip_worker_->start_node      = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
     submip_worker_->leaf_vstatus    = root_vstatus;
@@ -128,6 +130,7 @@ struct cut_pass_heuristics_t {
     f_t root_obj,
     const std::vector<simplex::variable_status_t>& root_vstatus,
     const std::vector<f_t>& sol,
+    branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr,
     splitmix64_t& seed_gen)
   {
     mutation_worker_                  = std::make_unique<diving_worker_t<i_t, f_t>>(id,
@@ -139,6 +142,7 @@ struct cut_pass_heuristics_t {
                                                                    root_solution_,
                                                                    root_edge_norm_,
                                                                    new_slacks_,
+                                                                   branch_and_bound_ptr,
                                                                    seed_gen);
     mutation_worker_->start_node      = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
     mutation_worker_->leaf_vstatus    = root_vstatus;
@@ -166,6 +170,7 @@ struct cut_pass_heuristics_t {
     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
     const mip_node_t<i_t, f_t>& root_node,
     search_strategy_t strategy,
+    branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr,
     splitmix64_t& seed_gen)
   {
     std::unique_ptr<diving_worker_t<i_t, f_t>>& worker = diving_workers_.emplace_back(
@@ -178,6 +183,7 @@ struct cut_pass_heuristics_t {
                                                   root_solution_,
                                                   root_edge_norm_,
                                                   new_slacks_,
+                                                  branch_and_bound_ptr,
                                                   seed_gen));
     worker->start_node      = root_node.detach_copy();
     worker->search_strategy = strategy;

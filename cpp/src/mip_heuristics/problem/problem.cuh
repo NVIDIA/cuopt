@@ -271,7 +271,7 @@ class problem_t {
   std::shared_ptr<problem_t<i_t, f_t>> integer_fixed_problem = nullptr;
   rmm::device_uvector<i_t> integer_fixed_variable_map;
 
-  std::function<bool(const std::vector<f_t>&, heuristics_origin_t)> branch_and_bound_callback;
+  std::function<bool(const std::vector<f_t>&)> branch_and_bound_callback;
 
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances{};
   i_t n_variables{0};

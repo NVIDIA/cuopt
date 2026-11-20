@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <thrust/count.h>
+#include <thrust/sequence.h>
 #include <utilities/copy_helpers.hpp>
 #include "solution.cuh"
 #include "solution_kernels.cuh"
