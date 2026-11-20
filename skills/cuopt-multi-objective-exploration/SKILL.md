@@ -20,7 +20,7 @@ metadata:
 
 cuOpt optimizes **one** objective per solve. Many real problems have several objectives that pull against each other — cost vs. service level, return vs. risk, makespan vs. overtime, distance vs. vehicle count. A single solve answers "what's optimal *for one particular weighting*," but it hides the tradeoff the user actually needs to see.
 
-This skill turns a sequence of single-objective cuOpt solves into a **Pareto frontier** — the set of solutions where you can't improve one objective without giving up another — and gives the discipline to read it. It adds no solver features; it orchestrates the LP / MILP / QP solves already covered by the formulation and API skills.
+This skill turns a sequence of single-objective cuOpt solves into a **Pareto frontier** — the set of solutions where you can't improve one objective without giving up another — and gives the discipline to read it. It adds no solver features; it orchestrates the LP / MILP / QP solves covered in the cuOpt documentation.
 
 ## When this applies
 
@@ -162,7 +162,7 @@ State the counts with the frontier ("14 points, 11 exact, 3 approximate near the
 
 ## Interfaces
 
-This skill is solver- and interface-agnostic. The per-solve mechanics — building the objective, adding the ε constraints, passing a warm start, reading status — live in the API skills:
+This skill is solver- and interface-agnostic. The per-solve mechanics — building the objective, adding the ε constraints, passing a warm start, reading status — are in the cuOpt documentation:
 
 - [cuOpt Python API](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/) — LP, MILP, QP solves.
 - [cuOpt routing docs](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/routing/) — the same frontier workflow applies to routing tradeoffs (distance vs. vehicles vs. time).
