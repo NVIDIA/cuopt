@@ -323,7 +323,6 @@ class branch_and_bound_t {
   enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
 
   cut_pass_action_t do_cut_pass(i_t cut_pass,
-                                root_heuristics_t<i_t, f_t>& root_heuristics,
                                 simplex::mip_solution_t<i_t, f_t>& solution,
                                 i_t& num_fractional,
                                 std::vector<i_t>& fractional,
