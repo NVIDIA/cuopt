@@ -92,7 +92,8 @@ template <typename i_t, typename f_t>
 struct pseudo_cost_update_t {
   i_t variable;
   branch_direction_t direction;
-  f_t delta;
+  f_t obj_change;
+  f_t frac;
   double work_timestamp;
   int worker_id;
 
@@ -100,7 +101,8 @@ struct pseudo_cost_update_t {
   {
     if (work_timestamp != other.work_timestamp) return work_timestamp < other.work_timestamp;
     if (variable != other.variable) return variable < other.variable;
-    if (delta != other.delta) return delta < other.delta;
+    if (obj_change != other.obj_change) return obj_change < other.obj_change;
+    if (frac != other.frac) return frac < other.frac;
     return worker_id < other.worker_id;
   }
 };
@@ -130,12 +132,16 @@ class pseudo_costs_t {
   pseudo_costs_t& operator=(const pseudo_costs_t& other)
   {
     if (this != &other) {
-      this->AT                   = other.AT;
-      this->pdlp_warm_cache      = other.pdlp_warm_cache;
-      this->pseudo_cost_num_down = other.pseudo_cost_num_down;
-      this->pseudo_cost_num_up   = other.pseudo_cost_num_up;
-      this->pseudo_cost_sum_down = other.pseudo_cost_sum_down;
-      this->pseudo_cost_sum_up   = other.pseudo_cost_sum_up;
+      this->AT                         = other.AT;
+      this->pdlp_warm_cache            = other.pdlp_warm_cache;
+      this->pseudo_cost_num_down       = other.pseudo_cost_num_down;
+      this->pseudo_cost_num_up         = other.pseudo_cost_num_up;
+      this->pseudo_cost_sum_down       = other.pseudo_cost_sum_down;
+      this->pseudo_cost_sum_up         = other.pseudo_cost_sum_up;
+      this->pseudo_cost_total_sum_down = other.pseudo_cost_total_sum_down;
+      this->pseudo_cost_total_num_down = other.pseudo_cost_total_num_down;
+      this->pseudo_cost_total_sum_up   = other.pseudo_cost_total_sum_up;
+      this->pseudo_cost_total_num_up   = other.pseudo_cost_total_num_up;
     }
     return *this;
   }
@@ -146,11 +152,9 @@ class pseudo_costs_t {
   {
     for (const auto& upd : updates) {
       if (upd.direction == branch_direction_t::DOWN) {
-        pseudo_cost_sum_down[upd.variable] += upd.delta;
-        pseudo_cost_num_down[upd.variable]++;
+        update_pseudo_cost_down(upd.variable, upd.obj_change, upd.frac);
       } else {
-        pseudo_cost_sum_up[upd.variable] += upd.delta;
-        pseudo_cost_num_up[upd.variable]++;
+        update_pseudo_cost_up(upd.variable, upd.obj_change, upd.frac);
       }
     }
   }
@@ -165,6 +169,10 @@ class pseudo_costs_t {
       std::fill(pseudo_cost_sum_up.begin(), pseudo_cost_sum_up.end(), 0);
       std::fill(pseudo_cost_num_down.begin(), pseudo_cost_num_down.end(), 0);
       std::fill(pseudo_cost_num_up.begin(), pseudo_cost_num_up.end(), 0);
+      pseudo_cost_total_sum_down = 0;
+      pseudo_cost_total_num_down = 0;
+      pseudo_cost_total_sum_up   = 0;
+      pseudo_cost_total_num_up   = 0;
     }
 
     pseudo_cost_sum_down.resize(num_variables, 0);
@@ -185,36 +193,38 @@ class pseudo_costs_t {
 
       const i_t parent_num_up = parent.pseudo_cost_num_up[orig];
       if (parent_num_up > 0) {
-        const f_t value       = parent.pseudo_cost_sum_up[orig] / parent_num_up;
-        pseudo_cost_num_up[k] = 1;
-        pseudo_cost_sum_up[k] = value;
+        update_pseudo_cost_up(k, parent.pseudo_cost_sum_up[orig] / parent_num_up, 1.0);
       }
 
       const i_t parent_num_down = parent.pseudo_cost_num_down[orig];
       if (parent_num_down > 0) {
-        const f_t value         = parent.pseudo_cost_sum_down[orig] / parent_num_down;
-        pseudo_cost_num_down[k] = 1;
-        pseudo_cost_sum_down[k] = value;
+        update_pseudo_cost_down(k, parent.pseudo_cost_sum_down[orig] / parent_num_down, 1.0);
       }
     }
   }
 
-  f_t get_pseudocost_down(i_t j, f_t avg) const
+  f_t get_pseudocost_down(i_t j) const
   {
     i_t num = pseudo_cost_num_down[j];
     f_t sum = pseudo_cost_sum_down[j];
-    return num > 0 ? sum / num : avg;
+
+    if (num > 0) return sum / num;
+
+    const int64_t total_num = pseudo_cost_total_num_down;
+    const f_t total_sum     = pseudo_cost_total_sum_down;
+    return total_num > 0 ? total_sum / total_num : 1.0;
   }
 
-  f_t get_pseudocost_up(i_t j, f_t avg) const
+  f_t get_pseudocost_up(i_t j) const
   {
     i_t num = pseudo_cost_num_up[j];
     f_t sum = pseudo_cost_sum_up[j];
-    return num > 0 ? sum / num : avg;
-  }
+    if (num > 0) return sum / num;
 
-  f_t compute_pseudocost_average_down();
-  f_t compute_pseudocost_average_up();
+    const int64_t total_num = pseudo_cost_total_num_up;
+    const f_t total_sum     = pseudo_cost_total_sum_up;
+    return total_num > 0 ? total_sum / total_num : 1.0;
+  }
 
   void initialize_with_estimate(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 const std::vector<simplex::variable_status_t>& vstatus,
@@ -251,10 +261,7 @@ class pseudo_costs_t {
            cuopt::compute_hash(pseudo_cost_num_down) ^ cuopt::compute_hash(pseudo_cost_num_up);
   }
 
-  f_t calculate_pseudocost_score(i_t j,
-                                 const std::vector<f_t>& solution,
-                                 f_t avg_down,
-                                 f_t avg_up) const;
+  f_t calculate_pseudocost_score(i_t j, const std::vector<f_t>& solution) const;
 
   std::shared_ptr<csc_matrix_t<i_t, f_t>> AT;  // Transpose of the constraint matrix A
   std::shared_ptr<batch_pdlp_warm_cache_t<i_t, f_t>> pdlp_warm_cache;
@@ -271,8 +278,16 @@ class pseudo_costs_t {
   std::vector<omp_mutex_t> pseudo_cost_mutex_up;
   std::vector<omp_mutex_t> pseudo_cost_mutex_down;
 
+  omp_atomic_t<f_t> pseudo_cost_total_sum_up       = 0;
+  omp_atomic_t<int64_t> pseudo_cost_total_num_up   = 0;
+  omp_atomic_t<f_t> pseudo_cost_total_sum_down     = 0;
+  omp_atomic_t<int64_t> pseudo_cost_total_num_down = 0;
+
   omp_atomic_t<int64_t> strong_branching_lp_iter = 0;
   bool has_initial_pseudocost                    = false;
+
+  void update_pseudo_cost_down(i_t j, f_t obj_change, f_t frac);
+  void update_pseudo_cost_up(i_t j, f_t obj_change, f_t frac);
 };
 
 template <typename i_t, typename f_t>
@@ -291,16 +306,18 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t> {
     return Base::operator=(other);
   }
 
-  void queue_update(
-    i_t variable, branch_direction_t direction, f_t delta, double clock, int worker_id)
+  void queue_update(i_t variable,
+                    branch_direction_t direction,
+                    f_t obj_change,
+                    f_t frac,
+                    double clock,
+                    int worker_id)
   {
-    updates_.push_back({variable, direction, delta, clock, worker_id});
+    updates_.push_back({variable, direction, obj_change, frac, clock, worker_id});
     if (direction == branch_direction_t::DOWN) {
-      this->pseudo_cost_sum_down[variable] += delta;
-      ++this->pseudo_cost_num_down[variable];
+      this->update_pseudo_cost_down(variable, obj_change, frac);
     } else {
-      this->pseudo_cost_sum_up[variable] += delta;
-      ++this->pseudo_cost_num_up[variable];
+      this->update_pseudo_cost_up(variable, obj_change, frac);
     }
   }
 
