@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <type_traits>
 #include <vector>
 
@@ -155,6 +156,47 @@ void symmetrize_csr(const std::vector<f_t>& in_values,
                  out_values,
                  out_indices,
                  out_offsets);
+}
+
+/**
+ * @brief Sort the column indices of each CSR row in place
+ *
+ * Each value moves with its column index. Rows that are already sorted are left untouched.
+ *
+ * @tparam i_t Integer type for indices
+ * @tparam f_t Floating point type for values
+ *
+ * @param[in] offsets      CSR row offsets
+ * @param[in,out] indices  CSR column indices
+ * @param[in,out] values   CSR values
+ */
+template <typename i_t, typename f_t>
+void sort_csr_rows(const std::vector<i_t>& offsets,
+                   std::vector<i_t>& indices,
+                   std::vector<f_t>& values)
+{
+  std::vector<i_t> order;
+  std::vector<i_t> row_indices;
+  std::vector<f_t> row_values;
+  for (size_t r = 0; r + 1 < offsets.size(); ++r) {
+    const i_t row_begin = offsets[r];
+    const i_t row_end   = offsets[r + 1];
+    if (std::is_sorted(indices.begin() + row_begin, indices.begin() + row_end)) { continue; }
+
+    order.clear();
+    for (i_t p = row_begin; p < row_end; ++p) {
+      order.push_back(p);
+    }
+    std::sort(order.begin(), order.end(), [&](i_t a, i_t b) { return indices[a] < indices[b]; });
+    row_indices.clear();
+    row_values.clear();
+    for (i_t p : order) {
+      row_indices.push_back(indices[p]);
+      row_values.push_back(values[p]);
+    }
+    std::copy(row_indices.begin(), row_indices.end(), indices.begin() + row_begin);
+    std::copy(row_values.begin(), row_values.end(), values.begin() + row_begin);
+  }
 }
 
 }  // namespace cuopt

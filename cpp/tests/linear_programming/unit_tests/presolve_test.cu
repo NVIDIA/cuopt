@@ -1497,4 +1497,160 @@ TEST(submip_presolve, ex9_reduced_to_residual_row)
   EXPECT_NEAR(objective, 81.0, 1e-6);
 }
 
+// ---------------------------------------------------------------------------
+// PSLP QP presolve
+// ---------------------------------------------------------------------------
+
+struct pslp_qp_param {
+  bool maximize;
+  bool unsorted_row;
+};
+
+// A convex QP with a genuine reduction available: row r1 is a singleton that fixes x2 = 3,
+// so PSLP removes a row and a column. mps_data_model stores Q under the x'Qx convention;
+// mps_data_model_to_optimization_problem symmetrizes it to H = Q + Q^T, which the barrier
+// minimizes as (1/2) x'Hx + c'x -- i.e. exactly x'Qx + c'x.
+//
+//   minimize    x0^2 + 0.5 x0 x1 + 2 x1^2 + x2^2 + x3^2 - x0 - 2 x1 - 2 x3
+//   subject to  r0:        x0 + x1       >= 2
+//               r1:                  x2   = 3
+//               r2:        x0 + x1 + x3 <= 20
+//               0 <= x <= 10
+//
+// x3 carries a linear term so its optimum (x3 = 1) is strictly interior: at x3 = 0 the
+// objective would be flat there and an interior-point solve would not pin it down well
+// enough to compare primal/dual vectors across two solves.
+//
+// maximize negates Q and c, a concave maximization with the same optimum. unsorted_row lists
+// column 1 before column 0 in row 0 of Q, so H = Q + Q^T keeps that order and PSLP only accepts
+// it after its rows are sorted.
+static io::mps_data_model_t<int, double> make_reducible_qp(pslp_qp_param const& param)
+{
+  io::mps_data_model_t<int, double> mps;
+  const double sign = param.maximize ? -1.0 : 1.0;
+  mps.set_maximize(param.maximize);
+
+  // r0: x0 + x1 ; r1: x2 ; r2: x0 + x1 + x3
+  std::vector<double> A_values{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+  std::vector<int> A_indices{0, 1, 2, 0, 1, 3};
+  std::vector<int> A_offsets{0, 2, 3, 6};
+  mps.set_csr_constraint_matrix(A_values, A_indices, A_offsets);
+
+  const double inf = std::numeric_limits<double>::infinity();
+  mps.set_constraint_lower_bounds(std::vector<double>{2.0, 3.0, -inf});
+  mps.set_constraint_upper_bounds(std::vector<double>{inf, 3.0, 20.0});
+
+  mps.set_objective_coefficients(std::vector<double>{-1.0 * sign, -2.0 * sign, 0.0, -2.0 * sign});
+  mps.set_variable_lower_bounds(std::vector<double>{0.0, 0.0, 0.0, 0.0});
+  mps.set_variable_upper_bounds(std::vector<double>{10.0, 10.0, 10.0, 10.0});
+
+  // Symmetric Q: [[1, 0.25, 0, 0], [0.25, 2, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+  std::vector<double> Q_values{1.0, 0.25, 0.25, 2.0, 1.0, 1.0};
+  std::vector<int> Q_indices{0, 1, 0, 1, 2, 3};
+  if (param.unsorted_row) {
+    Q_values  = {0.25, 1.0, 0.25, 2.0, 1.0, 1.0};
+    Q_indices = {1, 0, 0, 1, 2, 3};
+  }
+  for (auto& q : Q_values) {
+    q *= sign;
+  }
+  std::vector<int> Q_offsets{0, 2, 4, 5, 6};
+  mps.set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets);
+
+  return mps;
+}
+
+static pdlp_solver_settings_t<int, double> barrier_settings(presolver_t presolver)
+{
+  auto settings      = pdlp_solver_settings_t<int, double>{};
+  settings.method    = cuopt::mathematical_optimization::method_t::Barrier;
+  settings.presolver = presolver;
+  settings.tolerances.relative_primal_tolerance = 1e-8;
+  settings.tolerances.relative_dual_tolerance   = 1e-8;
+  settings.tolerances.absolute_primal_tolerance = 1e-8;
+  settings.tolerances.absolute_dual_tolerance   = 1e-8;
+  settings.tolerances.absolute_gap_tolerance    = 1e-8;
+  settings.tolerances.relative_gap_tolerance    = 1e-8;
+  return settings;
+}
+
+static void expect_near_vectors(rmm::device_uvector<double> const& expected,
+                                rmm::device_uvector<double> const& actual,
+                                size_t size,
+                                cuda::stream_ref stream,
+                                const char* name)
+{
+  auto h_expected = host_copy(expected, stream);
+  auto h_actual   = host_copy(actual, stream);
+  ASSERT_EQ(h_expected.size(), size) << name;
+  ASSERT_EQ(h_actual.size(), size) << name;
+  for (size_t k = 0; k < size; ++k) {
+    EXPECT_NEAR(h_expected[k], h_actual[k], 1e-5) << name << " entry " << k;
+  }
+}
+
+class pslp_qp_presolve : public ::testing::TestWithParam<pslp_qp_param> {};
+
+TEST_P(pslp_qp_presolve, barrier_solve_matches_no_presolve)
+{
+  const raft::handle_t handle_{};
+  auto stream       = handle_.get_stream();
+  const auto mps    = make_reducible_qp(GetParam());
+  const double sign = GetParam().maximize ? -1.0 : 1.0;
+
+  // PSLP reduces the QP: fixing x2 = 3 moves x2^2 = 9 into the objective offset, and the reduced
+  // H = Q + Q^T is H without x2's row and column, whose entries add up to 2 * 4.5 = 9.
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps);
+  mip::third_party_presolve_t<int, double> presolver;
+  auto presolved = presolver.apply_presolve_from_op_problem(op_problem,
+                                                            problem_category_t::LP,
+                                                            presolver_t::PSLP,
+                                                            /*dual_postsolve=*/false,
+                                                            /*abs_tol=*/1e-8,
+                                                            /*rel_tol=*/1e-9,
+                                                            /*time_limit=*/60.0);
+  ASSERT_EQ(presolved.status, mip::third_party_presolve_status_t::REDUCED);
+  ASSERT_EQ(presolved.reduced_problem.get_n_variables(), 3);
+  EXPECT_NEAR(presolved.reduced_problem.get_objective_offset(), 9.0 * sign, 1e-9);
+  const auto& H_values = presolved.reduced_problem.get_quadratic_objective_values();
+  ASSERT_EQ(H_values.size(), 5);
+  double H_sum = 0.0;
+  for (double h : H_values) {
+    H_sum += h;
+  }
+  EXPECT_NEAR(H_sum, 9.0 * sign, 1e-12);
+
+  // The presolved barrier solve agrees with the unpresolved one in the original space. The
+  // reduced costs exercise PSLP's z = Px + c - A'y convention for a QP, and the maximize case the
+  // sign flips of P, y and z.
+  auto solution_none = solve_lp(&handle_, mps, barrier_settings(presolver_t::None));
+  auto solution_pslp = solve_lp(&handle_, mps, barrier_settings(presolver_t::PSLP));
+  ASSERT_EQ((int)solution_none.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
+  ASSERT_EQ((int)solution_pslp.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
+
+  const double obj_none = solution_none.get_additional_termination_information().primal_objective;
+  const double obj_pslp = solution_pslp.get_additional_termination_information().primal_objective;
+  EXPECT_NEAR(obj_none, obj_pslp, 1e-5 * std::max(1.0, std::fabs(obj_none)));
+
+  const size_t n = mps.get_n_variables();
+  const size_t m = mps.get_n_constraints();
+  expect_near_vectors(
+    solution_none.get_primal_solution(), solution_pslp.get_primal_solution(), n, stream, "primal");
+  expect_near_vectors(
+    solution_none.get_dual_solution(), solution_pslp.get_dual_solution(), m, stream, "dual");
+  expect_near_vectors(
+    solution_none.get_reduced_cost(), solution_pslp.get_reduced_cost(), n, stream, "reduced cost");
+}
+
+INSTANTIATE_TEST_SUITE_P(pslp_qp_presolve,
+                         pslp_qp_presolve,
+                         ::testing::Values(pslp_qp_param{false, false},
+                                           pslp_qp_param{true, false},
+                                           pslp_qp_param{false, true}),
+                         [](const ::testing::TestParamInfo<pslp_qp_param>& info) {
+                           std::string name = info.param.maximize ? "maximize" : "minimize";
+                           if (info.param.unsorted_row) { name += "_unsorted_row"; }
+                           return name;
+                         });
+
 }  // namespace cuopt::mathematical_optimization::test

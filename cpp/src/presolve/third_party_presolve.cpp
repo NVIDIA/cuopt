@@ -41,6 +41,7 @@
 #include <presolve/third_party_presolve.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
+#include <utilities/sparse_matrix_helpers.hpp>
 #include <utilities/timer.hpp>
 
 #include <cuda/stream>
@@ -56,7 +57,7 @@
 namespace cuopt::mathematical_optimization::mip {
 
 // Backend-agnostic normalisation of the mutable presolve fields:
-//   * sign-flip `obj_coeffs` / `objective_offset` when maximise,
+//   * sign-flip `obj_coeffs` / `objective_offset` / quadratic objective `P_values` when maximise,
 //   * materialise ranged `constr_lb` / `constr_ub` from `row_types` +
 //     `constraint_bounds` when the ranged pair is absent from the mps.
 //
@@ -66,6 +67,7 @@ void normalize_for_presolve(io::mps_data_model_t<i_t, f_t> const& mps,
                             bool maximize,
                             std::vector<f_t>& obj_coeffs,
                             f_t& objective_offset,
+                            std::vector<f_t>& P_values,
                             std::vector<f_t>& var_lb,
                             std::vector<f_t>& var_ub,
                             std::vector<f_t>& constr_lb,
@@ -76,6 +78,9 @@ void normalize_for_presolve(io::mps_data_model_t<i_t, f_t> const& mps,
       c = -c;
     }
     objective_offset = -objective_offset;
+    for (auto& p : P_values) {
+      p = -p;
+    }
   }
   expand_rhs(mps, constr_lb, constr_ub);
 }
@@ -98,8 +103,9 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
   std::vector<f_t> constr_lb(mps.get_constraint_lower_bounds());
   std::vector<f_t> constr_ub(mps.get_constraint_upper_bounds());
   f_t objective_offset = mps.get_objective_offset();
+  std::vector<f_t> P_values;  // Papilo has no quadratic objective
   normalize_for_presolve<i_t, f_t>(
-    mps, maximize, obj_coeffs, objective_offset, var_lb, var_ub, constr_lb, constr_ub);
+    mps, maximize, obj_coeffs, objective_offset, P_values, var_lb, var_ub, constr_lb, constr_ub);
 
   const auto& coefficients   = mps.get_constraint_matrix_values();
   const auto& indices        = mps.get_constraint_matrix_indices();
@@ -488,6 +494,21 @@ io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_pslp(Presolver* pslp_preso
       std::span<const f_t>(reduced->rhs, static_cast<size_t>(n_rows)));
     mps.set_variable_lower_bounds(std::span<const f_t>(reduced->lbs, static_cast<size_t>(n_cols)));
     mps.set_variable_upper_bounds(std::span<const f_t>(reduced->ubs, static_cast<size_t>(n_cols)));
+
+    // mps_data_model uses the x'Qx convention, so Q = P / 2, negated back for a maximize model.
+    // TODO: mps_data_model_to_optimization_problem symmetrizes this Q back to P; handing P to the
+    // reduced op_problem directly would avoid both steps.
+    if (reduced->Pnnz > 0) {
+      const f_t scale = maximize ? -0.5 : 0.5;
+      std::vector<f_t> h_Q_values(reduced->Px, reduced->Px + reduced->Pnnz);
+      for (auto& q : h_Q_values) {
+        q *= scale;
+      }
+      mps.set_quadratic_objective_matrix(
+        std::span<const f_t>(h_Q_values.data(), h_Q_values.size()),
+        std::span<const i_t>(reduced->Pi, reduced->Pnnz),
+        std::span<const i_t>(reduced->Pp, static_cast<size_t>(n_cols) + 1));
+    }
   } else {
     cuopt_expects(false, error_type_t::ValidationError, "PSLP only supports double precision");
   }
@@ -839,13 +860,46 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
     std::vector<f_t> constr_lb(mps.get_constraint_lower_bounds());
     std::vector<f_t> constr_ub(mps.get_constraint_upper_bounds());
     f_t objective_offset = mps.get_objective_offset();
+    // mps_data_model uses the x'Qx convention and PSLP minimizes (1/2) x'Px + c'x, so P = Q + Q^T.
+    // TODO: op_problem already stores P as its H; it is halved into mps_data_model and
+    // symmetrized back here, which an op_problem path that passes H directly would avoid.
+    std::vector<f_t> P_values;
+    std::vector<i_t> P_indices;
+    std::vector<i_t> P_offsets;
+    if (mps.has_quadratic_objective()) {
+      cuopt::symmetrize_csr<i_t, f_t>(mps.get_quadratic_objective_values(),
+                                      mps.get_quadratic_objective_indices(),
+                                      mps.get_quadratic_objective_offsets(),
+                                      P_values,
+                                      P_indices,
+                                      P_offsets);
+    }
     normalize_for_presolve<i_t, f_t>(
-      mps, maximize_, obj_coeffs, objective_offset, var_lb, var_ub, constr_lb, constr_ub);
+      mps, maximize_, obj_coeffs, objective_offset, P_values, var_lb, var_ub, constr_lb, constr_ub);
     if (var_lb.empty()) { var_lb.assign(n_cols, -std::numeric_limits<f_t>::infinity()); }
     if (var_ub.empty()) { var_ub.assign(n_cols, std::numeric_limits<f_t>::infinity()); }
     const auto& coefficients = mps.get_constraint_matrix_values();
     const auto& indices      = mps.get_constraint_matrix_indices();
     const auto& offsets      = mps.get_constraint_matrix_offsets();
+    cuopt::sort_csr_rows(P_offsets, P_indices, P_values);
+
+    // ProblemData is required for PSLP QP presolve
+    ProblemData problem{};
+    problem.Ax   = coefficients.data();
+    problem.Ai   = indices.data();
+    problem.Ap   = offsets.data();
+    problem.m    = static_cast<size_t>(n_rows);
+    problem.n    = static_cast<size_t>(n_cols);
+    problem.nnz  = static_cast<size_t>(nnz);
+    problem.lhs  = constr_lb.data();
+    problem.rhs  = constr_ub.data();
+    problem.c    = obj_coeffs.data();
+    problem.lbs  = var_lb.data();
+    problem.ubs  = var_ub.data();
+    problem.Px   = P_values.empty() ? nullptr : P_values.data();
+    problem.Pi   = P_values.empty() ? nullptr : P_indices.data();
+    problem.Pp   = P_values.empty() ? nullptr : P_offsets.data();
+    problem.Pnnz = P_values.size();
 
     Settings* settings = default_settings();
     settings->verbose  = false;
@@ -853,19 +907,16 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
     settings->lp_fold  = pslp_lp_fold_;
 
     auto start_time      = std::chrono::high_resolution_clock::now();
-    Presolver* presolver = new_presolver(coefficients.data(),
-                                         indices.data(),
-                                         offsets.data(),
-                                         n_rows,
-                                         n_cols,
-                                         nnz,
-                                         constr_lb.data(),
-                                         constr_ub.data(),
-                                         var_lb.data(),
-                                         var_ub.data(),
-                                         obj_coeffs.data(),
-                                         settings);
-    assert(presolver != nullptr && "Presolver initialization failed");
+    Presolver* presolver = new_presolver_from_problem(&problem, settings);
+    if (presolver == nullptr) {
+      // Presolve is optional: solve the original problem rather than failing the solve.
+      CUOPT_LOG_WARN(
+        "PSLP presolver initialization failed (allocation failure, too many nonzeros, or a "
+        "non-symmetric quadratic objective matrix); continuing with the original problem.");
+      free_settings(settings);
+      pslp_postsolve_skip_ = true;
+      return third_party_presolve_status_t::UNCHANGED;
+    }
     const PresolveStatus pslp_status = run_presolver(presolver);
     auto end_time                    = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -1023,9 +1074,11 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_op_problem(
 {
   auto* handle = op_problem.get_handle_ptr();
 
-  cuopt_expects(!op_problem.has_quadratic_objective(),
+  cuopt_expects(!op_problem.has_quadratic_objective() ||
+                  presolver == cuopt::mathematical_optimization::presolver_t::PSLP,
                 error_type_t::ValidationError,
-                "Presolve does not support optimization_problem with a quadratic objective");
+                "Only the PSLP presolver supports an optimization_problem with a quadratic "
+                "objective");
   cuopt_expects(!op_problem.has_quadratic_constraints(),
                 error_type_t::ValidationError,
                 "Presolve does not support optimization_problem with quadratic constraints");
@@ -1094,10 +1147,10 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
                 error_type_t::RuntimeError,
                 "PSLP presolver is not supported for MIP problems");
 
-  // Neither PSLP nor Papilo handle quadratic objective / constraints.
-  cuopt_expects(!mps.has_quadratic_objective(),
+  cuopt_expects(!mps.has_quadratic_objective() ||
+                  presolver == cuopt::mathematical_optimization::presolver_t::PSLP,
                 error_type_t::ValidationError,
-                "Presolve does not support mps_data_models with a quadratic objective");
+                "Only the PSLP presolver supports mps_data_models with a quadratic objective");
   cuopt_expects(!mps.has_quadratic_constraints(),
                 error_type_t::ValidationError,
                 "Presolve does not support mps_data_models with quadratic constraints");
@@ -1106,6 +1159,10 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
   if (presolver == cuopt::mathematical_optimization::presolver_t::PSLP) {
     const f_t original_obj_offset = mps.get_objective_offset();
     auto status                   = apply_pslp(mps, time_limit);
+    // PSLP could not start: there is no reduced problem, so solve the original one.
+    if (pslp_postsolve_skip_) {
+      return third_party_presolve_host_result_t<i_t, f_t>{status, mps, {}, {}, {}};
+    }
 
     if (status == third_party_presolve_status_t::INFEASIBLE ||
         status == third_party_presolve_status_t::UNBNDORINFEAS) {
@@ -1308,9 +1365,9 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(std::vector<f_t>& primal_soluti
                                                  std::vector<f_t>& dual_solution,
                                                  std::vector<f_t>& reduced_costs)
 {
-  // pslp_presolver_ holds state from a run whose infeasibility result we chose not to trust
-  // (see apply_presolve_from_mps_data); the solve that produced this solution ran on the
-  // original, unreduced problem, so there is nothing to postsolve.
+  // PSLP could not start, or pslp_presolver_ holds state from a run whose infeasibility result we
+  // chose not to trust (see apply_presolve_from_mps_data); the solve that produced this solution
+  // ran on the original, unreduced problem, so there is nothing to postsolve.
   if (pslp_postsolve_skip_) { return; }
 
   if constexpr (std::is_same_v<f_t, double>) {
@@ -1782,15 +1839,15 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution_pslp(
   cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP,
                 error_type_t::RuntimeError,
                 "crush_primal_dual_solution_pslp requires PSLP presolve");
-  cuopt_assert(pslp_presolver_ != nullptr, "No PSLP presolver available");
 
-  // PSLP's result was not trusted and the original problem is being solved as is
-  // (see apply_presolve_from_mps_data), so the solution is already in the right space.
+  // PSLP could not start or its result was not trusted, and the original problem is being solved
+  // as is (see apply_presolve_from_mps_data), so the solution is already in the right space.
   if (pslp_postsolve_skip_) {
     x_presolved = x_original;
     y_presolved = y_original;
     return;
   }
+  cuopt_assert(pslp_presolver_ != nullptr, "No PSLP presolver available");
 
   if constexpr (std::is_same_v<f_t, double>) {
     // pslp_presolver_->sol is only allocated by the first postsolve call, so take the original

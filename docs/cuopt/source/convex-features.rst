@@ -263,7 +263,7 @@ Crossover allows you to obtain a high-quality basic solution from the results of
 Presolve
 --------
 
-Presolve procedure is applied to the problem before the solver is called. It can be used to reduce the problem size and improve solve time. cuOpt supports presolve reductions using PSLP or Papilo for linear programming (LP) problems. For LP problems, PSLP presolve is always enabled by default. Users can manually select to disable presolve by setting this parameter to 0, enable Papilo presolve by setting this parameter to 1, or enable PSLP presolve by setting this parameter to 2.
+Presolve procedure is applied to the problem before the solver is called. It can be used to reduce the problem size and improve solve time. cuOpt supports presolve reductions using PSLP or Papilo for linear programming (LP) problems, and using PSLP for quadratic programming (QP) problems. For LP problems, PSLP presolve is always enabled by default. Users can manually select to disable presolve by setting this parameter to 0, enable Papilo presolve by setting this parameter to 1, or enable PSLP presolve by setting this parameter to 2. For QP problems, presolve is off by default and runs only when this parameter is set to 2 (PSLP). Problems with quadratic constraints are not presolved.
 Furthermore, for LP problems with Papilo presolver, when the dual solution is not needed, additional presolve procedures can be applied to further improve solve times. This is achieved by turning off dual postsolve with the ``CUOPT_DUAL_POSTSOLVE`` setting.
 
 
