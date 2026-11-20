@@ -30,19 +30,12 @@ metadata:
 
 If a documentation URL carries a version number, replace it with `latest`.
 
-## When the docs are not reachable
+With no network access, read from the installed package — `solver_parameters` has every
+parameter name and `help()` gives signatures — or, inside the repo, from
+`docs/cuopt/source/*.rst`, which carries the prose pages but not the Python API reference.
 
-Sandboxes and CI containers often have no network. Work down this list:
-
-1. **The installed package.** Always present, and correct for the version in use.
-   `from cuopt.linear_programming.solver.solver_parameters import *` gives every parameter
-   name; `help()` and `dir()` give signatures.
-2. **`docs/cuopt/source/*.rst`**, when working inside the repo. Prose only — the Python API
-   reference is generated at build time and is not checked in.
-3. The published pages above.
-
-Settings names, defaults and ranges change between releases — read them from one of these,
-never from memory.
+Settings names, defaults and ranges change between releases — look them up, never recall
+them from memory.
 
 ## Gotchas
 
