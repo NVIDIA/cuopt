@@ -312,7 +312,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         context.solution_publication.enabled()) {
       auto host_assignment = sol.get_host_assignment();
       if (problem_ptr->branch_and_bound_callback != nullptr) {
-        problem_ptr->branch_and_bound_callback(host_assignment, heuristics_origin_t::HEURISTICS);
+        problem_ptr->branch_and_bound_callback(host_assignment);
       }
       context.solution_publication.publish_if_better(
         problem_ptr, host_assignment, sol.get_objective());

@@ -37,6 +37,7 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
+#include <thrust/sequence.h>
 #include <thrust/set_operations.h>
 #include <thrust/sort.h>
 #include <thrust/tabulate.h>

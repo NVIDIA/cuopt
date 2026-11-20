@@ -9,6 +9,7 @@
 #include "generator_utils.cuh"
 
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/random.h>
 #include <thrust/reduce.h>
 #include <thrust/shuffle.h>
 #include <thrust/sort.h>
