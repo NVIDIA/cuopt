@@ -9,6 +9,12 @@
   },
   "plugins": [
     {
+      "name": "cuopt",
+      "source": "./skills/cuopt",
+      "skills": "./",
+      "description": "Entry point for working with cuOpt: links into the user guide for install, settings and the API reference, plus API gotchas. Use when writing or debugging code that calls cuOpt."
+    },
+    {
       "name": "cuopt-user-rules",
       "source": "./skills/cuopt-user-rules",
       "skills": "./",
