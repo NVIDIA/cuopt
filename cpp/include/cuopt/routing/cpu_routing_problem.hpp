@@ -79,6 +79,7 @@ class cpu_routing_problem_t {
 
   std::vector<cpu_cost_matrix_t> cost_matrices;
   std::vector<cpu_cost_matrix_t> transit_time_matrices;
+  std::vector<cpu_cost_matrix_t> distance_matrices;
 
   std::vector<int32_t> vehicle_start_locations;
   std::vector<int32_t> vehicle_return_locations;
