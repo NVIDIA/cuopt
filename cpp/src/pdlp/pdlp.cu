@@ -53,6 +53,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <new>
 #include <optional>
 #include <tuple>
 #include <type_traits>
@@ -2678,11 +2679,18 @@ void pdlp_solver_t<i_t, f_t>::report_dual_bound()
                  ? pdhg_solver_.get_dual_solution()
                  : pdhg_solver_.get_potential_next_dual_solution();
   if (static_cast<i_t>(dual.size()) != problem_ptr->n_constraints) { return; }
-  if (!dual_bound_) {
-    dual_bound_ = std::make_unique<lagrangian_dual_bound_t<i_t, f_t>>(
-      problem_ptr->n_constraints, problem_ptr->n_variables, stream_view_);
+  f_t bound;
+  // The bound is a side result: a failed allocation skips it rather than ending the PDLP solve.
+  try {
+    if (!dual_bound_) {
+      dual_bound_ = std::make_unique<lagrangian_dual_bound_t<i_t, f_t>>(
+        problem_ptr->n_constraints, problem_ptr->n_variables, stream_view_);
+    }
+    bound = dual_bound_->compute(*problem_ptr, dual.data(), stream_view_);
+  } catch (const std::bad_alloc& e) {
+    CUOPT_LOG_DEBUG("Skipping the PDLP dual bound, allocation failed: %s", e.what());
+    return;
   }
-  const f_t bound = dual_bound_->compute(*problem_ptr, dual.data(), stream_view_);
   if (!std::isfinite(bound) || bound <= best_dual_bound_) { return; }
   best_dual_bound_ = bound;
   settings_.dual_bound_callback(problem_ptr->presolve_data.objective_scaling_factor *

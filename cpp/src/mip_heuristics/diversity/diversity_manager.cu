@@ -32,6 +32,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <new>
 #include <numeric>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -605,12 +606,17 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver(
 
     // A valid lower bound from the dual the root LP returned, whatever stopped it. PDLP's primal
     // objective is not one: at its tolerances it can lie above the LP optimum.
+    // A failed allocation skips the bound; the root LP result is still used below.
     if (root_lp_usable) {
-      const auto stream = problem_ptr->handle_ptr->get_stream();
-      pdlp::lagrangian_dual_bound_t<i_t, f_t> dual_bound(
-        problem_ptr->n_constraints, problem_ptr->n_variables, stream);
-      branch_and_bound.set_root_lower_bound(
-        dual_bound.compute(*problem_ptr, lp_result.get_dual_solution().data(), stream), true);
+      try {
+        const auto stream = problem_ptr->handle_ptr->get_stream();
+        pdlp::lagrangian_dual_bound_t<i_t, f_t> dual_bound(
+          problem_ptr->n_constraints, problem_ptr->n_variables, stream);
+        branch_and_bound.set_root_lower_bound(
+          dual_bound.compute(*problem_ptr, lp_result.get_dual_solution().data(), stream), true);
+      } catch (const std::bad_alloc& e) {
+        CUOPT_LOG_DEBUG("Skipping the root PDLP dual bound, allocation failed: %s", e.what());
+      }
     }
 
     bool use_staged_simplex_solution = false;
