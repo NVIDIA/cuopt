@@ -16,6 +16,7 @@
 #include <mip_heuristics/solution/solution.cuh>
 
 #include <thrust/partition.h>
+#include <thrust/random.h>
 
 namespace cuopt::mathematical_optimization::mip {
 

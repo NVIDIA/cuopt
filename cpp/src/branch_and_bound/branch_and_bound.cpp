@@ -207,6 +207,8 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   }
 #endif
 
+  // root_lp_current_lower_bound_ is set here only: PDLP can report a root bound
+  // (set_root_lower_bound) before solve() starts, and a reset there would erase it.
   upper_bound_                 = inf;
   root_objective_              = std::numeric_limits<f_t>::quiet_NaN();
   root_lp_current_lower_bound_ = -inf;
@@ -232,8 +234,26 @@ f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
   } else if (std::isfinite(root_objective_)) {
     return root_objective_;
   } else {
-    return -inf;
+    // While the root LP is solving: the best valid bound a root solver reported so far
+    const f_t root_lower_bound = root_lp_current_lower_bound_.load(std::memory_order::relaxed);
+    return std::isfinite(root_lower_bound) ? root_lower_bound : -inf;
   }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::set_root_lower_bound(f_t lower_bound, bool from_pdlp)
+{
+  std::lock_guard<std::mutex> lock(root_lower_bound_mutex_);
+  // keep only an improvement (also rejects -inf and NaN)
+  if (!(lower_bound > root_lp_current_lower_bound_.load(std::memory_order::relaxed))) { return; }
+  root_lp_current_lower_bound_.store(lower_bound, std::memory_order::relaxed);
+  if (from_pdlp) {
+    settings_.log.printf("PDLP dual bound: %+.6e. Time %.2f\n",
+                         compute_user_objective(original_lp_, lower_bound),
+                         toc(exploration_stats_.start_time));
+  }
+  // Once the tree search runs, report() owns the user bound
+  if (!is_running_) { update_user_bound(original_lp_, lower_bound); }
 }
 
 template <typename i_t, typename f_t>
@@ -281,7 +301,7 @@ void branch_and_bound_t<i_t, f_t>::print_table_header()
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, heuristics_origin_t origin)
+void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, char symbol)
 {
   if (is_running_) {
     f_t lower_bound           = get_lower_bound();
@@ -292,7 +312,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, heuristics_origin_t
 
     std::string log_line =
       std::format("{} {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11} {:^11}",
-                  feasible_solution_symbol(origin),
+                  symbol,
                   "",  // nodes explored
                   "",  // nodes unexplored
                   user_obj,
@@ -398,7 +418,7 @@ bool branch_and_bound_t<i_t, f_t>::accept_new_incumbent(f_t obj)
 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vector<f_t>& solution,
-                                                                heuristics_origin_t origin)
+                                                                char symbol)
 {
   mutex_original_lp_.lock();
   if (solution.size() != original_problem_.num_cols) {
@@ -415,9 +435,8 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
   bool attempt_repair = false;
   bool success        = false;
 
-  settings_.log.debug_format("{} found solution with obj={:.4g}",
-                             feasible_solution_symbol(origin),
-                             compute_user_objective(original_lp_, obj));
+  settings_.log.debug_format(
+    "{} found solution with obj={:.4g}", symbol, compute_user_objective(original_lp_, obj));
 
   if (accept_new_incumbent(obj)) {
     f_t primal_err;
@@ -448,7 +467,7 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
         upper_bound_            = std::min(current_upper_bound, obj);
         incumbent_.set_incumbent_solution(obj, crushed_solution);
         if (current_upper_bound > upper_bound_.load(std::memory_order::relaxed)) {
-          report_heuristic(obj, origin);
+          report_heuristic(obj, symbol);
           success = true;
         }
       }
@@ -558,7 +577,8 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_cpu_fj(f_t obj,
     if (settings_.solution_callback != nullptr) {
       settings_.solution_callback(user_assignment, obj);
     }
-    set_solution_from_heuristics(user_assignment, heuristics_origin_t::HEURISTICS);
+    set_solution_from_heuristics(user_assignment,
+                                 settings_.mip_hyper_params.heuristic_show_type ? 'J' : 'H');
   }
 }
 
@@ -570,7 +590,8 @@ template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
   const lp_problem_t<i_t, f_t>& lp,
   const std::vector<f_t>& solution,
-  const third_party_presolve_t<i_t, f_t>& presolver)
+  const third_party_presolve_t<i_t, f_t>& presolver,
+  search_strategy_t type)
 {
   bool check_postsolve = false;
   std::vector<f_t> leaf_sol;
@@ -582,7 +603,8 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
   uncrush_primal_solution(original_problem_, lp, leaf_sol, user_sol);
   mutex_original_lp_.unlock();
 
-  bool success = set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP);
+  bool success = set_solution_from_heuristics(
+    user_sol, feasible_solution_symbol(type, settings_.mip_hyper_params.heuristic_show_type));
   if (success) {
     if (settings_.solution_callback != nullptr) { settings_.solution_callback(user_sol, obj); }
   }
@@ -695,7 +717,7 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
         if (accept_new_incumbent(repaired_obj)) {
           upper_bound_ = std::min(upper_bound_.load(std::memory_order::relaxed), repaired_obj);
           incumbent_.set_incumbent_solution(repaired_obj, repaired_solution);
-          report_heuristic(repaired_obj, heuristics_origin_t::HEURISTICS);
+          report_heuristic(repaired_obj, 'H');
 
           if (settings_.solution_callback != nullptr) {
             std::vector<f_t> original_x;
@@ -861,7 +883,7 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_worker(const lp_problem_t<i
   bool success = false;
   settings_.log.debug(
     "%c found a feasible solution with obj=%.10e.\n",
-    feasible_solution_symbol(thread_type, settings_.mip_hyper_params.diving_show_type),
+    feasible_solution_symbol(thread_type, settings_.mip_hyper_params.heuristic_show_type),
     compute_user_objective(lp, leaf_objective));
 
   mutex_upper_.lock();
@@ -870,7 +892,7 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_worker(const lp_problem_t<i
     upper_bound_.fetch_min(leaf_objective, std::memory_order::relaxed);
 
     char symbol =
-      feasible_solution_symbol(thread_type, settings_.mip_hyper_params.diving_show_type);
+      feasible_solution_symbol(thread_type, settings_.mip_hyper_params.heuristic_show_type);
     report(lp, symbol, leaf_objective, get_lower_bound(), leaf_depth, 0);
     success = true;
 
@@ -2804,7 +2826,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   log.log_prefix                      = settings_.log.log_prefix;
   solver_status_                      = mip_status_t::UNSET;
   is_running_                         = false;
-  root_lp_current_lower_bound_        = -inf;
   exploration_stats_.nodes_unexplored = 0;
   exploration_stats_.nodes_explored   = 0;
   lower_bound_numerical_              = inf;
@@ -2901,8 +2922,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_settings.scale_columns                   = false;
   lp_settings.inside_root_node                = true;
   lp_settings.concurrent_halt                 = get_root_concurrent_halt();
-  lp_settings.dual_simplex_objective_callback = [this](f_t user_obj) {
-    root_lp_current_lower_bound_.store(user_obj, std::memory_order::relaxed);
+  lp_settings.dual_simplex_objective_callback = [this](f_t solver_obj) {
+    set_root_lower_bound(solver_obj, false);
   };
   std::vector<i_t> basic_list(original_lp_.num_rows);
   std::vector<i_t> nonbasic_list;
@@ -2985,7 +3006,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (root_status == lp_status_t::CONCURRENT_LIMIT) {
     solver_status_ = mip_status_t::HALT;
-    set_final_solution(solution, -inf);
+    // the best valid bound a root solver reported before it stopped
+    set_final_solution(solution, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
     return mip_status_t::HALT;
   }
 
@@ -3007,13 +3029,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (root_status == lp_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
-    set_final_solution(solution, -inf);
+    // the best valid bound a root solver reported before it stopped
+    set_final_solution(solution, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
     return solver_status_;
   }
 
   if (root_status == lp_status_t::WORK_LIMIT) {
     solver_status_ = mip_status_t::WORK_LIMIT;
-    set_final_solution(solution, -inf);
+    // the best valid bound a root solver reported before it stopped
+    set_final_solution(solution, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
     return solver_status_;
   }
 
@@ -4215,7 +4239,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
 
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
       report(original_lp_,
-             feasible_solution_symbol(worker_type, settings_.mip_hyper_params.diving_show_type),
+             feasible_solution_symbol(worker_type, settings_.mip_hyper_params.heuristic_show_type),
              sol->objective,
              deterministic_lower,
              sol->depth,
@@ -4393,7 +4417,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
       }
 
       if (new_upper < std::numeric_limits<f_t>::infinity()) {
-        report_heuristic(new_upper, heuristics_origin_t::HEURISTICS);
+        report_heuristic(new_upper, 'H');
 
         if (settings_.solution_callback != nullptr) {
           std::vector<f_t> original_x;

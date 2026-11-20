@@ -48,20 +48,11 @@ FIRST=true
 while IFS= read -r payload; do
     # Inject channel (and thread_ts for replies) into payload
     if [ "${FIRST}" = true ]; then
-        BOT_PAYLOAD=$(python3 -c "
-import json, sys
-p = json.loads(sys.argv[1])
-p['channel'] = sys.argv[2]
-print(json.dumps(p))
-" "${payload}" "${SLACK_CHANNEL_ID}")
+        BOT_PAYLOAD=$(python3 "${SCRIPT_DIR}/slack_json.py" inject \
+            --channel "${SLACK_CHANNEL_ID}" "${payload}")
     else
-        BOT_PAYLOAD=$(python3 -c "
-import json, sys
-p = json.loads(sys.argv[1])
-p['channel'] = sys.argv[2]
-p['thread_ts'] = sys.argv[3]
-print(json.dumps(p))
-" "${payload}" "${SLACK_CHANNEL_ID}" "${THREAD_TS}")
+        BOT_PAYLOAD=$(python3 "${SCRIPT_DIR}/slack_json.py" inject \
+            --channel "${SLACK_CHANNEL_ID}" --thread-ts "${THREAD_TS}" "${payload}")
     fi
 
     RESPONSE=$(curl -s --max-time 30 -X POST \
@@ -70,14 +61,14 @@ print(json.dumps(p))
         --data "${BOT_PAYLOAD}" \
         "https://slack.com/api/chat.postMessage" || echo '{"ok":false,"error":"curl_failed"}')
 
-    OK=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok',''))" 2>/dev/null || echo "")
+    OK=$(echo "${RESPONSE}" | python3 "${SCRIPT_DIR}/slack_json.py" get ok)
 
     if [ "${FIRST}" = true ]; then
         if [ "${OK}" != "True" ]; then
             echo "WARNING: Main Slack message failed: ${RESPONSE}" >&2
             break
         fi
-        THREAD_TS=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ts',''))" 2>/dev/null || echo "")
+        THREAD_TS=$(echo "${RESPONSE}" | python3 "${SCRIPT_DIR}/slack_json.py" get ts)
         echo "Main message posted (ts=${THREAD_TS})"
         FIRST=false
     else
@@ -92,8 +83,8 @@ echo "Consolidated Slack notification sent."
 if [ -n "${CONSOLIDATED_HTML}" ] && [ -f "${CONSOLIDATED_HTML}" ]; then
     echo "Uploading HTML report to Slack..."
 
-    REPORT_DATE=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('date','report'))" "${CONSOLIDATED_SUMMARY}" 2>/dev/null || echo "report")
-    REPORT_BRANCH=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('branch','main'))" "${CONSOLIDATED_SUMMARY}" 2>/dev/null || echo "main")
+    REPORT_DATE=$(python3 "${SCRIPT_DIR}/slack_json.py" get date --file "${CONSOLIDATED_SUMMARY}" --default report)
+    REPORT_BRANCH=$(python3 "${SCRIPT_DIR}/slack_json.py" get branch --file "${CONSOLIDATED_SUMMARY}" --default main)
     UPLOAD_FILENAME="cuopt-nightly-${REPORT_BRANCH}-${REPORT_DATE}.html"
     FILE_SIZE=$(stat --format=%s "${CONSOLIDATED_HTML}")
     UPLOAD_TITLE="cuOpt Nightly Report — ${REPORT_BRANCH} — ${REPORT_DATE}"
@@ -106,8 +97,8 @@ if [ -n "${CONSOLIDATED_HTML}" ] && [ -f "${CONSOLIDATED_HTML}" ]; then
         --data-urlencode "length=${FILE_SIZE}" \
         "https://slack.com/api/files.getUploadURLExternal")
 
-    UPLOAD_URL=$(echo "${URL_RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('upload_url',''))" 2>/dev/null)
-    FILE_ID=$(echo "${URL_RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('file_id',''))" 2>/dev/null)
+    UPLOAD_URL=$(echo "${URL_RESPONSE}" | python3 "${SCRIPT_DIR}/slack_json.py" get upload_url)
+    FILE_ID=$(echo "${URL_RESPONSE}" | python3 "${SCRIPT_DIR}/slack_json.py" get file_id)
 
     if [ -z "${UPLOAD_URL}" ] || [ -z "${FILE_ID}" ]; then
         echo "WARNING: Slack file upload failed at getUploadURLExternal. Response: ${URL_RESPONSE}" >&2
@@ -118,18 +109,10 @@ if [ -n "${CONSOLIDATED_HTML}" ] && [ -f "${CONSOLIDATED_HTML}" ]; then
             "${UPLOAD_URL}"
 
         # Step 3: Complete the upload and share to channel (in thread if available)
-        COMPLETE_PAYLOAD=$(python3 -c "
-import json, sys
-payload = {
-    'files': [{'id': sys.argv[1], 'title': sys.argv[2]}],
-    'channel_id': sys.argv[3],
-    'initial_comment': 'Full nightly test report \u2014 download and open in a browser for interactive details.',
-}
-thread_ts = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else ''
-if thread_ts:
-    payload['thread_ts'] = thread_ts
-print(json.dumps(payload))
-" "${FILE_ID}" "${UPLOAD_TITLE}" "${SLACK_CHANNEL_ID}" "${THREAD_TS}")
+        COMPLETE_PAYLOAD=$(python3 "${SCRIPT_DIR}/slack_json.py" file-complete \
+            --file-id "${FILE_ID}" --title "${UPLOAD_TITLE}" \
+            --channel "${SLACK_CHANNEL_ID}" --thread-ts "${THREAD_TS}" \
+            --comment "Full nightly test report — download and open in a browser for interactive details.")
 
         COMPLETE_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
@@ -137,7 +120,7 @@ print(json.dumps(payload))
             --data "${COMPLETE_PAYLOAD}" \
             "https://slack.com/api/files.completeUploadExternal")
 
-        if echo "${COMPLETE_RESPONSE}" | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin).get('ok') else 1)" 2>/dev/null; then
+        if [ "$(echo "${COMPLETE_RESPONSE}" | python3 "${SCRIPT_DIR}/slack_json.py" get ok)" = "True" ]; then
             echo "HTML report uploaded to Slack."
         else
             echo "WARNING: Slack file upload failed at completeUploadExternal. Response: ${COMPLETE_RESPONSE}" >&2
