@@ -6,6 +6,8 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`
 
 ## Skills directory (flat)
 
+- `skills/cuopt/` — Entry point for working with cuOpt: links into the user guide for install, settings and the API reference, plus API gotchas. Read when writing or debugging code that calls cuOpt.
+
 ### Rules
 - `skills/cuopt-user-rules/` — Base rules for end users calling cuOpt (routing, LP, MILP, QP, install, server). Not for cuOpt internals — see `skills/cuopt-developer/`. Read first for user-facing tasks; choose skills from the index below by task and interface.
 - `skills/cuopt-developer/` — Modify, build, test, debug, and contribute to cuOpt internals (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions. For **VRP dimension** work (combine invariants, fwd/bwd propagation, new constraints/objectives in the routing engine), read **`skills/cuopt-developer/references/vrp_skills.md`** in addition to `SKILL.md`.
