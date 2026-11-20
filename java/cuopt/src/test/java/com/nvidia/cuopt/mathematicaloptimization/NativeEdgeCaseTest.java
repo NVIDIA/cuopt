@@ -628,7 +628,6 @@ final class NativeEdgeCaseTest {
   }
 
   @Test
-  @Disabled("Problem.write emits blank names for unnamed variables and rows, which read rejects")
   void anUnnamedModelRoundTripsThroughAnMPSFile() {
     Problem problem = new Problem();
     Variable x = problem.addVariable();
