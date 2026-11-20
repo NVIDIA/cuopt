@@ -1,0 +1,80 @@
+[
+  {
+    "id": "cuopt-eval-001-addconstraint-requires-comparison",
+    "question": "I'm building a cuOpt model in Python. I have a list of variables `x` and weights `w`, and I want the weighted sum to be at most 100. I tried `model.addConstraint(sum(w[i] * x[i] for i in range(n)))` and also `model.addConstraint(\"w @ x <= 100\")`, and neither works. What should I write?",
+    "expected_skill": "cuopt",
+    "expected_script": null,
+    "ground_truth": "The agent explains that addConstraint takes a Constraint object, which is produced by comparing an expression with <=, >= or ==, so a bare expression raises ValueError: addConstraint requires a Constraint object. It also states that constraints cannot be written as strings. The corrected call accumulates the expression and compares it in place, e.g. model.addConstraint(sum(w[i] * x[i] for i in range(n)) <= 100).",
+    "expected_behavior": [
+      "Identifies the missing comparison operator as the cause, not the sum or the generator",
+      "States that a bare expression raises ValueError: addConstraint requires a Constraint object",
+      "States that a constraint cannot be built from a string",
+      "Gives a corrected call containing a <=, >= or == comparison"
+    ]
+  },
+  {
+    "id": "cuopt-eval-002-linearexpression-constant-positional",
+    "question": "In cuOpt Python, I called `LinearExpression([x, y], [1.0, 2.0])` and got a TypeError about a missing argument. How do I construct it, and should I be using it here at all for a simple two-term sum?",
+    "expected_skill": "cuopt",
+    "expected_script": null,
+    "ground_truth": "The agent explains that LinearExpression takes constant as a required positional argument rather than an optional keyword, so the call needs a third argument: LinearExpression([x, y], [1.0, 2.0], 0.0). It also advises that for an ordinary short sum, plain arithmetic or sum(...) is the better choice, and LinearExpression is worth reaching for mainly when recursion depth over a long accumulation is a concern.",
+    "expected_behavior": [
+      "Names constant as a required positional third argument",
+      "Shows a corrected call that passes the constant explicitly, e.g. 0.0",
+      "Recommends ordinary arithmetic or sum(...) for a simple expression",
+      "Mentions recursion depth over long accumulations as the reason LinearExpression exists"
+    ]
+  },
+  {
+    "id": "cuopt-eval-003-solver-log-on-stdout",
+    "question": "I'm calling cuOpt from a Python script and it's dumping a wall of solver output to my terminal before my own print statements. Is something misconfigured, and is this going to break my script if I run it in a pipeline?",
+    "expected_skill": "cuopt",
+    "expected_script": null,
+    "ground_truth": "The agent explains that the solver writes its own log to stdout and that this is expected behaviour, not an error or a misconfiguration. It reassures that the solve itself is unaffected, and does not invent a settings flag to suppress it; if asked how to control verbosity it directs the reader to the solver settings pages rather than quoting a parameter name from memory.",
+    "expected_behavior": [
+      "States that the solver printing to stdout is expected, not an error",
+      "Does NOT diagnose it as a misconfiguration or a logging bug",
+      "Does NOT invent a verbosity or log-suppression parameter name",
+      "If verbosity control is discussed, points to the settings documentation rather than recalling a flag"
+    ]
+  },
+  {
+    "id": "cuopt-eval-004-settings-looked-up-not-recalled",
+    "question": "What is the default value and the valid range for the MILP relative gap tolerance in cuOpt, and what is the exact setting name?",
+    "expected_skill": "cuopt",
+    "expected_script": null,
+    "ground_truth": "The agent does not state a setting name, default or range from memory. It explains that settings names, defaults and ranges change between releases, and sources the answer from the MILP settings page in the user guide (https://docs.nvidia.com/cuopt/user-guide/latest/mip-settings.html) or by inspecting SolverSettings in the installed version. Any value it reports is attributed to one of those two sources.",
+    "expected_behavior": [
+      "Does NOT assert a setting name, default or range purely from memory",
+      "States that settings change between releases",
+      "Routes to the MILP settings page in the user guide, not the LP/QP page",
+      "Offers inspecting SolverSettings in the installed build as the other source of truth"
+    ]
+  },
+  {
+    "id": "cuopt-eval-005-install-and-gpu-support-routing",
+    "question": "I want to try cuOpt. How do I install it, and will it run on my GPU?",
+    "expected_skill": "cuopt",
+    "expected_script": null,
+    "ground_truth": "The agent routes to the install page (https://docs.nvidia.com/cuopt/user-guide/latest/install.html) for packages, channels and Docker, and to the system requirements page (https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html) for GPU, CUDA and driver support. It does not recite a compute capability floor, driver version or CUDA version from memory, since those are release-specific and documented.",
+    "expected_behavior": [
+      "Points to the install page for packages, channels and Docker",
+      "Points to the system requirements page for GPU, CUDA and driver support",
+      "Does NOT quote a compute capability, driver or CUDA version from memory",
+      "Uses the 'latest' documentation URLs rather than a pinned release version"
+    ]
+  },
+  {
+    "id": "cuopt-eval-006-surprising-result-to-faq",
+    "question": "My cuOpt solve came back with a status I didn't expect and an objective value that looks wrong, and I can't tell whether it's a bug in the solver or a mistake in how I set the model up. Where do I start?",
+    "expected_skill": "cuopt",
+    "expected_script": null,
+    "ground_truth": "The agent directs the reader to the Common Pitfalls section of the cuOpt FAQ, which covers solver statuses and results that surprise, naming either the published page (https://docs.nvidia.com/cuopt/user-guide/latest/faq.html) or docs/cuopt/source/faq.rst in the repository. It frames these as usage-side causes worth ruling out before concluding the solver is at fault, and does not fabricate a specific status enum or its meaning.",
+    "expected_behavior": [
+      "Routes to the Common Pitfalls section of the FAQ",
+      "Names the published FAQ URL or docs/cuopt/source/faq.rst in the repo",
+      "Suggests ruling out model-setup causes before concluding it is a solver bug",
+      "Does NOT invent a status value or its meaning"
+    ]
+  }
+]
