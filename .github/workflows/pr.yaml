@@ -668,7 +668,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_cpp_mathopt.sh
-      matrix_type: pull-request
+      matrix_type: pull-request,wsl-pr
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -691,7 +691,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_cpp_routing.sh
-      matrix_type: pull-request
+      matrix_type: pull-request,wsl-pr
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -1010,7 +1010,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
-      matrix_type: pull-request
+      matrix_type: pull-request,wsl-pr
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -1075,7 +1075,7 @@ jobs:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_test_filter }}
-      matrix_type: pull-request
+      matrix_type: pull-request,wsl-pr
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
