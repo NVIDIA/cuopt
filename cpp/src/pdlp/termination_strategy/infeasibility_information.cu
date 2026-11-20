@@ -9,6 +9,7 @@
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/termination_strategy/infeasibility_information.hpp>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 #include <utilities/device_scalar_init.hpp>
 
@@ -190,23 +191,17 @@ __global__ void compute_remaining_stats_kernel(
   typename infeasibility_information_t<i_t, f_t>::view_t infeasibility_information_view)
 {
   if (threadIdx.x + blockIdx.x * blockDim.x > 0) { return; }
-#ifdef PDLP_DEBUG_MODE
-  printf("-compute_remaining_stats_kernel:\n");
-#endif
+  PDLP_DEBUG_DEVICE_LOG("-compute_remaining_stats_kernel:\n");
   f_t scaling_factor = raft::max(*infeasibility_information_view.dual_ray_inf_norm,
                                  *infeasibility_information_view.reduced_cost_inf_norm);
-#ifdef PDLP_DEBUG_MODE
-  printf("    dual_ray_inf_norm=%lf reduced_cost_inf_norm=%lf scaling_factor=%lf\n",
-         *infeasibility_information_view.dual_ray_inf_norm,
-         *infeasibility_information_view.reduced_cost_inf_norm,
-         scaling_factor);
-#endif
+  PDLP_DEBUG_DEVICE_LOG("    dual_ray_inf_norm=%lf reduced_cost_inf_norm=%lf scaling_factor=%lf\n",
+                        *infeasibility_information_view.dual_ray_inf_norm,
+                        *infeasibility_information_view.reduced_cost_inf_norm,
+                        scaling_factor);
 
-#ifdef PDLP_DEBUG_MODE
-  printf("    Before max_dual_ray_infeasibility=%lf dual_ray_linear_objective=%lf\n",
-         infeasibility_information_view.max_dual_ray_infeasibility[0],
-         infeasibility_information_view.dual_ray_linear_objective[0]);
-#endif
+  PDLP_DEBUG_DEVICE_LOG("    Before max_dual_ray_infeasibility=%lf dual_ray_linear_objective=%lf\n",
+                        infeasibility_information_view.max_dual_ray_infeasibility[0],
+                        infeasibility_information_view.dual_ray_linear_objective[0]);
   if (scaling_factor < 0.0 || scaling_factor > 0.0) {
     infeasibility_information_view.max_dual_ray_infeasibility[0] =
       infeasibility_information_view.max_dual_ray_infeasibility[0] / scaling_factor;
@@ -216,12 +211,11 @@ __global__ void compute_remaining_stats_kernel(
     infeasibility_information_view.max_dual_ray_infeasibility[0] = f_t(0.0);
     infeasibility_information_view.dual_ray_linear_objective[0]  = f_t(0.0);
   }
-#ifdef PDLP_DEBUG_MODE
-  printf("    After max_dual_ray_infeasibility=%lf dual_ray_linear_objective=%lf\n",
-         infeasibility_information_view.max_dual_ray_infeasibility[0],
-         infeasibility_information_view.dual_ray_linear_objective[0]);
-  printf("    primal_ray_inf_norm=%lf\n", *infeasibility_information_view.primal_ray_inf_norm);
-#endif
+  PDLP_DEBUG_DEVICE_LOG("    After max_dual_ray_infeasibility=%lf dual_ray_linear_objective=%lf\n",
+                        infeasibility_information_view.max_dual_ray_infeasibility[0],
+                        infeasibility_information_view.dual_ray_linear_objective[0]);
+  PDLP_DEBUG_DEVICE_LOG("    primal_ray_inf_norm=%lf\n",
+                        *infeasibility_information_view.primal_ray_inf_norm);
   // Update primal max ray infeasibility
   if (*infeasibility_information_view.primal_ray_inf_norm > f_t(0.0)) {
     infeasibility_information_view.max_primal_ray_infeasibility[0] =
@@ -232,11 +226,9 @@ __global__ void compute_remaining_stats_kernel(
     infeasibility_information_view.max_primal_ray_infeasibility[0] = f_t(0.0);
     infeasibility_information_view.primal_ray_linear_objective[0]  = f_t(0.0);
   }
-#ifdef PDLP_DEBUG_MODE
-  printf("    max_primal_ray_infeasibility=%lf primal_ray_linear_objective=%lf\n",
-         infeasibility_information_view.max_primal_ray_infeasibility[0],
-         infeasibility_information_view.primal_ray_linear_objective[0]);
-#endif
+  PDLP_DEBUG_DEVICE_LOG("    max_primal_ray_infeasibility=%lf primal_ray_linear_objective=%lf\n",
+                        infeasibility_information_view.max_primal_ray_infeasibility[0],
+                        infeasibility_information_view.primal_ray_linear_objective[0]);
 }
 
 template <typename f_t>
@@ -267,10 +259,8 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
                                       ? scaling_strategy_.get_h_objective_rescaling()
                                       : f_t(1.0);
 
-#ifdef CUPDLP_DEBUG_MODE
-    print("delta_primal_solution after scale before mod", primal_ray);
-    print("delta_dual_solution after scale before mod", dual_ray);
-#endif
+    PDLP_DEBUG_LOG("delta_primal_solution after scale before mod", primal_ray);
+    PDLP_DEBUG_LOG("delta_dual_solution after scale before mod", dual_ray);
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(primal_ray.data(),
@@ -309,10 +299,8 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
       },
       stream_view_.get());
 
-#ifdef CUPDLP_DEBUG_MODE
-    print("delta_primal_solution after", primal_ray);
-    print("delta_dual_solution after", dual_ray);
-#endif
+    PDLP_DEBUG_LOG("delta_primal_solution after", primal_ray);
+    PDLP_DEBUG_LOG("delta_dual_solution after", dual_ray);
     // Inf norm of dual ray
     segmented_sum_handler_.segmented_reduce_helper(dual_ray.data(),
                                                    dual_ray_inf_norm_.data(),
@@ -331,12 +319,10 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
           primal_ray_data[id] = primal_ray_data[id] / primal_ray_inf_norm_value;
       },
       stream_view_.get());
-#ifdef CUPDLP_DEBUG_MODE
-    print("delta_primal_solution after scale", primal_ray);
-    print("delta_dual_solution after scale", dual_ray);
-    printf("primal_ray_inf_norm=%lf\n", primal_ray_inf_norm_.element(0, stream_view_));
-    printf("dual_ray_inf_norm=%lf\n", dual_ray_inf_norm_.element(0, stream_view_));
-#endif
+    PDLP_DEBUG_LOG("delta_primal_solution after scale", primal_ray);
+    PDLP_DEBUG_LOG("delta_dual_solution after scale", dual_ray);
+    PDLP_DEBUG_LOG("primal_ray_inf_norm", primal_ray_inf_norm_.element(0, stream_view_));
+    PDLP_DEBUG_LOG("dual_ray_inf_norm", dual_ray_inf_norm_.element(0, stream_view_));
 
     RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm(
       handle_ptr_->get_cusparse_handle(),
@@ -363,10 +349,8 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
                                          (f_t*)scaled_cusparse_view_.buffer_transpose_batch.data(),
                                          stream_view_.get()));
 
-#ifdef CUPDLP_DEBUG_MODE
-    print("primal_product", current_pdhg_solver.get_dual_tmp_resource());
-    print("dual_product", current_pdhg_solver.get_primal_tmp_resource());
-#endif
+    PDLP_DEBUG_LOG("primal_product", current_pdhg_solver.get_dual_tmp_resource());
+    PDLP_DEBUG_LOG("dual_product", current_pdhg_solver.get_primal_tmp_resource());
 
     // Dot product on each objective . delta primal = primal_ray_linear_objective
     segmented_sum_handler_.segmented_sum_helper(
@@ -382,10 +366,8 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
       climber_strategies_.size(),
       primal_size_h_);
 
-#ifdef CUPDLP_DEBUG_MODE
-    printf("primal_ray_linear_objective before=%lf\n",
-           primal_ray_linear_objective_.element(0, stream_view_));
-#endif
+    PDLP_DEBUG_LOG("primal_ray_linear_objective before",
+                   primal_ray_linear_objective_.element(0, stream_view_));
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(dual_ray.data(),
@@ -399,9 +381,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
       },
       stream_view_.get());
 
-#ifdef CUPDLP_DEBUG_MODE
-    print("primal_slack", primal_slack_);
-#endif
+    PDLP_DEBUG_LOG("primal_slack", primal_slack_);
 
     using f_t2 = typename type_2<f_t>::type;
     cub::DeviceTransform::Transform(
@@ -417,9 +397,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
       },
       stream_view_.get());
 
-#ifdef CUPDLP_DEBUG_MODE
-    print("dual_slack", dual_slack_);
-#endif
+    PDLP_DEBUG_LOG("dual_slack", dual_slack_);
 
     segmented_sum_handler_.segmented_sum_helper(
       primal_slack_.data(), sum_primal_slack_.data(), climber_strategies_.size(), dual_size_h_);
@@ -427,10 +405,8 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
     segmented_sum_handler_.segmented_sum_helper(
       dual_slack_.data(), sum_dual_slack_.data(), climber_strategies_.size(), primal_size_h_);
 
-#ifdef CUPDLP_DEBUG_MODE
-    printf("sum_primal_slack=%lf\n", sum_primal_slack_.element(0, stream_view_));
-    printf("sum_dual_slack=%lf\n", sum_dual_slack_.element(0, stream_view_));
-#endif
+    PDLP_DEBUG_LOG("sum_primal_slack", sum_primal_slack_.element(0, stream_view_));
+    PDLP_DEBUG_LOG("sum_dual_slack", sum_dual_slack_.element(0, stream_view_));
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(
@@ -450,9 +426,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
       },
       stream_view_.get());
 
-#ifdef CUPDLP_DEBUG_MODE
-    print("primal_slack", primal_slack_);
-#endif
+    PDLP_DEBUG_LOG("primal_slack", primal_slack_);
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(
@@ -470,9 +444,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
                scale;
       },
       stream_view_.get());
-#ifdef CUPDLP_DEBUG_MODE
-    print("dual_slack", dual_slack_);
-#endif
+    PDLP_DEBUG_LOG("dual_slack", dual_slack_);
     // Inf norm to get max primal/dual infeasible
     segmented_sum_handler_.segmented_reduce_helper(primal_slack_.data(),
                                                    max_primal_ray_infeasibility_.data(),
@@ -487,12 +459,10 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
                                                    max_abs_t<f_t>{},
                                                    f_t(0.0));
 
-#ifdef CUPDLP_DEBUG_MODE
-    printf("max_primal_ray_infeasibility=%lf\n",
-           max_primal_ray_infeasibility_.element(0, stream_view_));
-    printf("max_dual_ray_infeasibility=%lf\n",
-           max_dual_ray_infeasibility_.element(0, stream_view_));
-#endif
+    PDLP_DEBUG_LOG("max_primal_ray_infeasibility",
+                   max_primal_ray_infeasibility_.element(0, stream_view_));
+    PDLP_DEBUG_LOG("max_dual_ray_infeasibility",
+                   max_dual_ray_infeasibility_.element(0, stream_view_));
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(max_dual_ray_infeasibility_.data(),
@@ -517,11 +487,9 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
       },
       stream_view_.get());
 
-#ifdef CUPDLP_DEBUG_MODE
-    printf("max_dual_ray_infeasibility=%lf\n",
-           max_dual_ray_infeasibility_.element(0, stream_view_));
-    printf("dual_ray_objective=%lf\n", dual_ray_linear_objective_.element(0, stream_view_));
-#endif
+    PDLP_DEBUG_LOG("max_dual_ray_infeasibility",
+                   max_dual_ray_infeasibility_.element(0, stream_view_));
+    PDLP_DEBUG_LOG("dual_ray_objective", dual_ray_linear_objective_.element(0, stream_view_));
   } else {
     my_inf_norm(primal_ray, primal_ray_inf_norm_, handle_ptr_);
 
@@ -681,11 +649,9 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_dual_objective(
                          dual_size_h_,
                          stream_view_.get());
 
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "-compute_homogenous_dual_objective:\n"
-            << "  dual_ray_linear_objective_ before="
-            << dual_ray_linear_objective_.element(0, stream_view_) << std::endl;
-#endif
+  PDLP_DEBUG_LOG("-compute_homogenous_dual_objective:");
+  PDLP_DEBUG_LOG("  dual_ray_linear_objective_ before",
+                 dual_ray_linear_objective_.element(0, stream_view_));
 
   compute_reduced_costs_dual_objective_contribution();
 
@@ -694,12 +660,10 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_dual_objective(
                            reduced_cost_dual_objective_.data(),
                            1,
                            stream_view_.get());
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "  reduced_cost_dual_objective_=" << reduced_cost_dual_objective_.value(stream_view_)
-            << std::endl;
-  std::cout << "  dual_ray_linear_objective_ after="
-            << dual_ray_linear_objective_.element(0, stream_view_) << std::endl;
-#endif
+  PDLP_DEBUG_LOG("  reduced_cost_dual_objective_",
+                 reduced_cost_dual_objective_.value(stream_view_));
+  PDLP_DEBUG_LOG("  dual_ray_linear_objective_ after",
+                 dual_ray_linear_objective_.element(0, stream_view_));
 }
 
 template <typename i_t, typename f_t>
