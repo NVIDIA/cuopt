@@ -274,3 +274,54 @@ Multi-GPU PDLP shards an LP across GPUs. Set the method to PDLP and ``CUOPT_NUM_
 .. literalinclude:: examples/multi_gpu_pdlp_example.py
    :language: python
    :linenos:
+
+
+Transportation Example (model built over index sets)
+------------------------------------------------------
+
+Most of the examples above declare a few variables by name. Larger models are
+indexed over sets and built in loops: the variables live in a dictionary keyed by
+the index tuple, and each constraint is accumulated with ``sum(...)`` before being
+compared. ``addConstraint`` requires a comparison, so the expression has to be
+compared in the call itself.
+
+:download:`transportation_example.py <examples/transportation_example.py>`
+
+.. literalinclude:: examples/transportation_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Status: Optimal
+    Total shipping cost: 150.0
+      plant 0 -> warehouse 0: 5.0
+      plant 0 -> warehouse 2: 15.0
+      plant 1 -> warehouse 0: 5.0
+      plant 1 -> warehouse 1: 25.0
+
+
+Multi-Period Planning Example (inventory carried between periods)
+-------------------------------------------------------------------
+
+Constraints that link one period to the next need a boundary value for the first
+period. A plain Python number mixes with variables in an expression, so the
+boundary needs no special casing beyond a conditional.
+
+:download:`multi_period_planning_example.py <examples/multi_period_planning_example.py>`
+
+.. literalinclude:: examples/multi_period_planning_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Status: Optimal
+    Total cost: 182.0
+    Period 0: make 12.0, inventory 2.0
+    Period 1: make 18.0, inventory 0.0
+    Period 2: make 15.0, inventory 0.0

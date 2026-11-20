@@ -76,3 +76,27 @@ The response is as follows:
     Final objective value: 303.00
 
     Total incumbent solutions found: 1
+
+
+Facility Location Example (binary variables with linking constraints)
+---------------------------------------------------------------------
+
+Models indexed over sets are usually built in loops, with the variables held in a
+dictionary keyed by the index tuple. This example also shows a binary variable
+(``INTEGER`` with ``lb=0`` and ``ub=1``) and a linking constraint that forces a
+facility open before anything can ship from it.
+
+:download:`facility_location_example.py <examples/facility_location_example.py>`
+
+.. literalinclude:: examples/facility_location_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Status: Optimal
+    Total cost: 290.0
+    Facility 0: closed
+    Facility 1: open
