@@ -325,3 +325,29 @@ The response is as follows:
     Period 0: make 12.0, inventory 2.0
     Period 1: make 18.0, inventory 0.0
     Period 2: make 15.0, inventory 0.0
+
+
+Building Large Linear Expressions
+-------------------------------------------------------------------
+
+The examples above build expressions with ``sum(...)``, which is the clearest choice for the
+handful of terms they contain. The cost matters at scale. Adding two expressions with ``+``
+builds new variable and coefficient lists from both operands, so accumulating ``N`` terms one
+at a time copies on the order of ``N^2 / 2`` entries; both ``sum(...)`` and
+``expr = expr + term`` work this way.
+
+For an expression with thousands of terms, build the two lists first and pass them to a single
+``LinearExpression``. Its third argument, ``constant``, is required rather than optional:
+
+.. code-block:: python
+
+    from cuopt.linear_programming.problem import LinearExpression
+
+    variables = [x[i] for i in range(n)]
+    coefficients = [cost[i] for i in range(n)]
+    expression = LinearExpression(variables, coefficients, 0.0)
+
+``LinearExpression`` keeps a reference to the lists it is given rather than copying them, and
+``+=`` extends them in place. That is what makes both forms fast, but it also means the
+expression shares state with those lists and with any other expression built from them, so a
+later ``+=`` modifies all of them at once. Pass lists that nothing else holds a reference to.
