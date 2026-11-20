@@ -50,6 +50,8 @@ RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
 if [[ "${CUOPT_CPP_TEST_GROUP}" != "mathopt" ]]; then
+    rapids-logger "Test routing dataset downloader"
+    python -m unittest discover -s ci/tests -p test_get_test_data.py
     rapids-logger "Download routing datasets"
     pushd "${RAPIDS_DATASET_ROOT_DIR}"
     ./get_test_data.sh
