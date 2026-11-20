@@ -38,6 +38,7 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_types.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/distance_breaks.cu
+      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/distance_matrices.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/heterogenous_breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_fixed_costs.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_order_match.cu
