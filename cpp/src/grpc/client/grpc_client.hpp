@@ -520,21 +520,16 @@ class grpc_client_t {
    */
   bool submit_unary(const cuopt::remote::SubmitJobRequest& request, std::string& job_id_out);
 
-  /**
-   * @brief Upload a problem using chunked array RPCs (StartChunkedUpload +
-   *        N × SendArrayChunk + FinishChunkedUpload).
-   */
-  template <typename i_t, typename f_t>
-  bool upload_chunked_arrays(const cpu_optimization_problem_t<i_t, f_t>& problem,
-                             const cuopt::remote::ChunkedProblemHeader& header,
-                             std::string& job_id_out);
-
   /// Builds the chunk requests once the upload_id and per-chunk data budget are known.
   using chunk_builder_t = std::function<std::vector<cuopt::remote::SendArrayChunkRequest>(
     const std::string& upload_id, int64_t chunk_data_budget)>;
 
-  /// Chunked upload of any problem type: sends `header`, then the chunks from `build_chunks`.
-  bool upload_chunked(const cuopt::remote::ChunkedProblemHeader& header,
+  /**
+   * @brief Chunked upload of any problem type. `job` is a SubmitJobRequest with
+   *        numeric arrays empty (StartChunkedUploadV2). Chunk bytes follow via
+   *        SendArrayChunk, then FinishChunkedUpload.
+   */
+  bool upload_chunked(const cuopt::remote::SubmitJobRequest& job,
                       const chunk_builder_t& build_chunks,
                       std::string& job_id_out);
 };

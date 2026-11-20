@@ -10,10 +10,10 @@
 
 #include <thrust/for_each.h>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/semi_continuous.cuh>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/utils.cuh>
 #include <pdlp/utils.cuh>
+#include <presolve/semi_continuous.cuh>
+#include <presolve/third_party_presolve.hpp>
 #include <utilities/copy_helpers.hpp>
 
 #include <algorithm>
@@ -312,7 +312,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         context.solution_publication.enabled()) {
       auto host_assignment = sol.get_host_assignment();
       if (problem_ptr->branch_and_bound_callback != nullptr) {
-        problem_ptr->branch_and_bound_callback(host_assignment, heuristics_origin_t::HEURISTICS);
+        problem_ptr->branch_and_bound_callback(host_assignment);
       }
       context.solution_publication.publish_if_better(
         problem_ptr, host_assignment, sol.get_objective());

@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <mip_heuristics/presolve/bhw_coeff_reduce.hpp>
+#include <presolve/bhw_coeff_reduce.hpp>
 
 #include <gtest/gtest.h>
 

@@ -9,7 +9,9 @@
 
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt_remote.pb.h>
+
 #include <cuopt_remote_service.pb.h>
+#include <google/protobuf/descriptor.h>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
@@ -29,39 +31,6 @@ namespace cuopt::mathematical_optimization {
 
 namespace {
 #include "generated_enum_converters_problem.inc"
-
-template <typename T>
-void chunk_typed_array(std::vector<cuopt::remote::SendArrayChunkRequest>& out,
-                       cuopt::remote::ArrayFieldId field_id,
-                       const std::vector<T>& data,
-                       const std::string& upload_id,
-                       int64_t chunk_data_budget)
-{
-  if (data.empty()) return;
-
-  const int64_t elem_size      = static_cast<int64_t>(sizeof(T));
-  const int64_t total_elements = static_cast<int64_t>(data.size());
-
-  int64_t elems_per_chunk = chunk_data_budget / elem_size;
-  if (elems_per_chunk <= 0) elems_per_chunk = 1;
-
-  const auto* raw = reinterpret_cast<const uint8_t*>(data.data());
-
-  for (int64_t offset = 0; offset < total_elements; offset += elems_per_chunk) {
-    int64_t count       = std::min(elems_per_chunk, total_elements - offset);
-    int64_t byte_offset = offset * elem_size;
-    int64_t byte_count  = count * elem_size;
-
-    cuopt::remote::SendArrayChunkRequest req;
-    req.set_upload_id(upload_id);
-    auto* ac = req.mutable_chunk();
-    ac->set_field_id(field_id);
-    ac->set_element_offset(offset);
-    ac->set_total_elements(total_elements);
-    ac->set_data(raw + byte_offset, byte_count);
-    out.push_back(std::move(req));
-  }
-}
 
 void chunk_byte_blob(std::vector<cuopt::remote::SendArrayChunkRequest>& out,
                      cuopt::remote::ArrayFieldId field_id,
@@ -98,10 +67,31 @@ void map_problem_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_proble
 }
 
 template <typename i_t, typename f_t>
+void map_problem_scalars_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+                                  cuopt::remote::OptimizationProblem* pb_problem)
+{
+#include "generated_problem_scalars_to_proto.inc"
+}
+
+template <typename i_t, typename f_t>
 void map_proto_to_problem(const cuopt::remote::OptimizationProblem& pb_problem,
                           cpu_optimization_problem_t<i_t, f_t>& cpu_problem)
 {
-#include "generated_proto_to_problem.inc"
+#include "generated_problem_scalars_from_proto.inc"
+#include "generated_proto_arrays_to_problem.inc"
+}
+
+template <typename i_t, typename f_t>
+void map_proto_to_problem(
+  const cuopt::remote::OptimizationProblem& problem,
+  const std::map<int32_t, std::vector<uint8_t>>& arrays,
+  const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
+  cpu_optimization_problem_t<i_t, f_t>& cpu_problem)
+{
+  const auto& pb_problem = problem;
+#include "generated_problem_scalars_from_proto.inc"
+  const auto& chunked_scalars = problem;
+#include "generated_chunked_arrays_to_problem.inc"
 }
 
 // ============================================================================
@@ -144,7 +134,9 @@ template <typename i_t, typename f_t>
 void map_chunked_header_to_problem(const cuopt::remote::ChunkedProblemHeader& header,
                                    cpu_optimization_problem_t<i_t, f_t>& cpu_problem)
 {
+  const auto& pb_problem = header;
 #include "generated_chunked_header_to_problem.inc"
+#include "generated_problem_scalars_from_proto.inc"
 }
 
 // ============================================================================
@@ -158,7 +150,97 @@ void map_chunked_arrays_to_problem(
   const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
   cpu_optimization_problem_t<i_t, f_t>& cpu_problem)
 {
+  map_chunked_header_to_problem(header, cpu_problem);
+  const auto& chunked_scalars = header;
 #include "generated_chunked_arrays_to_problem.inc"
+}
+
+namespace {
+
+// Fields strip_chunked_numeric_arrays removes. Top-level repeated messages are
+// containers (walked one level, not cleared). Inside a container, repeated
+// strings stay; bytes and numeric arrays go.
+bool is_stripped_payload(const google::protobuf::FieldDescriptor* field, bool in_container)
+{
+  if (!field->is_repeated()) {
+    return field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES;
+  }
+  if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) { return false; }
+  if (in_container && field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
+    return false;
+  }
+  return true;
+}
+
+bool payload_present(const google::protobuf::Message& msg,
+                     const google::protobuf::Reflection* refl,
+                     const google::protobuf::FieldDescriptor* field)
+{
+  if (!field->is_repeated()) { return !refl->GetString(msg, field).empty(); }
+  return refl->FieldSize(msg, field) > 0;
+}
+
+bool container_payload_present(const google::protobuf::Message& child)
+{
+  const auto* child_desc = child.GetDescriptor();
+  const auto* child_refl = child.GetReflection();
+  for (int k = 0; k < child_desc->field_count(); ++k) {
+    const auto* cf = child_desc->field(k);
+    if (is_stripped_payload(cf, true) && payload_present(child, child_refl, cf)) { return true; }
+  }
+  return false;
+}
+
+void clear_container_payloads(google::protobuf::Message* child)
+{
+  const auto* child_desc = child->GetDescriptor();
+  const auto* child_refl = child->GetReflection();
+  for (int k = 0; k < child_desc->field_count(); ++k) {
+    const auto* cf = child_desc->field(k);
+    if (is_stripped_payload(cf, true)) { child_refl->ClearField(child, cf); }
+  }
+}
+
+}  // namespace
+
+bool CUOPT_EXPORT inline_chunked_arrays_present(const cuopt::remote::OptimizationProblem& problem)
+{
+  const auto* desc = problem.GetDescriptor();
+  const auto* refl = problem.GetReflection();
+  for (int i = 0; i < desc->field_count(); ++i) {
+    const auto* field = desc->field(i);
+    if (field->is_repeated() &&
+        field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      const int n = refl->FieldSize(problem, field);
+      for (int j = 0; j < n; ++j) {
+        if (container_payload_present(refl->GetRepeatedMessage(problem, field, j))) { return true; }
+      }
+    } else if (is_stripped_payload(field, false) && payload_present(problem, refl, field)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void strip_chunked_numeric_arrays(cuopt::remote::OptimizationProblem* problem)
+{
+  // One level into repeated messages (quadratic constraints): clear their
+  // numeric arrays, keep the per-entry scalars. Do not walk singular
+  // submessages; OptimizationProblem has none that carry chunked arrays.
+  const auto* desc = problem->GetDescriptor();
+  const auto* refl = problem->GetReflection();
+  for (int i = 0; i < desc->field_count(); ++i) {
+    const auto* field = desc->field(i);
+    if (field->is_repeated() &&
+        field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      const int n = refl->FieldSize(*problem, field);
+      for (int j = 0; j < n; ++j) {
+        clear_container_payloads(refl->MutableRepeatedMessage(problem, field, j));
+      }
+    } else if (is_stripped_payload(field, false)) {
+      refl->ClearField(problem, field);
+    }
+  }
 }
 
 // =============================================================================
@@ -177,6 +259,9 @@ std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
 // Explicit template instantiations
 #if CUOPT_INSTANTIATE_FLOAT
 template CUOPT_EXPORT void map_problem_to_proto(
+  const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
+  cuopt::remote::OptimizationProblem* pb_problem);
+template CUOPT_EXPORT void map_problem_scalars_to_proto(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   cuopt::remote::OptimizationProblem* pb_problem);
 template CUOPT_EXPORT void map_proto_to_problem(
@@ -202,6 +287,11 @@ template CUOPT_EXPORT void map_chunked_arrays_to_problem(
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
   const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
   cpu_optimization_problem_t<int32_t, float>& cpu_problem);
+template CUOPT_EXPORT void map_proto_to_problem(
+  const cuopt::remote::OptimizationProblem& problem,
+  const std::map<int32_t, std::vector<uint8_t>>& arrays,
+  const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
+  cpu_optimization_problem_t<int32_t, float>& cpu_problem);
 template CUOPT_EXPORT std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
   const cpu_optimization_problem_t<int32_t, float>& problem,
   const std::string& upload_id,
@@ -210,6 +300,9 @@ template CUOPT_EXPORT std::vector<cuopt::remote::SendArrayChunkRequest> build_ar
 
 #if CUOPT_INSTANTIATE_DOUBLE
 template CUOPT_EXPORT void map_problem_to_proto(
+  const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
+  cuopt::remote::OptimizationProblem* pb_problem);
+template CUOPT_EXPORT void map_problem_scalars_to_proto(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   cuopt::remote::OptimizationProblem* pb_problem);
 template CUOPT_EXPORT void map_proto_to_problem(
@@ -232,6 +325,11 @@ template CUOPT_EXPORT void map_chunked_header_to_problem(
   cpu_optimization_problem_t<int32_t, double>& cpu_problem);
 template CUOPT_EXPORT void map_chunked_arrays_to_problem(
   const cuopt::remote::ChunkedProblemHeader& header,
+  const std::map<int32_t, std::vector<uint8_t>>& arrays,
+  const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
+  cpu_optimization_problem_t<int32_t, double>& cpu_problem);
+template CUOPT_EXPORT void map_proto_to_problem(
+  const cuopt::remote::OptimizationProblem& problem,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
   const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
   cpu_optimization_problem_t<int32_t, double>& cpu_problem);

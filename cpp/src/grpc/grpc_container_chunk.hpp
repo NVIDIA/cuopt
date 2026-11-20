@@ -14,16 +14,14 @@
 
 namespace cuopt::mathematical_optimization {
 
-// Like chunk_typed_array, but stamps each chunk with (container_field_num, container_index,
-// container-relative field_id) so the server can rebuild one entry of a repeated_messages field.
-template <typename T>
-void chunk_container_typed_array(std::vector<cuopt::remote::SendArrayChunkRequest>& out,
-                                 int32_t container_field_num,
-                                 int32_t container_index,
-                                 int32_t field_id,
-                                 const std::vector<T>& data,
-                                 const std::string& upload_id,
-                                 int64_t chunk_data_budget)
+// FieldId is ArrayFieldId for LP/MIP top-level arrays and int32_t for routing
+// arrays, whose ids are not all members of ArrayFieldId.
+template <typename T, typename FieldId>
+void chunk_typed_array(std::vector<cuopt::remote::SendArrayChunkRequest>& out,
+                       FieldId field_id,
+                       const std::vector<T>& data,
+                       const std::string& upload_id,
+                       int64_t chunk_data_budget)
 {
   if (data.empty()) return;
 
@@ -47,9 +45,37 @@ void chunk_container_typed_array(std::vector<cuopt::remote::SendArrayChunkReques
     ac->set_element_offset(offset);
     ac->set_total_elements(total_elements);
     ac->set_data(raw + byte_offset, byte_count);
+    out.push_back(std::move(req));
+  }
+}
+
+template <typename T>
+void chunk_top_level_typed_array(std::vector<cuopt::remote::SendArrayChunkRequest>& out,
+                                 int32_t field_id,
+                                 const std::vector<T>& data,
+                                 const std::string& upload_id,
+                                 int64_t chunk_data_budget)
+{
+  chunk_typed_array(out, field_id, data, upload_id, chunk_data_budget);
+}
+
+// Stamps each chunk with (container_field_num, container_index, container-relative field_id)
+// so the server can rebuild one entry of a repeated message.
+template <typename T>
+void chunk_container_typed_array(std::vector<cuopt::remote::SendArrayChunkRequest>& out,
+                                 int32_t container_field_num,
+                                 int32_t container_index,
+                                 int32_t field_id,
+                                 const std::vector<T>& data,
+                                 const std::string& upload_id,
+                                 int64_t chunk_data_budget)
+{
+  const size_t first = out.size();
+  chunk_typed_array(out, field_id, data, upload_id, chunk_data_budget);
+  for (size_t i = first; i < out.size(); ++i) {
+    auto* ac = out[i].mutable_chunk();
     ac->set_container_field_num(container_field_num);
     ac->set_container_index(container_index);
-    out.push_back(std::move(req));
   }
 }
 

@@ -17,6 +17,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
+#include "grpc_job_queue.hpp"
 #include "grpc_problem_mapper.hpp"
 #include "grpc_server_logger.hpp"
 #include "grpc_settings_mapper.hpp"
@@ -82,19 +83,6 @@ void copy_cstr(char (&dst)[N], const char* src)
 {
   std::snprintf(dst, N, "%s", src ? src : "");
 }
-
-struct JobQueueEntry {
-  char job_id[64];
-  uint32_t problem_category;      // cuopt::remote::ProblemCategory (LP, MIP, ...)
-  uint64_t data_size;             // Size of problem data (uint64 for large problems)
-  std::atomic<bool> ready;        // Job is ready to be processed
-  std::atomic<bool> claimed;      // Worker has claimed this job
-  std::atomic<pid_t> worker_pid;  // PID of worker that claimed this job (0 if none)
-  std::atomic<bool> cancelled;    // Job has been cancelled (worker should skip)
-  std::atomic<int> worker_index;  // Index of worker that claimed this job (-1 if none)
-  std::atomic<bool> data_sent;    // Server has sent data to worker's pipe
-  std::atomic<bool> is_chunked;   // True when data is in pending_chunked_data (streamed to pipe)
-};
 
 enum ResultStatus : uint32_t {
   RESULT_SUCCESS   = 0,
@@ -205,7 +193,9 @@ static constexpr int kSessionTimeoutSeconds = 300;
 
 struct ChunkedUploadState {
   uint32_t problem_category = cuopt::remote::LP;
+  bool unified              = false;
   cuopt::remote::ChunkedProblemHeader header;
+  cuopt::remote::SubmitJobRequest job;
   struct FieldMeta {
     int64_t total_elements = 0;
     int64_t element_size   = 0;
@@ -227,7 +217,9 @@ struct ChunkedUploadState {
 
 // Holds header + chunks for a chunked upload, ready to stream to the worker pipe.
 struct PendingChunkedUpload {
+  bool unified = false;
   cuopt::remote::ChunkedProblemHeader header;
+  cuopt::remote::SubmitJobRequest job;
   std::vector<cuopt::remote::ArrayChunk> chunks;
 };
 
@@ -247,6 +239,12 @@ inline std::mutex waiters_mutex;
 inline JobQueueEntry* job_queue       = nullptr;
 inline ResultQueueEntry* result_queue = nullptr;
 inline SharedMemoryControl* shm_ctrl  = nullptr;
+// Parent-process only: assigns enqueue_seq when accepting a job. Starts at 1 so
+// 0 remains the sentinel for free/reset slots. job_enqueue_mutex is held from
+// the ticket assignment until ready is published, so a later ticket cannot
+// become visible before an earlier one.
+inline std::atomic<uint64_t> next_job_enqueue_seq{1};
+inline std::mutex job_enqueue_mutex;
 // Per-slot ready flags: child sets after CUDA/RMM init and the startup GPU
 // probe. Parent clears before a respawn and waits for the new child to publish.
 // Sized to config.num_workers; do not use active_workers (SIGKILL leaves it stale).

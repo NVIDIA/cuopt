@@ -16,8 +16,8 @@
 #include <mip_heuristics/feasibility_jump/cpu/state.hpp>
 #include <mip_heuristics/feasibility_jump/cpu/tuning.hpp>
 #include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
-#include <mip_heuristics/presolve/probing_cache.hpp>
 #include <mip_heuristics/utils.hpp>
+#include <presolve/probing_cache.hpp>
 
 #include <utilities/pcgenerator.hpp>
 #include <utilities/seed_generator.cuh>

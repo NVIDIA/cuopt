@@ -17,7 +17,6 @@
 #   --time-limit  : Time limit in seconds for each problem (default: 360)
 #   --output-dir  : Directory to store output log files (default: current directory)
 #   --relaxation  : Run relaxation instead of solving the MIP
-#   --mip-heuristics-only : Run mip heuristics only
 #   --write-log-file : Write log file
 #   --num-cpu-threads : Number of CPU threads to use
 #   --presolve : Enable presolve (default: true for MIP problems, false for LP problems)
@@ -68,7 +67,6 @@ Optional Arguments:
     --time-limit N      Time limit in seconds for each problem (default: 360)
     --output-dir PATH   Directory to store output log files (default: current directory)
     --relaxation       Run relaxation instead of solving the MIP
-    --mip-heuristics-only  Run mip heuristics only
     --write-log-file   Write log file
     --num-cpu-threads  Number of CPU threads to use
     --presolve         Enable presolve (default: true for MIP problems, false for LP problems)
@@ -147,11 +145,6 @@ while [[ $# -gt 0 ]]; do
             RELAXATION=true
             shift
             ;;
-        --mip-heuristics-only)
-            echo "MIP_HEURISTICS_ONLY: true"
-            MIP_HEURISTICS_ONLY=true
-            shift
-            ;;
         --write-log-file)
             echo "WRITE_LOG_FILE: true"
             WRITE_LOG_FILE=true
@@ -227,7 +220,6 @@ GPUS_PER_INSTANCE=${GPUS_PER_INSTANCE:-1}
 TIME_LIMIT=${TIME_LIMIT:-360}
 OUTPUT_DIR=${OUTPUT_DIR:-.}
 RELAXATION=${RELAXATION:-false}
-MIP_HEURISTICS_ONLY=${MIP_HEURISTICS_ONLY:-false}
 WRITE_LOG_FILE=${WRITE_LOG_FILE:-false}
 NUM_CPU_THREADS=${NUM_CPU_THREADS:--1}
 BATCH_NUM=${BATCH_NUM:-0}
@@ -429,9 +421,6 @@ worker() {
         fi
         if [ -n "$NUM_CPU_THREADS" ]; then
             args="$args --num-cpu-threads $NUM_CPU_THREADS"
-        fi
-        if [ "$MIP_HEURISTICS_ONLY" = true ]; then
-            args="$args --mip-heuristics-only true"
         fi
         if [ "$WRITE_LOG_FILE" = true ]; then
             args="$args --log-file $OUTPUT_DIR/$(basename "${mps_file%.mps}").log"

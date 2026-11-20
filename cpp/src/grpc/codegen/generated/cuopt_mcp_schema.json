@@ -219,11 +219,6 @@
           "type": "boolean",
           "description": "Whether the solver writes log output to the console. Logs may still be written to a file when this is false. Default: true."
         },
-        "heuristics_only": {
-          "type": "boolean",
-          "description": "When true only the GPU heuristics run, improving the primal bound alone. When false both GPU and CPU are used and the dual bound is improved on the CPU. Default: false.",
-          "x-parameter-name": "mip_heuristics_only"
-        },
         "num_cpu_threads": {
           "type": "integer",
           "description": "Number of CPU threads used by the MIP solver. Lower values cap cuOpt's CPU footprint; higher values speed up the CPU-parallel parts. -1 derives the count from the number of CPU cores. Default: -1 (automatic)."
@@ -366,21 +361,6 @@
           "type": "number",
           "description": "Hard cap in seconds on the root LP solve. Default: 15.0.",
           "x-parameter-name": "mip_hyper_heuristic_root_lp_max_time"
-        },
-        "rins_time_limit": {
-          "type": "number",
-          "description": "Per-call time budget in seconds for the RINS sub-MIP. Default: 3.0.",
-          "x-parameter-name": "mip_hyper_heuristic_rins_time_limit"
-        },
-        "rins_max_time_limit": {
-          "type": "number",
-          "description": "Ceiling in seconds on the adaptive RINS time budget. Default: 20.0.",
-          "x-parameter-name": "mip_hyper_heuristic_rins_max_time_limit"
-        },
-        "rins_fix_rate": {
-          "type": "number",
-          "description": "Fraction of variables RINS fixes before solving the sub-MIP. Default: 0.5.",
-          "x-parameter-name": "mip_hyper_heuristic_rins_fix_rate"
         },
         "stagnation_trigger": {
           "type": "integer",

@@ -23,9 +23,14 @@
 // may silently cap this to /proc/sys/fs/pipe-max-size.
 static constexpr int kPipeBufferSize = 1024 * 1024;
 
-static constexpr uint64_t kMaxPipeArrayBytes       = 4ULL * 1024 * 1024 * 1024;
-static constexpr uint32_t kMaxPipeArrayFields      = 10000;
-static constexpr uint32_t kMaxProtobufMessageBytes = 64 * 1024 * 1024;  // 64 MiB
+static constexpr uint64_t kMaxPipeArrayBytes  = 4ULL * 1024 * 1024 * 1024;
+static constexpr uint32_t kMaxPipeArrayFields = 10000;
+// Not a problem-size cap. The worker pipe is inside the server; gRPC ingest
+// (the configured max message size) is where an upload is limited. This bound
+// is only what SerializeToArray / ParseFromArray accept: their size argument
+// is an int. A header gRPC has already accepted fits.
+static constexpr uint32_t kMaxProtobufMessageBytes =
+  static_cast<uint32_t>(std::numeric_limits<int>::max());
 
 // Container arrays count every per-entry array inside every repeated nested
 // message (e.g., 5 arrays per QuadraticConstraint row), so the cap must scale
@@ -68,7 +73,7 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
 }
 
 // =============================================================================
-// Chunked request: server → worker pipe (ChunkedProblemHeader + raw arrays)
+// Chunked request: server → worker pipe (header protobuf + raw arrays)
 //
 // Wire format (protobuf header + raw byte arrays):
 //   [uint32 hdr_size][protobuf header bytes]
@@ -79,8 +84,9 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
 //     [int32 container_field_num][int32 container_index]
 //     [int32 field_id][uint64 total_bytes][raw bytes...]
 //
-// The protobuf ChunkedProblemHeader carries all metadata (settings,
-// scalars, string arrays, and per-entry scalars for repeated_messages).
+// The header is a ChunkedProblemHeader on the legacy path and a
+// SubmitJobRequest on the unified path. Either one carries metadata
+// (settings, scalars, and per-entry scalars for repeated messages).
 // Numeric arrays — both top-level and per-container — bypass protobuf
 // serialization and flow directly through the pipe as raw bytes.
 //
@@ -222,12 +228,20 @@ inline bool assemble_and_write_field_payload(int fd, const FieldChunks& fi)
 // caller flooded with malformed requests can safely fail-fast without
 // disturbing the (otherwise healthy) worker process — only PipeFailed should
 // trigger worker teardown.
+// `Header` is ChunkedProblemHeader (legacy) or SubmitJobRequest (unified).
+// The array framing after the protobuf is the same for both.
+template <typename Header>
 inline PipeWriteStatus write_chunked_request_to_pipe(
-  int fd,
-  const cuopt::remote::ChunkedProblemHeader& header,
-  const std::vector<cuopt::remote::ArrayChunk>& chunks)
+  int fd, const Header& header, const std::vector<cuopt::remote::ArrayChunk>& chunks)
 {
   // -------- Phase 1: bin chunks per field and validate (no pipe I/O) --------
+  // A header protobuf larger than SerializeToArray can emit cannot be framed.
+  // Reject it before any pipe I/O so the worker is not torn down. This is the
+  // int serialization limit, not a problem-size cap; gRPC ingest enforces that.
+  if (header.ByteSizeLong() > kMaxProtobufMessageBytes) {
+    return PipeWriteStatus::ValidationFailed;
+  }
+
   std::map<int32_t, detail::FieldChunks> top_fields;
   std::map<cuopt::mathematical_optimization::container_array_key_t, detail::FieldChunks>
     container_fields;
@@ -337,9 +351,10 @@ inline PipeWriteStatus write_chunked_request_to_pipe(
   return PipeWriteStatus::Success;
 }
 
+template <typename Header>
 inline bool read_chunked_request_from_pipe(
   int fd,
-  cuopt::remote::ChunkedProblemHeader& header_out,
+  Header& header_out,
   std::map<int32_t, std::vector<uint8_t>>& arrays_out,
   std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>&
     container_arrays_out)

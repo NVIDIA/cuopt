@@ -40,7 +40,6 @@ These constants configure MIP-specific solver behavior. Use them with :c:func:`c
 .. doxygendefine:: CUOPT_MIP_ABSOLUTE_GAP
 .. doxygendefine:: CUOPT_MIP_RELATIVE_GAP
 .. doxygendefine:: CUOPT_MIP_SCALING
-.. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
 .. doxygendefine:: CUOPT_MIP_PRESOLVE
 .. doxygendefine:: CUOPT_MIP_DETERMINISM_MODE
 .. doxygendefine:: CUOPT_MIP_SYMMETRY
@@ -78,3 +77,12 @@ These constants are used to configure `CUOPT_MIP_DETERMINISM_MODE` via :c:func:`
 
 .. doxygendefine:: CUOPT_MODE_OPPORTUNISTIC
 .. doxygendefine:: CUOPT_MODE_DETERMINISTIC
+
+MIP Scaling Constants
+---------------------
+
+These constants are used to configure `CUOPT_MIP_SCALING` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_MIP_SCALING_OFF
+.. doxygendefine:: CUOPT_MIP_SCALING_ON
+.. doxygendefine:: CUOPT_MIP_SCALING_NO_OBJECTIVE

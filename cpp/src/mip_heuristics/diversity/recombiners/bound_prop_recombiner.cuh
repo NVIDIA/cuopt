@@ -10,6 +10,7 @@
 #include "recombiner.cuh"
 
 #include <thrust/pair.h>
+#include <thrust/random.h>
 #include <mip_heuristics/local_search/rounding/constraint_prop.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>

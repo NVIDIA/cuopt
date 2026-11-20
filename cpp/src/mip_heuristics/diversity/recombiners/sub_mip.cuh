@@ -16,6 +16,8 @@
 #include <math_optimization/tic_toc.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 
+#include <thrust/random.h>
+
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
@@ -113,8 +115,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.clique_cuts                              = 0;
       branch_and_bound_settings.zero_half_cuts                           = 0;
       branch_and_bound_settings.inside_submip                            = 1;
-      branch_and_bound_settings.submip_settings.rins                     = 0;
-      branch_and_bound_settings.submip_settings.rens                     = 0;
+      branch_and_bound_settings.mip_hyper_params.submip_rins             = 0;
+      branch_and_bound_settings.mip_hyper_params.submip_rens             = 0;
       branch_and_bound_settings.strong_branching_simplex_iteration_limit = 200;
       branch_and_bound_settings.solution_callback = [this](std::vector<f_t>& solution,
                                                            f_t objective) {

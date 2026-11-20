@@ -11,10 +11,10 @@
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
+#include <presolve/trivial_presolve.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 

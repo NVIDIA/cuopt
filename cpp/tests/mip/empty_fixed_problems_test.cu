@@ -9,10 +9,10 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
+#include <presolve/trivial_presolve.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -80,7 +80,7 @@ TEST(mip_solve, empty_max_problem_with_objective_test)
 
 TEST(mip_solve, mip_presolved_to_lp)
 {
-  auto [termination_status, obj_val, lb] = test_mps_file("mip/mip-presolved-to-lp.mps", 5, false);
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/mip-presolved-to-lp.mps", 5);
   EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
   EXPECT_NEAR(obj_val, 0, 1e-5);
 }

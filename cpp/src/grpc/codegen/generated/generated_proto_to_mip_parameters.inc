@@ -23,7 +23,6 @@
   if (pb_settings.has_log_to_console()) {
     settings.set_parameter("log_to_console", pb_settings.log_to_console());
   }
-  settings.set_parameter("mip_heuristics_only", pb_settings.heuristics_only());
   if (pb_settings.has_num_cpu_threads()) {
     settings.set_parameter("num_cpu_threads", static_cast<i_t>(pb_settings.num_cpu_threads()));
   }
@@ -109,15 +108,6 @@
   }
   if (pb_settings.has_root_lp_max_time()) {
     settings.set_parameter("mip_hyper_heuristic_root_lp_max_time", static_cast<f_t>(pb_settings.root_lp_max_time()));
-  }
-  if (pb_settings.has_rins_time_limit()) {
-    settings.set_parameter("mip_hyper_heuristic_rins_time_limit", static_cast<f_t>(pb_settings.rins_time_limit()));
-  }
-  if (pb_settings.has_rins_max_time_limit()) {
-    settings.set_parameter("mip_hyper_heuristic_rins_max_time_limit", static_cast<f_t>(pb_settings.rins_max_time_limit()));
-  }
-  if (pb_settings.has_rins_fix_rate()) {
-    settings.set_parameter("mip_hyper_heuristic_rins_fix_rate", static_cast<f_t>(pb_settings.rins_fix_rate()));
   }
   if (pb_settings.has_stagnation_trigger()) {
     settings.set_parameter("mip_hyper_heuristic_stagnation_trigger", static_cast<i_t>(pb_settings.stagnation_trigger()));
