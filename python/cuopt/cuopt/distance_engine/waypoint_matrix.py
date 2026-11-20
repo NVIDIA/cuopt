@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from cuopt.distance_engine import waypoint_matrix_wrapper
@@ -44,10 +44,10 @@ class WaypointMatrix(waypoint_matrix_wrapper.WaypointMatrix):
             raise ValueError("""Shape of offsets needs to be of length 1""")
 
         if len(indices.shape) != 1:
-            raise ValueError("""Shape of offsets needs to be of length 1""")
+            raise ValueError("""Shape of indices needs to be of length 1""")
 
         if len(weights.shape) != 1:
-            raise ValueError("""Shape of offsets needs to be of length 1""")
+            raise ValueError("""Shape of weights needs to be of length 1""")
 
         if offsets.shape[0] <= 0:
             raise ValueError("""Offsets length must be positive""")
@@ -332,7 +332,7 @@ class WaypointMatrix(waypoint_matrix_wrapper.WaypointMatrix):
             raise ValueError("""Target_locations length must be positive""")
 
         if len(weights.shape) != 1:
-            raise ValueError("""Shape of offsets needs to be of length 1""")
+            raise ValueError("""Shape of weights needs to be of length 1""")
 
         if weights.shape[0] <= 0:
             raise ValueError("""Weights length must be positive""")

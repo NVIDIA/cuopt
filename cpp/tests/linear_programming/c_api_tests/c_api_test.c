@@ -846,7 +846,7 @@ int check_problem(cuOptOptimizationProblem problem,
   }
   for (cuopt_int_t i = 0; i < num_constraints; i++) {
     if (check_constraint_sense[i] != constraint_sense[i]) {
-      printf("Error: expected constraint sense %c to be %c, but got %c\n",
+      printf("Error: expected constraint sense %d to be %c, but got %c\n",
              i,
              constraint_sense[i],
              check_constraint_sense[i]);
@@ -1359,7 +1359,6 @@ cuopt_int_t test_invalid_bounds(cuopt_int_t test_mip)
   cuopt_int_t status;
   cuopt_float_t time;
   cuopt_int_t termination_status;
-  cuopt_float_t objective_value;
 
   printf("Testing invalid bounds scenario (MOI wrapper issue)...\n");
   printf("Problem: Binary variable with bounds 1.0 <= x <= 0.0 (INVALID!)\n");
@@ -1425,38 +1424,7 @@ cuopt_int_t test_invalid_bounds(cuopt_int_t test_mip)
   } else {
     printf("✓ Problem found infeasible as expected\n");
     status = CUOPT_SUCCESS;
-    goto DONE;
   }
-
-  status = cuOptGetObjectiveValue(solution, &objective_value);
-  if (status != CUOPT_SUCCESS) {
-    printf("Error getting objective value: %d\n", status);
-    goto DONE;
-  }
-
-  // Print results
-  printf("\nResults:\n");
-  printf("--------\n");
-  printf("Termination status: %s (%d)\n",
-         termination_status_to_string(termination_status),
-         termination_status);
-  printf("Solve time: %f seconds\n", time);
-  printf("Objective value: %f\n", objective_value);
-
-  // Get and print solution variables
-  cuopt_float_t* solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
-  status                         = cuOptGetPrimalSolution(solution, solution_values);
-  if (status != CUOPT_SUCCESS) {
-    printf("Error getting solution values: %d\n", status);
-    free(solution_values);
-    goto DONE;
-  }
-
-  printf("\nSolution: \n");
-  for (cuopt_int_t i = 0; i < num_variables; i++) {
-    printf("x%d = %f\n", i + 1, solution_values[i]);
-  }
-  free(solution_values);
 
 DONE:
   cuOptDestroyProblem(&problem);
