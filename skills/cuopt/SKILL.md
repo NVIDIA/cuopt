@@ -28,7 +28,8 @@ metadata:
 | REST server | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/ |
 | FAQ | https://docs.nvidia.com/cuopt/user-guide/latest/faq.html |
 
-If a documentation URL carries a version number, replace it with `latest`.
+These pages track the newest release — check `cuopt.__version__` when a setting's default or
+range matters.
 
 With no network access, read from the installed package — `solver_parameters` has every
 parameter name and `help()` gives signatures — or, inside the repo, from
