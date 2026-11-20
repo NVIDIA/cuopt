@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <dual_simplex/bound_flipping_ratio_test.hpp>
+#include <dual_simplex/farkas_certificate.hpp>
 
 #include <math_optimization/tic_toc.hpp>
 
@@ -26,7 +27,8 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
   f_t pivot_tol          = settings_.pivot_tol;
   const f_t dual_tol     = settings_.dual_tol / 10;
 
-  i_t idx = 0;
+  i_t idx                    = 0;
+  bool checked_infeasibility = false;
   while (idx == 0 && pivot_tol >= 1e-12) {
     // Loop over the nonbasic variables j with non-zero delta_z
     const i_t nz = delta_z_indices_.size();
@@ -51,6 +53,25 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
     }
     work_estimate_ += 5 * nz + 5 * idx;
     pivot_tol /= 10;
+    if (idx == 0 && !checked_infeasibility) {
+      checked_infeasibility = true;
+      std::vector<f_t> delta_y;
+      delta_y_.to_dense(delta_y);
+      work_estimate_ += delta_y.size();
+      std::vector<f_t> farkas_y, farkas_zl, farkas_zu;
+      f_t farkas_constant;
+      if (compute_farkas_certificate(lp_,
+                                     settings_,
+                                     delta_y,
+                                     delta_z_,
+                                     farkas_y,
+                                     farkas_zl,
+                                     farkas_zu,
+                                     farkas_constant,
+                                     work_estimate_)) {
+        return RATIO_TEST_PRIMAL_INFEASIBLE;
+      }
+    }
   }
   return idx;
 }
@@ -185,6 +206,10 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   std::vector<f_t> harris_ratios(nz);
   work_estimate_ += 3 * nz;
   i_t num_breakpoints = compute_breakpoints(indicies, ratios, harris_ratios);
+  if (num_breakpoints == RATIO_TEST_PRIMAL_INFEASIBLE) {
+    nonbasic_entering = -1;
+    return RATIO_TEST_PRIMAL_INFEASIBLE;
+  }
   work_estimate_ += 2 * num_breakpoints;
   if constexpr (verbose) { settings_.log.printf("Initial breakpoints %d\n", num_breakpoints); }
   if (num_breakpoints == 0) {
