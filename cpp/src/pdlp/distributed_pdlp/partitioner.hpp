@@ -32,6 +32,9 @@ struct partitioner_input_t {
   // Number of CPU threads the partitioner may use. Only honored by the
   // multi-threaded KaMinPar backend. <= 0 means "auto"
   i_t nb_threads{0};
+  // Knob balancing the importance of the nnz repartition vs the row/col repartition in mPDLP.
+  // The higher the value, the more weight is given to the nnz repartition.
+  f_t nnz_weight{f_t(1.0)};
   // Constraint matrix A (rows = constraints, cols = variables).
   csr_host_view_t<i_t, f_t> A{};
   // Transpose A_t (rows = variables, cols = constraints)
