@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cuopt/logger_macros.hpp>
 #include <iostream>
 #include <limits>
@@ -104,11 +105,19 @@ static void remove_variables_from_Q(csr_matrix_t<i_t, f_t>& Q,
 // into a row goes through scatter, which indexes one row at a time; substitution keeps
 // updating the same target row, so that row stays resident and each update costs
 // O(pivot nonzeros). Re-scattering per elimination is quadratic when one row is dense.
+//
+// Rows that are long relative to the column count get their own permanent column -> offset
+// map instead. A free column incident to many dense rows would otherwise evict and re-scatter
+// a dense row on every probe, which costs O(dense row length) per incident entry.
 template <typename i_t, typename f_t>
 struct substitution_matrix_t {
   // Rows at or below this length are searched directly, so glancing at a short row does not
   // evict a long resident one.
   static constexpr i_t scan_limit = 16;
+  // A row is pinned when its length is at least num_cols / pin_ratio, so the pinned maps
+  // never exceed pin_ratio times the nonzeros; max_pinned_entries caps them absolutely.
+  static constexpr i_t pin_ratio            = 16;
+  static constexpr int64_t max_pinned_entries = int64_t{1} << 26;
 
   i_t num_rows = 0;
   i_t num_cols = 0;
@@ -124,8 +133,12 @@ struct substitution_matrix_t {
   std::vector<i_t> col_len;
   std::vector<i_t> col_cap;
   std::vector<i_t> scatter;  // column -> offset within the resident row, -1 when absent
+  std::vector<i_t> pinned_slot;     // row -> slot in pinned_offsets, -1 when not pinned
+  std::vector<i_t> pinned_offsets;  // per pinned row, column -> offset, -1 when absent
   std::vector<f_t> row_max;  // inf-norm of each row, kept up to date on insert/erase/set
   i_t scattered = -1;
+  // Offset map of the resident row: scatter for an unpinned row, its own map when pinned.
+  i_t* offsets = nullptr;
   // Arena high-water marks. A line that outgrows its slot is relocated to the tail with
   // twice the capacity, so appends are amortized O(1); the holes left behind are reclaimed
   // by a compaction once they outweigh the live entries.
@@ -190,6 +203,40 @@ struct substitution_matrix_t {
     for (i_t i = 0; i < num_rows; ++i) {
       recompute_row_max(i);
     }
+    pin_long_rows();
+  }
+
+  void pin_long_rows()
+  {
+    pinned_slot.assign(num_rows, -1);
+    pinned_offsets.clear();
+    if (num_cols == 0) { return; }
+    const i_t pin_len = std::max<i_t>(scan_limit + 1, num_cols / pin_ratio);
+    std::vector<i_t> long_rows;
+    for (i_t i = 0; i < num_rows; ++i) {
+      if (row_len[i] >= pin_len) { long_rows.push_back(i); }
+    }
+    if (long_rows.empty()) { return; }
+    std::stable_sort(long_rows.begin(), long_rows.end(), [this](i_t a, i_t b) {
+      return row_len[a] > row_len[b];
+    });
+    const int64_t max_rows = max_pinned_entries / num_cols;
+    if (static_cast<int64_t>(long_rows.size()) > max_rows) { long_rows.resize(max_rows); }
+    pinned_offsets.assign(long_rows.size() * static_cast<size_t>(num_cols), -1);
+    for (size_t slot = 0; slot < long_rows.size(); ++slot) {
+      const i_t i     = long_rows[slot];
+      pinned_slot[i]  = static_cast<i_t>(slot);
+      i_t* map        = pinned_map(i);
+      const i_t start = row_start[i];
+      for (i_t k = 0; k < row_len[i]; ++k) {
+        map[row_col[start + k]] = k;
+      }
+    }
+  }
+
+  i_t* pinned_map(i_t i)
+  {
+    return pinned_offsets.data() + static_cast<size_t>(pinned_slot[i]) * num_cols;
   }
 
   i_t column(i_t i, i_t offset) const { return row_col[row_start[i] + offset]; }
@@ -219,23 +266,32 @@ struct substitution_matrix_t {
     }
   }
 
+  // A pinned row's map stays valid when it stops being resident, so only scatter is cleared.
   void unload()
   {
     if (scattered == -1) { return; }
-    const i_t start = row_start[scattered];
-    for (i_t k = 0; k < row_len[scattered]; ++k) {
-      scatter[row_col[start + k]] = -1;
+    if (pinned_slot[scattered] == -1) {
+      const i_t start = row_start[scattered];
+      for (i_t k = 0; k < row_len[scattered]; ++k) {
+        scatter[row_col[start + k]] = -1;
+      }
     }
     scattered = -1;
+    offsets   = nullptr;
   }
 
   void load(i_t i)
   {
     if (scattered == i) { return; }
     unload();
-    const i_t start = row_start[i];
-    for (i_t k = 0; k < row_len[i]; ++k) {
-      scatter[row_col[start + k]] = k;
+    if (pinned_slot[i] != -1) {
+      offsets = pinned_map(i);
+    } else {
+      const i_t start = row_start[i];
+      for (i_t k = 0; k < row_len[i]; ++k) {
+        scatter[row_col[start + k]] = k;
+      }
+      offsets = scatter.data();
     }
     scattered = i;
   }
@@ -252,10 +308,11 @@ struct substitution_matrix_t {
   // Offset of (i, col) within row i, or -1 when absent.
   i_t find(i_t i, i_t col)
   {
-    if (scattered == i) { return scatter[col]; }
+    if (scattered == i) { return offsets[col]; }
+    if (pinned_slot[i] != -1) { return pinned_map(i)[col]; }
     if (row_len[i] <= scan_limit) { return scan(i, col); }
     load(i);
-    return scatter[col];
+    return offsets[col];
   }
 
   // erase and insert both require row i to be resident.
@@ -264,11 +321,11 @@ struct substitution_matrix_t {
     const i_t start                  = row_start[i];
     const i_t last                   = row_len[i] - 1;
     const f_t old_abs                = std::abs(row_val[start + offset]);
-    scatter[row_col[start + offset]] = -1;
+    offsets[row_col[start + offset]] = -1;
     if (offset != last) {
       row_col[start + offset]          = row_col[start + last];
       row_val[start + offset]          = row_val[start + last];
-      scatter[row_col[start + offset]] = offset;
+      offsets[row_col[start + offset]] = offset;
     }
     row_len[i] = last;
     if (old_abs == row_max[i]) { recompute_row_max(i); }
@@ -280,7 +337,7 @@ struct substitution_matrix_t {
     const i_t offset               = row_len[i];
     row_col[row_start[i] + offset] = col;
     row_val[row_start[i] + offset] = value;
-    scatter[col]                   = offset;
+    offsets[col]                   = offset;
     row_len[i]                     = offset + 1;
     row_max[i]                     = std::max(row_max[i], std::abs(value));
     reserve_col(col);
@@ -506,14 +563,15 @@ static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
     // Integrator chains have a sparse pivot and degree 2, so they clear this easily; the
     // dense equalities of a converted QCQP do not, and aggregating those is what densified A
     // and stalled the barrier.
-    i_t added = 0;
+    const i_t removed = pivot_len + static_cast<i_t>(incident.size()) - 1;
+    i_t added         = 0;
     for (const i_t i : incident) {
       if (i == pivot) { continue; }
       for (const i_t col : elimination.columns) {
-        if (matrix.find(i, col) == -1) { ++added; }
+        if (matrix.find(i, col) == -1 && ++added > removed) { break; }
       }
+      if (added > removed) { break; }
     }
-    const i_t removed = pivot_len + static_cast<i_t>(incident.size()) - 1;
     if (added > removed) { continue; }
 
     elimination.pivot_row         = pivot;
@@ -523,14 +581,14 @@ static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
     for (const i_t i : incident) {
       if (i == pivot) { continue; }
       matrix.load(i);
-      const i_t j_offset = matrix.scatter[j];
+      const i_t j_offset = matrix.offsets[j];
       if (j_offset == -1) { continue; }
       const f_t factor = matrix.value(i, j_offset) / pivot_coefficient;
       matrix.erase(i, j_offset);
       for (size_t k = 0; k < elimination.columns.size(); ++k) {
         const i_t col       = elimination.columns[k];
         const f_t delta     = factor * elimination.coefficients[k];
-        const i_t offset    = matrix.scatter[col];
+        const i_t offset    = matrix.offsets[col];
         const f_t old_value = offset == -1 ? f_t{0} : matrix.value(i, offset);
         const f_t new_value = old_value - delta;
         const f_t drop_tol  = f_t{100} * std::numeric_limits<f_t>::epsilon() *
