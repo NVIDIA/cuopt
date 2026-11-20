@@ -16,6 +16,8 @@
 #include <math_optimization/tic_toc.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 
+#include <thrust/random.h>
+
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
