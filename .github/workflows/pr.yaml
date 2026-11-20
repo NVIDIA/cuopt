@@ -747,7 +747,7 @@ jobs:
       build_type: pull-request
       run_codecov: false
       script: ci/test_python.sh
-      matrix_type: pull-request
+      matrix_type: python-3-15-pr,pull-request
   docs-build-matrix:
     permissions:
       contents: read
@@ -755,7 +755,7 @@ jobs:
     with:
       build_type: pull-request
       matrix_name: docs-build
-      matrix_type: pull-request
+      matrix_type: python-3-15-pr
   docs-build:
     needs: [docs-build-matrix, conda-python-build, changed-files]
     permissions:
@@ -1010,7 +1010,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
-      matrix_type: pull-request
+      matrix_type: python-3-15-pr,pull-request
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -1075,7 +1075,7 @@ jobs:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_test_filter }}
-      matrix_type: pull-request
+      matrix_type: python-3-15-pr,pull-request
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
