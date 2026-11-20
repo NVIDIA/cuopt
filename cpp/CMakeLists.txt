@@ -864,7 +864,7 @@ target_link_libraries(cuopt_client_objs
         rapids_logger::rapids_logger
         CCCL::CCCL
         # Header-only here, exactly like CCCL: the client sources transitively include
-        # <rmm/device_uvector.hpp> and <raft/core/device_span.hpp> via pdlp/solver_settings.hpp.
+        # <rmm/device_uvector.hpp> via pdlp/solver_settings.hpp, and raft headers (error.hpp).
         # No CUDA runtime is linked -- the device getters those headers declare only ever
         # throw -- but without these the build relies on conda happening to put the headers on
         # the default include path, and a CPM/fetched-rmm build fails to find them.
