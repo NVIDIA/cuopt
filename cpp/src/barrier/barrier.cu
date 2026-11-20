@@ -36,6 +36,13 @@
 
 #include <barrier/barrier_transform.hpp>
 
+// <cuda/std/algorithm.*.h> is available since CCCL 3.4.
+#include <cuda/version>
+#if CCCL_VERSION >= 3004000
+#include <cuda/std/algorithm.min.h>
+#else
+#include <cuda/std/algorithm>
+#endif
 #include <cuda/stream>
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_scalar.hpp>

@@ -14,6 +14,14 @@
 #include <pdlp/utilities/ping_pong_graph.cuh>
 #include <pdlp/utils.cuh>
 
+// <cuda/std/algorithm.*.h> is available since CCCL 3.4.
+#include <cuda/version>
+#if CCCL_VERSION >= 3004000
+#include <cuda/std/algorithm.max.h>
+#include <cuda/std/algorithm.min.h>
+#else
+#include <cuda/std/algorithm>
+#endif
 #include <cuda/stream>
 #include <raft/core/device_span.hpp>
 
