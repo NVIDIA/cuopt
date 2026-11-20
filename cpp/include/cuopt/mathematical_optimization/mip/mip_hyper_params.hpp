@@ -101,6 +101,11 @@ struct mip_hyper_params_t {
   // Limit of the total number of simplex iterations in B&B
   std::int64_t bnb_simplex_iteration_limit = std::numeric_limits<std::int64_t>::max();
 
+  // Also report the valid lower bound from PDLP's dual iterate every 1000 iterations while the
+  // root LP is solving (pdlp/dual_bound.cuh). The bound is always computed once from the dual the
+  // root LP returns; this adds the periodic evaluations and logs each improvement.
+  bool bnb_root_pdlp_dual_bound = false;
+
   // ---------------------------------------------------------------------------------------------
   // Diving
   // ---------------------------------------------------------------------------------------------

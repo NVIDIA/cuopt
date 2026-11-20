@@ -174,6 +174,9 @@
 #define CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING \
   "mip_hyper_presolve_indicator_strengthening"
 
+/* @brief Report the root PDLP dual bound every 1000 iterations while the root LP is solving */
+#define CUOPT_MIP_HYPER_ROOT_PDLP_DUAL_BOUND "mip_hyper_root_pdlp_dual_bound"
+
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
 

@@ -304,6 +304,8 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   }
 #endif
 
+  // root_lp_current_lower_bound_ is set here only: PDLP can report a root bound
+  // (set_root_lower_bound) before solve() starts, and a reset there would erase it.
   upper_bound_                 = inf;
   root_objective_              = std::numeric_limits<f_t>::quiet_NaN();
   root_lp_current_lower_bound_ = -inf;
@@ -329,8 +331,26 @@ f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
   } else if (std::isfinite(root_objective_)) {
     return root_objective_;
   } else {
-    return -inf;
+    // While the root LP is solving: the best valid bound a root solver reported so far
+    const f_t root_lower_bound = root_lp_current_lower_bound_.load(std::memory_order::relaxed);
+    return std::isfinite(root_lower_bound) ? root_lower_bound : -inf;
   }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::set_root_lower_bound(f_t lower_bound, bool from_pdlp)
+{
+  std::lock_guard<std::mutex> lock(root_lower_bound_mutex_);
+  // keep only an improvement (also rejects -inf and NaN)
+  if (!(lower_bound > root_lp_current_lower_bound_.load(std::memory_order::relaxed))) { return; }
+  root_lp_current_lower_bound_.store(lower_bound, std::memory_order::relaxed);
+  if (from_pdlp) {
+    settings_.log.printf("PDLP dual bound: %+.6e. Time %.2f\n",
+                         compute_user_objective(original_lp_, lower_bound),
+                         toc(exploration_stats_.start_time));
+  }
+  // Once the tree search runs, report() owns the user bound
+  if (!is_running_) { update_user_bound(original_lp_, lower_bound); }
 }
 
 template <typename i_t, typename f_t>
@@ -4104,7 +4124,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   log.log_prefix                      = settings_.log.log_prefix;
   solver_status_                      = mip_status_t::UNSET;
   is_running_                         = false;
-  root_lp_current_lower_bound_        = -inf;
   exploration_stats_.nodes_unexplored = 0;
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);
@@ -4200,8 +4219,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_settings.scale_columns                   = false;
   lp_settings.inside_root_node                = true;
   lp_settings.concurrent_halt                 = get_root_concurrent_halt();
-  lp_settings.dual_simplex_objective_callback = [this](f_t user_obj) {
-    root_lp_current_lower_bound_.store(user_obj, std::memory_order::relaxed);
+  lp_settings.dual_simplex_objective_callback = [this](f_t solver_obj) {
+    set_root_lower_bound(solver_obj, false);
   };
   std::vector<i_t> basic_list(original_lp_.num_rows);
   std::vector<i_t> nonbasic_list;
@@ -4284,7 +4303,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (root_status == lp_status_t::CONCURRENT_LIMIT) {
     solver_status_ = mip_status_t::HALT;
-    set_final_solution(solution, -inf);
+    // the best valid bound a root solver reported before it stopped
+    set_final_solution(solution, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
     return mip_status_t::HALT;
   }
 
@@ -4305,13 +4325,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (root_status == lp_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
-    set_final_solution(solution, -inf);
+    // the best valid bound a root solver reported before it stopped
+    set_final_solution(solution, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
     return solver_status_;
   }
 
   if (root_status == lp_status_t::WORK_LIMIT) {
     solver_status_ = mip_status_t::WORK_LIMIT;
-    set_final_solution(solution, -inf);
+    // the best valid bound a root solver reported before it stopped
+    set_final_solution(solution, root_lp_current_lower_bound_.load(std::memory_order::relaxed));
     return solver_status_;
   }
 
