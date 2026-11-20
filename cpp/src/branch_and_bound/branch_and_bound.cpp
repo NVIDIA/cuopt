@@ -304,6 +304,8 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   }
 #endif
 
+  // root_lp_current_lower_bound_ is set here only: PDLP can report a root bound
+  // (set_root_lower_bound) before solve() starts, and a reset there would erase it.
   upper_bound_                 = inf;
   root_objective_              = std::numeric_limits<f_t>::quiet_NaN();
   root_lp_current_lower_bound_ = -inf;
@@ -4122,7 +4124,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   log.log_prefix                      = settings_.log.log_prefix;
   solver_status_                      = mip_status_t::UNSET;
   is_running_                         = false;
-  root_lp_current_lower_bound_        = -inf;
   exploration_stats_.nodes_unexplored = 0;
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);
