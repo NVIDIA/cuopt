@@ -115,14 +115,20 @@ class base_solution_t {
 
 template <typename T>
 struct parameter_info_t {
-  parameter_info_t(
-    std::string_view param_name, T* value, T min, T max, T def, const char* description = "")
+  parameter_info_t(std::string_view param_name,
+                   T* value,
+                   T min,
+                   T max,
+                   T def,
+                   const char* description = "",
+                   bool deprecated         = false)
     : param_name(param_name),
       value_ptr(value),
       min_value(min),
       max_value(max),
       default_value(def),
-      description(description)
+      description(description),
+      deprecated(deprecated)
   {
   }
   std::string param_name;
@@ -131,18 +137,28 @@ struct parameter_info_t {
   T max_value;
   T default_value;
   const char* description;
+  bool deprecated;
 };
 
 template <>
 struct parameter_info_t<bool> {
-  parameter_info_t(std::string_view name, bool* value, bool def, const char* description = "")
-    : param_name(name), value_ptr(value), default_value(def), description(description)
+  parameter_info_t(std::string_view name,
+                   bool* value,
+                   bool def,
+                   const char* description = "",
+                   bool deprecated         = false)
+    : param_name(name),
+      value_ptr(value),
+      default_value(def),
+      description(description),
+      deprecated(deprecated)
   {
   }
   std::string param_name;
   bool* value_ptr;
   bool default_value;
   const char* description;
+  bool deprecated;
 };
 
 template <>

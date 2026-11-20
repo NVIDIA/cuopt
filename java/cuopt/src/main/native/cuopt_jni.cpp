@@ -901,12 +901,45 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_getQuadraticObjective
                       to_problem_view(handle)->get_problem()->get_quadratic_objective_offsets());
 }
 
+namespace {
+
+jobjectArray get_problem_names(JNIEnv* env,
+                               jlong handle,
+                               cuopt_int_t names_attribute,
+                               cuopt_int_t count_attribute,
+                               const char* operation)
+{
+  // The C API requires count to equal the number of stored names and has no "no names" result,
+  // so first ask for zero: that succeeds only when the problem carries no names.
+  const char* probe = nullptr;
+  if (cuOptGetProblemStringArrayAttribute(to_problem(handle), names_attribute, &probe, 0) ==
+      CUOPT_SUCCESS) {
+    return to_string_array(env, {});
+  }
+  cuopt_int_t count = 0;
+  if (!check_status(
+        env, cuOptGetProblemIntAttribute(to_problem(handle), count_attribute, &count), operation)) {
+    return nullptr;
+  }
+  std::vector<const char*> names(static_cast<size_t>(count));
+  if (!check_status(env,
+                    cuOptGetProblemStringArrayAttribute(
+                      to_problem(handle), names_attribute, names.data(), count),
+                    operation)) {
+    return nullptr;
+  }
+  return to_string_array(env, std::vector<std::string>(names.begin(), names.end()));
+}
+
+}  // namespace
+
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_getVariableNames(JNIEnv* env,
                                                                             jclass,
                                                                             jlong handle)
 {
-  return to_string_array(env, to_problem_view(handle)->get_problem()->get_variable_names());
+  return get_problem_names(
+    env, handle, CUOPT_STRING_ARRAY_VARIABLE_NAMES, CUOPT_ATTR_NUM_VARIABLES, "getVariableNames");
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
@@ -914,7 +947,8 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_getRowNames(JNIEnv* e
                                                                        jclass,
                                                                        jlong handle)
 {
-  return to_string_array(env, to_problem_view(handle)->get_problem()->get_row_names());
+  return get_problem_names(
+    env, handle, CUOPT_STRING_ARRAY_ROW_NAMES, CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS, "getRowNames");
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -930,10 +964,12 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_getProblemCategory(JN
                                                                               jclass,
                                                                               jlong handle)
 {
-  jint category = 0;
+  cuopt_int_t category = 0;
   if (!run_problem_operation(env, "getProblemCategory", [&] {
-        category =
-          static_cast<jint>(to_problem_view(handle)->get_problem()->get_problem_category());
+        check_status(
+          env,
+          cuOptGetProblemIntAttribute(to_problem(handle), CUOPT_ATTR_PROBLEM_CATEGORY, &category),
+          "getProblemCategory");
       })) {
     return 0;
   }
@@ -1149,12 +1185,15 @@ extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_getReducedCosts(JNIEnv* env,
                                                                            jclass,
                                                                            jlong handle,
-                                                                           jint)
+                                                                           jint size)
 {
-  auto* solution = to_lp_solution(env, handle, "getReducedCost");
-  if (solution == nullptr) { return nullptr; }
   try {
-    return to_double_array(env, solution->get_reduced_cost_host());
+    std::vector<cuopt_float_t> values(static_cast<size_t>(size));
+    const cuopt_int_t status = cuOptGetReducedCosts(to_solution(handle), values.data());
+    // Same as getPrimalSolution: CUOPT_INVALID_ARGUMENT means the solve produced no values.
+    if (status == CUOPT_INVALID_ARGUMENT) { return to_double_array(env, {}); }
+    if (!check_status(env, status, "cuOptGetReducedCosts")) { return nullptr; }
+    return to_double_array(env, values);
   } catch (const std::exception& e) {
     throw_cuopt_exception(
       env, CUOPT_INVALID_ARGUMENT, std::string("getReducedCost failed: ") + e.what());
@@ -1177,15 +1216,16 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_getDualObjectiveValue
                                                                                  jclass,
                                                                                  jlong handle)
 {
-  auto* solution = to_lp_solution(env, handle, "getDualObjective");
-  if (solution == nullptr) { return 0; }
+  cuopt_float_t value = 0;
   try {
-    return solution->get_dual_objective_value(0);
+    check_status(
+      env, cuOptGetDualObjectiveValue(to_solution(handle), &value), "cuOptGetDualObjectiveValue");
   } catch (const std::exception& e) {
     throw_cuopt_exception(
       env, CUOPT_INVALID_ARGUMENT, std::string("getDualObjective failed: ") + e.what());
     return 0;
   }
+  return value;
 }
 
 extern "C" JNIEXPORT jdouble JNICALL

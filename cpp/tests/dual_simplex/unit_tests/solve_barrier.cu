@@ -340,4 +340,21 @@ TEST(barrier, crossover_returns_vertex) { barrier_crossover_returns_vertex(0); }
 
 TEST(barrier, crossover_returns_vertex_when_solving_dual) { barrier_crossover_returns_vertex(1); }
 
+TEST(barrier, cudss_deterministic_with_hybrid_execute_rejected)
+{
+  const raft::handle_t handle{};
+  init_handler(&handle);
+
+  auto path = cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/afiro_original.mps";
+  auto mps_data = io::read_mps<int, double>(path);
+
+  auto settings                      = pdlp_solver_settings_t<int, double>{};
+  settings.method                    = method_t::Barrier;
+  settings.cudss_deterministic       = true;
+  settings.cudss_hybrid_execute_mode = 1;
+
+  auto solution = solve_lp(&handle, mps_data, settings);
+  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+}
+
 }  // namespace cuopt::mathematical_optimization::simplex::test

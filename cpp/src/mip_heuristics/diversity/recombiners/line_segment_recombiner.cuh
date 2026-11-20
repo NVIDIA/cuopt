@@ -14,6 +14,8 @@
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 
+#include <thrust/random.h>
+
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>

@@ -253,9 +253,8 @@ TEST(mip_solve, initial_solution_survives_papilo_crush)
   // and GPU heuristics disabled. B&B runs with node_limit=0 so it exits
   // immediately. The only way we get a good objective is if the MIP start
   // was crushed through PaPILO and accepted by add_user_given_solutions.
-  // Early FJ is not strong enough to find the 11 optimal in the given time frame.
+  // Early FJ is not strong enough to find the 11 optimal before the node limit stops the solve.
   auto settings2       = mip_solver_settings_t<int, double>{};
-  settings2.time_limit = 5.;
   settings2.presolver  = presolver_t::Papilo;
   settings2.node_limit = 0;
   settings2.add_initial_solution(reference_solution.data(), reference_solution.size(), stream);
@@ -273,7 +272,8 @@ TEST(mip_solve, initial_solution_survives_papilo_crush)
     << "Crushed MIP start should yield a feasible result, got "
     << mip_solution_t<int, double>::get_termination_status_string(status2);
   EXPECT_TRUE(std::isfinite(result2.get_objective_value()));
-  EXPECT_NEAR(result2.get_objective_value(), reference_obj, 1e-4);
+  // Heuristics may improve on the MIP start when step 1 stops before optimality.
+  EXPECT_LE(result2.get_objective_value(), reference_obj + 1e-4);
 
   if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings2); }
 }

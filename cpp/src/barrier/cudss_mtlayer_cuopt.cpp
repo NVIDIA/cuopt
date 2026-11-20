@@ -7,7 +7,7 @@
 
 // cuDSS threading layer implemented against the same GNU libgomp cuOpt itself links against
 // (see cpp/CMakeLists.txt, ci/utils/install_modern_libgomp.py), instead of NVIDIA's prebuilt
-// libcudss_mtlayer_gomp.so.0, which resolves libgomp.so.1 from the host and can end up a
+// libcudss_mtlayer_gomp.so.1, which resolves libgomp.so.1 from the host and can end up a
 // different instance than the one cuOpt uses. Adapted from cuDSS's own example
 // (cudss_mtlayer_gomp.cu); see https://github.com/NVIDIA/cuopt/issues/1219.
 

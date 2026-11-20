@@ -219,6 +219,19 @@ struct clamp {
   }
 };
 
+template <typename f_t, typename f_t2>
+struct within_bounds {
+  within_bounds(f_t tolerance) : tolerance_{tolerance} {}
+  __device__ bool operator()(thrust::tuple<f_t, f_t2> value_and_bounds) const
+  {
+    const f_t value   = thrust::get<0>(value_and_bounds);
+    const f_t2 bounds = thrust::get<1>(value_and_bounds);
+    return value >= get_lower(bounds) - tolerance_ && value <= get_upper(bounds) + tolerance_;
+  }
+
+  f_t tolerance_;
+};
+
 template <typename f_t>
 struct combine_finite_abs_bounds {
   __device__ __host__ f_t operator()(f_t lower, f_t upper)
