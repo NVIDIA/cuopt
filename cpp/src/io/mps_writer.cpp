@@ -32,6 +32,9 @@ template <typename f_t>
 char linear_row_type_from_bounds(f_t cl, f_t cu)
 {
   if (cl == cu) { return 'E'; }
+  // A row with no finite bound constrains nothing: MPS spells it as an extra N row, which
+  // readers (including ours) drop. Writing it as G would turn it into a >= 0 constraint.
+  if (std::isinf(cl) && cl < 0 && std::isinf(cu) && cu > 0) { return 'N'; }
   if (std::isinf(cu)) { return 'G'; }
   return 'L';
 }
@@ -240,19 +243,34 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
   if (problem_.get_sense()) { mps_file << "OBJSENSE\n MAXIMIZE\n"; }
 
-  // Unnamed quadratic constraints get QC<q>, made unique against every other row name so the
-  // reader cannot mistake one for another row or the objective.
+  // Unnamed linear rows get R<k> and unnamed quadratic constraints get QC<q>, made unique against
+  // every other row name so the reader cannot mistake one for another row or the objective.
+  std::vector<std::string> linear_row_names(n_constraints);
   std::vector<std::string> quadratic_row_names(quadratic_constraints.size());
   {
     std::unordered_set<std::string> used_names;
     used_names.insert(problem_.get_objective_name().empty() ? "OBJ"
                                                             : problem_.get_objective_name());
-    for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
-      used_names.insert(k < problem_.get_row_names().size() ? problem_.get_row_names()[k]
-                                                            : "R" + std::to_string(k));
+    const size_t n_named_rows =
+      std::min(problem_.get_row_names().size(), static_cast<size_t>(n_constraints));
+    for (size_t k = 0; k < n_named_rows; ++k) {
+      used_names.insert(problem_.get_row_names()[k]);
     }
     for (const auto& qc : quadratic_constraints) {
       if (!qc.constraint_row_name.empty()) { used_names.insert(qc.constraint_row_name); }
+    }
+    for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
+      std::string name;
+      if (k < n_named_rows) {
+        name = problem_.get_row_names()[k];
+      } else {
+        name = "R" + std::to_string(k);
+        while (used_names.count(name) != 0) {
+          name += "_";
+        }
+        used_names.insert(name);
+      }
+      linear_row_names[k] = std::move(name);
     }
     for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
       std::string name = quadratic_constraints[q].constraint_row_name;
@@ -273,8 +291,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
            << (problem_.get_objective_name().empty() ? "OBJ" : problem_.get_objective_name())
            << "\n";
   for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
-    std::string row_name =
-      k < problem_.get_row_names().size() ? problem_.get_row_names()[k] : "R" + std::to_string(k);
+    const std::string& row_name = linear_row_names[k];
     char const type =
       linear_row_type_from_bounds(constraint_lower_bounds[k], constraint_upper_bounds[k]);
     mps_file << " " << type << "  " << row_name << "\n";
@@ -362,9 +379,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
         std::string row_name;
         if (nnz.first < static_cast<size_t>(n_constraints)) {
           // Linear rows: do not use row-name count here—names are optional; row id is 0..m-1.
-          row_name = nnz.first < problem_.get_row_names().size()
-                       ? problem_.get_row_names()[nnz.first]
-                       : "R" + std::to_string(nnz.first);
+          row_name = linear_row_names[nnz.first];
         } else if (nnz.first < static_cast<size_t>(n_constraints) + quadratic_constraints.size()) {
           const size_t q = nnz.first - static_cast<size_t>(n_constraints);
           row_name       = quadratic_row_names[q];
@@ -386,8 +401,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   // RHS section
   mps_file << "RHS\n";
   for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
-    std::string row_name =
-      k < problem_.get_row_names().size() ? problem_.get_row_names()[k] : "R" + std::to_string(k);
+    const std::string& row_name = linear_row_names[k];
     // Match the sense emitted in ROWS, including L rows with a finite range.
     char const type =
       linear_row_type_from_bounds(constraint_lower_bounds[k], constraint_upper_bounds[k]);
@@ -420,9 +434,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
         mps_file << "RANGES\n";
         has_ranges = true;
       }
-      std::string row_name =
-        i < problem_.get_row_names().size() ? problem_.get_row_names()[i] : "R" + std::to_string(i);
-      mps_file << "    RNG1      " << row_name << " "
+      mps_file << "    RNG1      " << linear_row_names[i] << " "
                << (constraint_upper_bounds[i] - constraint_lower_bounds[i]) << "\n";
     }
   }
