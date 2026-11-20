@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from cuopt.linear_programming.solver.solver_parameters import solver_params
+
 from cuopt_server.utils.linear_programming import conversion
 from cuopt_server.utils.linear_programming.data_definition import LPData
 from cuopt_server.utils.utils import build_lp_datamodel_from_json
@@ -66,6 +68,51 @@ def test_create_solver_limits_clamped_by_environment(monkeypatch):
 
     assert float(solver_settings.get_parameter("time_limit")) == 2.0
     assert int(solver_settings.get_parameter("iteration_limit")) == 10
+
+
+def test_create_solver_applies_mip_gap_tolerances():
+    # mip_absolute_gap and mip_relative_gap are Tolerances fields whose names do
+    # not end in "tolerance", which is where the old name test lost them.
+    data = get_lp_json()
+    data["solver_config"]["tolerances"] = {
+        "mip_relative_gap": 0.05,
+        "mip_absolute_gap": 2.0,
+        "absolute_primal_tolerance": 1e-5,
+    }
+
+    warnings, solver_settings = conversion.create_solver(
+        LPData.parse_obj(data), None
+    )
+
+    assert warnings == []
+    assert float(solver_settings.get_parameter("mip_relative_gap")) == 0.05
+    assert float(solver_settings.get_parameter("mip_absolute_gap")) == 2.0
+    assert (
+        float(solver_settings.get_parameter("absolute_primal_tolerance"))
+        == 1e-5
+    )
+
+
+def test_every_tolerances_field_is_reachable():
+    # A parameter the server accepts and never passes on is invisible to the
+    # caller: the request validates and the value is dropped.
+    from cuopt_server.utils.linear_programming.data_definition import (
+        Tolerances,
+    )
+
+    sent = dict.fromkeys(Tolerances.model_fields, 0.05)
+    data = get_lp_json()
+    data["solver_config"]["tolerances"] = sent
+
+    _, solver_settings = conversion.create_solver(LPData.parse_obj(data), None)
+
+    unreachable = [
+        name
+        for name in sent
+        if name in solver_params
+        and float(solver_settings.get_parameter(name)) != 0.05
+    ]
+    assert unreachable == []
 
 
 def test_create_solver_warns_on_ignored_fields():
