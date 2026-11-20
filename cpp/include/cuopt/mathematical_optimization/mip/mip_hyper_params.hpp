@@ -55,6 +55,24 @@ struct mip_hyper_params_t {
   f_t heuristic_relaxed_lp_time_limit              = 1.0;     // base relaxed LP time cap
   f_t heuristic_related_vars_time_limit            = 2.0;     // related-variable structure build
 
+  // If a given diving or sub-MIP heuristic found a new incumbent, show the corresponding
+  // symbol in the first column of the log row. When false, every dive collapses to 'D',
+  // every sub-MIP to 'S' and CPU FJ to 'H'. Otherwise,
+  //   B = best-first
+  //   H = heuristics
+  //   C = coefficient diving
+  //   L = line-search diving
+  //   P = pseudocost diving
+  //   G = guided diving
+  //   F = Farkas diving
+  //   V = vector-length diving
+  //   I = RINS
+  //   E = RENS
+  //   M = mutation
+  //   J = CPU FJ
+  //   U = unknown
+  bool heuristic_show_type = false;
+
   // ---------------------------------------------------------------------------------------------
   // Branch-and-bound
   // ---------------------------------------------------------------------------------------------
@@ -83,6 +101,11 @@ struct mip_hyper_params_t {
   // Limit of the total number of simplex iterations in B&B
   std::int64_t bnb_simplex_iteration_limit = std::numeric_limits<std::int64_t>::max();
 
+  // Also report the valid lower bound from PDLP's dual iterate every 1000 iterations while the
+  // root LP is solving (pdlp/dual_bound.cuh). The bound is always computed once from the dual the
+  // root LP returns; this adds the periodic evaluations and logs each improvement.
+  bool bnb_root_pdlp_dual_bound = false;
+
   // ---------------------------------------------------------------------------------------------
   // Diving
   // ---------------------------------------------------------------------------------------------
@@ -110,18 +133,6 @@ struct mip_hyper_params_t {
   // must have distinct values. The low tolerance here disables Farkas diving for
   // set covering/partitioning, where all coefficients have the same value.
   f_t diving_farkas_obj_dynamism_tol = 1E-4;
-
-  // If a given diving heuristic found a new incumbent, show the corresponding
-  // symbol in the first column of the log row. When false, every dive collapses
-  // to 'D'. Otherwise,
-  //   B = best-first
-  //   H = heuristics
-  //   C = coefficient diving
-  //   L = line-search diving
-  //   P = pseudocost diving
-  //   G = guided diving
-  //   U = unknown
-  bool diving_show_type = false;
 
   // ---------------------------------------------------------------------------------------------
   // Recursive sub-MIP

@@ -41,22 +41,19 @@ inline simplex::dual_status_t convert_lp_status_to_dual_status(simplex::lp_statu
   }
 }
 
-inline char feasible_solution_symbol(heuristics_origin_t origin)
-{
-  switch (origin) {
-    case heuristics_origin_t::SUBMIP: return 'S';
-    case heuristics_origin_t::HEURISTICS: return 'H';
-  }
-  return 'U';
-}
-
-// When `show_diving` is true, each diving strategy gets its own letter;
-// otherwise every dive collapses to 'D'.
+// When `show_diving` is true, each diving and sub-MIP strategy gets its own letter;
+// otherwise every dive collapses to 'D' and every sub-MIP to 'S'.
 inline char feasible_solution_symbol(search_strategy_t strategy, bool show_diving)
 {
   if (strategy == search_strategy_t::BEST_FIRST) return 'B';
-  if (strategy == search_strategy_t::RINS || strategy == search_strategy_t::RENS) return 'S';
-  if (!show_diving) return 'D';
+
+  if (!show_diving) {
+    if (strategy == search_strategy_t::RINS || strategy == search_strategy_t::RENS ||
+        strategy == search_strategy_t::MUTATION) {
+      return 'S';
+    }
+    return 'D';
+  }
 
   switch (strategy) {
     case search_strategy_t::BEST_FIRST: return 'B';
@@ -66,9 +63,9 @@ inline char feasible_solution_symbol(search_strategy_t strategy, bool show_divin
     case search_strategy_t::GUIDED_DIVING: return 'G';
     case search_strategy_t::FARKAS_DIVING: return 'F';
     case search_strategy_t::VECTOR_LENGTH_DIVING: return 'V';
-    case search_strategy_t::RINS: return 'S';
-    case search_strategy_t::RENS: return 'S';
-    case search_strategy_t::MUTATION: return 'S';
+    case search_strategy_t::RINS: return 'I';
+    case search_strategy_t::RENS: return 'E';
+    case search_strategy_t::MUTATION: return 'M';
   }
 
   return 'U';

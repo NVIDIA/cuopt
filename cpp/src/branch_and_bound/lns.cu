@@ -364,7 +364,8 @@ void solve_submip(diving_worker_t<i_t, f_t>* worker,
   settings.set_simplex_solution_callback   = nullptr;
   settings.solution_callback               = [bnb_ptr, &presolver, fixrate, &submip_stats, worker](
                                  const std::vector<f_t>& solution, f_t obj) {
-    if (bnb_ptr->set_solution_from_submip(worker->leaf_problem, solution, presolver)) {
+    if (bnb_ptr->set_solution_from_submip(
+          worker->leaf_problem, solution, presolver, worker->search_strategy)) {
       submip_stats.save_success(fixrate);
     }
   };
@@ -486,7 +487,8 @@ void solve_submip(diving_worker_t<i_t, f_t>* worker,
   }
 
   if (submip_solution.has_incumbent) {
-    if (bnb_ptr->set_solution_from_submip(worker->leaf_problem, submip_solution.x, presolver)) {
+    if (bnb_ptr->set_solution_from_submip(
+          worker->leaf_problem, submip_solution.x, presolver, worker->search_strategy)) {
       submip_stats.save_success(fixrate);
     }
   }
