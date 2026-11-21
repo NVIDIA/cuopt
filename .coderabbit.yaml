@@ -180,10 +180,12 @@ reviews:
     - path: "python/**/tests/**"
       instructions: |
         Python tests (pytest). Focus on:
-        - Numerical correctness validation
+        - API behavior only (calls, conversion, return types, errors); solver correctness
+          belongs in cpp/tests
         - Edge cases: empty, infeasible, unbounded, degenerate problems
         - No leaked GPU state across tests
-        - Regression coverage for fixed bugs
+        - Regression coverage for fixed Python API bugs; solver bug reproducers go in cpp/tests
+        - Is there an existing test to extend instead of a new one?
         - Tests rules from skills/cuopt-developer/references/review_rules.md (tests must be
           able to fail, test the contract, stay cheap); phrase these as questions
 
@@ -261,3 +263,4 @@ knowledge_base:
       - "CONTRIBUTING.md"
       - "CONVENTIONS.md"
       - "skills/cuopt-developer/references/review_rules.md"
+      - "skills/cuopt-developer/references/conventions.md"
