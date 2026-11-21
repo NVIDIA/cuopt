@@ -35,6 +35,16 @@ class weighted_average_solution_t {
   i_t get_iterations_since_last_restart() const;
   rmm::device_scalar<i_t> const& get_d_iterations_since_last_restart() const;
 
+  // Graph batches advance the device age; update the matching host counter separately.
+  i_t* mutable_device_iterations_since_last_restart()
+  {
+    return d_iterations_since_last_restart_.data();
+  }
+  void advance_host_iterations_since_last_restart(i_t count)
+  {
+    iterations_since_last_restart_ += count;
+  }
+
   void reset_iterations_since_last_restart();
   void increase_iterations_since_last_restart();
   void set_iterations_since_last_restart(i_t iterations);

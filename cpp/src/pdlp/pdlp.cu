@@ -42,6 +42,8 @@
 #include <cub/device/device_transform.cuh>
 
 #include <cstdint>
+#include <cstdlib>
+#include <limits>
 
 #include <thrust/count.h>
 #include <thrust/extrema.h>
@@ -189,6 +191,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
     primal_weight_{climber_strategies_.size(), stream_view_},
     best_primal_weight_{climber_strategies_.size(), stream_view_},
     step_size_{climber_strategies_.size(), stream_view_},
+    h_fixed_error_inputs_(5),
     step_size_strategy_{handle_ptr_,
                         &primal_weight_,
                         &step_size_,
@@ -2399,11 +2402,38 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
 #endif
   } else {
-    fixed_error_computation<f_t>(step_size_strategy_.get_norm_squared_delta_primal(0),
-                                 step_size_strategy_.get_norm_squared_delta_dual(0),
-                                 primal_weight_.element(0, stream_view_),
-                                 step_size_.element(0, stream_view_),
-                                 step_size_strategy_.get_interaction(0),
+    // Read the scalar inputs together before evaluating the unchanged host expression.
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[0],
+                                  step_size_strategy_.get_norm_squared_delta_primal().data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[1],
+                                  step_size_strategy_.get_norm_squared_delta_dual().data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[2],
+                                  primal_weight_.data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[3],
+                                  step_size_.data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[4],
+                                  step_size_strategy_.get_interaction().data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  stream_view_.get()));
+    stream_view_.sync();
+    fixed_error_computation<f_t>(h_fixed_error_inputs_[0],
+                                 h_fixed_error_inputs_[1],
+                                 h_fixed_error_inputs_[2],
+                                 h_fixed_error_inputs_[3],
+                                 h_fixed_error_inputs_[4],
                                  &restart_strategy_.fixed_point_error_[0]);
   }
 
@@ -2662,6 +2692,84 @@ void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
       stream_view_.get());
   }
 }
+// Batch eligible ordinary iterations by default. The environment override is retained
+// for internal performance comparisons; it is not a supported solver parameter.
+constexpr int default_ordinary_graph_batch_size = 24;
+
+static int ordinary_graph_batch_size()
+{
+  const char* value = std::getenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE");
+  if (value == nullptr) { return default_ordinary_graph_batch_size; }
+  char* end       = nullptr;
+  const long size = std::strtol(value, &end, 10);
+  if (end != value && *end == '\0' &&
+      (size == 1 || size == 4 || size == 8 || size == 16 ||
+       size == default_ordinary_graph_batch_size)) {
+    return static_cast<int>(size);
+  }
+  CUOPT_LOG_INFO("PDLP graph batching disabled: unsupported batch size '%s'", value);
+  return 1;
+}
+
+template <typename f_t>
+struct ordinary_graph_batch_t {
+  ordinary_graph_batch_t(cuda::stream_ref stream, int requested, bool eligible)
+    : stream{stream},
+      effective{eligible ? requested : 1},
+      halpern_weights{static_cast<size_t>(eligible && requested > 1 ? requested : 0), stream}
+  {
+    if (effective > 1) {
+      CUOPT_LOG_INFO("PDLP graph batching: requested=%d effective=%d", requested, effective);
+    }
+  }
+  ~ordinary_graph_batch_t()
+  {
+    if (effective > 1) {
+      // The local graph must not outlive pending use of the solver's buffers.
+      RAFT_CUDA_TRY_NO_THROW(cudaStreamSynchronize(stream.get()));
+      CUOPT_LOG_INFO(
+        "PDLP graph batching: batch_launches=%llu batched_iterations=%llu "
+        "eager_recoveries=%llu",
+        static_cast<unsigned long long>(launches),
+        static_cast<unsigned long long>(iterations),
+        static_cast<unsigned long long>(recoveries));
+    }
+  }
+  cuda::stream_ref stream;
+  int effective;
+  uint64_t launches{0};
+  uint64_t iterations{0};
+  uint64_t recoveries{0};
+  rmm::device_uvector<f_t> halpern_weights;
+  manual_cuda_graph_t graph;
+};
+
+template <typename i_t>
+static bool ordinary_graph_batch_fits(
+  i_t total, i_t internal, i_t limit, int batch_size, const pdlp_hyper_params_t& hyper_params)
+{
+  if (batch_size <= 1 || hyper_params.major_iteration <= 0 ||
+      total > std::numeric_limits<i_t>::max() - batch_size - 2 || internal > limit ||
+      limit - internal < batch_size) {
+    return false;
+  }
+  for (int offset = 0; offset < batch_size; ++offset) {
+    const i_t iteration = total + offset;
+    // Preserve every host checkpoint and both independent major-step triggers.
+    // PDHG's (iteration + 2) trigger is unconditional even when conditional
+    // termination checks are disabled. Recompute the period at each step.
+    if (iteration <= hyper_params.min_iteration_restart ||
+        iteration % hyper_params.major_iteration == 0 ||
+        (iteration + 1) % hyper_params.major_iteration == 0 ||
+        (iteration + 2) % conditional_major<i_t>(iteration + 2) == 0 ||
+        (hyper_params.use_conditional_major &&
+         iteration % conditional_major<i_t>(iteration) == 0)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 template <typename i_t, typename f_t>
 bool pdlp_solver_t<i_t, f_t>::reports_dual_bound()
 {
@@ -2966,6 +3074,26 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     CUOPT_LOG_INFO(
       "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
   }
+  const auto& graph_hyper = settings_.hyper_params;
+  const bool graph_reduction_disabled =
+    graph_hyper.reduced_matrix == reduced_matrix_mode_t::OFF ||
+    (graph_hyper.reduced_matrix == reduced_matrix_mode_t::DEFAULT &&
+     !should_skip_concurrent_cpu_solvers(static_cast<std::size_t>(op_problem_scaled_.nnz),
+                                         settings_.large_nnz_threshold));
+  bool graph_batch_eligible =
+    std::is_same_v<i_t, int> && std::is_same_v<f_t, double> && !inside_mip_ &&
+    !is_distributed_master() && !batch_mode_ && climber_strategies_.size() == 1 &&
+    !pdhg_solver_.get_graph_all().is_legacy_batch_mode() &&
+    settings_.pdlp_precision != pdlp_precision_t::MixedPrecision && settings_.new_bounds.empty() &&
+    problem_ptr->Q_values.empty() && graph_reduction_disabled &&
+    graph_hyper.use_reflected_primal_dual && !graph_hyper.use_adaptive_step_size_strategy &&
+    graph_hyper.never_restart_to_average && !graph_hyper.artificial_restart_in_main_loop;
+#if defined(CUPDLP_DEBUG_MODE) || defined(PDLP_DEBUG_MODE)
+  graph_batch_eligible = false;
+#endif
+  ordinary_graph_batch_t<f_t> ordinary_batch{
+    stream_view_, ordinary_graph_batch_size(), graph_batch_eligible};
+
   while (true) {
 #ifdef CUPDLP_DEBUG_MODE
     printf("Step: %d\n", total_pdlp_iterations_);
@@ -3101,10 +3229,14 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
       if (solution.has_value()) { return std::move(solution.value()); }
 
-      const auto& convergence      = current_termination_strategy_.get_convergence_information();
-      const f_t reduced_matrix_kkt = std::max({convergence.get_relative_l2_primal_residual_value(),
-                                               convergence.get_relative_l2_dual_residual_value(),
-                                               convergence.get_relative_gap_value()});
+      const bool use_reduced_matrix = pdhg_solver_.is_reduced_matrix_enabled();
+      f_t reduced_matrix_kkt        = f_t(0);
+      if (use_reduced_matrix) {
+        const auto& convergence = current_termination_strategy_.get_convergence_information();
+        reduced_matrix_kkt      = std::max({convergence.get_relative_l2_primal_residual_value(),
+                                            convergence.get_relative_l2_dual_residual_value(),
+                                            convergence.get_relative_gap_value()});
+      }
 
       if (settings_.hyper_params.rescale_for_restart) {
         if (!settings_.hyper_params.never_restart_to_average) {
@@ -3169,12 +3301,14 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         }
       }
 
-      const bool checkpoint_restarted = std::any_of(
-        has_restarted.begin(), has_restarted.end(), [](int restarted) { return restarted == 1; });
-      pdhg_solver_.update_reduced_matrix(
-        reduced_matrix_kkt,
-        checkpoint_restarted,
-        restart_strategy_.last_restart_duality_gap_.primal_solution_);
+      if (use_reduced_matrix) {
+        const bool checkpoint_restarted = std::any_of(
+          has_restarted.begin(), has_restarted.end(), [](int restarted) { return restarted == 1; });
+        pdhg_solver_.update_reduced_matrix(
+          reduced_matrix_kkt,
+          checkpoint_restarted,
+          restart_strategy_.last_restart_duality_gap_.primal_solution_);
+      }
 
       // In batch mode, after having checked for termination and restart
       // We transpose back to row for the PDHG iterations
@@ -3199,6 +3333,38 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 #ifdef CUPDLP_DEBUG_MODE
     printf("Is Major %d\n", takes_major_step);
 #endif
+    if (!is_major_iteration && !is_conditional_major && !error_occured &&
+        !artificial_restart_check_main_loop && !restarted_this_iteration &&
+        ordinary_graph_batch_fits(total_pdlp_iterations_,
+                                  internal_solver_iterations_,
+                                  settings_.iteration_limit,
+                                  ordinary_batch.effective,
+                                  settings_.hyper_params)) {
+      cuopt_assert(total_pdlp_iterations_ == pdhg_solver_.get_total_pdhg_iterations(),
+                   "PDLP and PDHG iteration counters must agree before graph batching");
+      auto& average = restart_strategy_.weighted_average_solution_;
+      pdhg_solver_.take_ordinary_graph_batch(
+        ordinary_batch.graph,
+        static_cast<i_t>(ordinary_batch.effective),
+        primal_step_size_,
+        dual_step_size_,
+        restart_strategy_.last_restart_duality_gap_.primal_solution_,
+        restart_strategy_.last_restart_duality_gap_.dual_solution_,
+        average.mutable_device_iterations_since_last_restart(),
+        ordinary_batch.halpern_weights);
+      // The captured body already advanced the device age by the full batch size.
+      // Keep all host effects outside capture, including eager-recovery paths.
+      average.advance_host_iterations_since_last_restart(ordinary_batch.effective);
+      total_pdlp_iterations_ += ordinary_batch.effective;
+      internal_solver_iterations_ += ordinary_batch.effective;
+      ordinary_batch.iterations += ordinary_batch.effective;
+      if (ordinary_batch.graph.is_initialized()) {
+        ++ordinary_batch.launches;
+      } else {
+        ++ordinary_batch.recoveries;
+      }
+      continue;
+    }
     take_step(total_pdlp_iterations_, takes_major_step || restarted_this_iteration);
 
     if (settings_.hyper_params.use_reflected_primal_dual) {

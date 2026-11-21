@@ -112,3 +112,5 @@ endif()
 if(CUOPT_ENABLE_GRPC)
     add_subdirectory(grpc)
 endif()
+
+include(${CMAKE_CURRENT_LIST_DIR}/pdlp_overhead_tests.cmake)

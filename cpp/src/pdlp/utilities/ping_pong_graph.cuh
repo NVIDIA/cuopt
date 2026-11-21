@@ -37,6 +37,8 @@ class ping_pong_graph_t {
   ping_pong_graph_t(ping_pong_graph_t&&) noexcept            = default;
   ping_pong_graph_t& operator=(ping_pong_graph_t&&) noexcept = default;
 
+  bool is_legacy_batch_mode() const noexcept { return is_legacy_batch_mode_; }
+
   // Either launch the cached graph for this parity slot, or capture `work`
   // into a freshly-created parent graph, instantiate, and launch. Capture
   // invalidation is recovered by re-running `work` eagerly (see
