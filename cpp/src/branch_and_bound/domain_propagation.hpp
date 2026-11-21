@@ -179,8 +179,18 @@ class domain_propagation_t {
                            bound_change_t<i_t, f_t> bound_change,
                            simplex::lp_problem_t<i_t, f_t>& lp);
 
+  // Propagates the objective cutoff and any affected rows. Returns false if the cutoff is
+  // infeasible.
+  bool propagate_objective(const csr_matrix_t<i_t, f_t>& Arow,
+                           const std::vector<simplex::variable_type_t>& var_types,
+                           const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                           simplex::lp_problem_t<i_t, f_t>& lp,
+                           f_t cutoff);
+
   // Nonzeros touched by the last propagation call, used as a work estimate.
   size_t last_nnz_processed{0};
+  size_t objective_fixings{0};
+  size_t objective_cutoffs{0};
 
   // Implications applied when an integer variable is fixed to 0 or 1. Either may be null, and the
   // clique table is skipped until it is ready.
@@ -190,6 +200,9 @@ class domain_propagation_t {
  private:
   // Contributions with |a_ij x_j| >= huge_value are counted as infinite.
   static constexpr f_t huge_value = 1e15;
+
+  static constexpr i_t max_objective_rounds = 3;
+  static constexpr f_t max_derived_bound    = 1e8;
 
   // An activity is recomputed once its peak exceeds it by this factor.
   static constexpr f_t recompute_factor = 1e6;
@@ -207,9 +220,12 @@ class domain_propagation_t {
   std::vector<uint8_t> var_queued_;
   circular_deque_t<i_t> var_queue_;
 
+  std::vector<i_t> objective_vars_;
   std::vector<bound_change_t<i_t, f_t>> bound_changes_;
 
   size_t nnz_processed_{0};
+
+  void clear_queues();
 
   // Queues the rows containing x_j and any implications of fixing x_j to 0 or 1.
   void queue_variable(i_t j,
