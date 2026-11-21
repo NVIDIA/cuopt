@@ -16,6 +16,11 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
+template <typename i_t, typename f_t>
+struct probing_implied_bound_t;
+template <typename i_t, typename f_t>
+struct clique_table_t;
+
 // Where a bound change came from. backtrack_to_parent pops changes until it reaches a BRANCH.
 enum class bound_change_origin_t {
   BRANCH            = 0,  // Regular variable branching
@@ -177,6 +182,11 @@ class domain_propagation_t {
   // Nonzeros touched by the last propagation call, used as a work estimate.
   size_t last_nnz_processed{0};
 
+  // Implications applied when an integer variable is fixed to 0 or 1. Either may be null, and the
+  // clique table is skipped until it is ready.
+  const probing_implied_bound_t<i_t, f_t>* implied_bounds = nullptr;
+  const clique_table_t<i_t, f_t>* clique_table            = nullptr;
+
  private:
   // Contributions with |a_ij x_j| >= huge_value are counted as infinite.
   static constexpr f_t huge_value = 1e15;
@@ -194,16 +204,28 @@ class domain_propagation_t {
   std::vector<uint8_t> row_queued_;
   circular_deque_t<i_t> row_queue_;
 
+  std::vector<uint8_t> var_queued_;
+  circular_deque_t<i_t> var_queue_;
+
   std::vector<bound_change_t<i_t, f_t>> bound_changes_;
 
   size_t nnz_processed_{0};
 
-  // Queues the rows containing x_j.
-  void queue_variable(i_t j, const simplex::lp_problem_t<i_t, f_t>& lp, f_t tol);
+  // Queues the rows containing x_j and any implications of fixing x_j to 0 or 1.
+  void queue_variable(i_t j,
+                      const std::vector<simplex::variable_type_t>& var_types,
+                      const simplex::lp_problem_t<i_t, f_t>& lp,
+                      f_t tol);
 
   // Queues row i unless it is already queued or neither of its sides can tighten a bound. A row
   // awaiting recomputation is always queued.
   void queue_row(i_t i, const simplex::lp_problem_t<i_t, f_t>& lp, f_t tol);
+
+  // Applies the probing and clique implications of x_j at its fixed value.
+  bool propagate_implications(i_t j,
+                              const std::vector<simplex::variable_type_t>& var_types,
+                              const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                              simplex::lp_problem_t<i_t, f_t>& lp);
 
   // Intersects the bounds of x_j with [new_lower, new_upper], applying them if they improve.
   // Returns false if the bounds cross.

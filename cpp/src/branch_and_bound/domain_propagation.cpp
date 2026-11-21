@@ -7,6 +7,9 @@
 
 #include <branch_and_bound/domain_propagation.hpp>
 
+#include <presolve/conflict_graph/clique_table.cuh>
+#include <presolve/probing_implied_bound.hpp>
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -79,6 +82,8 @@ void domain_propagation_t<i_t, f_t>::compute_activities(const csr_matrix_t<i_t, 
   row_activities_.resize(Arow.m);
   row_queued_.resize(Arow.m, false);
   row_queue_.clear_resize(std::max(Arow.m, 1));
+  var_queued_.resize(lp.num_cols, false);
+  var_queue_.clear_resize(std::max(lp.num_cols, 1));
 
   for (i_t i = 0; i < Arow.m; ++i) {
     compute_row_activity(i, Arow, lp.lower, lp.upper);
@@ -170,6 +175,7 @@ void domain_propagation_t<i_t, f_t>::queue_row(i_t i, const lp_problem_t<i_t, f_
 
 template <typename i_t, typename f_t>
 void domain_propagation_t<i_t, f_t>::queue_variable(i_t j,
+                                                    const std::vector<variable_type_t>& var_types,
                                                     const lp_problem_t<i_t, f_t>& lp,
                                                     f_t tol)
 {
@@ -178,6 +184,14 @@ void domain_propagation_t<i_t, f_t>::queue_variable(i_t j,
   nnz_processed_ += col_end - col_start;
   for (i_t p = col_start; p < col_end; ++p) {
     queue_row(lp.A.i[p], lp, tol);
+  }
+
+  if (implied_bounds == nullptr && clique_table == nullptr) { return; }
+  const f_t value = lp.lower[j];
+  if (!var_queued_[j] && var_types[j] == variable_type_t::INTEGER && value == lp.upper[j] &&
+      (value == 0 || value == 1)) {
+    var_queue_.push_back(j);
+    var_queued_[j] = true;
   }
 }
 
@@ -236,7 +250,66 @@ bool domain_propagation_t<i_t, f_t>::tighten_bounds(
     }
   }
 
-  apply(lp, {.var = j, .new_upper = new_upper, .new_lower = new_lower, .origin = origin});
+  if (apply(lp, {.var = j, .new_upper = new_upper, .new_lower = new_lower, .origin = origin})) {
+    queue_variable(j, var_types, lp, tol);
+  }
+  return true;
+}
+
+template <typename i_t, typename f_t>
+bool domain_propagation_t<i_t, f_t>::propagate_implications(
+  i_t j,
+  const std::vector<variable_type_t>& var_types,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  lp_problem_t<i_t, f_t>& lp)
+{
+  assert(lp.lower[j] == lp.upper[j] && "Implications require a fixed variable");
+  const bool one = lp.lower[j] == 1;
+
+  // Probing x_j = 0 (resp. 1) implies lower[p] <= x_k <= upper[p] for every entry p of x_j.
+  if (implied_bounds != nullptr && j + 1 < implied_bounds->zero_offsets.size()) {
+    const auto& offsets   = one ? implied_bounds->one_offsets : implied_bounds->zero_offsets;
+    const auto& variables = one ? implied_bounds->one_variables : implied_bounds->zero_variables;
+    const auto& lower = one ? implied_bounds->one_lower_bound : implied_bounds->zero_lower_bound;
+    const auto& upper = one ? implied_bounds->one_upper_bound : implied_bounds->zero_upper_bound;
+    nnz_processed_ += offsets[j + 1] - offsets[j];
+
+    for (i_t p = offsets[j]; p < offsets[j + 1]; ++p) {
+      const i_t k = variables[p];
+      if (k == j || k >= lp.num_cols) { continue; }
+      if (!tighten_bounds(k,
+                          lower[p],
+                          upper[p],
+                          bound_change_origin_t::BOUND_IMPLICATION,
+                          var_types,
+                          settings,
+                          lp)) {
+        return false;
+      }
+    }
+  }
+
+  if (clique_table == nullptr || !clique_table->ready.load(std::memory_order_acquire)) {
+    return true;
+  }
+
+  // Vertex v < n is the literal x_v and v >= n its complement 1 - x_{v - n}. At most one literal
+  // of a clique is true, so every neighbour of the true literal of x_j is false.
+  const i_t n = clique_table->n_variables;
+  if (j >= n) { return true; }
+  const i_t literal = one ? j : j + n;
+
+  for (i_t v : clique_table->get_adj_set_of_var(literal)) {
+    ++nnz_processed_;
+    const i_t k         = v < n ? v : v - n;
+    const f_t new_lower = v < n ? lp.lower[k] : 1.0;
+    const f_t new_upper = v < n ? 0.0 : lp.upper[k];
+    if (!tighten_bounds(
+          k, new_lower, new_upper, bound_change_origin_t::CLIQUE, var_types, settings, lp)) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -264,7 +337,7 @@ bool domain_propagation_t<i_t, f_t>::propagate_from_variables(
 {
   compute_activities(Arow, lp);
   for (i_t j : vars) {
-    queue_variable(j, lp, settings.primal_tol);
+    queue_variable(j, var_types, lp, settings.primal_tol);
   }
   return run_bound_propagation(Arow, var_types, settings, lp);
 }
@@ -278,7 +351,7 @@ bool domain_propagation_t<i_t, f_t>::propagate_from_stack(
   i_t start)
 {
   for (size_t k = start; k < bound_changes_.size(); ++k) {
-    queue_variable(bound_changes_[k].var, lp, settings.primal_tol);
+    queue_variable(bound_changes_[k].var, var_types, lp, settings.primal_tol);
   }
 
   return run_bound_propagation(Arow, var_types, settings, lp);
@@ -298,7 +371,7 @@ bool domain_propagation_t<i_t, f_t>::apply_and_propagate(
     return true;
   }
 
-  queue_variable(bound_change.var, lp, settings.primal_tol);
+  queue_variable(bound_change.var, var_types, lp, settings.primal_tol);
   return run_bound_propagation(Arow, var_types, settings, lp);
 }
 
@@ -347,7 +420,15 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
 {
   bool feasible = true;
   i_t iter      = 0;
-  while (feasible && !row_queue_.empty()) {
+  while (feasible && (!row_queue_.empty() || !var_queue_.empty())) {
+    // Apply the implications of the fixed variables before propagating the rows.
+    if (!var_queue_.empty()) {
+      const i_t j    = var_queue_.pop_front();
+      var_queued_[j] = false;
+      feasible       = propagate_implications(j, var_types, settings, lp);
+      continue;
+    }
+
     i_t i          = row_queue_.pop_front();
     row_queued_[i] = false;
     ++iter;
@@ -472,16 +553,18 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
       feasible = tighten_bounds(
         j, new_lb, new_ub, bound_change_origin_t::BOUND_PROPAGATION, var_types, settings, lp);
       if (!feasible) { break; }
-      if (lp.lower[j] != lb || lp.upper[j] != ub) { queue_variable(j, lp, tol); }
     }
 
     // An infeasible scan stops early and only saw part of the row.
     if (feasible) { row_activities_[i].capacity_threshold = threshold; }
   }
 
-  // Clear the rows left in the queue when infeasibility stops the propagation early.
+  // Clear pending work when infeasibility stops propagation early.
   while (!row_queue_.empty()) {
     row_queued_[row_queue_.pop_front()] = false;
+  }
+  while (!var_queue_.empty()) {
+    var_queued_[var_queue_.pop_front()] = false;
   }
 
   last_nnz_processed = nnz_processed_;
