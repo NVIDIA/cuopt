@@ -8,17 +8,18 @@
 #pragma once
 
 #include <branch_and_bound/constants.hpp>
-#include <branch_and_bound/diving_heuristics.hpp>
+#include <branch_and_bound/domain_propagation.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/symmetry.hpp>
+#include <branch_and_bound/utils.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
-#include <dual_simplex/bounds_strengthening.hpp>
 
 #include <utilities/pcgenerator.hpp>
 #include <utilities/splitmix64.hpp>
 
+#include <dual_simplex/phase2.hpp>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -27,8 +28,13 @@ template <typename i_t, typename f_t>
 class pseudo_costs_t;
 
 template <typename i_t, typename f_t>
+class branch_and_bound_t;
+
+template <typename i_t, typename f_t>
 struct branch_and_bound_stats_t {
-  f_t start_time                         = 0.0;
+  f_t start_time                   = 0.0;
+  omp_atomic_t<i_t> integer_pivots = 0;
+
   omp_atomic_t<f_t> total_lp_solve_time  = 0.0;
   omp_atomic_t<int64_t> nodes_explored   = 0;
   omp_atomic_t<int64_t> nodes_unexplored = 0;
@@ -65,16 +71,13 @@ class branch_and_bound_worker_t {
   simplex::lp_solution_t<i_t, f_t> leaf_solution;
   std::vector<simplex::variable_status_t> leaf_vstatus;
   std::vector<f_t> leaf_edge_norms;
+  const csr_matrix_t<i_t, f_t>& Arow;
 
   simplex::basis_update_mpf_t<i_t, f_t> basis_factors;
   std::vector<i_t> basic_list;
   std::vector<i_t> nonbasic_list;
 
-  simplex::bounds_strengthening_t<i_t, f_t> node_presolver;
-  std::vector<bool> bounds_changed;
-
-  std::vector<f_t> start_lower;
-  std::vector<f_t> start_upper;
+  domain_propagation_t<i_t, f_t> domain_propagation;
 
   // The incumbent may change while we are still constructing RINS
   // sub-MIP or doing guided diving. Save it here so we always use
@@ -93,8 +96,10 @@ class branch_and_bound_worker_t {
   std::unique_ptr<lexical_reduction_t<i_t, f_t>> lexical_reduction;
   mip_symmetry_t<i_t, f_t>* symmetry_ptr = nullptr;
 
-  bool recompute_basis  = true;
-  bool recompute_bounds = true;
+  bool recompute_basis = true;
+
+  // The solver's `original_lp_`, which the cut passes modify. Not read inside the root node.
+  const simplex::lp_problem_t<i_t, f_t>& root_lp;
 
   // During the cut passes, this values can change. So we save a copy on root_heuristics
   // and point these attributes to it. During normal exploration, this is set
@@ -105,6 +110,9 @@ class branch_and_bound_worker_t {
   const std::vector<i_t>& new_slacks;
 
   pseudo_costs_t<i_t, f_t>& pseudo_costs;
+  f_t work_estimate = 0.0;
+
+  branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
 
   void ensure_orbital_fixing()
   {
@@ -126,6 +134,7 @@ class branch_and_bound_worker_t {
                             const std::vector<f_t>& root_solution,
                             const std::vector<f_t>& root_edge_norm,
                             const std::vector<i_t>& new_slacks,
+                            branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr,
                             splitmix64_t& seed_gen)
     : worker_id(worker_id),
       search_strategy(search_strategy_t::BEST_FIRST),
@@ -134,43 +143,67 @@ class branch_and_bound_worker_t {
       leaf_problem(original_lp),
       leaf_solution(original_lp.num_rows, original_lp.num_cols),
       leaf_vstatus(original_lp.num_cols),
+      Arow(Arow),
       basis_factors(original_lp.num_rows, settings.refactor_frequency),
       basic_list(original_lp.num_rows),
-      nonbasic_list(),
-      node_presolver(leaf_problem, Arow, {}, var_type),
-      bounds_changed(original_lp.num_cols, false),
       rng{seed_gen.next_u64(), seed_gen.generate_stream()},
+      root_lp(original_lp),
       root_solution(root_solution),
       root_edge_norm(root_edge_norm),
       var_types(var_type),
       new_slacks(new_slacks),
-      pseudo_costs(pc)
+      pseudo_costs(pc),
+      branch_and_bound_ptr(branch_and_bound_ptr)
   {
   }
 
   // Set the variables bounds for the LP relaxation in the current node.
-  bool set_lp_variable_bounds(mip_node_t<i_t, f_t>* node_ptr,
+  bool update_variable_bounds(const mip_node_t<i_t, f_t>* node_ptr,
                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    // Reset the bound_changed markers
-    std::fill(bounds_changed.begin(), bounds_changed.end(), false);
-
-    // Set the correct bounds for the leaf problem
-    if (recompute_bounds) {
-      leaf_problem.lower = start_lower;
-      leaf_problem.upper = start_upper;
-      node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
-
-    } else {
-      node_ptr->update_branched_variable_bounds(
-        leaf_problem.lower, leaf_problem.upper, bounds_changed);
+    // A root re-solved in place (e.g., the RINS/RENS rounds) already holds its bounds.
+    if (node_ptr->parent == nullptr) {
+      domain_propagation.last_nnz_processed = 0;
+      return true;
     }
-
-    return node_presolver.bounds_strengthening(
-      settings, bounds_changed, leaf_problem.lower, leaf_problem.upper);
+    return domain_propagation.apply_and_propagate(
+      Arow, var_types, settings, node_ptr->update_variable_bounds(), leaf_problem);
   }
 
+  // Set variable bounds based on the bound changes stack.
+  bool rebuild_bounds_from_stack(const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+  {
+    if (!settings.inside_root_node && search_strategy != search_strategy_t::RENS &&
+        search_strategy != search_strategy_t::RINS &&
+        search_strategy != search_strategy_t::MUTATION) {
+      leaf_problem.lower = root_lp.lower;
+      leaf_problem.upper = root_lp.upper;
+      domain_propagation.apply_stack(leaf_problem.lower, leaf_problem.upper);
+    }
+
+    domain_propagation.compute_activities(Arow, leaf_problem);
+    return domain_propagation.propagate_from_stack(Arow, var_types, settings, leaf_problem);
+  }
+
+  void backtrack_bound_changes() { domain_propagation.backtrack_to_parent(leaf_problem); }
+
   void set_active() { is_active = true; }
+
+  // Apply symmetry-based bound reductions (orbital fixing and, when
+  // settings_.symmetry == 2, lexical reduction) to the current node.
+  // Tightens leaf_problem bounds and updates stats. Returns false
+  // if lexical reduction proves the node infeasible.
+  bool apply_symmetry_reductions(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                 mip_node_t<i_t, f_t>* node_ptr,
+                                 branch_and_bound_stats_t<i_t, f_t>& stats);
+
+  simplex::dual_status_t solve_node_lp(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                       mip_node_t<i_t, f_t>* node_ptr,
+                                       branch_and_bound_stats_t<i_t, f_t>& stats,
+                                       simplex::logger_t& log,
+                                       int64_t iter_limit,
+                                       f_t start_time,
+                                       f_t upper_bound);
 };
 
 template <typename i_t, typename f_t>
@@ -186,6 +219,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                const std::vector<f_t>& root_solution,
                const std::vector<f_t>& root_edge_norm,
                const std::vector<i_t>& new_slacks,
+               branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr,
                splitmix64_t& seed_gen)
     : Base(worker_id,
            original_lp,
@@ -196,17 +230,20 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
            root_solution,
            root_edge_norm,
            new_slacks,
+           branch_and_bound_ptr,
            seed_gen)
   {
-    this->start_lower     = original_lp.lower;
-    this->start_upper     = original_lp.upper;
     this->search_strategy = search_strategy_t::BEST_FIRST;
     max_diving_workers    = 0;
     active_diving_workers = 0;
     next_heuristic        = worker_id;
   }
 
-  void set_inactive() { this->is_active = false; }
+  void cleanup()
+  {
+    this->domain_propagation.clear();
+    this->is_active = false;
+  }
 
   // Steal nodes from another worker
   bool steal_from(bfs_worker_t* victim, i_t nodes_to_steal)
@@ -258,90 +295,6 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
  private:
   std::vector<search_strategy_t> diving_heuristics;
   i_t next_heuristic;
-};
-
-template <typename i_t, typename f_t>
-class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
- public:
-  using Base = branch_and_bound_worker_t<i_t, f_t>;
-
-  diving_worker_t(i_t worker_id,
-                  const simplex::lp_problem_t<i_t, f_t>& original_lp,
-                  const csr_matrix_t<i_t, f_t>& Arow,
-                  const std::vector<simplex::variable_type_t>& var_type,
-                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                  pseudo_costs_t<i_t, f_t>& pc,
-                  const std::vector<f_t>& root_solution,
-                  const std::vector<f_t>& root_edge_norm,
-                  const std::vector<i_t>& new_slacks,
-                  splitmix64_t& seed_gen)
-    : Base(worker_id,
-           original_lp,
-           Arow,
-           var_type,
-           settings,
-           pc,
-           root_solution,
-           root_edge_norm,
-           new_slacks,
-           seed_gen)
-  {
-    this->start_lower     = original_lp.lower;
-    this->start_upper     = original_lp.upper;
-    this->search_strategy = search_strategy_t::COEFFICIENT_DIVING;
-  }
-
-  // Apply bound strengthening to the starting variable bounds
-  bool presolve_start_bounds(const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
-  {
-    return this->node_presolver.bounds_strengthening(
-      settings, this->bounds_changed, this->start_lower, this->start_upper);
-  }
-
-  // Set this node inactive
-  void set_inactive()
-  {
-    if (!this->is_active.load(std::memory_order::relaxed)) { return; }
-    this->is_active = false;
-
-    if (bfs_worker) {
-      assert(bfs_worker->active_diving_workers.load(std::memory_order::relaxed) > 0);
-      --bfs_worker->active_diving_workers;
-    }
-  }
-
-  f_t get_lower_bound() { return this->lower_bound; }
-
-  mip_node_t<i_t, f_t> start_node;
-
-  // The best-first worker that is associated with this diving worker. Used for controlling the
-  // number of active diving workers.
-  bfs_worker_t<i_t, f_t>* bfs_worker{nullptr};
-};
-
-struct submip_stats_t {
-  omp_atomic_t<int> total_success             = 0;
-  omp_atomic_t<double> success_fixrate_sum    = 0;
-  omp_atomic_t<int> total_infeasible          = 0;
-  omp_atomic_t<double> infeasible_fixrate_sum = 0;
-  omp_atomic_t<int> total_calls               = 0;
-  omp_atomic_t<int> total_empty               = 0;
-
-  void save_success(double fixrate)
-  {
-    ++total_success;
-    success_fixrate_sum += fixrate;
-  }
-
-  void save_infeasible(double fixrate)
-  {
-    ++total_infeasible;
-    infeasible_fixrate_sum += fixrate;
-  }
-
-  void save_empty() { ++total_empty; }
-  double average_infeasible_fixrate() const { return infeasible_fixrate_sum / total_infeasible; }
-  double average_success_fixrate() const { return success_fixrate_sum / total_success; }
 };
 
 }  // namespace cuopt::mathematical_optimization::mip
