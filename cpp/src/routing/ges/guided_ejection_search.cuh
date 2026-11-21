@@ -48,7 +48,9 @@ struct ges_config_t {
 template <typename i_t, typename f_t, request_t REQUEST>
 struct next_route_id_t {
   next_route_id_t(solution_t<i_t, f_t, REQUEST> const* solution_ptr_)
-    : solution_ptr(solution_ptr_), dist(0, std::numeric_limits<i_t>::max()), gen(rd())
+    : solution_ptr(solution_ptr_),
+      dist(0, std::numeric_limits<i_t>::max()),
+      gen(solution_ptr_->problem_ptr->seed_gen.get_seed())
   {
   }
 
@@ -62,7 +64,6 @@ struct next_route_id_t {
   solution_t<i_t, f_t, REQUEST> const* solution_ptr;
   // Uniform distribution to select a random route to delete
   std::uniform_int_distribution<i_t> dist;
-  std::random_device rd;
   std::mt19937 gen;
 };
 
@@ -123,7 +124,7 @@ class guided_ejection_search_t {
   void reset_p_scores();
   template <request_t r_t = REQUEST, std::enable_if_t<r_t == request_t::PDP, bool> = true>
   void reset_p_scores();
-  bool perform_insertion(const request_info_t<i_t, REQUEST>* request);
+  bool perform_insertion(const request_info_t<i_t, REQUEST>* request, i_t n_found_candidates);
   bool try_single_insert_with_perturbation(const request_info_t<i_t, REQUEST>* request);
   i_t find_single_insertion(const request_info_t<i_t, REQUEST>* request);
   void dump_to_file(std::string msg);

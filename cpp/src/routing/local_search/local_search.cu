@@ -242,7 +242,8 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_t, REQUEST>& sol,
                                                               const bool consider_unserviced,
                                                               const bool time_limit_enabled,
-                                                              const bool run_cycle_finder)
+                                                              const bool run_cycle_finder,
+                                                              const bool stop_when_feasible)
 {
   // Handle a corner case when there is no single task that is feasible
   if (sol.n_routes == 0) { return; }
@@ -270,6 +271,7 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
     // fast loop, insider this sliding, fast vrp search and fast cross search happens
     while (true) {
       if (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit()) { break; }
+      if (stop_when_feasible && sol.is_feasible()) { break; }
       iter++;
       if (run_fast_search(sol, sol.problem_ptr->is_tsp && iter == 2)) { continue; }
       if (consider_unserviced && sol.problem_ptr->has_prize_collection() &&
@@ -284,6 +286,7 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
       should_all_nodes_be_served, false, "run_best_local_search_after_fast_search");
 
     if (!run_cycle_finder || (sol.n_routes > 1023)) { break; }
+    if (stop_when_feasible && sol.is_feasible()) { break; }
     // cycle finder is needed even for single route in PDP cases
     if (REQUEST == request_t::VRP && sol.n_routes < 2) { break; }
     move_candidates.reset(sol.sol_handle);

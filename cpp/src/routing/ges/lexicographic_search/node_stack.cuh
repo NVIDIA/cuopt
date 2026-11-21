@@ -100,7 +100,8 @@ struct node_stack_t {
                   i_t p_scores_of_pickup_,
                   node_t<i_t, f_t, REQUEST> delivery_node_,
                   i_t route_length_,
-                  typename route_t<i_t, f_t, REQUEST>::view_t& route_)
+                  typename route_t<i_t, f_t, REQUEST>::view_t& route_,
+                  int64_t seed_)
     : k_max(k_max_),
       delivery_insertion_idx_in_permutation(delivery_insertion_idx_in_permutation_),
       min_p_score(p_scores_of_pickup_ - 1),
@@ -108,7 +109,7 @@ struct node_stack_t {
       delivery_node(delivery_node_),
       dummy_node(delivery_node_.dimensions_info),
       route_length(route_length_),
-      thread_rng(2727, uint64_t((threadIdx.x + blockIdx.x * blockDim.x)), 0)
+      thread_rng(seed_, uint64_t((threadIdx.x + blockIdx.x * blockDim.x)), 0)
   {
     sh_ptr  = set_spans(sh_ptr);
     s_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(sh_ptr, route_, route_length);
@@ -519,8 +520,8 @@ struct node_stack_t {
       }
       // case where p scores and sequence size are equal
       else if (stack_top == best_sequence_size) {
-        if (thread_rng.next_u32() % random_counter == 0) { record = true; }
         ++random_counter;
+        if (thread_rng.next_u32() % random_counter == 0) { record = true; }
       }
       if (record) {
         best_sequence_size = stack_top;
@@ -556,8 +557,8 @@ struct node_stack_t {
         }
         // case where p scores and sequence size are equal
         else if (stack_top == best_sequence_size) {
-          if (thread_rng.next_u32() % random_counter == 0) { record = true; }
           ++random_counter;
+          if (thread_rng.next_u32() % random_counter == 0) { record = true; }
         }
         if (record) {
           best_sequence_size = stack_top;

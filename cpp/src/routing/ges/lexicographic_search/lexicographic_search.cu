@@ -118,7 +118,8 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
                                      const i_t* __restrict__ p_scores,
                                      uint32_t* __restrict__ global_min_p,
                                      i_t* __restrict__ global_sequence,
-                                     i_t* global_random_counter)
+                                     i_t* global_random_counter,
+                                     int64_t seed)
 {
   cuopt_assert(request_id != nullptr, "Request id should not be nullptr");
   cuopt_assert(request_id->is_valid(solution.problem.order_info.depot_included),
@@ -167,7 +168,8 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
                                              p_scores[request_id->info.node()],
                                              delivery_node,
                                              route_length,
-                                             route};
+                                             route,
+                                             seed};
 
   // TODO after raft changes stabilize try to use mdarrays/mdspans when they are more mature
 
@@ -497,12 +499,16 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
   if (reduction_val >= p_scores[request_id->info.node()] || reduction_val == 0) return;
   __syncthreads();
   // Filter and select only one of the thread for final global write
-  bool pred       = thread_p_score == reduction_val;
+  i_t thread_sequence_size = thread_p_score == reduction_val ? node_stack.best_sequence_size
+                                                             : std::numeric_limits<i_t>::max();
+  block_reduce(thread_sequence_size, reusable_shmem);
+  bool pred = thread_sequence_size == reusable_shmem[0];
+  __syncthreads();
   i_t thread_data = pred ? node_stack.random_counter : 0;
   i_t selected_thread =
-    raft::random::device::block_random_sample(node_stack.thread_rng, reusable_shmem, (i_t)pred);
+    raft::random::device::block_random_sample(node_stack.thread_rng, reusable_shmem, thread_data);
   // also reduce the total random counter
-  i_t block_random_counter = raft::blockReduce(node_stack.random_counter, (char*)reusable_shmem);
+  i_t block_random_counter = raft::blockReduce(thread_data, (char*)reusable_shmem);
   __syncthreads();
   if (threadIdx.x == 0) {
     reusable_shmem[2 * raft::WarpSize - 1] = block_random_counter;
@@ -518,10 +524,10 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
     // reusable_shmem last item keeps the scan result
     i_t total_random_counter = reusable_shmem[2 * raft::WarpSize - 1];
     cuopt_assert(total_random_counter > 0, "total_random_counter should be greater than 0");
-    uint32_t old_p_val_seq = atomicMin(global_min_p, block_p_val_seq);
     while (atomicExch(solution.lock, 1) != 0)
       ;  // acquire
     __threadfence();
+    uint32_t old_p_val_seq = atomicMin(global_min_p, block_p_val_seq);
     if (global_min_p[0] == block_p_val_seq) {
       bool update = true;
       // if it is the same value, use conditional probability to update
@@ -529,7 +535,7 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
         i_t old_counter        = *global_random_counter;
         i_t new_counter        = old_counter + total_random_counter;
         *global_random_counter = old_counter + total_random_counter;
-        raft::random::PCGenerator global_rng(2829, old_counter, 0);
+        raft::random::PCGenerator global_rng(seed, gridDim.x * blockDim.x + blockIdx.x, 0);
         update = (global_rng.next_u32() % new_counter) >= old_counter;
       }
       // otherwise just update and reset the counter
@@ -718,7 +724,8 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
       p_scores_.data(),
       global_min_p_.data(),
       global_sequence_.data(),
-      global_random_counter_.data());
+      global_random_counter_.data(),
+      solution_ptr->problem_ptr->seed_gen.get_seed());
   solution_ptr->sol_handle->sync_stream();
   RAFT_CHECK_CUDA(stream.get());
   // If global_min_p_ != max do the move
