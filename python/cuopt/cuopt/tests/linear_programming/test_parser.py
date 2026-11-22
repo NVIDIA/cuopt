@@ -4,7 +4,7 @@
 import os
 import tempfile
 
-from cuopt.linear_programming import Read
+from cuopt.linear_programming import Read, DataModel
 import numpy as np
 import pytest
 from cuopt.linear_programming.io.utilities import InputValidationError
@@ -425,3 +425,32 @@ def test_write_unsupported_extension(suffix):
             problem.write(out_path)
     finally:
         os.unlink(out_path)
+
+
+def test_mps_preserves_model_names(tmp_path):
+    model = DataModel()
+    model.set_csr_constraint_matrix(
+        np.array([1.0, 1.0]),
+        np.array([0, 1], dtype=np.int32),
+        np.array([0, 2], dtype=np.int32),
+    )
+
+    model.set_constraint_bounds(np.array([5.0]))
+    model.set_row_types(np.array(["L"]))
+    model.set_objective_coefficients(np.array([1.0, 2.0]))
+    model.set_variable_lower_bounds(np.array([0.0, 0.0]))
+    model.set_variable_upper_bounds(np.array([10.0, 10.0]))
+
+    model.set_variable_names(np.array(["var_a", "var_b"]))
+    model.set_row_names(np.array(["row_a"]))
+    model.set_objective_name("obj_a")
+    model.set_problem_name("problem_a")
+
+    path = str(tmp_path / "names.mps")
+    model.write(path)
+    restored = Read(path)
+
+    assert restored.get_variable_names().tolist() == ["var_a", "var_b"]
+    assert restored.get_row_names().tolist() == ["row_a"]
+    assert restored.get_objective_name() == "obj_a"
+    assert restored.get_problem_name() == "problem_a"

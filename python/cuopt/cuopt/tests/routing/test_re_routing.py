@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import math
@@ -10,7 +10,10 @@ import cudf
 
 from cuopt import routing
 from cuopt.routing import utils
-from cuopt.routing.re_routing import construct_rerouting_model
+from cuopt.routing.re_routing import (
+    construct_rerouting_model,
+    generate_capacity_constraints_for_vehicle_order_match,
+)
 
 
 def generate_new_order_data(
@@ -178,3 +181,24 @@ def test_re_routing():
 
         assert routing_solution.get_status() == 0
         cu_route = routing_solution.get_route()
+
+
+def test_generate_capacity_constraints_for_vehicle_order_match():
+    constraints = generate_capacity_constraints_for_vehicle_order_match(
+        pickup_order_to_vehicle={0: 0, 2: 0, 4: 2},
+        pickup_indices=[0, 2, 4],
+        delivery_indices=[1, 3, 5],
+        vehicle_num=3,
+        order_num=6,
+    )
+
+    assert constraints == {
+        "force-vehicle-order-pair-1": {
+            "demand": [1, -1, 1, -1, 3, -3],
+            "capacity": [2, 0, 3],
+        },
+        "force-vehicle-order-pair-2": {
+            "demand": [2, -2, 2, -2, 1, -1],
+            "capacity": [4, 0, 1],
+        },
+    }

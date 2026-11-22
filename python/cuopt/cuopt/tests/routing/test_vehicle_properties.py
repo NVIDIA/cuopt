@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
+import pytest
 
 import cudf
 
 from cuopt import routing
 from cuopt.routing import utils
 from cuopt.routing.vehicle_routing_wrapper import ErrorStatus
+
+from cuopt.routing.assignment import Assignment
 
 filename = utils.RAPIDS_DATASET_ROOT_DIR + "/solomon/In/r107.txt"
 
@@ -733,3 +736,46 @@ def test_empty_routes_with_breaks():
         h_route = solution_vehicle_x["route"].to_arrow().to_pylist()
         route_len = len(h_route)
         assert route_len > 3
+
+
+@pytest.mark.parametrize("with_types", [False, True])
+def test_display_routes(capsys, with_types):
+    route = cudf.DataFrame(
+        {
+            "truck_id": [0, 0, 0],
+            "route": [0, 1, 0],
+            "arrival_stamp": [2.0, 5.0, 8.0],
+        }
+    )
+
+    if with_types:
+        route["type"] = ["Depot", "Delivery", "Depot"]
+
+    assignment = Assignment(
+        vehicle_count=1,
+        total_objective_value=6.0,
+        objective_values={},
+        route_df=route,
+        accepted=cudf.Series([], dtype="int32"),
+        status=0,
+        message="",
+        error_status=0,
+        error_message="",
+        undeliverable_orders=cudf.Series([], dtype="int32"),
+    )
+
+    assignment.display_routes()
+    output = capsys.readouterr().out
+
+    if with_types:
+        assert "0(Dpt)->1(D)->0(Dpt)" in output
+    else:
+        assert "0->1->0" in output
+
+    assert (
+        "Vehicle-0 starts at: 2.0, completes at: 8.0, travel time: 6.0"
+        in output
+    )
+    assert (
+        "This results in a travel time of 6.0 to deliver all routes" in output
+    )
