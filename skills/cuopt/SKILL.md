@@ -37,8 +37,8 @@ its branch in the repo: `release/<major>.<minor>`, or `main` if that branch does
 
 ## Gotchas
 
-Solver statuses and results that surprise you are answered under **Common Pitfalls** in the
-FAQ: `docs/cuopt/source/faq.rst` in this repo, published at
+Solver statuses and results that surprise you are usually answered in the FAQ:
+`docs/cuopt/source/faq.rst` in this repo, published at
 https://docs.nvidia.com/cuopt/user-guide/latest/faq.html
 
 Additional gotchas are listed below.

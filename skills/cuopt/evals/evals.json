@@ -69,9 +69,9 @@
     "question": "My cuOpt solve came back with a status I didn't expect and an objective value that looks wrong, and I can't tell whether it's a bug in the solver or a mistake in how I set the model up. Where do I start?",
     "expected_skill": "cuopt",
     "expected_script": null,
-    "ground_truth": "The agent directs the reader to the Common Pitfalls section of the cuOpt FAQ, which covers solver statuses and results that surprise, naming either the published page (https://docs.nvidia.com/cuopt/user-guide/latest/faq.html) or docs/cuopt/source/faq.rst in the repository. It frames these as usage-side causes worth ruling out before concluding the solver is at fault, and does not fabricate a specific status enum or its meaning.",
+    "ground_truth": "The agent directs the reader to the cuOpt FAQ, which covers solver statuses and results that surprise, naming either the published page (https://docs.nvidia.com/cuopt/user-guide/latest/faq.html) or docs/cuopt/source/faq.rst in the repository. It frames these as usage-side causes worth ruling out before concluding the solver is at fault, and does not fabricate a specific status enum or its meaning.",
     "expected_behavior": [
-      "Routes to the Common Pitfalls section of the FAQ",
+      "Routes to the cuOpt FAQ",
       "Names the published FAQ URL or docs/cuopt/source/faq.rst in the repo",
       "Suggests ruling out model-setup causes before concluding it is a solver bug",
       "Does NOT invent a status value or its meaning"
