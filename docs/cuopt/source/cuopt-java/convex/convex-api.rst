@@ -98,6 +98,10 @@ representation. The ``getSetting(name, type)`` overload provides a typed
 
 The settings API also includes the static setting accessors and ``setOptimalityTolerance``.
 
+Setting names are the ``CuOptConstants.CUOPT_*`` constants. Defaults and ranges are in
+:doc:`Convex Optimization Settings <../../convex-settings>` and
+:doc:`MIP Settings <../../mip-settings>`.
+
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER``,
 ``CONCURRENT``, ``PRIMAL_SIMPLEX`` and ``UNSET``. ``UNSET`` is also what an
 unrecognized native method value maps to. ``PDLPSolverMode`` exposes the supported PDLP solver modes.

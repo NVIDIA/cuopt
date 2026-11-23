@@ -71,6 +71,10 @@ from the quick start (same constraint matrix and objective).
 :class:`~cuopt.linear_programming.problem.Problem`. Always call
 ``delete`` after you are done with the job so the server can release state.
 
+Solver settings are aligned with the local solver options. See
+:doc:`Convex Optimization Settings <../convex-settings>` and
+:doc:`MIP Settings <../mip-settings>` for names, defaults and ranges.
+
 Variable Names
 ==============
 
