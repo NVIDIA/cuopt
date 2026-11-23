@@ -555,8 +555,13 @@ static void read_problem_from_pipe(int worker_id, const JobQueueEntry& job, Dese
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
       const auto& req = submit_request.vrp_request();
       SERVER_LOG_INFO("[Worker] IPC path: UNARY VRP (%zu bytes)", request_data.size());
-      map_proto_to_routing_problem(req.problem(), dj.routing_problem);
-      map_proto_to_routing_settings(req.settings(), dj.routing_settings);
+      try {
+        map_proto_to_routing_problem(req.problem(), dj.routing_problem);
+        map_proto_to_routing_settings(req.settings(), dj.routing_settings);
+      } catch (const std::exception& e) {
+        dj.error_message = e.what();
+        return;
+      }
       dj.is_vrp = true;
 #else
       SERVER_LOG_ERROR("[Worker] VRP request received but this build has no routing support");
