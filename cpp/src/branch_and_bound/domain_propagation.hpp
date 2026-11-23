@@ -35,6 +35,9 @@ struct bound_change_t {
   f_t old_lower;
   f_t new_lower;
   bound_change_origin_t origin;
+
+  // Tightenings of var by the propagation call that recorded this change, including this one.
+  i_t count = 0;
 };
 
 // One side (min or max) of a row activity. The finite part is accumulated with compensated (Dot2)
@@ -187,9 +190,19 @@ class domain_propagation_t {
   // A continuous bound must shrink the domain by at least this fraction.
   static constexpr f_t min_relative_improvement = 0.3;
 
-  // Times primal_tol, the smallest absolute change accepted for a continuous bound and the
-  // smallest change relative to its magnitude accepted for an integer bound.
+  // Relative to the primal_tol. The smallest absolute change accepted for a continuous bound and
+  // the smallest change relative to its magnitude accepted for an integer bound.
   static constexpr f_t min_improvement_factor = 1e3;
+
+  // The maximum number a given variable can be tightened in a single propagation call.
+  static constexpr i_t max_var_tightenings_per_call = 50;
+
+  // Stack position of the last tightening of each variable. An entry is stale unless it points
+  // at a change of that variable recorded since propagation_start_.
+  std::vector<size_t> last_change_;
+
+  // Stack position at the start of the bound propagation.
+  size_t propagation_start_{0};
 
   std::vector<row_activity_t<i_t, f_t>> row_activities_;
   std::vector<uint8_t> row_queued_;

@@ -79,6 +79,7 @@ void domain_propagation_t<i_t, f_t>::compute_activities(const csr_matrix_t<i_t, 
   row_activities_.resize(Arow.m);
   row_queued_.resize(Arow.m, false);
   row_queue_.clear_resize(std::max(Arow.m, 1));
+  last_change_.resize(lp.num_cols, 0);
 
   for (i_t i = 0; i < Arow.m; ++i) {
     compute_row_activity(i, Arow, lp.lower, lp.upper);
@@ -240,7 +241,26 @@ bool domain_propagation_t<i_t, f_t>::tighten_bounds(
     }
   }
 
-  apply(lp, {.var = j, .new_upper = new_upper, .new_lower = new_lower, .origin = origin});
+  // Count the number of tightening the variable x_j has. It uses the stack to keep the track
+  // of the count in O(1) time. Changes before the start of the bound propagation are ignored.
+  const size_t last = last_change_[j];
+  i_t count         = 1;
+  if (last >= propagation_start_ && last < bound_changes_.size() && bound_changes_[last].var == j) {
+    count = bound_changes_[last].count + 1;
+  }
+
+  // If it surpasses the maximum allowed, then do not queue this variable again.
+  // This prevents the bound propagation to enter into a cycle.
+  if (count > max_var_tightenings_per_call) { return true; }
+
+  if (apply(lp,
+            {.var       = j,
+             .new_upper = new_upper,
+             .new_lower = new_lower,
+             .origin    = origin,
+             .count     = count})) {
+    last_change_[j] = bound_changes_.size() - 1;
+  }
   return true;
 }
 
@@ -349,8 +369,9 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   lp_problem_t<i_t, f_t>& lp)
 {
-  bool feasible = true;
-  i_t iter      = 0;
+  bool feasible      = true;
+  i_t iter           = 0;
+  propagation_start_ = bound_changes_.size();
   while (feasible && !row_queue_.empty()) {
     i_t i          = row_queue_.pop_front();
     row_queued_[i] = false;
