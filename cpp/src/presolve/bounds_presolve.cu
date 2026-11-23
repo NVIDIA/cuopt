@@ -41,10 +41,10 @@ namespace cuopt::mathematical_optimization::mip {
 template <typename i_t, typename f_t>
 struct detect_infeas_redun_t {
   __device__ __forceinline__ thrust::tuple<i_t, i_t> operator()(
-    thrust::tuple<f_t, f_t, f_t, f_t> t) const
+    thrust::tuple<typename type_2<f_t>::type, typename type_2<f_t>::type, f_t, f_t> t) const
   {
-    auto min_act = thrust::get<0>(t);
-    auto max_act = thrust::get<1>(t);
+    auto min_act = min_activity_value(thrust::get<0>(t));
+    auto max_act = max_activity_value(thrust::get<1>(t));
     auto cnst_lb = thrust::get<2>(t);
     auto cnst_ub = thrust::get<3>(t);
     auto infeas  = check_infeasibility<i_t, f_t>(min_act,
@@ -340,8 +340,8 @@ void bound_presolve_t<i_t, f_t>::calc_and_set_updated_constraint_bounds(problem_
                     max_act = make_span(upd.max_activity),
                     cnst_lb = make_span(pb.constraint_lower_bounds),
                     cnst_ub = make_span(pb.constraint_upper_bounds)] __device__(i_t idx) {
-                     auto min_a    = min_act[idx];
-                     auto max_a    = max_act[idx];
+                     auto min_a    = min_activity_value(min_act[idx]);
+                     auto max_a    = max_activity_value(max_act[idx]);
                      auto c_lb     = cnst_lb[idx];
                      auto c_ub     = cnst_ub[idx];
                      auto new_c_lb = max(c_lb, min_a);

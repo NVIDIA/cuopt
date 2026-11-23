@@ -117,8 +117,8 @@ template <typename i_t, typename f_t>
 __global__ void compute_implied_slack_consumption_per_var(
   typename problem_t<i_t, f_t>::view_t pb,
   raft::device_span<i_t> var_indices,
-  raft::device_span<f_t> min_activity,
-  raft::device_span<f_t> max_activity,
+  raft::device_span<typename type_2<f_t>::type> min_activity,
+  raft::device_span<typename type_2<f_t>::type> max_activity,
   raft::device_span<f_t> implied_var_slack_consumption,
   bool is_problem_ii,
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tols)
@@ -134,8 +134,8 @@ __global__ void compute_implied_slack_consumption_per_var(
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
     auto a        = pb.reverse_coefficients[var_offset + i];
     auto cnst_idx = pb.reverse_constraints[var_offset + i];
-    auto min_a    = min_activity[cnst_idx];
-    auto max_a    = max_activity[cnst_idx];
+    auto min_a    = min_activity_value(min_activity[cnst_idx]);
+    auto max_a    = max_activity_value(max_activity[cnst_idx]);
     auto cnstr_ub = pb.constraint_upper_bounds[cnst_idx];
     auto cnstr_lb = pb.constraint_lower_bounds[cnst_idx];
     // don't consider constraints that are infeasible

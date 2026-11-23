@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -175,11 +176,15 @@ void test_multi_probe(std::string path)
   auto mlp_min_act_1 = host_copy(multi_probe_prs.upd_1.min_activity, stream);
   auto mlp_max_act_1 = host_copy(multi_probe_prs.upd_1.max_activity, stream);
 
+  auto expect_same_activity = [](double2 expected, double2 actual) {
+    EXPECT_DOUBLE_EQ(expected.x, actual.x);
+    EXPECT_EQ(expected.y, actual.y);
+  };
   for (int i = 0; i < (int)bnd_min_act_0.size(); ++i) {
-    EXPECT_DOUBLE_EQ(bnd_min_act_0[i], mlp_min_act_0[i]);
-    EXPECT_DOUBLE_EQ(bnd_max_act_0[i], mlp_max_act_0[i]);
-    EXPECT_DOUBLE_EQ(bnd_min_act_1[i], mlp_min_act_1[i]);
-    EXPECT_DOUBLE_EQ(bnd_max_act_1[i], mlp_max_act_1[i]);
+    expect_same_activity(bnd_min_act_0[i], mlp_min_act_0[i]);
+    expect_same_activity(bnd_max_act_0[i], mlp_max_act_0[i]);
+    expect_same_activity(bnd_min_act_1[i], mlp_min_act_1[i]);
+    expect_same_activity(bnd_max_act_1[i], mlp_max_act_1[i]);
   }
 
   for (int i = 0; i < (int)bnd_lb_0.size(); ++i) {
@@ -199,6 +204,44 @@ TEST(presolve, multi_probe)
     auto path = make_path_absolute(test_instance);
     test_multi_probe(path);
   }
+}
+
+// x1 + x2 + x3 <= 10 with x1 = 2, x2 = 3 fixed and x3 free. x3's own term is the only infinite one
+// in the minimum activity, so propagation must derive x3 <= 5.
+TEST(presolve, bound_presolve_tightens_single_free_variable)
+{
+  const raft::handle_t handle_{};
+  const double inf = std::numeric_limits<double>::infinity();
+  optimization_problem_t<int, double> op_problem(&handle_);
+  const std::vector<double> coefficients{1, 1, 1};
+  const std::vector<int> variables{0, 1, 2}, offsets{0, 3};
+  const std::vector<double> row_lower{-inf}, row_upper{10};
+  const std::vector<double> lower{2, 3, -inf}, upper{2, 3, inf};
+  const std::vector<double> objective(3, 0);
+  const std::vector<var_t> types(3, var_t::CONTINUOUS);
+  op_problem.set_csr_constraint_matrix(coefficients.data(),
+                                       coefficients.size(),
+                                       variables.data(),
+                                       variables.size(),
+                                       offsets.data(),
+                                       offsets.size());
+  op_problem.set_constraint_lower_bounds(row_lower.data(), row_lower.size());
+  op_problem.set_constraint_upper_bounds(row_upper.data(), row_upper.size());
+  op_problem.set_variable_lower_bounds(lower.data(), lower.size());
+  op_problem.set_variable_upper_bounds(upper.data(), upper.size());
+  op_problem.set_variable_types(types.data(), types.size());
+  op_problem.set_objective_coefficients(objective.data(), objective.size());
+
+  mip::problem_t<int, double> problem(op_problem);
+  mip_solver_settings_t<int, double> settings{};
+  mip::mip_solver_t<int, double> solver(problem, settings, cuopt::timer_t(0));
+  mip::bound_presolve_t<int, double> bound_presolve(solver.context);
+  bound_presolve.solve(problem);
+
+  auto stream = problem.handle_ptr->get_stream();
+  EXPECT_EQ(bound_presolve.infeas_constraints_count, 0);
+  EXPECT_EQ(host_copy(bound_presolve.upd.lb, stream), (std::vector<double>{2, 3, -inf}));
+  EXPECT_EQ(host_copy(bound_presolve.upd.ub, stream), (std::vector<double>{2, 3, 5}));
 }
 
 }  // namespace cuopt::mathematical_optimization::test

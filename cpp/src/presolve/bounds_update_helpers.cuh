@@ -12,6 +12,8 @@
 #include <mip_heuristics/utils.cuh>
 #include "bounds_update_data.cuh"
 
+#include <limits>
+
 namespace cuopt::mathematical_optimization::mip {
 
 // Activity calculation
@@ -28,18 +30,14 @@ inline __device__ f_t max_act_of_var(f_t coeff, f_t var_lb, f_t var_ub)
   return (coeff < 0.) ? coeff * var_lb : coeff * var_ub;
 }
 
-template <typename f_t>
-inline __device__ f_t update_lb(f_t curr_lb, f_t coeff, f_t delta_min_act, f_t delta_max_act)
+template <typename f_t, typename f_t2>
+inline __device__ void add_activity_term(f_t2& activity, f_t term)
 {
-  auto comp_bnd = (coeff < 0.) ? delta_min_act / coeff : delta_max_act / coeff;
-  return max(curr_lb, comp_bnd);
-}
-
-template <typename f_t>
-inline __device__ f_t update_ub(f_t curr_ub, f_t coeff, f_t delta_min_act, f_t delta_max_act)
-{
-  auto comp_bnd = (coeff < 0.) ? delta_max_act / coeff : delta_min_act / coeff;
-  return min(curr_ub, comp_bnd);
+  if (isinf(term)) {
+    activity.y += 1;
+  } else if (!isnan(term)) {
+    activity.x += term;
+  }
 }
 
 template <typename f_t>
@@ -50,19 +48,29 @@ inline __device__ bool accept_candidate_bound_update(f_t bound,
   return abs(bound) * candidate_bound_scale <= abs_tol;
 }
 
+template <typename f_t, typename f_t2>
+inline __device__ f_t
+bound_candidate(f_t beta, f_t2 activity, f_t coeff, f_t own_bound, f_t no_candidate)
+{
+  if (!isfinite(beta) || activity.y > 1) { return no_candidate; }
+  if (activity.y == 1) { return isfinite(own_bound) ? no_candidate : (beta - activity.x) / coeff; }
+  return (beta - activity.x) / coeff + own_bound;
+}
+
 template <typename i_t, typename f_t, i_t BDIM>
 __global__ void calc_activity_kernel(typename problem_t<i_t, f_t>::view_t pb,
                                      typename bounds_update_data_t<i_t, f_t>::view_t upd_0,
                                      typename bounds_update_data_t<i_t, f_t>::view_t upd_1)
 {
+  using f_t2        = typename type_2<f_t>::type;
   using BlockReduce = cub::BlockReduce<f_t, BDIM>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
 
   i_t cnst_idx    = blockIdx.x;
   i_t cnst_offset = pb.offsets[cnst_idx];
   i_t cnst_degree = pb.offsets[cnst_idx + 1] - cnst_offset;
-  f_t min_act_0 = 0, max_act_0 = 0;
-  f_t min_act_1 = 0, max_act_1 = 0;
+  f_t2 min_act_0{0, 0}, max_act_0{0, 0};
+  f_t2 min_act_1{0, 0}, max_act_1{0, 0};
   bool changed_0 = upd_0.changed_constraints[cnst_idx] == 1;
   bool changed_1 = upd_1.changed_constraints[cnst_idx] == 1;
   if (!changed_0 && !changed_1) { return; }
@@ -73,28 +81,36 @@ __global__ void calc_activity_kernel(typename problem_t<i_t, f_t>::view_t pb,
     if (changed_0) {
       auto var_lb_0 = upd_0.lb[var_idx];
       auto var_ub_0 = upd_0.ub[var_idx];
-      min_act_0 += min_act_of_var(coeff, var_lb_0, var_ub_0);
-      max_act_0 += max_act_of_var(coeff, var_lb_0, var_ub_0);
+      add_activity_term(min_act_0, min_act_of_var(coeff, var_lb_0, var_ub_0));
+      add_activity_term(max_act_0, max_act_of_var(coeff, var_lb_0, var_ub_0));
       atomicExch(&upd_0.changed_variables[var_idx], 1);
     }
     if (changed_1) {
       auto var_lb_1 = upd_1.lb[var_idx];
       auto var_ub_1 = upd_1.ub[var_idx];
-      min_act_1 += min_act_of_var(coeff, var_lb_1, var_ub_1);
-      max_act_1 += max_act_of_var(coeff, var_lb_1, var_ub_1);
+      add_activity_term(min_act_1, min_act_of_var(coeff, var_lb_1, var_ub_1));
+      add_activity_term(max_act_1, max_act_of_var(coeff, var_lb_1, var_ub_1));
       atomicExch(&upd_1.changed_variables[var_idx], 1);
     }
   }
   if (changed_0) {
-    min_act_0 = BlockReduce(temp_storage).Sum(min_act_0);
+    min_act_0.x = BlockReduce(temp_storage).Sum(min_act_0.x);
     __syncthreads();
-    max_act_0 = BlockReduce(temp_storage).Sum(max_act_0);
+    min_act_0.y = BlockReduce(temp_storage).Sum(min_act_0.y);
+    __syncthreads();
+    max_act_0.x = BlockReduce(temp_storage).Sum(max_act_0.x);
+    __syncthreads();
+    max_act_0.y = BlockReduce(temp_storage).Sum(max_act_0.y);
     __syncthreads();
   }
   if (changed_1) {
-    min_act_1 = BlockReduce(temp_storage).Sum(min_act_1);
+    min_act_1.x = BlockReduce(temp_storage).Sum(min_act_1.x);
     __syncthreads();
-    max_act_1 = BlockReduce(temp_storage).Sum(max_act_1);
+    min_act_1.y = BlockReduce(temp_storage).Sum(min_act_1.y);
+    __syncthreads();
+    max_act_1.x = BlockReduce(temp_storage).Sum(max_act_1.x);
+    __syncthreads();
+    max_act_1.y = BlockReduce(temp_storage).Sum(max_act_1.y);
   }
 
   if (threadIdx.x == 0) {
@@ -113,13 +129,14 @@ template <typename i_t, typename f_t, i_t BDIM>
 __global__ void calc_activity_kernel(typename problem_t<i_t, f_t>::view_t pb,
                                      typename bounds_update_data_t<i_t, f_t>::view_t upd)
 {
+  using f_t2        = typename type_2<f_t>::type;
   using BlockReduce = cub::BlockReduce<f_t, BDIM>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
 
   i_t cnst_idx    = blockIdx.x;
   i_t cnst_offset = pb.offsets[cnst_idx];
   i_t cnst_degree = pb.offsets[cnst_idx + 1] - cnst_offset;
-  f_t min_act = 0, max_act = 0;
+  f_t2 min_act{0, 0}, max_act{0, 0};
   if (upd.changed_constraints[cnst_idx] == 0) { return; }
 
   for (i_t i = threadIdx.x; i < cnst_degree; i += blockDim.x) {
@@ -127,13 +144,17 @@ __global__ void calc_activity_kernel(typename problem_t<i_t, f_t>::view_t pb,
     auto var_idx = pb.variables[cnst_offset + i];
     auto var_lb  = upd.lb[var_idx];
     auto var_ub  = upd.ub[var_idx];
-    min_act += min_act_of_var(coeff, var_lb, var_ub);
-    max_act += max_act_of_var(coeff, var_lb, var_ub);
+    add_activity_term(min_act, min_act_of_var(coeff, var_lb, var_ub));
+    add_activity_term(max_act, max_act_of_var(coeff, var_lb, var_ub));
     atomicExch(&upd.changed_variables[var_idx], 1);
   }
-  min_act = BlockReduce(temp_storage).Sum(min_act);
+  min_act.x = BlockReduce(temp_storage).Sum(min_act.x);
   __syncthreads();
-  max_act = BlockReduce(temp_storage).Sum(max_act);
+  min_act.y = BlockReduce(temp_storage).Sum(min_act.y);
+  __syncthreads();
+  max_act.x = BlockReduce(temp_storage).Sum(max_act.x);
+  __syncthreads();
+  max_act.y = BlockReduce(temp_storage).Sum(max_act.y);
 
   if (threadIdx.x == 0) {
     upd.min_activity[cnst_idx] = min_act;
@@ -182,23 +203,26 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst(
   thrust::pair<f_t, f_t> bnd,
   thrust::pair<f_t, f_t> old_bnd)
 {
-  auto min_a = upd.min_activity[cnst_idx];
-  auto max_a = upd.max_activity[cnst_idx];
+  const auto min_act = upd.min_activity[cnst_idx];
+  const auto max_act = upd.max_activity[cnst_idx];
   // don't propagate over constraints that are infeasible
-  if (check_infeasibility<i_t, f_t>(min_a,
-                                    max_a,
+  if (check_infeasibility<i_t, f_t>(min_activity_value(min_act),
+                                    max_activity_value(max_act),
                                     cnst_lb,
                                     cnst_ub,
                                     pb.tolerances.absolute_tolerance,
                                     pb.tolerances.relative_tolerance)) {
     return bnd;
   }
-  min_a -= (coeff < 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
-  max_a -= (coeff > 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
-  auto delta_min_act = cnst_ub - min_a;
-  auto delta_max_act = cnst_lb - max_a;
-  auto new_lb        = update_lb(thrust::get<0>(bnd), coeff, delta_min_act, delta_max_act);
-  auto new_ub        = update_ub(thrust::get<1>(bnd), coeff, delta_min_act, delta_max_act);
+  constexpr f_t inf = std::numeric_limits<f_t>::infinity();
+  const f_t old_lb  = thrust::get<0>(old_bnd);
+  const f_t old_ub  = thrust::get<1>(old_bnd);
+  const f_t lb_cand = coeff > 0 ? bound_candidate(cnst_lb, max_act, coeff, old_ub, -inf)
+                                : bound_candidate(cnst_ub, min_act, coeff, old_ub, -inf);
+  const f_t ub_cand = coeff > 0 ? bound_candidate(cnst_ub, min_act, coeff, old_lb, inf)
+                                : bound_candidate(cnst_lb, max_act, coeff, old_lb, inf);
+  auto new_lb       = max(thrust::get<0>(bnd), lb_cand);
+  auto new_ub       = min(thrust::get<1>(bnd), ub_cand);
 
   if (accept_candidate_bound_update(
         new_lb, pb.tolerances.absolute_tolerance, upd.candidate_bound_scale)) {

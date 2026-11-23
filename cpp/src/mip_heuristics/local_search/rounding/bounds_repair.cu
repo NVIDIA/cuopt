@@ -76,8 +76,8 @@ f_t bounds_repair_t<i_t, f_t>::get_ii_violation(problem_t<i_t, f_t>& problem)
       f_t cnst_ub = pb_v.constraint_upper_bounds[cstr_idx];
       f_t eps     = get_cstr_tolerance<i_t, f_t>(
         cnst_lb, cnst_ub, pb_v.tolerances.absolute_tolerance, pb_v.tolerances.relative_tolerance);
-      f_t curr_cstr_violation_up   = max(0., min_act[cstr_idx] - (cnst_ub + eps));
-      f_t curr_cstr_violation_down = max(0., cnst_lb - eps - max_act[cstr_idx]);
+      f_t curr_cstr_violation_up = max(0., min_activity_value(min_act[cstr_idx]) - (cnst_ub + eps));
+      f_t curr_cstr_violation_down = max(0., cnst_lb - eps - max_activity_value(max_act[cstr_idx]));
       f_t violation                = max(curr_cstr_violation_up, curr_cstr_violation_down);
       if (violation >= ROUNDOFF_TOLERANCE) {
         violated_cstr_map[cstr_idx] = 1;
@@ -196,12 +196,13 @@ i_t bounds_repair_t<i_t, f_t>::compute_best_shift(problem_t<i_t, f_t>& problem,
 }
 
 template <typename i_t, typename f_t>
-__global__ void compute_damages_kernel(typename problem_t<i_t, f_t>::view_t problem,
-                                       typename candidates_t<i_t, f_t>::view_t candidates,
-                                       raft::device_span<f_t> cstr_violations_up,
-                                       raft::device_span<f_t> cstr_violations_down,
-                                       raft::device_span<f_t> minimum_activity,
-                                       raft::device_span<f_t> maximum_activity)
+__global__ void compute_damages_kernel(
+  typename problem_t<i_t, f_t>::view_t problem,
+  typename candidates_t<i_t, f_t>::view_t candidates,
+  raft::device_span<f_t> cstr_violations_up,
+  raft::device_span<f_t> cstr_violations_down,
+  raft::device_span<typename type_2<f_t>::type> minimum_activity,
+  raft::device_span<typename type_2<f_t>::type> maximum_activity)
 {
   i_t var_idx                     = candidates.variable_index[blockIdx.x];
   f_t shift_amount                = candidates.bound_shift[blockIdx.x];
@@ -225,8 +226,8 @@ __global__ void compute_damages_kernel(typename problem_t<i_t, f_t>::view_t prob
     f_t cnst_lb             = problem.constraint_lower_bounds[c];
     f_t cnst_ub             = problem.constraint_upper_bounds[c];
     f_t shift_in_activities = shift_amount * coeff;
-    f_t new_min_act         = minimum_activity[c] + shift_in_activities;
-    f_t new_max_act         = maximum_activity[c] + shift_in_activities;
+    f_t new_min_act         = min_activity_value(minimum_activity[c]) + shift_in_activities;
+    f_t new_max_act         = max_activity_value(maximum_activity[c]) + shift_in_activities;
     f_t eps                 = get_cstr_tolerance<i_t, f_t>(cnst_lb,
                                            cnst_ub,
                                            problem.tolerances.absolute_tolerance,
