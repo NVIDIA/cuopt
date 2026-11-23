@@ -152,9 +152,14 @@ def test_model():
 
 
 @pytest.mark.parametrize(
-    "decimal_offset", [False, True], ids=["repro", "decimal-offset"]
+    "decimal_offset, deterministic",
+    [
+        pytest.param(False, False, id="integer-default"),
+        pytest.param(False, True, id="integer-deterministic"),
+        pytest.param(True, True, id="decimal-offset"),
+    ],
 )
-def test_fully_presolved_mip(decimal_offset):
+def test_fully_presolved_mip(decimal_offset, deterministic):
     problem = Problem()
     x = [
         [problem.addVariable(ub=1, vtype=INTEGER) for _ in range(3)]
@@ -172,10 +177,13 @@ def test_fully_presolved_mip(decimal_offset):
         objective = x[0][0] + x[1][1]
         expected_objective = 2.0
     problem.setObjective(objective, sense=MAXIMIZE)
-    settings = SolverSettings()
-    settings.set_parameter("mip_determinism_mode", 1)
 
-    problem.solve(settings)
+    if deterministic:
+        settings = SolverSettings()
+        settings.set_parameter("mip_determinism_mode", 1)
+        problem.solve(settings)
+    else:
+        problem.solve()
 
     assert [var.Value for row in x for var in row] == [1, 0, 0, 0, 1, 0]
     assert problem.Status.name == "Optimal"
