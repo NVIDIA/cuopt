@@ -189,63 +189,150 @@ URLS=($(echo "$DATASET_DATA"|awk '{if (NR%4 == 3) print $0}'))  # extract 3rd fi
 # shellcheck disable=SC2207
 DESTDIRS=($(echo "$DATASET_DATA"|awk '{if (NR%4 == 0) print $0}'))  # extract 4th fields to a bash array
 
-# Try S3 download first with selected directories
-if try_download_from_s3 "${DESTDIRS[@]}"; then
-    echo "Datasets successfully retrieved from S3, skipping HTTP download."
-    exit 0
-fi
+# Stage all downloads and extraction in a unique sibling directory. The existing
+# datasets must remain untouched until every selected dataset is ready.
+work_dir=$(mktemp -d "${PWD}/.cuopt-datasets.XXXXXXXX")
+backup_dir="${work_dir}/backup"
+mkdir -p "${backup_dir}"
+unique_destinations=()
+backed_up=()
+installed=()
+committed=false
 
-echo "Downloading from HTTP sources..."
-
-# Download all tarfiles to a tmp dir
-rm -rf tmp
-mkdir tmp
-cd tmp
-# Loop through URLs with error handling
-for url in "${URLS[@]}"; do
-    # Try up to 3 times with continue option
-    wget -4 --tries=3 --continue --progress=dot:mega --retry-connrefused "${url}" || {
-        echo "Failed to download: ${url}"
-        continue
-    }
-done
-cd ..
-
-# Setup the destination dirs, removing any existing ones first!
-for index in ${!DESTDIRS[*]}; do
-    rm -rf "${DESTDIRS[$index]}"
-done
-for index in ${!DESTDIRS[*]}; do
-    mkdir -p "${DESTDIRS[$index]}"
+for dir in "${DESTDIRS[@]}"; do
+    seen=false
+    for previous in "${unique_destinations[@]}"; do
+        if [[ "${dir}" == "${previous}" ]]; then
+            seen=true
+            break
+        fi
+    done
+    if ! $seen; then unique_destinations+=("${dir}"); fi
 done
 
-# Iterate over the arrays and untar the nth tarfile to the nth dest directory.
-# The tarfile name is derived from the download url.
-echo Decompressing ...
-set +e  # Disable exit on error for the entire script
-
-for index in ${!DESTDIRS[*]}; do
-    tfname=$(basename "${URLS[$index]}")
-
-    if file --mime-type "tmp/${tfname}" | grep -q gzip$; then
-        tar xvzf tmp/"${tfname}" -C "${DESTDIRS[$index]}" || true
-    elif file --mime-type "tmp/${tfname}" | grep -q zip$; then
-        unzip tmp/"${tfname}" -d "${DESTDIRS[$index]}" || true
+cleanup() {
+    local status=$?
+    local preserve=false
+    trap - EXIT
+    if ! $committed; then
+        if [[ ${#installed[@]} -gt 0 ]]; then
+            mkdir -p "${work_dir}/uncommitted" || preserve=true
+        fi
+        for dir in "${installed[@]}"; do
+            if [[ -e "${dir}" || -L "${dir}" ]]; then
+                mv -- "${dir}" "${work_dir}/uncommitted/${dir}" || preserve=true
+            fi
+        done
+        for dir in "${backed_up[@]}"; do
+            if [[ -e "${backup_dir}/${dir}" || -L "${backup_dir}/${dir}" ]]; then
+                if [[ -e "${dir}" || -L "${dir}" ]]; then
+                    preserve=true
+                else
+                    mv -- "${backup_dir}/${dir}" "${dir}" || preserve=true
+                fi
+            fi
+        done
+    fi
+    if $preserve; then
+        echo "Could not restore all dataset directories; recovery data retained at ${work_dir}" >&2
     else
-        tar xvf tmp/"${tfname}" -C "${DESTDIRS[$index]}" || true
+        rm -rf -- "${work_dir}"
     fi
+    exit "${status}"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-    if ls "${DESTDIRS[$index]}"/*.gz >/dev/null 2>&1; then
-        gzip -d "${DESTDIRS[$index]}"/* || true
+s3_dir="${work_dir}/s3"
+mkdir -p "${s3_dir}"
+data_dir=""
+# The S3 attempt may partially extract or sync data before failing; isolate it
+# from both the existing destinations and the separate HTTP fallback.
+if (cd "${s3_dir}" && try_download_from_s3 "${DESTDIRS[@]}"); then
+    s3_complete=true
+    for dir in "${unique_destinations[@]}"; do
+        if [[ ! -d "${s3_dir}/${dir}" ]] || [[ -z "$(find "${s3_dir}/${dir}" -type f -print -quit)" ]]; then
+            echo "S3 dataset is empty or missing: ${dir}; falling back to HTTP" >&2
+            s3_complete=false
+            break
+        fi
+    done
+    if $s3_complete; then
+        # S3 sync previously merged into existing datasets. Preserve that behavior
+        # on a staged copy, without following destination symlinks on overwrite.
+        merged_dir="${work_dir}/merged"
+        mkdir -p "${merged_dir}"
+        for dir in "${unique_destinations[@]}"; do
+            if [[ -L "${dir}" || ( -e "${dir}" && ! -d "${dir}" ) ]]; then
+                echo "Cannot safely merge S3 data into non-directory destination: ${dir}" >&2
+                exit 1
+            fi
+            if [[ -d "${dir}" ]]; then
+                cp -a --reflink=auto "${dir}" "${merged_dir}/${dir}"
+            else
+                mkdir -p "${merged_dir}/${dir}"
+            fi
+            cp -a --remove-destination "${s3_dir}/${dir}/." "${merged_dir}/${dir}/"
+        done
+        data_dir="${merged_dir}"
+    fi
+fi
+
+if [[ -z "${data_dir}" ]]; then
+    echo "Downloading from HTTP sources..."
+    downloads_dir="${work_dir}/downloads"
+    data_dir="${work_dir}/data"
+    mkdir -p "${downloads_dir}" "${data_dir}"
+
+    for url in "${URLS[@]}"; do
+        if ! (cd "${downloads_dir}" && wget -4 --tries=3 --continue --progress=dot:mega --retry-connrefused "${url}"); then
+            echo "Failed to download: ${url}" >&2
+            exit 1
+        fi
+    done
+
+    echo "Decompressing ..."
+    for index in "${!DESTDIRS[@]}"; do
+        dir="${DESTDIRS[$index]}"
+        archive="${downloads_dir}/$(basename "${URLS[$index]}")"
+        mkdir -p "${data_dir}/${dir}"
+        if [[ ! -s "${archive}" ]]; then
+            echo "Downloaded archive is empty or missing: ${archive}" >&2
+            exit 1
+        fi
+        mime_type=$(file --mime-type -b "${archive}")
+        case "${mime_type}" in
+            application/gzip|application/x-gzip) tar xzf "${archive}" -C "${data_dir}/${dir}" ;;
+            application/zip|application/x-zip-compressed) unzip -oq "${archive}" -d "${data_dir}/${dir}" ;;
+            *) tar xf "${archive}" -C "${data_dir}/${dir}" ;;
+        esac
+        for compressed in "${data_dir}/${dir}"/*.gz; do
+            if [[ -f "${compressed}" ]]; then gzip -d -- "${compressed}"; fi
+        done
+    done
+
+    if [[ -d "${data_dir}/pdptw" ]]; then
+        for dataset in "${data_dir}/pdptw"/*.txt; do
+            if [[ -f "${dataset}" ]]; then mv -- "${dataset}" "${dataset%.txt}.pdptw"; fi
+        done
+    fi
+fi
+
+# Validate every selected destination before moving any existing dataset.
+for dir in "${unique_destinations[@]}"; do
+    if [[ ! -d "${data_dir}/${dir}" ]] || [[ -z "$(find "${data_dir}/${dir}" -type f -print -quit)" ]]; then
+        echo "Dataset is empty or missing after download: ${dir}" >&2
+        exit 1
     fi
 done
 
-rm -rf tmp
-
-if [ -d "./pdptw" ]; then
-  cd pdptw
-  # change file extensions
-  for f in $(shopt -s nullglob; echo *.txt); do
-    mv -- "$f" "${f%.txt}.pdptw"
-  done
-fi
+for dir in "${unique_destinations[@]}"; do
+    if [[ -e "${dir}" || -L "${dir}" ]]; then
+        mv -- "${dir}" "${backup_dir}/${dir}"
+        backed_up+=("${dir}")
+    fi
+    mv -- "${data_dir}/${dir}" "${dir}"
+    installed+=("${dir}")
+done
+committed=true
