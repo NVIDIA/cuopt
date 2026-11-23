@@ -464,9 +464,7 @@ bool domain_propagation_t<i_t, f_t>::propagate_objective(
       f_t slack_err = -min_err;
       dot2_add(-1.0, min, slack, slack_err);
       if (min_inf == 0) { dot2_add(c_j, bound_min, slack, slack_err); }
-      const f_t gamma = (slack + slack_err) / c_j;
-      if (std::abs(gamma) >= max_derived_bound) { continue; }
-
+      const f_t gamma     = (slack + slack_err) / c_j;
       const f_t new_lower = c_j > 0 ? lb : gamma;
       const f_t new_upper = c_j > 0 ? gamma : ub;
       if (!tighten_bounds(

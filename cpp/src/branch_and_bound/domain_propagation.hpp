@@ -204,8 +204,8 @@ class domain_propagation_t {
   // Contributions with |a_ij x_j| >= huge_value are counted as infinite.
   static constexpr f_t huge_value = 1e15;
 
+  // The maximum number of bound propagation rounds after the objective propagation
   static constexpr i_t max_objective_rounds = 3;
-  static constexpr f_t max_derived_bound    = 1e8;
 
   // An activity is recomputed once its peak exceeds it by this factor.
   static constexpr f_t recompute_factor = 1e6;
