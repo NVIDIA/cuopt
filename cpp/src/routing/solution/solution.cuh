@@ -482,7 +482,7 @@ class solution_t {
   void keep_only_vehicles(const std::vector<i_t>& vehicle_ids_to_keep);
   void compute_route_id_per_node();
   i_t compute_max_active();
-  f_t get_total_excess(const infeasible_cost_t weights) const;
+  double get_total_excess(const infeasible_cost_t weights) const;
   bool is_feasible() const;
   double get_total_cost(const infeasible_cost_t weights) const;
   double get_cost(const bool include_objective, const infeasible_cost_t weights) const;

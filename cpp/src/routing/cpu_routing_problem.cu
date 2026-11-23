@@ -35,6 +35,7 @@ struct cpu_routing_problem_t::device_data_t {
   std::unique_ptr<rmm::device_uvector<uint8_t>> vehicle_types;
   std::unique_ptr<rmm::device_uvector<bool>> drop_return_trips;
   std::unique_ptr<rmm::device_uvector<bool>> skip_first_trips;
+  std::unique_ptr<rmm::device_uvector<float>> vehicle_max_distances;
   std::unique_ptr<rmm::device_uvector<float>> vehicle_max_costs;
   std::unique_ptr<rmm::device_uvector<float>> vehicle_max_times;
   std::unique_ptr<rmm::device_uvector<float>> vehicle_fixed_costs;
@@ -182,6 +183,9 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
   }
 
   if (!vehicle_types.empty()) {
+    if (vehicle_types.size() != static_cast<size_t>(fleet_size)) {
+      throw std::invalid_argument("vehicle_types must contain one type per vehicle");
+    }
     data->vehicle_types = copy_vector(vehicle_types, stream);
     view.set_vehicle_types(data->vehicle_types->data(), false);
   }
@@ -196,6 +200,18 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
     view.set_skip_first_trips(data->skip_first_trips->data());
   }
 
+  if (!vehicle_max_distances.empty()) {
+    if (vehicle_max_distances.size() != static_cast<size_t>(fleet_size)) {
+      throw std::invalid_argument("vehicle_max_distances must contain one limit per vehicle");
+    }
+    if (std::any_of(vehicle_max_distances.begin(), vehicle_max_distances.end(), [](float limit) {
+          return !std::isfinite(limit) || limit < 0;
+        })) {
+      throw std::invalid_argument("Vehicle maximum distances must be finite and non-negative");
+    }
+    data->vehicle_max_distances = copy_vector(vehicle_max_distances, stream);
+    view.set_vehicle_max_distances(data->vehicle_max_distances->data());
+  }
   if (!vehicle_max_costs.empty()) {
     data->vehicle_max_costs = copy_vector(vehicle_max_costs, stream);
     view.set_vehicle_max_costs(data->vehicle_max_costs->data());

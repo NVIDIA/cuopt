@@ -26,7 +26,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::repair_empty_routes()
   cand_t uninit_cand{0, 0, std::numeric_limits<double>::max()};
 
   auto include_objective = true;
-  auto excess_limit      = std::numeric_limits<f_t>::epsilon();
+  double excess_limit    = std::numeric_limits<f_t>::epsilon();
   while (get_num_non_empty_vehicles() < min_vehicles && counter < n_empty_routes * 2) {
     auto const sh_route = solution_ptr->check_routes_can_insert_and_get_sh_size();
     const i_t TPB       = std::min(
@@ -45,7 +45,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::repair_empty_routes()
     cand_t best_move_h = best_move.value(solution_ptr->sol_handle->get_stream());
     if (best_move_h.cost_counter.cost == std::numeric_limits<double>::max()) {
       include_objective = false;
-      excess_limit      = std::numeric_limits<f_t>::max();
+      excess_limit      = std::numeric_limits<double>::max();
       continue;
     }
 
@@ -201,12 +201,12 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_all_ep()
     if (EP.size() < squeeze_size) {
       successful_insertions = try_multiple_insert<true>(batch_size,
                                                         local_search_ptr_->move_candidates.weights,
-                                                        std::numeric_limits<f_t>::max(),
+                                                        std::numeric_limits<double>::max(),
                                                         include_objective);
     } else {
       successful_insertions = try_multiple_insert<false>(batch_size,
                                                          local_search_ptr_->move_candidates.weights,
-                                                         std::numeric_limits<f_t>::max(),
+                                                         std::numeric_limits<double>::max(),
                                                          include_objective);
     }
     if (successful_insertions == 0) { run_batches = false; }

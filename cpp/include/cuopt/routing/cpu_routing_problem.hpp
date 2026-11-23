@@ -88,6 +88,7 @@ class cpu_routing_problem_t {
   std::vector<uint8_t> vehicle_types;
   std::vector<uint8_t> drop_return_trips;  // 0/1 (avoid vector<bool>)
   std::vector<uint8_t> skip_first_trips;   // 0/1
+  std::vector<float> vehicle_max_distances;
   std::vector<float> vehicle_max_costs;
   std::vector<float> vehicle_max_times;
   std::vector<float> vehicle_fixed_costs;

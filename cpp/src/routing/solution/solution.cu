@@ -510,7 +510,7 @@ bool solution_t<i_t, f_t, REQUEST>::is_feasible() const
 
 // this should be called when we want to execute feasible functions
 template <typename i_t, typename f_t, request_t REQUEST>
-f_t solution_t<i_t, f_t, REQUEST>::get_total_excess(const infeasible_cost_t weights) const
+double solution_t<i_t, f_t, REQUEST>::get_total_excess(const infeasible_cost_t weights) const
 {
   raft::common::nvtx::range fun_scope("get_total_excess");
   auto n_cost = infeasibility_cost.value(sol_handle->get_stream());

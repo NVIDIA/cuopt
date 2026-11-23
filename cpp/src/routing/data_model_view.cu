@@ -553,6 +553,15 @@ void data_model_view_t<i_t, f_t>::set_min_vehicles(i_t min_vehicles)
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_vehicle_max_distances(f_t const* vehicle_max_distances)
+{
+  cuopt_expects(vehicle_max_distances != nullptr,
+                error_type_t::ValidationError,
+                "vehicle_max_distances cannot be null");
+  vehicle_max_distances_ = raft::device_span<f_t const>(vehicle_max_distances, fleet_size_);
+}
+
+template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::set_vehicle_max_costs(f_t const* vehicle_max_costs)
 {
   cuopt_expects(vehicle_max_costs != nullptr,
@@ -780,6 +789,12 @@ template <typename i_t, typename f_t>
 i_t data_model_view_t<i_t, f_t>::get_min_vehicles() const noexcept
 {
   return min_num_vehicles_;
+}
+
+template <typename i_t, typename f_t>
+raft::device_span<f_t const> data_model_view_t<i_t, f_t>::get_vehicle_max_distances() const noexcept
+{
+  return vehicle_max_distances_;
 }
 
 template <typename i_t, typename f_t>

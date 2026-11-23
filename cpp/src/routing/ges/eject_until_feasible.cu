@@ -148,7 +148,7 @@ __global__ void eject_until_feasible_kernel(typename solution_t<i_t, f_t, REQUES
         const auto prev_node = sh_route.get_node(i - 1);
         const auto next_node = sh_route.get_node(i + 1);
         if (sh_route.requests().node_info[i].is_break()) { continue; }
-        f_t total_excess = node_t<i_t, f_t, REQUEST>::total_excess_of_combine(
+        double total_excess = node_t<i_t, f_t, REQUEST>::total_excess_of_combine(
           prev_node, next_node, sh_route.vehicle_info());
         if (total_excess < excess_of_route || is_originally_feasible_route) {
           if (thread_rng.next_u32() % counter_per_thread == 0) { min_node_per_thread = i; }

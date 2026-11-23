@@ -58,6 +58,23 @@ static constexpr double get_arc_cost(const NodeInfo<i_t>& l1,
   return lookup_matrix_value(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
 }
 
+template <typename i_t, typename f_t, bool is_device>
+static constexpr double get_travel_distance(const NodeInfo<i_t>& from,
+                                            const NodeInfo<i_t>& to,
+                                            const VehicleInfo<f_t, is_device>& vehicle_info)
+{
+  auto const& matrices = vehicle_info.matrices;
+  auto matrix          = matrices.get_distance_matrix(vehicle_info.type);
+  if (matrix == nullptr || (from.is_depot() && vehicle_info.skip_first_trip) ||
+      (to.is_depot() && vehicle_info.drop_return_trip)) {
+    return 0.;
+  }
+  double distance = lookup_matrix_value(matrix, from.location(), to.location(), matrices.extent[3]);
+  // Keep delta arithmetic finite; an unreachable arc exceeds every legal limit.
+  return distance > std::numeric_limits<f_t>::max() ? 2. * std::numeric_limits<f_t>::max()
+                                                    : distance;
+}
+
 // All values pre-loaded overload
 template <typename i_t, typename f_t, bool is_device = true>
 static constexpr double get_transit_time(const NodeInfo<i_t>& l1,

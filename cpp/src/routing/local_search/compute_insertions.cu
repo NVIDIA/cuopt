@@ -20,6 +20,15 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
+// The temporary route follows two request buffers in dynamic shared memory.
+constexpr size_t insertion_route_alignment = 16;
+
+template <typename i_t>
+HDI size_t insertion_route_offset(i_t n_requests)
+{
+  return raft::alignTo(2 * sizeof(uint16_t) * n_requests, insertion_route_alignment);
+}
+
 template <request_t REQUEST>
 constexpr int get_n_viable()
 {
@@ -642,7 +651,7 @@ __global__ void find_insertions_kernel(typename solution_t<i_t, f_t, REQUEST>::v
                                        typename move_candidates_t<i_t, f_t>::view_t move_candidates,
                                        int64_t seed)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ __align__(insertion_route_alignment) i_t shmem[];
 
   i_t route_idx;
   request_id_t<REQUEST> ejected_id;
@@ -658,8 +667,7 @@ __global__ void find_insertions_kernel(typename solution_t<i_t, f_t, REQUEST>::v
     (uint16_t*)(compacted_requests.data() + solution.get_num_requests()),
     solution.get_num_requests());
 
-  i_t aligned_bytes = raft::alignTo((sizeof(uint16_t) * (2 * solution.get_num_requests())),
-                                    sizeof(infeasible_cost_t));
+  auto aligned_bytes = insertion_route_offset(solution.get_num_requests());
   __syncthreads();
 
   typename route_t<i_t, f_t, REQUEST>::view_t route;
@@ -714,13 +722,9 @@ __global__ void find_insertions_kernel(typename solution_t<i_t, f_t, REQUEST>::v
   // if the route is not ejected, i.e the ejected_node is a pseudo_node
   else {
     route_idx = get_unejected_route_id<i_t, f_t, REQUEST, search_type>(solution, move_candidates);
-    // pseudo_node ids start from the
-    ejected_id.id()         = route_idx + solution.get_num_orders();
-    const auto global_route = solution.routes[route_idx];
-    route                   = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-      (i_t*)(((uint8_t*)shmem) + aligned_bytes), global_route, global_route.get_num_nodes());
-    __syncthreads();
-    route.copy_from(global_route);
+    // No request was removed, so the original route already has the correct prefix and suffix.
+    ejected_id.id() = route_idx + solution.get_num_orders();
+    route           = solution.routes[route_idx];
   }
   __syncthreads();
 
@@ -796,9 +800,7 @@ i_t get_number_of_blocks_per_ls_route(i_t n_routes)
 template <typename i_t, typename f_t, request_t REQUEST>
 size_t get_sh_size_for_compute_insertions(solution_t<i_t, f_t, REQUEST> const& sol)
 {
-  size_t aligned_bytes =
-    raft::alignTo((sizeof(uint16_t) * (sol.get_num_requests() * 2)), sizeof(infeasible_cost_t));
-  return aligned_bytes + sol.get_temp_route_shared_size();
+  return insertion_route_offset(sol.get_num_requests()) + sol.get_temp_route_shared_size();
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
