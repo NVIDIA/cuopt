@@ -7,7 +7,6 @@
 
 #pragma once
 
-#include <algorithm>
 #include <type_traits>
 #include <vector>
 
@@ -159,9 +158,9 @@ void symmetrize_csr(const std::vector<f_t>& in_values,
 }
 
 /**
- * @brief Sort the column indices of each CSR row in place
+ * @brief Sort the column indices of each row of a symmetric CSR matrix
  *
- * Each value moves with its column index. Rows that are already sorted are left untouched.
+ * Since H = H^T, one transpose by bucket sort yields H with sorted rows in O(nnz + n_rows).
  *
  * @tparam i_t Integer type for indices
  * @tparam f_t Floating point type for values
@@ -171,32 +170,26 @@ void symmetrize_csr(const std::vector<f_t>& in_values,
  * @param[in,out] values   CSR values
  */
 template <typename i_t, typename f_t>
-void sort_csr_rows(const std::vector<i_t>& offsets,
-                   std::vector<i_t>& indices,
-                   std::vector<f_t>& values)
+void sort_symmetric_csr_rows(const std::vector<i_t>& offsets,
+                             std::vector<i_t>& indices,
+                             std::vector<f_t>& values)
 {
-  std::vector<i_t> order;
-  std::vector<i_t> row_indices;
-  std::vector<f_t> row_values;
-  for (size_t r = 0; r + 1 < offsets.size(); ++r) {
-    const i_t row_begin = offsets[r];
-    const i_t row_end   = offsets[r + 1];
-    if (std::is_sorted(indices.begin() + row_begin, indices.begin() + row_end)) { continue; }
+  if (offsets.size() <= 1) { return; }
+  const i_t n_rows = static_cast<i_t>(offsets.size()) - 1;
 
-    order.clear();
-    for (i_t p = row_begin; p < row_end; ++p) {
-      order.push_back(p);
+  // H^T has the same row offsets as H
+  std::vector<i_t> next(offsets.begin(), offsets.end() - 1);
+  std::vector<i_t> sorted_indices(indices.size());
+  std::vector<f_t> sorted_values(values.size());
+  for (i_t i = 0; i < n_rows; ++i) {
+    for (i_t p = offsets[i]; p < offsets[i + 1]; ++p) {
+      const i_t q       = next[indices[p]]++;
+      sorted_indices[q] = i;
+      sorted_values[q]  = values[p];
     }
-    std::sort(order.begin(), order.end(), [&](i_t a, i_t b) { return indices[a] < indices[b]; });
-    row_indices.clear();
-    row_values.clear();
-    for (i_t p : order) {
-      row_indices.push_back(indices[p]);
-      row_values.push_back(values[p]);
-    }
-    std::copy(row_indices.begin(), row_indices.end(), indices.begin() + row_begin);
-    std::copy(row_values.begin(), row_values.end(), values.begin() + row_begin);
   }
+  indices.swap(sorted_indices);
+  values.swap(sorted_values);
 }
 
 }  // namespace cuopt

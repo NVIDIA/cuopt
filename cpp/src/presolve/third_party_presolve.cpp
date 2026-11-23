@@ -881,7 +881,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
     const auto& coefficients = mps.get_constraint_matrix_values();
     const auto& indices      = mps.get_constraint_matrix_indices();
     const auto& offsets      = mps.get_constraint_matrix_offsets();
-    cuopt::sort_csr_rows(P_offsets, P_indices, P_values);
+    cuopt::sort_symmetric_csr_rows(P_offsets, P_indices, P_values);
 
     // ProblemData is required for PSLP QP presolve
     ProblemData problem{};
