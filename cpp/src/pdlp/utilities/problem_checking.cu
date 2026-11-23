@@ -205,7 +205,7 @@ void problem_checking_t<i_t, f_t>::check_problem_representation(
       "Sizes for vectors related to the constraints are not the same. The right hand side "
       "vector has size %zu and the number of rows (constraints) in the matrix is %zu.",
       op_problem.get_constraint_bounds().size(),
-      op_problem.get_constraint_matrix_offsets().size());
+      op_problem.get_constraint_matrix_offsets().size() - 1);
   }
 
   // Check sizes only if user has set it (we can't compare lower/upper bounds size because one might
@@ -275,7 +275,7 @@ void problem_checking_t<i_t, f_t>::check_problem_representation(
       "Sizes for vectors related to the constraints are not the same. The constraint lower bounds "
       "vector has size %zu and the number of rows (constraints) in the matrix is %zu.",
       op_problem.get_constraint_lower_bounds().size(),
-      op_problem.get_constraint_matrix_offsets().size());
+      op_problem.get_constraint_matrix_offsets().size() - 1);
   }
   if (!op_problem.get_constraint_upper_bounds().is_empty()) {
     cuopt_expects(
@@ -285,7 +285,7 @@ void problem_checking_t<i_t, f_t>::check_problem_representation(
       "Sizes for vectors related to the constraints are not the same. The constraint upper bounds "
       "vector has size %zu and the number of rows (constraints) in the matrix is %zu.",
       op_problem.get_constraint_upper_bounds().size(),
-      op_problem.get_constraint_matrix_offsets().size());
+      op_problem.get_constraint_matrix_offsets().size() - 1);
   }
 }
 

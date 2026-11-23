@@ -351,6 +351,45 @@ TEST(optimization_problem_t, test_check_problem_validity)
   EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)));
 }
 
+TEST(optimization_problem_t, test_constraint_size_error_reports_matrix_rows)
+{
+  for (auto const size : {1, 3}) {
+    for (auto const use_row_types : {true, false}) {
+      SCOPED_TRACE(::testing::Message() << "size=" << size << ", row_types=" << use_row_types);
+      raft::handle_t handle;
+      auto problem       = optimization_problem_t<int, double>(&handle);
+      double values[]    = {1.0, 1.0};
+      int indices[]      = {0, 0};
+      int offsets[]      = {0, 1, 2};
+      double objective[] = {1.0};
+      problem.set_csr_constraint_matrix(values, 2, indices, 2, offsets, 3);
+      problem.set_objective_coefficients(objective, 1);
+      std::vector<double> bounds(size, 1.0);
+      std::vector<char> row_types(size, 'E');
+      if (use_row_types) {
+        problem.set_row_types(row_types.data(), size);
+        problem.set_constraint_bounds(bounds.data(), size);
+      } else {
+        problem.set_constraint_lower_bounds(bounds.data(), size);
+        problem.set_constraint_upper_bounds(bounds.data(), size);
+      }
+      handle.sync_stream(handle.get_stream());
+
+      try {
+        problem_checking_t<int, double>::check_problem_representation(problem);
+        ADD_FAILURE() << "Expected invalid constraint vector size to be rejected";
+      } catch (cuopt::logic_error const& e) {
+        EXPECT_EQ(e.get_error_type(), cuopt::error_type_t::ValidationError);
+        auto const vector_name = use_row_types ? "right hand side" : "constraint lower bounds";
+        auto const expected    = std::string(vector_name) + " vector has size " +
+                              std::to_string(size) +
+                              " and the number of rows (constraints) in the matrix is 2.";
+        EXPECT_NE(std::string{e.what()}.find(expected), std::string::npos) << e.what();
+      }
+    }
+  }
+}
+
 TEST(optimization_problem_t, test_csr_validity)
 {
   raft::handle_t handle;
