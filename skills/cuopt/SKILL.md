@@ -1,7 +1,7 @@
 ---
 name: cuopt
 version: "26.12.00"
-description: Entry point for working with cuOpt: links into the user guide for install, settings and the API reference, plus API gotchas. Use when writing or debugging code that calls cuOpt.
+description: Entry point for cuOpt — routing, LP, MILP and QP, from Python, C, Java, the CLI or the REST and gRPC server. Where to find settings and API details, plus gotchas. Use when writing or debugging code that calls cuOpt.
 license: Apache-2.0
 metadata:
   author: NVIDIA cuOpt Team
@@ -11,32 +11,18 @@ metadata:
 
 # cuOpt
 
-## Where things are
+GPU-accelerated routing, LP, MILP and QP. Source: https://github.com/NVIDIA/cuopt
 
-| | |
-|---|---|
-| Source | https://github.com/NVIDIA/cuopt |
-| Docs | https://docs.nvidia.com/cuopt/user-guide/latest/ |
-| Install, channels, Docker | https://docs.nvidia.com/cuopt/user-guide/latest/install.html |
-| GPU / CUDA / driver support | https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html |
-| LP / QP settings | https://docs.nvidia.com/cuopt/user-guide/latest/convex-settings.html |
-| MILP settings | https://docs.nvidia.com/cuopt/user-guide/latest/mip-settings.html |
-| Python API reference | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/ |
-| LP / QP examples | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/convex/convex-examples.html |
-| MILP examples | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/mip/mip-examples.html |
-| Routing (Python only) | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/routing/ |
-| REST server | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/ |
-| FAQ | https://docs.nvidia.com/cuopt/user-guide/latest/faq.html |
+Look details up locally rather than from memory — the installed package always matches the
+version in use, and needs no network:
 
-These pages track the newest release — check `cuopt.__version__` when a setting's default or
-range matters.
+- `help(obj)` and `inspect.signature(f)` — signatures and expected arguments
+- `solver_parameters` — every parameter name
+- `SolverSettings().get_parameter(name)` — its default
+- `SolverSettings().dump_parameters_to_file(path)` — description, type and range
 
-With no network access, read from the installed package — `solver_parameters` has every
-parameter name and `help()` gives signatures — or, inside the repo, from
-`docs/cuopt/source/*.rst`, which carries the prose pages but not the Python API reference.
-
-Settings names, defaults and ranges change between releases — look them up, never recall
-them from memory.
+For anything the package does not carry — install, system requirements, examples, the other
+interfaces, the FAQ — see the user guide: https://docs.nvidia.com/cuopt/user-guide/latest/
 
 ## Gotchas
 
