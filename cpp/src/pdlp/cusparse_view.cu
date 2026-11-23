@@ -12,6 +12,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -313,10 +314,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 {
   raft::common::nvtx::range fun_scope("Initializing cuSparse view");
 
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "PDHG cusparse view init" << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("PDHG cusparse view init");
 
   // setup cusparse view
   A = make_csr<i_t, f_t>(op_problem_scaled.n_constraints,
@@ -721,10 +720,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     buffer_transpose_mixed_{0, handle_ptr->get_stream()},
     mixed_precision_enabled_{false}
 {
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "PDLP cusparse view init" << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("PDLP cusparse view init");
 
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr_->get_cusparse_handle(),
                                                                  CUSPARSE_POINTER_MODE_DEVICE,
@@ -930,10 +927,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     buffer_transpose_mixed_{0, handle_ptr->get_stream()},
     mixed_precision_enabled_{false}
 {
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "Restart Strategy cusparse view init" << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("Restart Strategy cusparse view init");
 
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr_->get_cusparse_handle(),
                                                                  CUSPARSE_POINTER_MODE_DEVICE,

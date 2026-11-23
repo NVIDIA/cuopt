@@ -69,7 +69,8 @@ CUOPT_SH_CLIENT_BUILD_DIR=${REPODIR}/python/cuopt_self_hosted/build
 DOCS_BUILD_DIR=${REPODIR}/docs/cuopt/build
 BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
 
-CUDA_VERSION="${RAPIDS_CUDA_VERSION:-$(nvcc --version | sed -E -n 's/^.*release ([0-9]+\.[0-9]+).*$/\1/p')}"
+RAPIDS_CUDA_VERSION_MAJOR_MINOR="${RAPIDS_CUDA_VERSION%.*}"
+CUDA_VERSION="${RAPIDS_CUDA_VERSION_MAJOR_MINOR:-$(nvcc --version | sed -E -n 's/^.*release ([0-9]+\.[0-9]+).*$/\1/p')}"
 if [[ -z "$CUDA_VERSION" ]]; then
     echo "Could not determine CUDA version. Please set RAPIDS_CUDA_VERSION or make sure your \$PATH contains a valid nvcc."
     exit 1

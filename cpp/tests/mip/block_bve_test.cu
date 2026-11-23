@@ -875,9 +875,9 @@ static void run_presolve_size_check(const char* relative_mps_path,
   sort_csr(op_problem);
 
   mip_solver_settings_t<int, double> settings{};
-  settings.presolver = presolver_t::Papilo;
-  settings.probing   = true;
-  settings.block_bve = true;
+  settings.presolver                           = presolver_t::Papilo;
+  settings.probing                             = true;
+  settings.mip_hyper_params.presolve_block_bve = true;
 
   auto papilo = std::make_unique<mip::third_party_presolve_t<int, double>>();
   auto result = papilo->apply_presolve_from_op_problem(op_problem,

@@ -16,6 +16,7 @@
 #include <pdlp/pdlp.cuh>
 #include <pdlp/problem_memory.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 
 #include <linear_algebra/sparse_matrix.hpp>
@@ -53,6 +54,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <new>
 #include <optional>
 #include <tuple>
 #include <type_traits>
@@ -757,18 +759,15 @@ const pdlp_solver_t<i_t, f_t>::primal_quality_adapter_t& pdlp_solver_t<i_t, f_t>
   const pdlp_solver_t<i_t, f_t>::primal_quality_adapter_t& current,
   const pdlp_solver_t<i_t, f_t>::primal_quality_adapter_t& other)
 {
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "  current.is_primal_feasible = " << current.is_primal_feasible << std::endl;
-  std::cout << "  current.nb_violated_constraints = " << current.nb_violated_constraints
-            << std::endl;
-  std::cout << "  current.primal_residual = " << current.primal_residual << std::endl;
-  std::cout << "  current.primal_objective = " << current.primal_objective << std::endl;
-  std::cout << "  other.is_primal_feasible = " << other.is_primal_feasible << std::endl;
-  std::cout << "  other.nb_violated_constraints = " << other.nb_violated_constraints << std::endl;
-  std::cout << "  other.primal_residual = " << other.primal_residual << std::endl;
-  std::cout << "  other.primal_objective = " << other.primal_objective << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("  current.is_primal_feasible", current.is_primal_feasible);
+  PDLP_DEBUG_LOG("  current.nb_violated_constraints", current.nb_violated_constraints);
+  PDLP_DEBUG_LOG("  current.primal_residual", current.primal_residual);
+  PDLP_DEBUG_LOG("  current.primal_objective", current.primal_objective);
+  PDLP_DEBUG_LOG("  other.is_primal_feasible", other.is_primal_feasible);
+  PDLP_DEBUG_LOG("  other.nb_violated_constraints", other.nb_violated_constraints);
+  PDLP_DEBUG_LOG("  other.primal_residual", other.primal_residual);
+  PDLP_DEBUG_LOG("  other.primal_objective", other.primal_objective);
 
   // Primal feasiblity is best
 
@@ -831,10 +830,8 @@ void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
 
   // Best overall is different (better) than last found
   if (best_overall != best_primal_quality_so_far_) {
-#ifdef PDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-    std::cout << "New best primal found" << std::endl;
-#endif
+    PDLP_DEBUG_SYNC();
+    PDLP_DEBUG_LOG("New best primal found");
     best_primal_quality_so_far_ = best_overall;
 
     // Record the new solution
@@ -842,24 +839,20 @@ void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
     rmm::device_uvector<f_t>* primal_to_set;
     rmm::device_uvector<f_t>* dual_to_set;
     pdlp::pdlp_termination_strategy_t<i_t, f_t>* termination_strategy_to_use;
-    std::string_view debug_string;
 
     if (best_overall == current_quality) {
       primal_to_set               = &pdhg_solver_.get_primal_solution();
       dual_to_set                 = &pdhg_solver_.get_dual_solution();
       termination_strategy_to_use = &current_termination_strategy_;
-      debug_string                = "  current is better";
+      PDLP_DEBUG_LOG("  current is better");
     } else {
       primal_to_set               = &unscaled_primal_avg_solution_;
       dual_to_set                 = &unscaled_dual_avg_solution_;
       termination_strategy_to_use = &average_termination_strategy_;
-      debug_string                = "  average is better";
+      PDLP_DEBUG_LOG("  average is better");
     }
 
-#ifdef PDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-    std::cout << debug_string << std::endl;
-#endif
+    PDLP_DEBUG_SYNC();
 
     best_primal_solution_so_far = termination_strategy_to_use->fill_return_problem_solution(
       internal_solver_iterations_,
@@ -870,10 +863,8 @@ void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
                                              pdlp_termination_status_t::TimeLimit),
       true);
   } else {
-#ifdef PDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-    std::cout << "Last best primal is still best" << std::endl;
-#endif
+    PDLP_DEBUG_SYNC();
+    PDLP_DEBUG_LOG("Last best primal is still best");
   }
 }
 
@@ -1219,6 +1210,38 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   // enough) We still need to check iteration and time limit prior without breaking the logic below
   // of first checking termination before the limit
   if (internal_solver_iterations_ <= 1) {
+    report_dual_bound();
+    // Accept a feasible supplied primal start before steps can worsen it, but do not claim
+    // optimality yet. The primal residual does not check variable bounds, and not every start
+    // (e.g. PDLP warm start data) is clamped to them, so check the bounds explicitly. new_bounds
+    // overrides are not reflected in problem_ptr->variable_bounds, so skip when they are present.
+    const auto status = current_termination_strategy_.get_termination_status(0);
+    if (!batch_mode_ && settings_.new_bounds.empty() && settings_.first_primal_feasible &&
+        !initial_primal_.is_empty() &&
+        (status == pdlp_termination_status_t::PrimalFeasible ||
+         status == pdlp_termination_status_t::Optimal)) {
+      using f_t2   = typename type_2<f_t>::type;
+      auto& primal = (settings_.hyper_params.use_adaptive_step_size_strategy)
+                       ? pdhg_solver_.get_primal_solution()
+                       : pdhg_solver_.get_potential_next_primal_solution();
+      auto primal_and_bounds =
+        thrust::make_zip_iterator(primal.data(), problem_ptr->variable_bounds.data());
+      if (thrust::all_of(
+            handle_ptr_->get_thrust_policy(),
+            primal_and_bounds,
+            primal_and_bounds + primal_size_h_,
+            within_bounds<f_t, f_t2>(settings_.tolerances.absolute_primal_tolerance))) {
+        return current_termination_strategy_.fill_return_problem_solution(
+          internal_solver_iterations_,
+          pdhg_solver_,
+          primal,
+          (settings_.hyper_params.use_adaptive_step_size_strategy)
+            ? pdhg_solver_.get_dual_solution()
+            : pdhg_solver_.get_potential_next_dual_solution(),
+          get_filled_warmed_start_data(),
+          {pdlp_termination_status_t::PrimalFeasible});
+      }
+    }
     print_termination_criteria(timer);
     return check_limits(timer);
   }
@@ -1480,7 +1503,10 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
                               average_termination_strategy_,
                               termination_current,
                               termination_average);
-  if (total_pdlp_iterations_ % 1000 == 0) { print_termination_criteria(timer); }
+  if (total_pdlp_iterations_ % 1000 == 0) {
+    report_dual_bound();
+    print_termination_criteria(timer);
+  }
 
   // No reason to terminate
   return check_limits(timer);
@@ -1587,9 +1613,7 @@ void pdlp_solver_t<i_t, f_t>::update_primal_dual_solutions(
   std::optional<const rmm::device_uvector<f_t>*> primal,
   std::optional<const rmm::device_uvector<f_t>*> dual)
 {
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "  Updating primal and dual solution" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("  Updating primal and dual solution");
 
   // Copy the initial solution in pdhg as a first solution
   if (primal) {
@@ -1632,9 +1656,7 @@ void pdlp_solver_t<i_t, f_t>::update_primal_dual_solutions(
   // Handle initial step size if needed
 
   if (settings_.hyper_params.update_step_size_on_initial_solution) {
-#ifdef PDLP_DEBUG_MODE
-    std::cout << "    Updating initial step size on initial solution" << std::endl;
-#endif
+    PDLP_DEBUG_LOG("    Updating initial step size on initial solution");
 
     // Computing a new step size only make sense if both are set and not all 0
     const bool both_initial_set = primal && dual;
@@ -1677,9 +1699,7 @@ void pdlp_solver_t<i_t, f_t>::update_primal_dual_solutions(
 
       // Scale if should compute initial step size after scaling
       if (!settings_.hyper_params.compute_initial_step_size_before_scaling) {
-#ifdef PDLP_DEBUG_MODE
-        std::cout << "      Scaling before computing initial step size" << std::endl;
-#endif
+        PDLP_DEBUG_LOG("      Scaling before computing initial step size");
         initial_scaling_strategy_.scale_solutions(saddle.get_delta_primal(),
                                                   saddle.get_delta_dual());
         initial_scaling_strategy_.scale_dual(pdhg_solver_.get_potential_next_dual_solution());
@@ -1693,9 +1713,7 @@ void pdlp_solver_t<i_t, f_t>::update_primal_dual_solutions(
 
       // Else scale after computing initial step size
       if (settings_.hyper_params.compute_initial_step_size_before_scaling) {
-#ifdef PDLP_DEBUG_MODE
-        std::cout << "      Scaling after computing initial step size" << std::endl;
-#endif
+        PDLP_DEBUG_LOG("      Scaling after computing initial step size");
         initial_scaling_strategy_.scale_solutions(saddle.get_delta_primal(),
                                                   saddle.get_delta_dual());
         initial_scaling_strategy_.scale_dual(pdhg_solver_.get_potential_next_dual_solution());
@@ -1711,9 +1729,7 @@ void pdlp_solver_t<i_t, f_t>::update_primal_dual_solutions(
 
   // Scale if should compute primal weight after scaling
   if (!settings_.hyper_params.compute_initial_primal_weight_before_scaling) {
-#ifdef PDLP_DEBUG_MODE
-    std::cout << "      Scaling before computing initial primal weight:" << std::endl;
-#endif
+    PDLP_DEBUG_LOG("      Scaling before computing initial primal weight:");
     initial_scaling_strategy_.scale_solutions(pdhg_solver_.get_primal_solution(),
                                               pdhg_solver_.get_dual_solution());
     if (settings_.hyper_params.use_reflected_primal_dual) {
@@ -1727,9 +1743,7 @@ void pdlp_solver_t<i_t, f_t>::update_primal_dual_solutions(
 
   // If only primal or dual is set, the primal weight wont (as it can't) be updated
   if (settings_.hyper_params.update_primal_weight_on_initial_solution) {
-#ifdef PDLP_DEBUG_MODE
-    std::cout << "      Updating the initial primal weight on initial solution" << std::endl;
-#endif
+    PDLP_DEBUG_LOG("      Updating the initial primal weight on initial solution");
     restart_strategy_.update_distance(
       pdhg_solver_, primal_weight_, primal_step_size_, dual_step_size_, step_size_);
   }
@@ -1773,11 +1787,9 @@ HDI void fixed_error_computation(const f_t norm_squared_delta_primal,
   // Clamp to 0 to avoid NaN
   *fixed_point_error = cuda::std::sqrt(cuda::std::max(f_t(0.0), movement + computed_interaction));
 
-#ifdef CUPDLP_DEBUG_MODE
-  printf("movement %lf\n", movement);
-  printf("interaction %lf\n", interaction);
-  printf("state->fixed_point_error %lf\n", *fixed_point_error);
-#endif
+  PDLP_DEBUG_DEVICE_LOG("movement %lf\n", movement);
+  PDLP_DEBUG_DEVICE_LOG("interaction %lf\n", interaction);
+  PDLP_DEBUG_DEVICE_LOG("state->fixed_point_error %lf\n", *fixed_point_error);
 }
 
 template <typename f_t>
@@ -2243,9 +2255,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 {
   raft::common::nvtx::range fun_scope("compute_fixed_error");
 
-#ifdef CUPDLP_DEBUG_MODE
-  printf("Computing compute_fixed_point_error \n");
-#endif
+  PDLP_DEBUG_LOG("Computing compute_fixed_point_error");
   if (is_distributed_master()) {
     // The master's own pdhg_solver_ buffers are built from a shape-0 placeholder and must be empty
     cuopt_assert(pdhg_solver_.get_reflected_primal().size() == 0,
@@ -2359,9 +2369,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
       stream_view_.get()));  // To make sure all the data is written from device to host
     RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-#ifdef CUPDLP_DEBUG_MODE
-    RAFT_CUDA_TRY(cudaDeviceSynchronize());
-#endif
+    PDLP_DEBUG_SYNC();
   } else {
     fixed_error_computation<f_t>(step_size_strategy_.get_norm_squared_delta_primal(0),
                                  step_size_strategy_.get_norm_squared_delta_dual(0),
@@ -2387,9 +2395,9 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
                              (void*)pdhg_solver_.get_potential_next_dual_solution().data()));
   }
 
-#ifdef CUPDLP_DEBUG_MODE
+#ifdef PDLP_DEBUG_MODE
   for (size_t i = 0; i < climber_strategies_.size(); ++i) {
-    printf("fixed_point_error %lf\n", restart_strategy_.fixed_point_error_[i]);
+    PDLP_DEBUG_LOG("fixed_point_error", restart_strategy_.fixed_point_error_[i]);
   }
 #endif
 
@@ -2627,6 +2635,41 @@ void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
   }
 }
 template <typename i_t, typename f_t>
+bool pdlp_solver_t<i_t, f_t>::reports_dual_bound()
+{
+  return settings_.dual_bound_callback && climber_strategies_.size() == 1 &&
+         !is_distributed_master();
+}
+
+// Called from check_termination with the iteration log (iteration 0, then every 1000 iterations),
+// where the iterates are unscaled, so the dual iterate can be turned into a valid bound.
+template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::report_dual_bound()
+{
+  if (!reports_dual_bound()) { return; }
+  auto& dual = settings_.hyper_params.use_adaptive_step_size_strategy
+                 ? pdhg_solver_.get_dual_solution()
+                 : pdhg_solver_.get_potential_next_dual_solution();
+  if (static_cast<i_t>(dual.size()) != problem_ptr->n_constraints) { return; }
+  f_t bound;
+  // The bound is a side result: a failed allocation skips it rather than ending the PDLP solve.
+  try {
+    if (!dual_bound_) {
+      dual_bound_ = std::make_unique<lagrangian_dual_bound_t<i_t, f_t>>(
+        problem_ptr->n_constraints, problem_ptr->n_variables, stream_view_);
+    }
+    bound = dual_bound_->compute(*problem_ptr, dual.data(), stream_view_);
+  } catch (const std::bad_alloc& e) {
+    CUOPT_LOG_DEBUG("Skipping the PDLP dual bound, allocation failed: %s", e.what());
+    return;
+  }
+  if (!std::isfinite(bound) || bound <= best_dual_bound_) { return; }
+  best_dual_bound_ = bound;
+  settings_.dual_bound_callback(problem_ptr->presolve_data.objective_scaling_factor *
+                                (bound + problem_ptr->presolve_data.objective_offset));
+}
+
+template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(const timer_t& timer)
 {
   bool verbose;
@@ -2636,9 +2679,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   verbose = false;
 #endif
 
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "Starting PDLP loop:" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("Starting PDLP loop:");
 
   using f_t2 = typename type_2<f_t>::type;
 
@@ -2698,9 +2739,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   // has_initial_{primal,dual}_solution() and warm-start data up front, and
   // its per-shard primal/dual step sizes were derived above
   if (!is_distributed_master()) {
-#ifdef PDLP_DEBUG_MODE
-    std::cout << "Initial Scaling done" << std::endl;
-#endif
+    PDLP_DEBUG_LOG("Initial Scaling done");
     // Needs to be performed here before the below line to make sure the initial primal_weight /
     // step size are used as previous point when potentially updating them in this next call
     if (settings_.get_initial_step_size().has_value() || initial_step_size_.has_value()) {
@@ -2770,13 +2809,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     // later.
     step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
 
-#ifdef CUPDLP_DEBUG_MODE
     if (initial_primal_.size() != 0 || initial_dual_.size() != 0) {
-      std::cout << "Initial primal and dual solution before scaling" << std::endl;
-      if (initial_primal_.size() != 0) { print("initial_primal_", initial_primal_); }
-      if (initial_dual_.size() != 0) { print("initial_dual_", initial_dual_); }
+      PDLP_DEBUG_LOG("Initial primal and dual solution before scaling");
+      if (initial_primal_.size() != 0) { PDLP_DEBUG_LOG("initial_primal_", initial_primal_); }
+      if (initial_dual_.size() != 0) { PDLP_DEBUG_LOG("initial_dual_", initial_dual_); }
     }
-#endif
 
     // If there is an initial primal or dual we should update the restart info as if there was a
     // step that has happend
@@ -2786,19 +2823,17 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         (initial_dual_.size() != 0) ? std::make_optional(&initial_dual_) : std::nullopt);
     }
 
-#ifdef CUPDLP_DEBUG_MODE
-    std::cout << "Solution before projection" << std::endl;
-    print("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
-    print("pdhg_solver_.get_dual_solution()", pdhg_solver_.get_dual_solution());
-    print("pdhg_solver_.get_potential_next_primal_solution()",
-          pdhg_solver_.get_potential_next_primal_solution());
-    print("pdhg_solver_.get_potential_next_dual_solution()",
-          pdhg_solver_.get_potential_next_dual_solution());
-    print("restart_strategy_.last_restart_duality_gap_.primal_solution_",
-          restart_strategy_.last_restart_duality_gap_.primal_solution_);
-    print("restart_strategy_.last_restart_duality_gap_.dual_solution_",
-          restart_strategy_.last_restart_duality_gap_.dual_solution_);
-#endif
+    PDLP_DEBUG_LOG("Solution before projection");
+    PDLP_DEBUG_LOG("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
+    PDLP_DEBUG_LOG("pdhg_solver_.get_dual_solution()", pdhg_solver_.get_dual_solution());
+    PDLP_DEBUG_LOG("pdhg_solver_.get_potential_next_primal_solution()",
+                   pdhg_solver_.get_potential_next_primal_solution());
+    PDLP_DEBUG_LOG("pdhg_solver_.get_potential_next_dual_solution()",
+                   pdhg_solver_.get_potential_next_dual_solution());
+    PDLP_DEBUG_LOG("restart_strategy_.last_restart_duality_gap_.primal_solution_",
+                   restart_strategy_.last_restart_duality_gap_.primal_solution_);
+    PDLP_DEBUG_LOG("restart_strategy_.last_restart_duality_gap_.dual_solution_",
+                   restart_strategy_.last_restart_duality_gap_.dual_solution_);
 
     if (!settings_.hyper_params.never_restart_to_average) {
       cuopt_expects(!batch_mode_,
@@ -2838,19 +2873,17 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
     pdhg_solver_.refine_initial_primal_projection(
       initial_scaling_strategy_.get_bound_rescaling_vector());
-#ifdef CUPDLP_DEBUG_MODE
-    std::cout << "Solution after projection" << std::endl;
-    print("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
-    print("pdhg_solver_.get_dual_solution()", pdhg_solver_.get_dual_solution());
-    print("pdhg_solver_.get_potential_next_primal_solution()",
-          pdhg_solver_.get_potential_next_primal_solution());
-    print("pdhg_solver_.get_potential_next_dual_solution()",
-          pdhg_solver_.get_potential_next_dual_solution());
-    print("restart_strategy_.last_restart_duality_gap_.primal_solution_",
-          restart_strategy_.last_restart_duality_gap_.primal_solution_);
-    print("restart_strategy_.last_restart_duality_gap_.dual_solution_",
-          restart_strategy_.last_restart_duality_gap_.dual_solution_);
-#endif
+    PDLP_DEBUG_LOG("Solution after projection");
+    PDLP_DEBUG_LOG("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
+    PDLP_DEBUG_LOG("pdhg_solver_.get_dual_solution()", pdhg_solver_.get_dual_solution());
+    PDLP_DEBUG_LOG("pdhg_solver_.get_potential_next_primal_solution()",
+                   pdhg_solver_.get_potential_next_primal_solution());
+    PDLP_DEBUG_LOG("pdhg_solver_.get_potential_next_dual_solution()",
+                   pdhg_solver_.get_potential_next_dual_solution());
+    PDLP_DEBUG_LOG("restart_strategy_.last_restart_duality_gap_.primal_solution_",
+                   restart_strategy_.last_restart_duality_gap_.primal_solution_);
+    PDLP_DEBUG_LOG("restart_strategy_.last_restart_duality_gap_.dual_solution_",
+                   restart_strategy_.last_restart_duality_gap_.dual_solution_);
 
     // Need to to tranpose primal solution to row format as there might be initial values or
     // clamping Value may not be all 0
@@ -2885,20 +2918,19 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
       raft::print_device_vector("Initial primal_step_size", primal_step_size_.data(), 1, std::cout);
       raft::print_device_vector("Initial dual_step_size", dual_step_size_.data(), 1, std::cout);
     }
-#ifdef CUPDLP_DEBUG_MODE
-    raft::print_device_vector("Initial step_size", step_size_.data(), step_size_.size(), std::cout);
-    raft::print_device_vector(
-      "Initial primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
-#endif
+    PDLP_DEBUG_LOG("Initial step_size", step_size_);
+    PDLP_DEBUG_LOG("Initial primal_weight", primal_weight_);
   }
   if (!inside_mip_) {
+    if (settings_.per_constraint_residual) {
+      CUOPT_LOG_INFO(
+        "Primal and Dual residuals are reported relative to the per-constraint-residual metric.");
+    }
     CUOPT_LOG_INFO(
-      "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
+      "   Iter   Primal Obj.      Dual Obj.       Gap     Primal Res.  Dual Res.   Time");
   }
   while (true) {
-#ifdef CUPDLP_DEBUG_MODE
-    printf("Step: %d\n", total_pdlp_iterations_);
-#endif
+    PDLP_DEBUG_LOG("Step", total_pdlp_iterations_);
     bool is_major_iteration =
       (((total_pdlp_iterations_) % settings_.hyper_params.major_iteration == 0) &&
        (total_pdlp_iterations_ > 0)) ||
@@ -2972,12 +3004,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         transpose_problem_fields(/*to_row=*/false);
       }
 
-#ifdef CUPDLP_DEBUG_MODE
-      print("before scale slack", pdhg_solver_.get_dual_slack());
-      print("before scale potential next primal",
-            pdhg_solver_.get_potential_next_primal_solution());
-      print("before scale potential next dual", pdhg_solver_.get_potential_next_dual_solution());
-#endif
+      PDLP_DEBUG_LOG("before scale slack", pdhg_solver_.get_dual_slack());
+      PDLP_DEBUG_LOG("before scale potential next primal",
+                     pdhg_solver_.get_potential_next_primal_solution());
+      PDLP_DEBUG_LOG("before scale potential next dual",
+                     pdhg_solver_.get_potential_next_dual_solution());
 
       // We go back to the unscaled problem here. It ensures that we do not terminate 'too early'
       // because of the error margin being evaluated on the scaled problem
@@ -3010,20 +3041,18 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         }
       }
 
-#ifdef CUPDLP_DEBUG_MODE
-      print("after scale slack", pdhg_solver_.get_dual_slack());
-      print("after scale potential next primal", pdhg_solver_.get_potential_next_primal_solution());
-      print("after scale potential next dual", pdhg_solver_.get_potential_next_dual_solution());
-#endif
+      PDLP_DEBUG_LOG("after scale slack", pdhg_solver_.get_dual_slack());
+      PDLP_DEBUG_LOG("after scale potential next primal",
+                     pdhg_solver_.get_potential_next_primal_solution());
+      PDLP_DEBUG_LOG("after scale potential next dual",
+                     pdhg_solver_.get_potential_next_dual_solution());
 
-#ifdef PDLP_DEBUG_MODE
-      print("before check termination primal", pdhg_solver_.get_primal_solution());
-      print("before check termination dual", pdhg_solver_.get_dual_solution());
+      PDLP_DEBUG_LOG("before check termination primal", pdhg_solver_.get_primal_solution());
+      PDLP_DEBUG_LOG("before check termination dual", pdhg_solver_.get_dual_solution());
       if (!settings_.hyper_params.never_restart_to_average) {
-        print("before check termination average primal", unscaled_primal_avg_solution_);
-        print("before check termination average dual", unscaled_dual_avg_solution_);
+        PDLP_DEBUG_LOG("before check termination average primal", unscaled_primal_avg_solution_);
+        PDLP_DEBUG_LOG("before check termination average dual", unscaled_dual_avg_solution_);
       }
-#endif
 
       // Check for termination
       std::optional<optimization_problem_solution_t<i_t, f_t>> solution = check_termination(timer);
@@ -3125,9 +3154,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
       (total_pdlp_iterations_ + 1) % settings_.hyper_params.major_iteration == 0;
     const bool restarted_this_iteration = std::any_of(
       has_restarted.begin(), has_restarted.end(), [](int restarted) { return restarted == 1; });
-#ifdef CUPDLP_DEBUG_MODE
-    printf("Is Major %d\n", takes_major_step);
-#endif
+    PDLP_DEBUG_LOG("Is Major", takes_major_step);
     take_step(total_pdlp_iterations_, takes_major_step || restarted_this_iteration);
 
     if (settings_.hyper_params.use_reflected_primal_dual) {
@@ -3192,13 +3219,11 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
   step_size_strategy_.set_valid_step_size(0);
 
   while (step_size_strategy_.get_valid_step_size() == 0) {
-#ifdef PDLP_DEBUG_MODE
-    std::cout << "PDHG Iteration:" << std::endl;
-    print("primal_weight_", primal_weight_);
-    print("step_size_", step_size_);
-    print("primal_step_size_", primal_step_size_);
-    print("dual_step_size_", dual_step_size_);
-#endif
+    PDLP_DEBUG_LOG("PDHG Iteration:");
+    PDLP_DEBUG_LOG("primal_weight_", primal_weight_);
+    PDLP_DEBUG_LOG("step_size_", step_size_);
+    PDLP_DEBUG_LOG("primal_step_size_", primal_step_size_);
+    PDLP_DEBUG_LOG("dual_step_size_", dual_step_size_);
     pdhg_solver_.take_step(
       primal_step_size_,
       dual_step_size_,
@@ -3214,9 +3239,7 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
     step_size_strategy_.compute_step_sizes(
       pdhg_solver_, primal_step_size_, dual_step_size_, total_pdlp_iterations);
   }
-#ifdef PDLP_DEBUG_MODE
-  std::cout << "PDHG Iteration: valid step size found" << std::endl;
-#endif
+  PDLP_DEBUG_LOG("PDHG Iteration: valid step size found");
 
   // Valid state found, update internal solution state
   // Average is being added asynchronously on the GPU while the solution is being updated on the CPU
@@ -3453,9 +3476,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 
       if (residual_norm.value(stream_view_) < tolerance) break;
     }
-#ifdef CUPDLP_DEBUG_MODE
-    printf("iter_count %d\n", sing_iters);
-#endif
+    PDLP_DEBUG_LOG("iter_count", sing_iters);
 
     const f_t step_size = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));
     thrust::uninitialized_fill(
@@ -3484,12 +3505,10 @@ __global__ void compute_weights_initial_primal_weight_from_squared_norms(
   f_t b_vec_norm_ = *b_vec_norm;
 
   if (b_vec_norm_ > f_t(0.0) && c_vec_norm_ > f_t(0.0)) {
-#ifdef PDLP_DEBUG_MODE
-    printf("b_vec_norm_ %lf c_vec_norm_ %lf primal_importance %lf\n",
-           b_vec_norm_,
-           c_vec_norm_,
-           hyper_params.primal_importance);
-#endif
+    PDLP_DEBUG_DEVICE_LOG("b_vec_norm_ %lf c_vec_norm_ %lf primal_importance %lf\n",
+                          b_vec_norm_,
+                          c_vec_norm_,
+                          hyper_params.primal_importance);
     primal_weight[id]      = hyper_params.primal_importance * (c_vec_norm_ / b_vec_norm_);
     best_primal_weight[id] = primal_weight[id];
   } else {

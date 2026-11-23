@@ -16,6 +16,7 @@
 #include <thrust/binary_search.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
+#include <thrust/sequence.h>
 #include <thrust/sort.h>
 #include <thrust/tuple.h>
 #include <cub/device/device_segmented_reduce.cuh>

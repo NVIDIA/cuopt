@@ -850,6 +850,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
     Settings* settings = default_settings();
     settings->verbose  = false;
     settings->max_time = time_limit;
+    settings->lp_fold  = pslp_lp_fold_;
 
     auto start_time      = std::chrono::high_resolution_clock::now();
     Presolver* presolver = new_presolver(coefficients.data(),
@@ -1313,17 +1314,39 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(std::vector<f_t>& primal_soluti
   if (pslp_postsolve_skip_) { return; }
 
   if constexpr (std::is_same_v<f_t, double>) {
-    // PSLP postsolve reads from the passed-in host buffers and writes the
-    // uncrushed solution into pslp_presolver_->sol->{x, y, z}.
+    // PSLP presolved min -c'x for a maximize problem, and its postsolve picks dual hand-overs by
+    // the sign of y and z in that minimization convention. The duals of max c'x are the negated
+    // duals of min -c'x, so flip them on the way in and back on the way out.
+    const f_t dual_sign = maximize_ ? f_t{-1} : f_t{1};
+    if (maximize_) {
+      for (auto& y : dual_solution) {
+        y = -y;
+      }
+      for (auto& z : reduced_costs) {
+        z = -z;
+      }
+    }
+
+    // PSLP postsolve reads from the passed-in host buffers and writes the uncrushed solution
+    // into pslp_presolver_->sol->{x, y, z}, which it allocates on the first call.
     postsolve(pslp_presolver_, primal_solution.data(), dual_solution.data(), reduced_costs.data());
 
     auto uncrushed_sol = pslp_presolver_->sol;
-    const int n_cols   = uncrushed_sol->dim_x;
-    const int n_rows   = uncrushed_sol->dim_y;
+    cuopt_expects(uncrushed_sol != nullptr,
+                  error_type_t::OutOfMemoryError,
+                  "PSLP postsolve failed to allocate the postsolved solution");
+    const int n_cols = uncrushed_sol->dim_x;
+    const int n_rows = uncrushed_sol->dim_y;
 
     primal_solution.assign(uncrushed_sol->x, uncrushed_sol->x + n_cols);
-    dual_solution.assign(uncrushed_sol->y, uncrushed_sol->y + n_rows);
-    reduced_costs.assign(uncrushed_sol->z, uncrushed_sol->z + n_cols);
+    dual_solution.resize(n_rows);
+    reduced_costs.resize(n_cols);
+    for (int i = 0; i < n_rows; ++i) {
+      dual_solution[i] = dual_sign * uncrushed_sol->y[i];
+    }
+    for (int j = 0; j < n_cols; ++j) {
+      reduced_costs[j] = dual_sign * uncrushed_sol->z[j];
+    }
   } else {
     cuopt_expects(
       false, error_type_t::ValidationError, "PSLP postsolve only supports double precision");
@@ -1770,8 +1793,10 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution_pslp(
   }
 
   if constexpr (std::is_same_v<f_t, double>) {
-    const size_t n_cols_original  = pslp_presolver_->sol->dim_x;
-    const size_t n_rows_original  = pslp_presolver_->sol->dim_y;
+    // pslp_presolver_->sol is only allocated by the first postsolve call, so take the original
+    // dimensions from the presolve stats.
+    const size_t n_cols_original  = pslp_presolver_->stats->n_cols_original;
+    const size_t n_rows_original  = pslp_presolver_->stats->n_rows_original;
     const size_t n_cols_presolved = pslp_presolver_->stats->n_cols_reduced;
     const size_t n_rows_presolved = pslp_presolver_->stats->n_rows_reduced;
     cuopt_expects(x_original.size() == n_cols_original,

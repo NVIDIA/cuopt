@@ -85,4 +85,4 @@ jobs:
           RAPIDS_BRANCH: ${{ inputs.branch }}
           RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
           RUN_DATE: ${{ inputs.date }}
-        run: bash ci/nightly_summary.sh
+        run: bash ci/nightly/summary.sh

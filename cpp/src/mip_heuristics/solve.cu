@@ -133,6 +133,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
   timer_t& timer,
   f_t& initial_upper_bound,
   std::vector<f_t>& initial_incumbent_assignment,
+  size_t n_user_warmstarts,
   std::exception_ptr& task_exception,
   std::unique_ptr<mip::mip_symmetry_t<i_t, f_t>> symmetry = nullptr)
 {
@@ -216,8 +217,9 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                  "Size mismatch");
     // only call preprocess on scaled problem, so we can compute feasibility on the original problem
     scaled_problem.preprocess_problem();
-    scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
-    const i_t n_vars_before                = scaled_problem.n_variables;
+    scaled_problem.related_vars_time_limit =
+      settings.mip_hyper_params.heuristic_related_vars_time_limit;
+    const i_t n_vars_before = scaled_problem.n_variables;
     mip::trivial_presolve(scaled_problem, /*remap_cache_ids=*/true);
 
 #ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
@@ -343,11 +345,26 @@ mip_solution_t<i_t, f_t> run_mip_solver(
         settings.get_tolerances(),
         incumbent_callback,
         mip::derive_seed(solver.context.base_seed, mip::rng_id_t::early_cpufj));
-      std::vector<f_t> papilo_incumbent;
+      const auto stream = problem.handle_ptr->get_stream();
+      std::vector<std::vector<f_t>> papilo_seeds;
+      cuopt_assert(n_user_warmstarts <= settings.initial_solutions.size(), "");
+      papilo_seeds.reserve(n_user_warmstarts + 1);
+      // pass the best incumbent found by the previous CPUFJ portfolio
       if (!solver.context.initial_incumbent_assignment.empty()) {
-        presolver_ptr->crush_primal_solution(*problem.original_problem_ptr,
-                                             solver.context.initial_incumbent_assignment,
-                                             papilo_incumbent);
+        std::vector<f_t> crushed;
+        presolver_ptr->crush_primal_solution(
+          *problem.original_problem_ptr, solver.context.initial_incumbent_assignment, crushed);
+        papilo_seeds.push_back(std::move(crushed));
+      }
+      // pass crushed warmstart solutions if any, even if slightly infeasible,
+      // the hope is that CPUFJ repairs them
+      for (size_t i = 0; i < n_user_warmstarts; ++i) {
+        const auto& initial_solution = settings.initial_solutions[i];
+        cuopt_assert(initial_solution->size() == (size_t)papilo_num_original_vars, "");
+        std::vector<f_t> crushed;
+        presolver_ptr->crush_primal_solution(
+          *problem.original_problem_ptr, cuopt::host_copy(*initial_solution, stream), crushed);
+        papilo_seeds.push_back(std::move(crushed));
       }
       // Convert initial_upper_bound from user-space to the CPUFJ's solver-space (papilo-presolved).
       // problem.get_solver_obj_from_user_obj uses the papilo offset/scale (matching the CPUFJ).
@@ -359,7 +376,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                                                            0,
                                                            early_structural ? 1 : 0),
                          false,
-                         papilo_incumbent);
+                         papilo_seeds);
       solver.context.early_cpufj_ptr = early_cpufj.get();
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
 
@@ -616,11 +633,20 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       if (pre_solve_heuristics && pre_solve_heuristics->solution_found()) {
         early_cpufj->set_best_objective(pre_solve_heuristics->get_best_objective());
       }
+      std::vector<std::vector<f_t>> warmstarts;
+      warmstarts.reserve(settings.initial_solutions.size());
+      for (const auto& initial_solution : settings.initial_solutions) {
+        if (initial_solution->size() != (size_t)op_problem.get_n_variables()) { continue; }
+        warmstarts.push_back(
+          cuopt::host_copy(*initial_solution, op_problem.get_handle_ptr()->get_stream()));
+      }
       // Reserve Papilo's arena as well as the GPU and structural heuristic workers.
       early_cpufj->start(mip::presolve_early_worker_budget(omp_get_num_threads(),
                                                            CUOPT_MIP_PAPILO_THREAD_LIMIT,
                                                            gpufj_workers,
-                                                           early_structural ? 1 : 0));
+                                                           early_structural ? 1 : 0),
+                         false,
+                         warmstarts);
       CUOPT_LOG_DEBUG("Started early CPUFJ on original problem with %d lanes",
                       early_cpufj->lane_count());
     }
@@ -680,7 +706,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     auto constexpr const dual_postsolve = false;
     if (run_presolve) {
       sort_csr(op_problem);
-      const auto& hp             = settings.heuristic_params;
+      const auto& hp             = settings.mip_hyper_params;
       const auto papilo_features = mip::papilo_presolve_features(op_problem);
       const auto papilo_budget   = mip::evaluate_presolve_budget(hp, papilo_features);
       mip::log_presolve_budget("PAPILO", papilo_features, papilo_budget);
@@ -704,7 +730,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         structural_workers,
         omp_get_num_threads());
       presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
-      presolver->set_indicator_strengthening(settings.indicator_strengthening);
+      presolver->set_indicator_strengthening(hp.presolve_indicator_strengthening);
       // Dual reductions can remove feasible user assignments that callbacks may later inject.
       // Keep primal reductions so those assignments can be crushed into the presolved problem.
       presolver->set_dual_reductions(!has_set_solution_callback);
@@ -803,6 +829,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       early_structural.reset();
     }
 
+    const size_t n_user_warmstarts = settings.initial_solutions.size();
     // Add early-heuristic incumbents (original-space) to initial_solutions.
     // PaPILO crushing + validation happens downstream in add_user_given_solutions().
     if (!early_incumbent_pool.empty()) {
@@ -817,11 +844,13 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
 
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      op_problem.write_to_mps(settings.user_problem_file);
+      op_problem.write_to_file(settings.user_problem_file,
+                               dump_file_format_from_path(settings.user_problem_file));
     }
     if (run_presolve && presolve_result_opt.has_value() && settings.presolve_file != "") {
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
-      presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
+      presolve_result_opt->reduced_problem.write_to_file(
+        settings.presolve_file, dump_file_format_from_path(settings.presolve_file));
     }
     // early_best_user_obj is in user-space.
     // run_mip_solver stores it in context.initial_upper_bound and converts to target spaces as
@@ -831,6 +860,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
                               timer,
                               early_best_user_obj,
                               early_best_user_assignment,
+                              n_user_warmstarts,
                               task_exception,
                               std::move(symmetry));
 

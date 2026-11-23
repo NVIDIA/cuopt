@@ -9,11 +9,6 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-enum class heuristics_origin_t {
-  SUBMIP     = 1,
-  HEURISTICS = 2,
-};
-
 // Indicate the search and variable selection algorithms used by each thread
 // in B&B (See [1]).
 //

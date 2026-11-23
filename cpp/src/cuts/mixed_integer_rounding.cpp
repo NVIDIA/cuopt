@@ -757,7 +757,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
       // 0 <= v_j <= ub_star_j - lb_star_j
       transformed_upper_[j] = ub_star_[j] - lb_star_[j];
       transformed_xstar[j]  = xstar_j - lb_star_[j];
-      bound_changed_[j]     = (lb_star_[j] == 0.0) ? 0 : -1;
+      bound_changed_[j]     = (lb_variable_[j] == -1 && lb_star_[j] == 0.0) ? 0 : -1;
     } else if (has_finite_upper_bound) {
       // Use the upper bound
       // lb_star_j <= x_j <= ub_star_j
