@@ -8,6 +8,7 @@
 
 """Cython extension: LP/MIP ``SolverSettings`` backed by ``solver_settings_t``."""
 
+import difflib
 from enum import IntEnum, auto
 
 from cuopt.utilities import get_data_ptr
@@ -51,6 +52,19 @@ cpdef get_solver_parameter_names():
 
 solver_params = get_solver_parameter_names()
 for param in solver_params: globals()["CUOPT_"+param.upper()] = param
+
+SETTINGS_DOCS_URL = "https://docs.nvidia.com/cuopt/user-guide/latest/"
+
+
+def _invalid_parameter_message(name):
+    """Error text naming the bad parameter, near matches and the docs."""
+    key = str(name).lower().removeprefix("cuopt_")
+    close = difflib.get_close_matches(key, solver_params, n=3)
+    hint = f" Did you mean: {', '.join(close)}?" if close else ""
+    return (
+        f"Invalid parameter {name!r}.{hint} Valid names are listed in "
+        f"convex-settings.html and mip-settings.html under {SETTINGS_DOCS_URL}"
+    )
 
 
 class SolverMethod(IntEnum):
@@ -161,11 +175,12 @@ cdef class SolverSettings:
 
         Notes
         -----
-        For a list of availabe parameters, their descriptions, default values,
-        and acceptable ranges, see the cuOpt documentation `parameter.rst`.
+        For the available parameters, their descriptions, default values and
+        acceptable ranges, see ``convex-settings.rst`` and ``mip-settings.rst``
+        in the cuOpt documentation.
         """
         if name not in solver_params:
-            raise ValueError("Invalid parameter. Please check documentation")
+            raise ValueError(_invalid_parameter_message(name))
         if name in self.settings_dict:
             if isinstance(self.settings_dict[name], str):
                 return self.to_base_type(self.settings_dict[name])
@@ -186,11 +201,12 @@ cdef class SolverSettings:
         value : str
             The value the parameter should take.
 
-        For a list of availabe parameters, their descriptions, default values,
-        and acceptable ranges, see the cuOpt documentation `parameter.rst`.
+        For the available parameters, their descriptions, default values and
+        acceptable ranges, see ``convex-settings.rst`` and ``mip-settings.rst``
+        in the cuOpt documentation.
         """
         if name not in solver_params:
-            raise ValueError("Invalid parameter. Please check documentation")
+            raise ValueError(_invalid_parameter_message(name))
         self.settings_dict[name] = value
 
     def set_optimality_tolerance(self, eps_optimal):

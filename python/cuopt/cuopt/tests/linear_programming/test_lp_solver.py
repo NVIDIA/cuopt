@@ -371,6 +371,12 @@ def test_solver_settings_basic():
         )
         solver.Solve(Read(file_path), settings)
 
+    # An unknown name is reported with a near match for set and get
+    with pytest.raises(ValueError, match="'time_limt'.*time_limit"):
+        settings.set_parameter("time_limt", 1)
+    with pytest.raises(ValueError, match="'time_limt'.*time_limit"):
+        settings.get_parameter("time_limt")
+
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Methodical1)
     assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
         PDLPSolverMode.Methodical1
