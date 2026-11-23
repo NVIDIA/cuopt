@@ -13,13 +13,13 @@
     ]
   },
   {
-    "id": "cuopt-eval-002-linearexpression-constant-positional",
+    "id": "cuopt-eval-002-linearexpression-constant-required",
     "question": "In cuOpt Python, I called `LinearExpression([x, y], [1.0, 2.0])` and got a TypeError about a missing argument. How do I construct it, and should I be using it here at all for a simple two-term sum?",
     "expected_skill": "cuopt",
     "expected_script": null,
-    "ground_truth": "The agent explains that LinearExpression takes constant as a required positional argument rather than an optional keyword, so the call needs a third argument: LinearExpression([x, y], [1.0, 2.0], 0.0). For a short expression it advises plain arithmetic or sum(...). It does not recommend sum(...) or repeated expr = expr + term for a large expression, because each + builds new variable and coefficient lists from both operands, making accumulation of N terms quadratic; for those it builds the two lists once and passes them to a single LinearExpression call.",
+    "ground_truth": "The agent explains that LinearExpression requires constant \u2014 it has no default \u2014 so the call needs a third argument, passed either positionally as LinearExpression([x, y], [1.0, 2.0], 0.0) or by keyword as constant=0.0. For a short expression it advises plain arithmetic or sum(...). It does not recommend sum(...) or repeated expr = expr + term for a large expression, because each + builds new variable and coefficient lists from both operands, making accumulation of N terms quadratic; for those it builds the two lists once and passes them to a single LinearExpression call.",
     "expected_behavior": [
-      "Names constant as a required positional third argument",
+      "Names constant as a required argument with no default, accepting either the positional or the keyword form",
       "Shows a corrected call that passes the constant explicitly, e.g. 0.0",
       "Accepts ordinary arithmetic or sum(...) for a short expression",
       "For a large expression, builds the lists once instead of accumulating with sum(...) or repeated +"

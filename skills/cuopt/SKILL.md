@@ -47,9 +47,9 @@ Additional gotchas are listed below.
 loop, then compare it in the call; passing a bare expression raises `ValueError:
 addConstraint requires a Constraint object`. Constraints cannot be built as strings.
 
-**`LinearExpression` takes `constant` as a required positional**, not an optional keyword:
-`LinearExpression([x, y], [1.0, 2.0], 0.0)`. For expressions with thousands of terms, build
-the lists once and pass them in a single call rather than accumulating with `sum(...)`; see
-the LP / QP examples page.
+**`LinearExpression` requires `constant`** — it has no default, so a two-argument call
+raises `TypeError`: `LinearExpression([x, y], [1.0, 2.0], 0.0)`. For expressions with
+thousands of terms, build the lists once and pass them in a single call rather than
+accumulating with `sum(...)`; see the LP / QP examples page.
 
 **The solver prints its own log to stdout.** That is expected, not an error.
