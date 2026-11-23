@@ -54,6 +54,10 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
             const f_t* objective_weights,
             i_t n_objectives
         ) except +
+        void add_distance_matrix(
+            const f_t* matrix,
+            uint8_t vehicle_type
+        ) except +
         void add_initial_solutions(
             const i_t* vehicle_ids, const i_t* routes,
             const node_type_t *types, const i_t* sol_offsets,

@@ -64,6 +64,7 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         int32_t num_orders
         vector[cpu_cost_matrix_t] cost_matrices
         vector[cpu_cost_matrix_t] transit_time_matrices
+        vector[cpu_cost_matrix_t] distance_matrices
         vector[int32_t] vehicle_start_locations
         vector[int32_t] vehicle_return_locations
         vector[int32_t] vehicle_tw_earliest

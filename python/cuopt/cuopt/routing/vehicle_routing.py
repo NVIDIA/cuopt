@@ -150,6 +150,72 @@ class DataModel(_DeferredDataModel):
         super().add_cost_matrix(cost_mat, vehicle_type)
 
     @catch_cuopt_exception
+    def add_distance_matrix(
+        self, distance_mat, vehicle_type=0, *, skip_validation=False
+    ):
+        """Register physical distance independently from cost and transit time.
+
+        The solver validates the distances but does not yet use them to
+        constrain routes or compute the objective.
+
+        Parameters
+        ----------
+        distance_mat : array-like, float32
+            Square matrix with one row and column per location. See the
+            DataModel note on accepted host and device array types. Values
+            must be real, non-negative and not NaN. Positive infinity is accepted;
+            finite values must fit in float32.
+        vehicle_type : int
+            Vehicle-type identifier within [0, 255].
+        skip_validation : bool
+            Skip Python checks for matrix shape and values. The caller must
+            provide a valid square matrix matching the number of locations.
+        """
+        if not isinstance(vehicle_type, (int, np.integer)):
+            raise TypeError("vehicle_type must be an integer")
+        if not 0 <= int(vehicle_type) <= np.iinfo(np.uint8).max:
+            raise ValueError("vehicle_type must be within [0, 255]")
+        if vehicle_type in {
+            args[1] for args in self._recorded("add_distance_matrix")
+        }:
+            raise ValueError(
+                "Vehicle type distance matrix has already been added"
+            )
+        # Check dtype metadata before recording: both backends cast to float32.
+        dtypes = (
+            distance_mat.dtypes
+            if hasattr(distance_mat, "dtypes") and distance_mat.ndim == 2
+            else (getattr(distance_mat, "dtype", None),)
+        )
+        if any(
+            getattr(dtype, "kind", "") not in {"i", "u", "f"}
+            for dtype in dtypes
+        ):
+            raise TypeError("distance matrix must contain real numeric values")
+        if not skip_validation:
+            if getattr(distance_mat, "ndim", None) != 2:
+                raise ValueError("distance matrix must be two-dimensional")
+            if np.ma.isMaskedArray(distance_mat) and np.ma.is_masked(
+                distance_mat
+            ):
+                raise ValueError("distance matrix cannot have NULL values")
+            validate_matrix(
+                distance_mat, "distance matrix", self.get_num_locations()
+            )
+            # Only wider floating types can overflow the float32 range.
+            if any(
+                dtype.kind == "f" and dtype.itemsize > 4 for dtype in dtypes
+            ):
+                overflow = (distance_mat > np.finfo(np.float32).max) & (
+                    distance_mat < np.inf
+                )
+                if overflow.any(axis=1).any():
+                    raise ValueError(
+                        "distance matrix finite values must be representable as float32"
+                    )
+        super().add_distance_matrix(distance_mat, vehicle_type)
+
+    @catch_cuopt_exception
     def add_transit_time_matrix(self, mat, vehicle_type=0):
         """
         Add transit time matrix for all locations

@@ -31,6 +31,7 @@ Summary of which APIs from `assignment.py` and `vehicle_routing.py` are exercise
 | API | Covered | Where |
 |-----|---------|--------|
 | `add_cost_matrix()` | Yes | test_data_model, test_vehicle_properties, test_solver, test_batch_solve, etc. |
+| `add_distance_matrix()` | Yes | test_distance_matrices, test_routing_grpc_serialization |
 | `add_transit_time_matrix()` | Yes | test_vehicle_properties, test_solver, test_initial_solutions, test_re_routing, etc. |
 | `set_break_locations()` | Yes | test_vehicle_properties (test_empty_routes_with_breaks) |
 | `add_break_dimension()` | Yes | test_vehicle_properties (test_empty_routes_with_breaks), test_solver, test_initial_solutions |
