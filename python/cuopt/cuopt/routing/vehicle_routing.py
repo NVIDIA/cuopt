@@ -152,8 +152,12 @@ class DataModel(_DeferredDataModel):
 
     @catch_cuopt_exception
     def add_distance_matrix(
-        self, distance_mat, vehicle_type=0, *, skip_validation=False
-    ):
+        self,
+        distance_mat: np.ndarray | pd.DataFrame | cudf.DataFrame,
+        vehicle_type: int | np.integer = 0,
+        *,
+        skip_validation: bool = False,
+    ) -> None:
         """Register physical distance independently from cost and transit time.
 
         The solver validates the distances but does not yet use them to
@@ -170,6 +174,16 @@ class DataModel(_DeferredDataModel):
             Vehicle-type identifier within [0, 255].
         skip_validation : bool
             Skip Python checks for matrix values. Shape is always checked.
+
+        Raises
+        ------
+        TypeError
+            If the vehicle type is not an integer or the matrix does not
+            contain real numeric values.
+        ValueError
+            If the vehicle type is out of range or already registered, the
+            matrix shape does not match the locations, or a checked value
+            is missing, negative, or exceeds the finite float32 range.
         """
         if not isinstance(vehicle_type, (int, np.integer)):
             raise TypeError("vehicle_type must be an integer")

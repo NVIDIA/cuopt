@@ -754,6 +754,11 @@ class OptimizationDataModel:
             vehicle_distance_breaks
         )
 
+        effective_vehicle_types = vehicle_types
+        stored_types = self.fleet_data["vehicle_types"]
+        if vehicle_types is None and stored_types is not None:
+            effective_vehicle_types = stored_types.to_arrow().to_pylist()
+
         is_valid = validate_fleet_data(
             vehicle_ids,
             vehicle_locations,
@@ -763,7 +768,7 @@ class OptimizationDataModel:
             vehicle_break_time_windows,
             vehicle_break_durations,
             vehicle_break_locations,
-            vehicle_types,
+            effective_vehicle_types,
             vehicle_types_dict,
             vehicle_order_match,
             skip_first_trips,

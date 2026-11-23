@@ -145,6 +145,24 @@ def test_update_distance_without_cost_preserves_registered_shape():
     assert model.update_distance_matrix({0: [[0, 4], [6, 0]]})[0]
 
 
+def test_partial_fleet_update_preserves_registered_vehicle_types():
+    model = OptimizationDataModel()
+    assert model.set_cost_matrix({1: [[0, 3], [5, 0]]})[0]
+    assert model.set_distance_matrix({1: [[0, 9], [7, 0]]})[0]
+    fleet = FleetData(vehicle_locations=[[0, 0]], vehicle_types=[1])
+    assert model.set_fleet_data(**fleet.model_dump())[0]
+
+    update = dict.fromkeys(fleet.model_dump())
+    update["vehicle_max_times"] = [10]
+    assert model.update_fleet_data(**update)[0]
+    assert model.get_fleet_data()["vehicle_types"] == [1]
+    assert model.get_fleet_data()["vehicle_max_times"] == [10]
+
+    update["vehicle_types"] = [0]
+    assert not model.update_fleet_data(**update)[0]
+    assert model.get_fleet_data()["vehicle_types"] == [1]
+
+
 @pytest.mark.parametrize(
     "matrix_type, fleet_types", [(0, None), (1, [1]), (1, None)]
 )

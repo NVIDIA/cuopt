@@ -72,7 +72,9 @@ def test_distance_matrix_rejects_masked_distance():
         )
 
 
-@pytest.mark.parametrize("backend", ["numpy", "cudf", "pandas_nullable"])
+@pytest.mark.parametrize(
+    "backend", ["numpy", "numpy_longdouble", "cudf", "pandas_nullable"]
+)
 def test_auxiliary_distance_matrix_preserves_cost_and_time(backend):
     import cudf
 
@@ -85,6 +87,10 @@ def test_auxiliary_distance_matrix_preserves_cost_and_time(backend):
     if backend == "pandas_nullable":
         model.add_distance_matrix(
             pd.DataFrame([[0, 100], [200, 0]], dtype="Int64")
+        )
+    elif backend == "numpy_longdouble":
+        model.add_distance_matrix(
+            np.array([[0, 100], [200, 0]], dtype=np.longdouble)
         )
     else:
         model.add_distance_matrix(matrix([[0, np.inf], [200, 0]]))

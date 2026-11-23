@@ -120,7 +120,8 @@ def prepare_matrix(mat, name):
     elif isinstance(mat, pd.DataFrame):
         arr = cp.asarray(mat.to_numpy())
     elif isinstance(mat, np.ndarray):
-        arr = cp.asarray(mat)
+        # CuPy cannot create an array of NumPy's extended-precision floats.
+        arr = cp.asarray(mat, dtype=np.float32 if mat.dtype.kind == "f" else None)
     elif isinstance(mat, cp.ndarray):
         arr = mat
     else:
