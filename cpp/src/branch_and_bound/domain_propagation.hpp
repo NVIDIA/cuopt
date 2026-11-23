@@ -187,7 +187,8 @@ class domain_propagation_t {
   // A continuous bound must shrink the domain by at least this fraction.
   static constexpr f_t min_relative_improvement = 0.3;
 
-  // Times primal_tol, the smallest absolute change accepted for a continuous bound.
+  // Times primal_tol, the smallest absolute change accepted for a continuous bound and the
+  // smallest change relative to its magnitude accepted for an integer bound.
   static constexpr f_t min_improvement_factor = 1e3;
 
   std::vector<row_activity_t<i_t, f_t>> row_activities_;

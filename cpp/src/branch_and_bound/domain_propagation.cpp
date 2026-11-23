@@ -200,10 +200,14 @@ bool domain_propagation_t<i_t, f_t>::tighten_bounds(
   bool tighten_ub = false;
 
   if (var_types[j] == variable_type_t::INTEGER) {
-    new_lower  = std::ceil(new_lower - settings.integer_tol);
-    new_upper  = std::floor(new_upper + settings.integer_tol);
-    tighten_lb = new_lower - lb > settings.integer_tol;
-    tighten_ub = ub - new_upper > settings.integer_tol;
+    new_lower = std::ceil(new_lower - settings.integer_tol);
+    new_upper = std::floor(new_upper + settings.integer_tol);
+    // The step must also be a fraction of the bound magnitude, so that a cycle of small steps
+    // cannot tighten an integer bound forever.
+    tighten_lb =
+      new_lower - lb > std::max(settings.integer_tol, min_improvement * std::abs(new_lower));
+    tighten_ub =
+      ub - new_upper > std::max(settings.integer_tol, min_improvement * std::abs(new_upper));
   } else if (lp.A.col_start[j + 1] - lp.A.col_start[j] == 1) {
     // A continuous column singleton (e.g., a slack) is only bounded, never tightened: its
     // finite bounds are implied by its only row and only make the LP harder to solve.
