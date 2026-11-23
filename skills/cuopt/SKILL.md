@@ -14,15 +14,27 @@ metadata:
 GPU-accelerated routing, LP, MILP and QP. Source: https://github.com/NVIDIA/cuopt
 
 Look details up locally rather than from memory — the installed package always matches the
-version in use, and needs no network:
+version in use, and needs no network.
 
-- `help(obj)` and `inspect.signature(f)` — signatures and expected arguments
-- `solver_parameters` — every parameter name
-- `SolverSettings().get_parameter(name)` — its default
-- `SolverSettings().dump_parameters_to_file(path)` — description, type and range
+For what the package does not carry — install, examples, parameter ranges, the other
+interfaces — the user guide:
 
-For anything the package does not carry — install, system requirements, examples, the other
-interfaces, the FAQ — see the user guide: https://docs.nvidia.com/cuopt/user-guide/latest/
+| | |
+|---|---|
+| Install, channels, Docker | https://docs.nvidia.com/cuopt/user-guide/latest/install.html |
+| GPU / CUDA / driver support | https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html |
+| LP / QP settings | https://docs.nvidia.com/cuopt/user-guide/latest/convex-settings.html |
+| MILP settings | https://docs.nvidia.com/cuopt/user-guide/latest/mip-settings.html |
+| Python API reference | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/ |
+| LP / QP examples | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/convex/convex-examples.html |
+| MILP examples | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/mip/mip-examples.html |
+| Routing (Python) | https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/routing/ |
+| C, CLI, Java, gRPC, REST server | https://docs.nvidia.com/cuopt/user-guide/latest/ |
+| FAQ | https://docs.nvidia.com/cuopt/user-guide/latest/faq.html |
+
+These pages track the newest release. For another, read `docs/cuopt/source/` on its branch
+in the repo — `release/<major>.<minor>`, or `main` when no such branch exists yet, which
+means that release is still in development.
 
 ## Gotchas
 

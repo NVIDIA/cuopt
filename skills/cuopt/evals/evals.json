@@ -17,12 +17,12 @@
     "question": "In cuOpt Python, I called `LinearExpression([x, y], [1.0, 2.0])` and got a TypeError about a missing argument. How do I construct it, and should I be using it here at all for a simple two-term sum?",
     "expected_skill": "cuopt",
     "expected_script": null,
-    "ground_truth": "The agent explains that LinearExpression takes constant as a required positional argument rather than an optional keyword, so the call needs a third argument: LinearExpression([x, y], [1.0, 2.0], 0.0). It also advises that for an ordinary short sum, plain arithmetic or sum(...) is the better choice, and LinearExpression is worth reaching for mainly when recursion depth over a long accumulation is a concern.",
+    "ground_truth": "The agent explains that LinearExpression takes constant as a required positional argument rather than an optional keyword, so the call needs a third argument: LinearExpression([x, y], [1.0, 2.0], 0.0). For a short expression it advises plain arithmetic or sum(...). It does not recommend sum(...) or repeated expr = expr + term for a large expression, because each + builds new variable and coefficient lists from both operands, making accumulation of N terms quadratic; for those it builds the two lists once and passes them to a single LinearExpression call.",
     "expected_behavior": [
       "Names constant as a required positional third argument",
       "Shows a corrected call that passes the constant explicitly, e.g. 0.0",
-      "Recommends ordinary arithmetic or sum(...) for a simple expression",
-      "Mentions recursion depth over long accumulations as the reason LinearExpression exists"
+      "Accepts ordinary arithmetic or sum(...) for a short expression",
+      "For a large expression, builds the lists once instead of accumulating with sum(...) or repeated +"
     ]
   },
   {
@@ -43,12 +43,12 @@
     "question": "What is the default value and the valid range for the MILP relative gap tolerance in cuOpt, and what is the exact setting name?",
     "expected_skill": "cuopt",
     "expected_script": null,
-    "ground_truth": "The agent does not state a setting name, default or range from memory. It explains that settings names, defaults and ranges change between releases, and sources the answer from the MILP settings page in the user guide (https://docs.nvidia.com/cuopt/user-guide/latest/mip-settings.html) or by inspecting SolverSettings in the installed version. Any value it reports is attributed to one of those two sources.",
+    "ground_truth": "The agent does not state a setting name, default or range from memory. It reads the answer from the installed package first, since that always matches the version in use, and falls back to the MILP settings page in the user guide (https://docs.nvidia.com/cuopt/user-guide/latest/mip-settings.html) for anything the package does not expose. It explains that settings names, defaults and ranges change between releases, and attributes any value it reports to one of those two sources.",
     "expected_behavior": [
       "Does NOT assert a setting name, default or range purely from memory",
       "States that settings change between releases",
-      "Routes to the MILP settings page in the user guide, not the LP/QP page",
-      "Offers inspecting SolverSettings in the installed build as the other source of truth"
+      "Reads from the installed package first, as the version-correct source",
+      "Falls back to the MILP settings page in the user guide, not the LP/QP page"
     ]
   },
   {
