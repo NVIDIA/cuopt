@@ -11,6 +11,7 @@
 #include <raft/core/nvtx.hpp>
 
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/sequence.h>
 #include <thrust/sort.h>
 #include <thrust/unique.h>
 #include <cub/device/device_merge_sort.cuh>
