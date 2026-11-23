@@ -14,6 +14,7 @@ from cuopt import routing
 
 from cuopt_server.utils.data_definition import (
     CostMatrices,
+    DistanceMatrices,
     FleetData,
     InitialSolution,
     SolverSettingsConfig,
@@ -52,6 +53,7 @@ def populate_optimization_data(
     initial_solution: Optional[List[InitialSolution]] = None,
     solver_config: Optional[SolverSettingsConfig] = None,
     warnings=[],
+    distance_matrix_data: Optional[DistanceMatrices] = None,
 ):
     optimization_data = OptimizationDataModel()
 
@@ -89,6 +91,14 @@ def populate_optimization_data(
         )
     elif cost_matrix_data and cost_matrix_data.data:
         check_valid(optimization_data.set_cost_matrix(cost_matrix_data.data))
+
+    if (
+        distance_matrix_data is not None
+        and distance_matrix_data.data is not None
+    ):
+        check_valid(
+            optimization_data.set_distance_matrix(distance_matrix_data.data)
+        )
 
     if (
         travel_time_waypoint_graph_data
@@ -204,6 +214,8 @@ def create_data_model(
 
     for key, value in cost_matrix.items():
         data_model.add_cost_matrix(value, key)
+    for key, value in optimization_data.distance_matrix.items():
+        data_model.add_distance_matrix(value, key)
     if travel_time_matrix is not None:
         for key, value in travel_time_matrix.items():
             data_model.add_transit_time_matrix(value, key)

@@ -150,6 +150,7 @@ _ROUTING_KEYS = {
     "cost_waypoint_graph_data",
     "travel_time_waypoint_graph_data",
     "travel_time_matrix_data",
+    "distance_matrix_data",
     "solver_config",
 }
 

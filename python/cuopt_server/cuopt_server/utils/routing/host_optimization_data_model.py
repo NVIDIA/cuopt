@@ -19,6 +19,9 @@ from cuopt_server.utils.routing.optimization_data_model import (
 from cuopt_server.utils.routing.validation_cost_matrix import (
     validate_cost_matrix,
 )
+from cuopt_server.utils.routing.validation_distance_matrix import (
+    validate_distance_matrix,
+)
 from cuopt_server.utils.routing.validation_fleet_data import (
     validate_fleet_data,
 )
@@ -39,6 +42,11 @@ class HostOptimizationDataModel(OptimizationDataModel):
     def update_cost_matrix(self, *args, **kwargs):
         raise NotImplementedError(
             "HostOptimizationDataModel.update_cost_matrix is unimplemented"
+        )
+
+    def update_distance_matrix(self, *args, **kwargs):
+        raise NotImplementedError(
+            "HostOptimizationDataModel.update_distance_matrix is unimplemented"
         )
 
     def update_travel_time_matrix(self, *args, **kwargs):
@@ -95,6 +103,17 @@ class HostOptimizationDataModel(OptimizationDataModel):
 
         return is_valid
 
+    def set_distance_matrix(self, distance_matrix):
+        is_valid = validate_distance_matrix(
+            distance_matrix, comparison_matrix=self.cost_matrix or None
+        )
+        if is_valid[0]:
+            self.distance_matrix = {
+                v_type: pd.DataFrame(np.array(matrix, dtype=np.float32))
+                for v_type, matrix in distance_matrix.items()
+            }
+        return is_valid
+
     def set_fleet_data(
         self,
         vehicle_ids,
@@ -124,6 +143,9 @@ class HostOptimizationDataModel(OptimizationDataModel):
         vehicle_types_dict["Cost Matrix"] = list(self.cost_matrix.keys())
         vehicle_types_dict["Travel Time Matrix"] = list(
             self.travel_time_matrix.keys()
+        )
+        vehicle_types_dict["Distance Matrix"] = list(
+            self.distance_matrix.keys()
         )
         vehicle_types_dict["Waypoint Graph"] = list(self.waypoint_graph.keys())
         vehicle_types_dict["Travel Time Waypoint Graph"] = list(

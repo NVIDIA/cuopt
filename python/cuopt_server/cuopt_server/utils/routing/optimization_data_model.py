@@ -9,6 +9,9 @@ from cuopt import routing
 from cuopt_server.utils.routing.validation_cost_matrix import (
     validate_cost_matrix,
 )
+from cuopt_server.utils.routing.validation_distance_matrix import (
+    validate_distance_matrix,
+)
 from cuopt_server.utils.routing.validation_fleet_data import (
     validate_fleet_data,
 )
@@ -76,6 +79,7 @@ class OptimizationDataModel:
         self.is_route_detail_set = False
 
         self.cost_matrix = {}
+        self.distance_matrix = {}
         self.travel_time_matrix = {}
 
         self.fleet_data = self.reset_fleet_data()
@@ -152,6 +156,12 @@ class OptimizationDataModel:
         return {
             key: value.to_numpy().tolist()
             for key, value in self.cost_matrix.items()
+        }
+
+    def get_distance_matrix(self):
+        return {
+            key: value.to_numpy().tolist()
+            for key, value in self.distance_matrix.items()
         }
 
     def get_travel_time_matrix(self):
@@ -292,6 +302,7 @@ class OptimizationDataModel:
             "cost_waypoint_graph": self.get_cost_waypoint_graph(),
             "travel_time_waypoint_graph": self.get_travel_time_waypoint_graph(),  # noqa
             "cost_matrix": self.get_cost_matrix(),
+            "distance_matrix": self.get_distance_matrix(),
             "travel_time_matrix": self.get_travel_time_matrix(),
             "fleet_data": self.get_fleet_data(),
             "task_data": self.get_task_data(),
@@ -440,6 +451,28 @@ class OptimizationDataModel:
 
         return is_valid
 
+    def set_distance_matrix(self, distance_matrix):
+        is_valid = validate_distance_matrix(
+            distance_matrix, comparison_matrix=self.cost_matrix or None
+        )
+        if is_valid[0]:
+            self.distance_matrix = {
+                v_type: cudf.DataFrame(np.array(matrix, dtype=np.float32))
+                for v_type, matrix in distance_matrix.items()
+            }
+        return is_valid
+
+    def update_distance_matrix(self, distance_matrix):
+        is_valid = validate_distance_matrix(
+            distance_matrix, comparison_matrix=self.cost_matrix or None
+        )
+        if is_valid[0]:
+            for v_type, matrix in distance_matrix.items():
+                self.distance_matrix[v_type] = cudf.DataFrame(
+                    np.array(matrix, dtype=np.float32)
+                )
+        return is_valid
+
     def set_travel_time_matrix(self, travel_time_matrix):
         is_valid = validate_cost_matrix(
             travel_time_matrix,
@@ -503,6 +536,9 @@ class OptimizationDataModel:
         vehicle_types_dict["Cost Matrix"] = list(self.cost_matrix.keys())
         vehicle_types_dict["Travel Time Matrix"] = list(
             self.travel_time_matrix.keys()
+        )
+        vehicle_types_dict["Distance Matrix"] = list(
+            self.distance_matrix.keys()
         )
         vehicle_types_dict["Waypoint Graph"] = list(self.waypoint_graph.keys())
         vehicle_types_dict["Travel Time Waypoint Graph"] = list(
@@ -683,6 +719,9 @@ class OptimizationDataModel:
         vehicle_types_dict["Cost Matrix"] = list(self.cost_matrix.keys())
         vehicle_types_dict["Travel Time Matrix"] = list(
             self.travel_time_matrix.keys()
+        )
+        vehicle_types_dict["Distance Matrix"] = list(
+            self.distance_matrix.keys()
         )
         vehicle_types_dict["Waypoint Graph"] = list(self.waypoint_graph.keys())
         vehicle_types_dict["Travel Time Waypoint Graph"] = list(

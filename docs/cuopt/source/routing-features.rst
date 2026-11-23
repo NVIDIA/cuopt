@@ -129,6 +129,29 @@ Fixed Cost per Vehicle
 -----------------------
 Vehicles can have different fixed costs associated with them. This helps in scenarios where a single vehicle with a higher cost can be avoided if it can be done with two or more vehicles with lesser costs. This would be dependent on the objective function.
 
+Independent Distance Matrices
+-----------------------------
+
+Use ``DataModel.add_distance_matrix`` to provide physical distances separately
+from travel cost and time. The solver validates this optional input but does
+not yet use it to score or constrain routes. Provide one square, non-negative
+matrix per vehicle type used in the fleet, matching its cost matrix in size.
+
+.. code-block:: python
+
+   data_model.add_cost_matrix(cost_matrix)
+   data_model.add_distance_matrix(distance_matrix)
+   data_model.add_transit_time_matrix(time_matrix)
+
+In a server request, use ``distance_matrix_data`` with matrices keyed by vehicle
+type. JSON values must be finite. For example:
+
+.. code-block:: json
+
+   {"distance_matrix_data": {"data": {"0": [[0, 100], [200, 0]]}}}
+
+The corresponding gRPC ``RoutingProblem`` field is ``distance_matrices``.
+
 Mapping Orders to Vehicles, and Vehicles to Orders
 ---------------------------------------------------
 By default, cuOpt will assign orders to vehicles based on the optimal routes. However, in some cases, it makes sense to assign specific orders to specific vehicles, or, conversely, specific vehicles to specific orders.
