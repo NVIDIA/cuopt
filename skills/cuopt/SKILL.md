@@ -32,9 +32,8 @@ interfaces — the user guide:
 | C, CLI, Java, gRPC, REST server | https://docs.nvidia.com/cuopt/user-guide/latest/ |
 | FAQ | https://docs.nvidia.com/cuopt/user-guide/latest/faq.html |
 
-These pages track the newest release. For another, read `docs/cuopt/source/` on its branch
-in the repo — `release/<major>.<minor>`, or `main` when no such branch exists yet, which
-means that release is still in development.
+These pages track the newest release. For any other version, read `docs/cuopt/source/` on
+its branch in the repo: `release/<major>.<minor>`, or `main` if that branch does not exist.
 
 ## Gotchas
 
