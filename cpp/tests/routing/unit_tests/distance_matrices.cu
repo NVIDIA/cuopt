@@ -28,23 +28,31 @@ TEST(distance_matrices, maximum_distance_selects_vehicle_independently_of_cost_a
   problem.cost_matrices         = {{7, {0, 1, 2, 0}}, {3, {0, 9, 8, 0}}};
   problem.distance_matrices     = {{3, {0, 3, 4, 0}}, {7, {0, 10, 20, 0}}};
   problem.transit_time_matrices = {{7, {0, 4, 6, 0}}, {3, {0, 5, 7, 0}}};
-  problem.vehicle_max_costs     = {3, 17};
   raft::handle_t handle;
   solver_settings_t<int, float> settings;
   settings.set_time_limit(1);
-  for (bool constrained : {false, true}) {
-    SCOPED_TRACE(constrained);
-    if (constrained) { problem.vehicle_max_distances = {29, 7}; }
-    auto [model, storage] = problem.to_device(&handle);
-    auto solution         = solve(model, settings);
+  const auto check = [&](std::vector<float> const& max_costs,
+                         std::vector<float> const& max_distances,
+                         int expected_vehicle) {
+    SCOPED_TRACE(::testing::Message()
+                 << "max costs: " << ::testing::PrintToString(max_costs)
+                 << ", max distances: " << ::testing::PrintToString(max_distances));
+    problem.vehicle_max_costs     = max_costs;
+    problem.vehicle_max_distances = max_distances;
+    auto [model, storage]         = problem.to_device(&handle);
+    auto solution                 = solve(model, settings);
     ASSERT_EQ(solution.get_status(), solution_status_t::SUCCESS);
     host_assignment_t<int> result(solution);
-    int expected_vehicle = constrained ? 1 : 0;
     EXPECT_EQ(result.truck_id, (std::vector<int>(3, expected_vehicle)));
-    EXPECT_DOUBLE_EQ(solution.get_total_objective(), constrained ? 17 : 3);
-    EXPECT_EQ(result.stamp,
-              (constrained ? std::vector<double>{0, 5, 12} : std::vector<double>{0, 4, 10}));
-  }
+    EXPECT_DOUBLE_EQ(solution.get_total_objective(), expected_vehicle == 0 ? 3 : 17);
+    EXPECT_EQ(
+      result.stamp,
+      (expected_vehicle == 0 ? std::vector<double>{0, 4, 10} : std::vector<double>{0, 5, 12}));
+  };
+  check({3, 17}, {}, 0);
+  check({3, 17}, {29, 7}, 1);
+  check({100, 100}, {29, 7}, 1);  // Vehicle 0 is within budget but travels 30.
+  check({2, 17}, {100, 7}, 1);    // Vehicle 0 is within range but costs 3.
 }
 
 TEST(distance_matrices, maximum_distance_counts_only_travelled_legs)
