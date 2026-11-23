@@ -7,6 +7,7 @@
 
 #include <cfloat>
 #include <cmath>
+#include <cub/device/device_reduce.cuh>
 
 #include "optimal_eax_cycles.cuh"
 

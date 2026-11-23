@@ -102,9 +102,12 @@ RUN apt-get update \
         openjdk-17-jdk \
         build-essential \
         g++-12 \
-        cmake \
     && rm -rf /var/lib/apt/lists/*
 ENV CXX=/usr/bin/g++-12
+
+# raft needs headers from nvidia-cuda-cccl; the cuXY-suffixed packages pulled in transitively are too old.
+# cmake from PyPI: apt's 3.22 is older than the project's minimum (dependencies.yaml).
+RUN python -m pip install --no-cache-dir --upgrade nvidia-cuda-cccl "cmake>=4.3,<4.5"
 
 # CMake's find_package(CUDAToolkit REQUIRED) needs nvcc on PATH; reuse cuda-headers instead of
 # installing the toolkit again via apt.
@@ -153,10 +156,11 @@ COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
 
 COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
-# Entrypoint supports server selection:
-#   Default:                  Python REST server
-#   CUOPT_SERVER_TYPE=grpc:   gRPC server (uses CUOPT_SERVER_PORT, CUOPT_GPU_COUNT)
-#   Explicit command:         docker run <image> cuopt_grpc_server [args...]
+# CUOPT_SERVER_TYPE (proxy, grpc, or legacy) overrides the command.
+#   proxy (default):            HTTP proxy + cuopt_grpc_server
+#   grpc:                       gRPC server only
+#   legacy:                     Python REST server (cuopt_service)
+#   Any other command:          docker run <image> cuopt_grpc_server [args...]
 COPY ./entrypoint.sh /opt/cuopt/entrypoint.sh
 ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
-CMD ["python", "-m", "cuopt_server.cuopt_service"]
+CMD ["proxy"]

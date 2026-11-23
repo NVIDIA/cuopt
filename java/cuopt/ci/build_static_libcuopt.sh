@@ -5,7 +5,7 @@
 # Builds libcuopt_static.a scoped to what the Java bindings actually expose, and reports its
 # size. See #1817.
 #
-# The Java API covers LP, MIP and QP only, so routing, the gRPC server and NCCL's distributed
+# The Java API covers LP, MIP and QP only, so routing, the gRPC server and NCCL's multi-GPU
 # PDLP path are all excluded. That matters because the shared libcuopt is 554 MB against 29
 # DT_NEEDED entries, and Maven Central caps an upload bundle at 1 GB — a self-contained JAR is
 # only viable if the embedded library is scoped first.

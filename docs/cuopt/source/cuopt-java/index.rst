@@ -16,8 +16,8 @@ cuOpt build and does not provide routing or distance-engine bindings. See
 .. note::
 
    Build the module locally from ``java/cuopt`` against an existing cuOpt
-   installation. CI artifacts are experimental; publication to a supported
-   Maven repository has not been defined.
+   installation, or use the published classifier jars described in
+   :doc:`quick-start`. CI artifacts are experimental.
 
 .. toctree::
    :maxdepth: 3

@@ -29,6 +29,23 @@
 #define CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT       3
 #define CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT      3
 
+/* @brief Minimum capacity the early CPUFJ portfolio leaves to the rest of the team. Callers may
+ * reserve more. Every lane holds its own host copy and an OMP task for the whole of presolve. */
+#define CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS 4
+
+/* @brief Upper bound on the early CPUFJ portfolio, whatever the team size. Each lane keeps a
+ * per-lane host state that grows with the problem (several GB on very large instances), and the
+ * lanes run alongside Papilo, which competes with them for memory bandwidth. Beyond 16 lanes the
+ * portfolio gains little while Papilo slows down roughly linearly with the lane count. */
+#define CUOPT_MIP_EARLY_CPUFJ_MAX_LANES 16
+
+/* @brief Maximum Papilo arena concurrency, including the calling solver thread. */
+#define CUOPT_MIP_PAPILO_THREAD_LIMIT 4
+
+/* @brief Upper bound on the persistent root CPUFJ lane set. Every lane holds its own host copy of
+ * the root LP and occupies an OMP task for the whole of the cut loop. */
+#define CUOPT_MIP_ROOT_CPUFJ_MAX_LANES 4
+
 /* @brief Priority classes for the omp tasks. Highest value = higher priority.
  * Note that this only gives a hint to the runtime, such that the high priority
  * is not guarantee to be executed before a low priority one (i.e., do not rely on
@@ -38,11 +55,6 @@
 #define CUOPT_HIGH_TASK_PRIORITY     100
 #define CUOPT_MEDIUM_TASK_PRIORITY   10
 #define CUOPT_DEFAULT_TASK_PRIORITY  1
-
-// Default values for work stealing in B&B
-#define MIP_DEFAULT_STEAL_CHANCE       0.05
-#define MIP_DEFAULT_NODES_PER_STEAL    10
-#define MIP_DEFAULT_MAX_STEAL_ATTEMPTS 3
 
 namespace cuopt::mathematical_optimization::mip {
 

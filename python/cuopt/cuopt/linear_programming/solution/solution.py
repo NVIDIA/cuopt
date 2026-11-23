@@ -5,6 +5,7 @@ from cuopt.linear_programming.solver_settings.solver_settings import (
     SolverMethod,
 )
 from cuopt.linear_programming.solver.solver_wrapper import (
+    ErrorStatus,
     LPTerminationStatus,
     MILPTerminationStatus,
     ProblemCategory,
@@ -63,8 +64,9 @@ class Solution:
     ----------
     problem_category : int
         Whether it is a LP-0, MIP-1 or IP-2 solution
-    vars : Dict[str, float64]
-        Dictionary mapping each variable (name) to its value.
+    vars : Dict[str, float64] or callable
+        Dictionary mapping each variable (name) to its value, or a
+        zero-argument function returning it, called on first access.
     primal_solution : numpy.array
         Primal solution of the LP problem
     dual_solution : numpy.array
@@ -125,8 +127,8 @@ class Solution:
         Solve time in seconds
     solved_by: enum
         Note: Applicable to only LP
-        Whether the LP was solved by Dual Simplex, PDLP or Barrier. This is populated
-        by the solver using the values from SolverMethod.
+        The method that solved the LP. This is populated by the solver using the
+        values from SolverMethod.
     """
 
     def __init__(
@@ -227,6 +229,22 @@ class Solution:
             "num_simplex_iterations": num_simplex_iterations,
         }
 
+    def __repr__(self) -> str:
+        if self.error_status != ErrorStatus.Success:
+            text = (
+                f"Solution(status={self.termination_status.name}, "
+                f"error={ErrorStatus(self.error_status).name})"
+            )
+            if self.error_message:
+                text += f"\n{self.error_message}"
+            return text
+        return (
+            f"Solution(status={self.termination_status.name}, "
+            f"objective={self.primal_objective})"
+        )
+
+    __str__ = __repr__
+
     def _set_termination_status(self, ts):
         if self.problem_category == ProblemCategory.LP:
             self.termination_status = LPTerminationStatus(ts)
@@ -277,6 +295,8 @@ class Solution:
         * ``<=``: ``rhs - lhs`` (slack; non-negative if feasible)
         * ``>=``: ``lhs - rhs`` (surplus; non-negative if feasible)
         * ``==``: ``rhs - lhs`` (residual; near zero if feasible)
+        * ranged (two different finite bounds): distance to the nearer bound
+          (non-negative if feasible)
 
         Quadratic constraints are not included. Returns None when the values
         could not be computed, for example when the solver returned no primal
@@ -330,9 +350,19 @@ class Solution:
 
     def get_solved_by(self):
         """
-        Returns whether the LP was solved by Dual Simplex, PDLP or Barrier. See SolverMethod for all possible values.
+        Returns the method that solved the LP. See SolverMethod for all possible values.
         """
         return self.solved_by
+
+    @property
+    def vars(self):
+        if callable(self._vars):
+            self._vars = self._vars()
+        return self._vars
+
+    @vars.setter
+    def vars(self, value):
+        self._vars = value
 
     def get_vars(self):
         """

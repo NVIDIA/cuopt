@@ -52,14 +52,15 @@ class third_party_presolve_t;
 
 constexpr double OBJECTIVE_EPSILON = 1e-7;
 constexpr double MACHINE_EPSILON   = 1e-7;
-constexpr bool USE_REL_TOLERANCE   = true;
 
 template <typename i_t, typename f_t>
 class problem_t {
  public:
+  // LP relaxations can disable MIP workspace without changing integer-variable metadata.
   problem_t(const optimization_problem_t<i_t, f_t>& problem,
             const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_ = {},
-            bool deterministic                                                       = false);
+            bool deterministic                                                       = false,
+            bool allocate_mip_workspace                                              = true);
   problem_t() = delete;
   // copy constructor
   problem_t(const problem_t<i_t, f_t>& problem);
@@ -122,7 +123,7 @@ class problem_t {
     return presolve_data.get_papilo_original_num_variables();
   }
   void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
-                                 rmm::cuda_stream_view stream) const;
+                                 cuda::stream_ref stream) const;
   void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const
   {
     papilo_uncrush_assignment(assignment, handle_ptr->get_stream());
@@ -270,15 +271,7 @@ class problem_t {
   std::shared_ptr<problem_t<i_t, f_t>> integer_fixed_problem = nullptr;
   rmm::device_uvector<i_t> integer_fixed_variable_map;
 
-  std::function<bool(const std::vector<f_t>&, heuristics_origin_t)> branch_and_bound_callback;
-  std::function<void(const std::vector<f_t>&,
-                     const std::vector<f_t>&,
-                     const std::vector<f_t>&,
-                     f_t,
-                     f_t,
-                     i_t,
-                     method_t)>
-    set_root_relaxation_solution_callback;
+  std::function<bool(const std::vector<f_t>&)> branch_and_bound_callback;
 
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances{};
   i_t n_variables{0};
@@ -356,7 +349,7 @@ class problem_t {
   bool cutting_plane_added{false};
   std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
   bool expensive_to_fix_vars{false};
-  double related_vars_time_limit{30.};
+  double related_vars_time_limit{2.};
   std::vector<i_t> Q_offsets;
   std::vector<i_t> Q_indices;
   std::vector<f_t> Q_values;

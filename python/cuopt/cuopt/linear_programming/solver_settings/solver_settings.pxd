@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -28,6 +28,7 @@ cdef extern from "cuopt/mathematical_optimization/pdlp/solver_settings.hpp" name
         PDLP "cuopt::mathematical_optimization::method_t::PDLP" # noqa
         DualSimplex "cuopt::mathematical_optimization::method_t::DualSimplex" # noqa
         Barrier "cuopt::mathematical_optimization::method_t::Barrier" # noqa
+        PrimalSimplex "cuopt::mathematical_optimization::method_t::PrimalSimplex" # noqa
         Unset "cuopt::mathematical_optimization::method_t::Unset" # noqa
 
 cdef extern from "cuopt/mathematical_optimization/solver_settings.hpp" namespace "cuopt::mathematical_optimization": # noqa

@@ -137,6 +137,7 @@ class feasibility_pump_t {
   mip_solver_context_t<i_t, f_t>& context;
   // keep a reference from upstream local search
   fj_t<i_t, f_t>& fj;
+  fj_improvement_callback_t<f_t> improvement_callback;
   // fj_tree_t<i_t, f_t>& fj_tree;
   line_segment_search_t<i_t, f_t>& line_segment_search;
   cycle_queue_t<i_t, f_t> cycle_queue;
@@ -145,6 +146,7 @@ class feasibility_pump_t {
   rmm::device_uvector<f_t> last_rounding;
   rmm::device_uvector<f_t> last_projection;
   rmm::device_uvector<var_t> orig_variable_types;
+  bool general_integers_relaxed = false;
   f_t best_excess;
   rmm::device_uvector<f_t>& lp_optimal_solution;
   std::mt19937 rng;

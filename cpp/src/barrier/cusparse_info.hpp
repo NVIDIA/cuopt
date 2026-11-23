@@ -8,6 +8,7 @@
 #pragma once
 
 #include <pdlp/cusparse_view.hpp>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/macros.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -36,17 +37,14 @@ using cusparse_spgemm_uptr =
 template <typename i_t, typename f_t>
 struct cusparse_info_t {
   cusparse_info_t(raft::handle_t const* handle)
-    : alpha(handle->get_stream()),
-      beta(handle->get_stream()),
+    : alpha(one_v<f_t>, handle->get_stream()),
+      beta(one_v<f_t>, handle->get_stream()),
       buffer_size(0, handle->get_stream()),
       buffer_size_2(0, handle->get_stream()),
       buffer_size_3(0, handle->get_stream()),
       buffer_size_4(0, handle->get_stream()),
       buffer_size_5(0, handle->get_stream())
   {
-    f_t v{1};
-    alpha.set_value_async(v, handle->get_stream());
-    beta.set_value_async(v, handle->get_stream());
   }
 
   pdlp::cusparse_sp_mat_uptr matA_descr;

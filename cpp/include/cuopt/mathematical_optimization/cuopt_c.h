@@ -134,7 +134,8 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
  *
  * @param[in] problem - The optimization problem to write.
  * @param[in] filename - The path to the output file.
- * @param[in] format - The file format to use. Currently only CUOPT_FILE_FORMAT_MPS is supported.
+ * @param[in] format - The file format to use. Supported values are
+ *  CUOPT_FILE_FORMAT_MPS and CUOPT_FILE_FORMAT_LP.
  *
  * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT
  *         if an unsupported format is specified.
@@ -623,8 +624,8 @@ cuopt_int_t cuOptGetConstraintMatrixCSR(cuOptOptimizationProblem problem,
  * @param[in] problem - The optimization problem.
  *
  * @param[out] constraint_matrix_column_offsets_ptr - A pointer to an array of type cuopt_int_t of
- *  size num_variables + 1 (see cuOptGetProblemIntAttribute) that on output will contain the column
- * offsets of the constraint matrix.
+ *  size num_variables + 1 that on output will contain the column offsets of the constraint
+ *  matrix.
  *
  * @param[out] constraint_matrix_row_indices_ptr - A pointer to an array of type cuopt_int_t of size
  *  equal to the number of nonzeros (see cuOptGetNumNonZeros) that on output will contain the row
@@ -926,7 +927,10 @@ cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
  * @param[in] callback - Callback function to inject solutions.
  * @param[in] user_data - User-defined pointer passed through to the callback.
  *  It will be forwarded to ``cuOptMIPSetSolutionCallback`` when invoked.
- * @note Registering a set-solution callback disables presolve.
+ * @note Registration preserves the configured presolve setting. Dual presolve reductions are
+ * disabled so injected feasible solutions remain representable. Supply values in the original
+ * variable order and the objective value in the original model's units. The solver transforms
+ * injected solutions into its presolved representation.
  * @note The callback arguments refer to host memory and are only valid during the callback
  * invocation. Do not pass device/GPU pointers. Copy any data you need to keep after the callback
  * returns.

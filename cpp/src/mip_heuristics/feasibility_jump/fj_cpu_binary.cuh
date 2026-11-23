@@ -10,6 +10,7 @@
 #include <math_optimization/tic_toc.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 // The fast path applies to instances whose variables are all binary and whose rows carry integer
@@ -29,10 +30,11 @@ struct fj_bin_setup_times_t {
   double scan{0};
   double narrow{0};
   double transpose{0};
+  double cardinality{0};
   double encode{0};
   double engine_init{0};
 
-  double total() const { return scan + narrow + transpose + encode + engine_init; }
+  double total() const { return scan + narrow + transpose + cardinality + encode + engine_init; }
 };
 
 // Adds one setup phase's wall time to a scalar on the climber. These phases run once per solve and
@@ -61,6 +63,13 @@ enum class fj_binary_reject_t : uint8_t {
   lhs_headroom,
 };
 
+enum class sat_result_t : int8_t {
+  declined   = -2,
+  infeasible = -1,
+  stopped    = 0,
+  successful = 1,
+};
+
 // the binary engine handles a one-sided problem with integer coefficients
 template <typename coef_t>
 struct fj_bin_problem_t {
@@ -86,6 +95,18 @@ struct fj_bin_problem_t {
   std::vector<double> objective;
   std::vector<int32_t> objective_vars;
 
+  // Members of the cardinality rows, in engine-variable space.
+  std::vector<int32_t> card_offsets{0};
+  std::vector<int32_t> card_vars;
+
+  // Every repeated-coefficient class of size two or more inside an equality, and the transpose.
+  // Swapping two opposite-valued members of one class leaves that equality's lhs exactly unchanged,
+  // which a uniform-row cardinality group cannot express when the rest of the row differs.
+  std::vector<int32_t> selector_offsets{0};
+  std::vector<int32_t> selector_vars;
+  std::vector<int32_t> selector_reverse_offsets;
+  std::vector<int32_t> selector_reverse_groups;
+
   // Empty unless encoded, when every engine variable is one bit of a bounded general integer and
   // original[j] = var_offset[j] + sum of bit_weight[b] * assign[b] over the bits b owned by j.
   bool encoded{false};
@@ -95,6 +116,7 @@ struct fj_bin_problem_t {
   std::vector<int32_t> original_to_bin_mapping;
   std::vector<double> bit_weight;
   std::vector<double> orig_objective;
+  double substitution_offset{0};
 };
 
 // Result of the width-independent eligibility scan.
@@ -123,6 +145,13 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
                    fj_bin_problem_t<coef_t>& pb,
                    int& coefficient_bits,
                    fj_bin_setup_times_t& times);
+
+template <typename coef_t>
+sat_result_t fj_bin_sat_search(const fj_bin_problem_t<coef_t>& pb,
+                               std::vector<int8_t>& assignment,
+                               uint64_t seed,
+                               const std::function<bool()>& stop,
+                               int64_t& steps);
 
 // Returns true if the fast path ran (eligible and narrowed); false if declined, in which case the
 // caller should take the general path.

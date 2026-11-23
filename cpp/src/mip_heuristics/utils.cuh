@@ -18,6 +18,7 @@
 #include <random>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/hashing.hpp>
+#include <utilities/pcgenerator.hpp>
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 
@@ -48,27 +49,6 @@ inline uint32_t compute_hash(const rmm::device_uvector<i_t>& values, cuda::strea
   auto h_contents = cuopt::host_copy(values, stream);
   RAFT_CHECK_CUDA(stream.get());
   return cuopt::compute_hash(h_contents);
-}
-
-template <typename i_t, typename f_t>
-HDI f_t get_cstr_tolerance(f_t combined_bound, f_t abs_tol, f_t rel_tol)
-{
-  f_t tolerance = abs_tol;
-  if (USE_REL_TOLERANCE) { tolerance += combined_bound * rel_tol; }
-  return tolerance;
-}
-
-template <typename i_t, typename f_t>
-HDI f_t get_cstr_tolerance(f_t lb, f_t ub, f_t abs_tol, f_t rel_tol)
-{
-  f_t tolerance = abs_tol;
-  // we normally have combined bounds in the problem, but to reduce a memory request we can
-  // recompute here
-  if (USE_REL_TOLERANCE) {
-    f_t max_bound = pdlp::combine_finite_abs_bounds<f_t>{}(lb, ub);
-    tolerance += max_bound * rel_tol;
-  }
-  return tolerance;
 }
 
 template <typename i_t, typename f_t>
@@ -137,6 +117,21 @@ inline std::vector<f_t> get_random_uniform_vector(i_t size,
   vec.reserve(size);
   for (i_t i = 0; i < size; ++i) {
     f_t random_val = std::uniform_real_distribution<f_t>(range_start, range_end)(rng);
+    vec.push_back(random_val);
+  }
+  return vec;
+}
+
+template <typename i_t, typename f_t>
+inline std::vector<f_t> get_random_uniform_vector(i_t size,
+                                                  cuopt::pcgenerator_t& rng,
+                                                  f_t range_start = -1.,
+                                                  f_t range_end   = 1.)
+{
+  std::vector<f_t> vec;
+  vec.reserve(size);
+  for (i_t i = 0; i < size; ++i) {
+    f_t random_val = rng.uniform(range_start, range_end);
     vec.push_back(random_val);
   }
   return vec;

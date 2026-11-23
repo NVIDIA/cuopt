@@ -13,9 +13,10 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuts/cuts.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
+#include <presolve/conflict_graph/clique_table.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -441,6 +442,19 @@ void disable_all_cuts(mip_solver_settings_t<int, double>& settings)
   settings.knapsack_cuts              = 0;
   settings.mir_cuts                   = 0;
   settings.strong_chvatal_gomory_cuts = 0;
+}
+
+void disable_non_knapsack_cuts(mip_solver_settings_t<int, double>& settings)
+{
+  settings.max_cut_passes             = 10;
+  settings.knapsack_cuts              = 1;
+  settings.clique_cuts                = 0;
+  settings.zero_half_cuts             = 0;
+  settings.mixed_integer_gomory_cuts  = 0;
+  settings.mir_cuts                   = 0;
+  settings.strong_chvatal_gomory_cuts = 0;
+  settings.flow_cover_cuts            = 0;
+  settings.implied_bound_cuts         = 0;
 }
 
 bool cut_is_invalid_for_incumbent(const std::vector<int>& cut_vars,
@@ -935,6 +949,181 @@ TEST(cuts, test_cuts_2)
   EXPECT_EQ(solution.get_num_nodes(), 0);
 }
 
+io::mps_data_model_t<int, double> create_knapsack_cover_floor_problem()
+{
+  // The odd cycle over z1, z2, z3 makes z = (0.5, 0.5, 0.5), w = 0 the unique LP optimum, which
+  // puts y at 0.412078. Integrality moves the optimum to w = 1 with y = 0 and objective 3.
+  //
+  // The capacity coefficients are load bearing: scaling that row to integers multiplies by 100,
+  // and 135.45 and 135.42 do not land on integers when scaled, which is what the knapsack
+  // separator needs them to do.
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 2 y + z1 + z2 + z3 + 3 w
+Subject To
+  capacity: -450 y + 135.45 z1 + 135.42 z2 + 100 z3 <= 0
+  tri12: z1 + z2 + w >= 1
+  tri13: z1 + z3 + w >= 1
+  tri23: z2 + z3 + w >= 1
+Binaries
+  y
+  z1
+  z2
+  z3
+  w
+End
+)LP");
+}
+
+TEST(cuts, knapsack_cover_floor_regression)
+{
+  const raft::handle_t handle_{};
+  auto problem = create_knapsack_cover_floor_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.;
+  disable_non_knapsack_cuts(settings);
+  settings.presolver = presolver_t::None;
+
+  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(3.0, solution.get_objective_value(), 1e-6);
+}
+
+TEST(cuts, knapsack_cover_floor_regression_reference)
+{
+  const raft::handle_t handle_{};
+  auto problem = create_knapsack_cover_floor_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.;
+  disable_all_cuts(settings);
+  settings.presolver = presolver_t::None;
+
+  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(3.0, solution.get_objective_value(), 1e-6);
+}
+
+TEST(cuts, rational_coefficients_50v10_regression)
+{
+  const double coefficient                              = 0.3684210526315792;
+  const std::vector<simplex::variable_type_t> var_types = {simplex::variable_type_t::INTEGER,
+                                                           simplex::variable_type_t::CONTINUOUS,
+                                                           simplex::variable_type_t::INTEGER,
+                                                           simplex::variable_type_t::INTEGER,
+                                                           simplex::variable_type_t::INTEGER};
+  const std::vector<double> lower(5, 0.0);
+  const std::vector<double> upper        = {1.0, 3.0 * coefficient, 1.0, 1.0, 1.0};
+  const std::vector<int> binary_columns  = {0, 2, 3, 4};
+  const std::vector<int> integer_weights = {1, 1, 1, 2};
+
+  for (int direction = 0; direction < 2; direction++) {
+    SCOPED_TRACE(direction);
+    mip::inequality_t<int, double> inequality(5);
+    inequality.push_back(0, -coefficient);
+    inequality.push_back(1, 1.0);
+    inequality.push_back(2, -coefficient);
+    inequality.push_back(3, -coefficient);
+    inequality.push_back(4, -2.0 * coefficient);
+    inequality.rhs = -2.0 * coefficient;
+    const auto sense =
+      direction == 0 ? mip::inequality_sense_t::LESS_EQUAL : mip::inequality_sense_t::GREATER_EQUAL;
+    if (direction == 1) { inequality.negate(); }
+
+    mip::inequality_t<int, double> rational_inequality(5);
+    ASSERT_TRUE(
+      mip::rational_coefficients(var_types, lower, upper, sense, inequality, rational_inequality));
+    if (direction == 1) { rational_inequality.negate(); }
+
+    EXPECT_EQ(rational_inequality.coeff(0), -1.0);
+    EXPECT_EQ(rational_inequality.coeff(2), -1.0);
+    EXPECT_EQ(rational_inequality.coeff(3), -1.0);
+    EXPECT_EQ(rational_inequality.coeff(4), -2.0);
+    EXPECT_GE(rational_inequality.rhs, -2.0);
+    const std::vector<double> boundary_point = {0.0, 0.0, 1.0, 1.0, 0.0};
+    EXPECT_LE(rational_inequality.vector.dot(boundary_point), rational_inequality.rhs);
+
+    int feasible_assignments = 0;
+    for (int mask = 0; mask < 16; mask++) {
+      SCOPED_TRACE(mask);
+      std::vector<double> point(5, 0.0);
+      int weight = 0;
+      for (int j = 0; j < 4; j++) {
+        const int value          = (mask >> j) & 1;
+        point[binary_columns[j]] = value;
+        weight += integer_weights[j] * value;
+      }
+      if (weight < 2) { continue; }
+      feasible_assignments++;
+      EXPECT_LE(rational_inequality.vector.dot(point), rational_inequality.rhs);
+    }
+    EXPECT_EQ(feasible_assignments, 12);
+  }
+}
+
+TEST(cuts, knapsack_fractional_capacity_regression)
+{
+  struct test_case_t {
+    double capacity;
+    std::vector<double> xstar;
+    int feasible_assignments;
+  };
+  const std::vector<test_case_t> cases = {{3.0, {0.7, 0.7, 0.05, 3.0 - 2.95}, 4},
+                                          {3.2, {0.7, 0.7, 0.05, 3.2 - 2.95}, 4},
+                                          {6.0, {0.875, 0.875, 0.75, 6.0 - 5.75}, 7},
+                                          {6.2, {0.875, 0.875, 0.75, 6.2 - 5.75}, 7},
+                                          {3.2, {0.75, 0.75, 0.0, 3.2 - 3.0}, 4}};
+  for (std::size_t instance = 0; instance < cases.size(); instance++) {
+    SCOPED_TRACE(instance);
+    const double capacity = cases[instance].capacity;
+    SCOPED_TRACE(capacity);
+    simplex::simplex_solver_settings_t<int, double> settings;
+    settings.set_log(false);
+    simplex::lp_problem_t<int, double> lp(nullptr, 1, 4, 4);
+    lp.A.col_start = {0, 1, 2, 3, 4};
+    lp.A.i         = {0, 0, 0, 0};
+    lp.A.x         = {2.0, 2.0, 3.0, 1.0};
+    lp.rhs         = {capacity};
+    lp.lower.assign(4, 0.0);
+    lp.upper = {1.0, 1.0, 1.0, capacity};
+    csr_matrix_t<int, double> rows(1, 4, 4);
+    lp.A.to_compressed_row(rows);
+    const std::vector<int> slacks                         = {3};
+    const std::vector<simplex::variable_type_t> var_types = {simplex::variable_type_t::INTEGER,
+                                                             simplex::variable_type_t::INTEGER,
+                                                             simplex::variable_type_t::INTEGER,
+                                                             simplex::variable_type_t::CONTINUOUS};
+    const std::vector<double>& xstar                      = cases[instance].xstar;
+    mip::knapsack_generation_t<int, double> separator(lp, settings, rows, slacks, var_types);
+    ASSERT_EQ(separator.num_knapsack_constraints(), 1);
+
+    mip::inequality_t<int, double> cut(4);
+    ASSERT_EQ(
+      separator.generate_knapsack_cut(lp, settings, rows, slacks, var_types, xstar, 0, cut, tic()),
+      0);
+    EXPECT_LT(cut.vector.dot(xstar), cut.rhs);
+
+    int feasible_assignments       = 0;
+    const std::vector<int> weights = {2, 2, 3};
+    for (int mask = 0; mask < 8; mask++) {
+      SCOPED_TRACE(mask);
+      std::vector<double> point(4, 0.0);
+      int weight = 0;
+      for (int j = 0; j < 3; j++) {
+        const int value = (mask >> j) & 1;
+        point[j]        = value;
+        weight += weights[j] * value;
+      }
+      if (weight > capacity) { continue; }
+      feasible_assignments++;
+      point[3] = capacity - weight;
+      EXPECT_GE(cut.vector.dot(point), cut.rhs);
+    }
+    EXPECT_EQ(feasible_assignments, cases[instance].feasible_assignments);
+  }
+}
+
 TEST(cuts, test_duplicate_cuts_detection)
 {
   simplex::simplex_solver_settings_t<int, double> settings;
@@ -983,6 +1172,118 @@ TEST(cuts, test_duplicate_cuts_detection)
 
   cut_pool.check_for_duplicate_cuts();
   EXPECT_EQ(cut_pool.pool_size(), 5);
+}
+
+TEST(cuts, mir_zero_variable_lower_bound_preserves_feasible_points)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.inside_submip = true;
+  simplex::lp_problem_t<int, double> lp(nullptr, 0, 3, 0);
+  lp.lower = {-1.0, 0.0, 0.0};
+  lp.upper = {1.0, 1.0, 1.0};
+  std::vector<simplex::variable_type_t> types{simplex::variable_type_t::CONTINUOUS,
+                                              simplex::variable_type_t::INTEGER,
+                                              simplex::variable_type_t::INTEGER};
+  std::vector<int> slacks;
+  csr_matrix_t<int, double> rows(0, 3, 0);
+  mip::variable_bounds_t<int, double> bounds(lp, settings, types, rows, slacks);
+  // -y <= v <= y, with both variable bounds evaluating to zero at xstar.
+  bounds.lower_offsets   = {0, 1, 1, 1};
+  bounds.lower_variables = {1};
+  bounds.lower_weights   = {-1.0};
+  bounds.lower_biases    = {0.0};
+  bounds.upper_offsets   = {0, 1, 1, 1};
+  bounds.upper_variables = {1};
+  bounds.upper_weights   = {1.0};
+  bounds.upper_biases    = {0.0};
+  mip::complemented_mixed_integer_rounding_cut_t<int, double> mir(lp, settings, slacks);
+  std::vector<double> xstar{0.0, 0.0, 0.5}, transformed_xstar;
+  mir.bound_substitution(lp, bounds, types, xstar, transformed_xstar);
+
+  // z - v + 0.2 y >= 0.5 contains xstar and the integer point (-0.5, 1, 0).
+  mip::inequality_t<int, double> inequality, cut;
+  inequality.push_back(0, -1.0);
+  inequality.push_back(1, 0.2);
+  inequality.push_back(2, 1.0);
+  inequality.rhs = 0.5;
+  mir.transform_inequality(bounds, types, inequality);
+  ASSERT_TRUE(mir.generate_cut_nonnegative_maintain_indicies(inequality, types, cut));
+  mir.untransform_inequality(bounds, types, cut);
+  EXPECT_GT(mir.compute_violation(cut, xstar), 0.0);
+  EXPECT_LE(mir.compute_violation(cut, std::vector<double>{-0.5, 1.0, 0.0}), 1e-12);
+
+  // Check both endpoints of every feasible interval for the two binary variables.
+  for (int y = 0; y <= 1; ++y) {
+    for (int z = 0; z <= 1; ++z) {
+      const double lower = -y;
+      const double upper = std::min(double(y), z + 0.2 * y - 0.5);
+      if (lower > upper) { continue; }
+      for (double v : {lower, upper}) {
+        EXPECT_LE(mir.compute_violation(cut, std::vector<double>{v, double(y), double(z)}), 1e-12)
+          << "v=" << v << " y=" << y << " z=" << z;
+      }
+    }
+  }
+}
+
+TEST(cuts, mir_candidate_search_stops_inside_dense_row)
+{
+  // Every scaling and complement produces an integral RHS, so no candidate cuts off xstar.
+  // Without an inner deadline, 4096 complements x 4097 scales each copy this dense row.
+  constexpr int n = 4096;
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.inside_submip = true;
+  simplex::lp_problem_t<int, double> lp(nullptr, 0, n, 0);
+  lp.lower.assign(n, 0.0);
+  lp.upper.assign(n, 1.0);
+  std::vector<simplex::variable_type_t> types(n, simplex::variable_type_t::INTEGER);
+  std::vector<int> slacks;
+  csr_matrix_t<int, double> rows(0, n, 0);
+  mip::variable_bounds_t<int, double> bounds(lp, settings, types, rows, slacks);
+  mip::complemented_mixed_integer_rounding_cut_t<int, double> mir(lp, settings, slacks);
+  std::vector<double> xstar(n, 0.5), transformed_xstar;
+  mir.bound_substitution(lp, bounds, types, xstar, transformed_xstar);
+  mip::inequality_t<int, double> inequality, cut;
+  for (int j = 0; j < n; ++j) {
+    inequality.push_back(j, 1.0);
+  }
+  inequality.rhs     = n / 2.0;
+  double work        = 0.0;
+  const double start = tic();
+  EXPECT_FALSE(
+    mir.cut_generation_heuristic(inequality, types, transformed_xstar, cut, work, start, 0.001));
+  EXPECT_LT(toc(start), 1.0);
+}
+
+TEST(cuts, mir_candidate_search_preserves_live_cut)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  settings.inside_submip = true;
+  simplex::lp_problem_t<int, double> lp(nullptr, 0, 1, 0);
+  lp.lower = {0.0};
+  lp.upper = {1.0};
+  std::vector<simplex::variable_type_t> types{simplex::variable_type_t::INTEGER};
+  std::vector<int> slacks;
+  csr_matrix_t<int, double> rows(0, 1, 0);
+  mip::variable_bounds_t<int, double> bounds(lp, settings, types, rows, slacks);
+  mip::complemented_mixed_integer_rounding_cut_t<int, double> mir(lp, settings, slacks);
+  std::vector<double> xstar{0.0}, transformed_xstar;
+  mir.bound_substitution(lp, bounds, types, xstar, transformed_xstar);
+  mip::inequality_t<int, double> inequality, cut;
+  inequality.push_back(0, 1.0);
+  inequality.rhs = 0.5;
+  double work    = 0.0;
+  EXPECT_FALSE(
+    mir.cut_generation_heuristic(inequality, types, transformed_xstar, cut, work, tic(), 0.0));
+  EXPECT_TRUE(mir.cut_generation_heuristic(inequality,
+                                           types,
+                                           transformed_xstar,
+                                           cut,
+                                           work,
+                                           tic(),
+                                           std::numeric_limits<double>::infinity()));
+  EXPECT_GT(mir.compute_violation(cut, transformed_xstar), 0.0);
+  EXPECT_GE(cut.vector.dot(std::vector<double>{1.0}), cut.rhs);
 }
 
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)
@@ -1915,7 +2216,114 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
                                                       test_problem.new_slacks);
   ASSERT_GT(generator.num_constraints(), 0);
 
-  int generated_cuts = 0;
+  for (int pass = 0; pass < 2; pass++) {
+    generator.preprocess_cut_pass(test_problem.lp, variable_bounds, test_problem.var_types, xstar);
+
+    int generated_cuts = 0;
+    for (const auto& flow_cover_row : generator.get_constraints()) {
+      mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
+      const int status = generator.generate_cut(test_problem.lp,
+                                                test_problem.settings,
+                                                test_problem.Arow,
+                                                variable_bounds,
+                                                test_problem.var_types,
+                                                xstar,
+                                                flow_cover_row,
+                                                cut);
+      if (status != 0) { continue; }
+
+      EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
+        << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
+      expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
+      generated_cuts++;
+    }
+
+    EXPECT_GT(generated_cuts, 0);
+  }
+}
+
+// Same single-node flow as create_small_single_node_flow_problem, written as the reversed side of
+// an equality carrying a coefficient below the flow-cover drop tolerance on a wide continuous z:
+//
+//   y0 + y1 - y2 - 1e-7 z <= 4,  0 <= z <= 1e4
+//
+// Dropping the z term must move 1e-7 * 1e4 onto the right-hand side, giving the relaxation of
+// create_single_node_flow_shifted_rhs_problem.
+io::mps_data_model_t<int, double> create_single_node_flow_equality_with_tiny_coefficient_problem()
+{
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 x2 + 0 y0 + 0 y1 + 0 y2 + 0 z
+Subject To
+  c1: - y0 - y1 + y2 + 0.0000001 z = -4
+  c2: -3 x0 + y0 <= 0
+  c3: -6 x1 + y1 <= 0
+  c4: -3 x2 + y2 <= 0
+Bounds
+  0 <= y0 <= 3
+  0 <= y1 <= 6
+  0 <= y2 <= 3
+  0 <= z <= 10000
+Binaries
+  x0
+  x1
+  x2
+End
+)LP");
+}
+
+io::mps_data_model_t<int, double> create_single_node_flow_shifted_rhs_problem()
+{
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 x2 + 0 y0 + 0 y1 + 0 y2
+Subject To
+  c1: y0 + y1 - y2 <= 4.001
+  c2: -3 x0 + y0 <= 0
+  c3: -6 x1 + y1 <= 0
+  c4: -3 x2 + y2 <= 0
+Bounds
+  0 <= y0 <= 3
+  0 <= y1 <= 6
+  0 <= y2 <= 3
+Binaries
+  x0
+  x1
+  x2
+End
+)LP");
+}
+
+void set_slack_values(const flow_cover_test_problem_t& test_problem, std::vector<double>& point)
+{
+  const auto& A = test_problem.lp.A;
+  for (int slack : test_problem.new_slacks) {
+    cuopt_assert(A.col_start[slack + 1] - A.col_start[slack] == 1, "");
+    const int row         = A.i[A.col_start[slack]];
+    const double coeff    = A.x[A.col_start[slack]];
+    double other_activity = 0.0;
+    for (int p = test_problem.Arow.row_start[row]; p < test_problem.Arow.row_start[row + 1]; p++) {
+      const int j = test_problem.Arow.j[p];
+      if (j != slack) { other_activity += test_problem.Arow.x[p] * point[j]; }
+    }
+    point[slack] = (test_problem.lp.rhs[row] - other_activity) / coeff;
+  }
+}
+
+std::vector<std::pair<mip::flow_cover_row_t<int>, mip::inequality_t<int, double>>>
+generate_flow_cover_cuts_at(flow_cover_test_problem_t& test_problem,
+                            const std::vector<double>& xstar)
+{
+  mip::flow_cover_generation_t<int, double> generator(
+    test_problem.lp, test_problem.settings, test_problem.Arow, test_problem.new_slacks);
+  mip::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
+                                                      test_problem.settings,
+                                                      test_problem.var_types,
+                                                      test_problem.Arow,
+                                                      test_problem.new_slacks);
+  generator.preprocess_cut_pass(test_problem.lp, variable_bounds, test_problem.var_types, xstar);
+
+  std::vector<std::pair<mip::flow_cover_row_t<int>, mip::inequality_t<int, double>>> cuts;
   for (const auto& flow_cover_row : generator.get_constraints()) {
     mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
     const int status = generator.generate_cut(test_problem.lp,
@@ -1926,15 +2334,86 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
                                               xstar,
                                               flow_cover_row,
                                               cut);
-    if (status != 0) { continue; }
+    if (status == 0) { cuts.emplace_back(flow_cover_row, cut); }
+  }
+  return cuts;
+}
 
-    EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
-      << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
-    expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
-    generated_cuts++;
+TEST(cuts, flow_cover_tiny_coefficient_drop_shifts_reversed_equality_rhs)
+{
+  constexpr int flow_row         = 0;
+  constexpr int num_flow_columns = 6;
+  constexpr int z_col            = 6;
+  constexpr double z_upper       = 1e4;
+
+  auto tiny_problem =
+    build_flow_cover_test_problem(create_single_node_flow_equality_with_tiny_coefficient_problem());
+  auto shifted_problem =
+    build_flow_cover_test_problem(create_single_node_flow_shifted_rhs_problem());
+
+  bool row_has_tiny_z = false;
+  for (int p = tiny_problem.Arow.row_start[flow_row]; p < tiny_problem.Arow.row_start[flow_row + 1];
+       p++) {
+    if (tiny_problem.Arow.j[p] == z_col) {
+      row_has_tiny_z = std::abs(tiny_problem.Arow.x[p] - 1e-7) <= 1e-15;
+    }
+  }
+  ASSERT_TRUE(row_has_tiny_z);
+
+  std::vector<double> tiny_xstar = single_node_flow_fractional_solution(tiny_problem.lp.num_cols);
+  set_slack_values(tiny_problem, tiny_xstar);
+  std::vector<double> shifted_xstar =
+    single_node_flow_fractional_solution(shifted_problem.lp.num_cols);
+  set_slack_values(shifted_problem, shifted_xstar);
+
+  const auto tiny_cuts    = generate_flow_cover_cuts_at(tiny_problem, tiny_xstar);
+  const auto shifted_cuts = generate_flow_cover_cuts_at(shifted_problem, shifted_xstar);
+
+  const mip::inequality_t<int, double>* reference_cut = nullptr;
+  for (const auto& [flow_cover_row, cut] : shifted_cuts) {
+    if (flow_cover_row.row == flow_row && !flow_cover_row.reverse) { reference_cut = &cut; }
+  }
+  ASSERT_NE(reference_cut, nullptr);
+
+  std::vector<double> reference_coefficients(num_flow_columns, 0.0);
+  for (size_t k = 0; k < reference_cut->size(); k++) {
+    ASSERT_LT(reference_cut->index(k), num_flow_columns);
+    reference_coefficients[reference_cut->index(k)] = reference_cut->coeff(k);
   }
 
-  EXPECT_GT(generated_cuts, 0);
+  // Feasible points with z at its upper bound, on the face y0 + y1 - y2 = 4.001.
+  const std::vector<std::vector<double>> shifted_feasible_points = {
+    {1, 1, 1, 3, 1.001, 0, z_upper},
+    {1, 1, 0, 3, 1.001, 0, z_upper},
+    {0, 1, 0, 0, 4.001, 0, z_upper},
+    {1, 1, 1, 3, 4.001, 3, z_upper},
+    {0, 1, 1, 0, 6, 1.999, z_upper},
+    {1, 1, 1, 1.001, 6, 3, z_upper},
+  };
+
+  int reversed_cuts = 0;
+  for (const auto& [flow_cover_row, cut] : tiny_cuts) {
+    if (flow_cover_row.row != flow_row || !flow_cover_row.reverse) { continue; }
+    reversed_cuts++;
+
+    std::vector<double> coefficients(num_flow_columns, 0.0);
+    for (size_t k = 0; k < cut.size(); k++) {
+      ASSERT_LT(cut.index(k), num_flow_columns) << "unexpected column " << cut.index(k);
+      coefficients[cut.index(k)] = cut.coeff(k);
+    }
+    for (int j = 0; j < num_flow_columns; j++) {
+      EXPECT_NEAR(coefficients[j], reference_coefficients[j], 1e-9) << "column " << j;
+    }
+    EXPECT_NEAR(cut.rhs, reference_cut->rhs, 1e-9);
+
+    for (const auto& flow_point : shifted_feasible_points) {
+      std::vector<double> point(tiny_problem.lp.num_cols, 0.0);
+      std::copy(flow_point.begin(), flow_point.end(), point.begin());
+      set_slack_values(tiny_problem, point);
+      expect_single_node_flow_cut_valid_at_point(cut, point, "shifted feasible point");
+    }
+  }
+  EXPECT_GT(reversed_cuts, 0);
 }
 
 }  // namespace cuopt::mathematical_optimization::test

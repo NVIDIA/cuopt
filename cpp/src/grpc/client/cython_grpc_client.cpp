@@ -109,7 +109,8 @@ bool grpc_python_client_t::ping(std::string& error_out, int timeout_seconds)
 grpc_submit_result_t grpc_python_client_t::submit(
   cuopt::mathematical_optimization::io::data_model_view_t<int, double>* data_model,
   cuopt::mathematical_optimization::solver_settings_t<int, double>* settings,
-  bool enable_incumbents)
+  bool enable_incumbents,
+  bool enable_set_incumbent)
 {
   grpc_submit_result_t out;
   if (data_model == nullptr || settings == nullptr) {
@@ -129,13 +130,13 @@ grpc_submit_result_t grpc_python_client_t::submit(
 
   if (is_mip) {
     auto sub =
-      impl_->client.submit_mip(cpu_problem, settings->get_mip_settings(), enable_incumbents);
+      impl_->client.submit_mip(cpu_problem, *settings, enable_incumbents, enable_set_incumbent);
     out.success       = sub.success;
     out.error_message = sub.error_message;
     out.job_id        = sub.job_id;
     out.is_mip        = true;
   } else {
-    auto sub          = impl_->client.submit_lp(cpu_problem, settings->get_pdlp_settings());
+    auto sub          = impl_->client.submit_lp(cpu_problem, *settings);
     out.success       = sub.success;
     out.error_message = sub.error_message;
     out.job_id        = sub.job_id;
@@ -276,6 +277,7 @@ grpc_incumbents_result_t grpc_python_client_t::fetch_incumbents(const std::strin
     grpc_incumbent_entry_t entry;
     entry.index      = inc.index;
     entry.objective  = inc.objective;
+    entry.bound      = inc.bound;
     entry.assignment = inc.assignment;
     out.incumbents.push_back(std::move(entry));
   }

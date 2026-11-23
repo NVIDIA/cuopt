@@ -11,6 +11,7 @@
 #include <cuda/std/atomic>
 
 #include <chrono>
+#include <cub/device/device_merge_sort.cuh>
 
 namespace cuopt {
 namespace routing {

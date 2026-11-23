@@ -14,6 +14,7 @@ import cuopt.linear_programming.data_model as data_model
 from cuopt.linear_programming import ParseMps, Read
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
+from cuopt.linear_programming.solver.solver_wrapper import ErrorStatus
 import warnings
 
 
@@ -1086,6 +1087,36 @@ class LinearExpression:
     def __len__(self):
         return len(self.vars)
 
+    def __neg__(self) -> "LinearExpression":
+        """
+        Returns the negation of the linear expression (-self).
+
+        Returns
+        -------
+        LinearExpression
+            A new linear expression with inverted sign on all coefficients
+            and the constant.
+        """
+        return LinearExpression(
+            list(self.vars),
+            [-coeff for coeff in self.coefficients],
+            -self.constant,
+        )
+
+    def __pos__(self) -> "LinearExpression":
+        """
+        Returns a shallow copy of the linear expression (+self).
+
+        Returns
+        -------
+        LinearExpression
+            A new linear expression with the same variables, coefficients,
+            and constant.
+        """
+        return LinearExpression(
+            list(self.vars), list(self.coefficients), self.constant
+        )
+
     def __iadd__(self, other):
         # Compute expr1 += expr2
         match other:
@@ -1249,7 +1280,7 @@ class LinearExpression:
             case int() | float():
                 coeffs = [coeff * float(other) for coeff in self.coefficients]
                 constant = self.constant * float(other)
-                return LinearExpression(self.vars, coeffs, constant)
+                return LinearExpression(list(self.vars), coeffs, constant)
             case Variable():
                 return other * self
             case LinearExpression():
@@ -2391,18 +2422,77 @@ class Problem:
         problem._clear_stale()
         return problem
 
-    def writeMPS(self, mps_file):
+    def writeMPS(self, mps_file: str) -> None:
         """
         Write the problem into an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+
+        .. deprecated::
+            Use :meth:`write` instead.
+
+        Parameters
+        ----------
+        mps_file : str
+            Path to the MPS output file.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        Exception
+            Propagates validation or I/O failures from the underlying writer.
+
         Examples
         --------
         >>> problem.writeMPS("model.mps")
+        """
+        warnings.warn(
+            "Problem.writeMPS is deprecated and will be removed in a future "
+            "release. Use Problem.write instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if self.model is None or self._stale["structure"]:
+            self._to_data_model()
+        elif any(self._stale.values()):
+            self._refresh_data_model_values()
+        self.model._write_mps(mps_file)
+
+    def write(self, file_path: str) -> None:
+        """
+        Write the problem to an MPS, QPS, or LP file.
+
+        Dispatches on the file extension in Python (case-insensitive):
+        ``.mps`` / ``.qps`` use the MPS writer and ``.lp`` uses the LP writer.
+        Compressed output is not supported.
+
+        Parameters
+        ----------
+        file_path : str
+            Path to an uncompressed MPS, QPS, or LP output file.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            If the file extension is not one of the supported suffixes.
+        Exception
+            Propagates validation or I/O failures from the underlying writer.
+
+        Examples
+        --------
+        >>> problem.write("model.mps")
+        >>> problem.write("model.lp")
         """
         if self.model is None or self._stale["structure"]:
             self._to_data_model()
         elif any(self._stale.values()):
             self._refresh_data_model_values()
-        self.model.writeMPS(mps_file)
+        self.model.write(file_path)
 
     @property
     def NumVariables(self):
@@ -2593,6 +2683,12 @@ class Problem:
             self._refresh_data_model_values()
         # Call Solver
         solution = solver.Solve(self.model, settings)
+        if solution.get_error_status() != ErrorStatus.Success:
+            warnings.warn(
+                f"Solve failed: {solution.get_error_message()}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         # Post Solve
         self.populate_solution(solution)
         return solution

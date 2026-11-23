@@ -8,10 +8,14 @@
 #pragma once
 
 #include <mip_heuristics/early_heuristic.cuh>
+#include <mip_heuristics/problem/problem.cuh>
+
+#include <raft/core/handle.hpp>
 
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -50,9 +54,12 @@ class early_structural_t : public early_heuristic_t<i_t, f_t, early_structural_t
   static constexpr const char* name() { return "Structural"; }
 
   void start();
+  void request_stop();
   void stop();
 
  private:
+  friend class early_heuristic_t<i_t, f_t, early_structural_t<i_t, f_t>>;
+
   early_structural_t(const optimization_problem_t<i_t, f_t>& op_problem,
                      const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
                      early_incumbent_callback_t<f_t> incumbent_callback,
@@ -62,8 +69,13 @@ class early_structural_t : public early_heuristic_t<i_t, f_t, early_structural_t
 
   bool preprocessing_is_identity() const;
 
+  std::vector<f_t> to_user_assignment(const std::vector<f_t>& assignment);
+
   const optimization_problem_t<i_t, f_t>& op_problem_;
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_;
+  int device_id_{0};
+  raft::handle_t handle_;
+  std::unique_ptr<problem_t<i_t, f_t>> problem_;
   std::unique_ptr<structural_heuristic_t<i_t, f_t>> active_;
   std::atomic<bool> preemption_flag_{false};
   bool task_launched_{false};

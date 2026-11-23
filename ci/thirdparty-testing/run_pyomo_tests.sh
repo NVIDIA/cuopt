@@ -20,7 +20,6 @@ pushd ./pyomo || exit 1
 # Install Pyomo in editable form so it uses the environment's cuopt (from PIP_CONSTRAINT)
 python -m pip install \
     --constraint "${PIP_CONSTRAINT}" \
-    --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
     pytest \
     -e .
 

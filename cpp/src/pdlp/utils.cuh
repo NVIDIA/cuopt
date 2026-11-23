@@ -12,6 +12,7 @@
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <utilities/macros.cuh>
 
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -34,13 +35,15 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
+#include <cub/device/device_reduce.cuh>
+#include <cub/device/device_transform.cuh>
 
 namespace cuopt::mathematical_optimization::pdlp {
 
 // Host-side probe vector z ~ Normal(0, 1) that seeds the power iteration
 // for sigma_max(A) in compute_initial_step_size (single-GPU) and
 // distributed_max_singular_value_squared. Fixed seed (1) so single-GPU and
-// distributed runs on the same problem produce bit-identical initial iterates.
+// multi-GPU runs on the same problem produce bit-identical initial iterates.
 template <typename f_t>
 inline std::vector<f_t> make_singular_value_probe(std::size_t size)
 {
@@ -60,7 +63,7 @@ struct divide_by_device_scalar_t {
 };
 
 // Elementwise: q := -*scalar * q + z. Used in the power-iteration residual
-// update (single-GPU compute_initial_step_size and distributed
+// update (single-GPU compute_initial_step_size and multi-GPU
 // distributed_max_singular_value_squared).
 template <typename f_t>
 struct residual_fma_neg_scalar_t {
@@ -216,6 +219,19 @@ struct clamp {
   }
 };
 
+template <typename f_t, typename f_t2>
+struct within_bounds {
+  within_bounds(f_t tolerance) : tolerance_{tolerance} {}
+  __device__ bool operator()(thrust::tuple<f_t, f_t2> value_and_bounds) const
+  {
+    const f_t value   = thrust::get<0>(value_and_bounds);
+    const f_t2 bounds = thrust::get<1>(value_and_bounds);
+    return value >= get_lower(bounds) - tolerance_ && value <= get_upper(bounds) + tolerance_;
+  }
+
+  f_t tolerance_;
+};
+
 template <typename f_t>
 struct combine_finite_abs_bounds {
   __device__ __host__ f_t operator()(f_t lower, f_t upper)
@@ -333,7 +349,7 @@ void inline combine_constraint_bounds(const mip::problem_t<i_t, f_t>& op_problem
 }
 
 // Same as compute_sum_bounds, but without the fused sqrt.
-// Used in Distributed PDLP.
+// Used in multi-GPU PDLP.
 template <typename f_t>
 void inline compute_sum_bounds_squared(const rmm::device_uvector<f_t>& constraint_lower_bounds,
                                        const rmm::device_uvector<f_t>& constraint_upper_bounds,

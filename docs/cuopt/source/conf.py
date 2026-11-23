@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from cuopt_server.webserver import app as cuoptapp
+from cuopt_server.proxy_webserver import app as cuoptapp
 from fastapi.openapi.utils import get_openapi
 import datetime
 import cuopt
 import yaml
 from packaging.version import Version
+import shutil
 import subprocess
 import sys
 import os
@@ -19,11 +20,6 @@ from pathlib import Path
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
 
-# Run cuopt server help command and save output
-subprocess.run(
-    ["python", "-m", "cuopt_server.cuopt_service", "--help"],
-    stdout=open("cuopt-server/server-api/server-cli-help.txt", "w"),
-)
 # Run cuopt_sh help command and save output
 subprocess.run(
     ["cuopt_sh", "--help"],
@@ -34,6 +30,21 @@ subprocess.run(
 subprocess.run(
     ["cuopt_cli", "--help"], stdout=open("cuopt-cli/cuopt-cli-help.txt", "w")
 )
+
+# Copy the gRPC protos next to the docs so api.rst can offer them for download. They import
+# each other by file name, so they share one directory.
+_grpc_src = Path(__file__).resolve().parents[3] / "cpp" / "src" / "grpc"
+_proto_dir = Path("cuopt-grpc/protos")
+_proto_dir.mkdir(exist_ok=True)
+for _proto in (
+    "cuopt_remote_service.proto",
+    "cuopt_remote.proto",
+    "codegen/generated/cuopt_remote_data.proto",
+    "codegen/generated/cuopt_routing.proto",
+    "routing/cuopt_routing_solution.proto",
+):
+    shutil.copy(_grpc_src / _proto, _proto_dir)
+shutil.make_archive("cuopt-grpc/cuopt-protos", "zip", _proto_dir)
 
 with open("cuopt_spec.yaml", "w") as f:
     yaml.dump(
@@ -438,7 +449,7 @@ linkcheck_ignore = [
 
 
 class InstallSelector(Directive):
-    """Embed the install selector widget. Optional :default-iface: (python, c, server, cli)."""
+    """Embed the install selector widget. Optional :default-iface: (python, c, server, cli, java)."""
 
     optional_arguments = 0
     option_spec = {"default-iface": directives.unchanged}
@@ -448,7 +459,7 @@ class InstallSelector(Directive):
         default_iface = (
             (self.options.get("default-iface") or "").strip().lower()
         )
-        if default_iface not in ("python", "c", "server", "cli"):
+        if default_iface not in ("python", "c", "server", "cli", "java"):
             default_iface = ""
         data_attr = (
             ' data-default-iface="' + default_iface + '"'

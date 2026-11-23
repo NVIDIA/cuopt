@@ -311,4 +311,33 @@ i_t matrix_vector_multiply(
   return 0;
 }
 
+// y <- alpha*A*x + beta*y
+template <typename i_t, typename f_t, typename VectorX, typename VectorY>
+i_t matrix_vector_multiply(
+  const csr_matrix_t<i_t, f_t>& A, f_t alpha, const VectorX& x, f_t beta, VectorY& y)
+{
+  const i_t m = A.m;
+  const i_t n = A.n;
+  assert(y.size() == static_cast<size_t>(m));
+  assert(x.size() == static_cast<size_t>(n));
+
+  if (beta != 1.0) {
+    for (i_t i = 0; i < m; ++i) {
+      y[i] *= beta;
+    }
+  }
+
+  for (i_t i = 0; i < m; ++i) {
+    const i_t row_start = A.row_start[i];
+    const i_t row_end   = A.row_start[i + 1];
+    f_t dot             = 0.0;
+    for (i_t p = row_start; p < row_end; ++p) {
+      dot += A.x[p] * x[A.j[p]];
+    }
+    y[i] += alpha * dot;
+  }
+
+  return 0;
+}
+
 }  // namespace cuopt::mathematical_optimization

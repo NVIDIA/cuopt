@@ -17,6 +17,7 @@
 #include <dual_simplex/bounds_strengthening.hpp>
 
 #include <utilities/pcgenerator.hpp>
+#include <utilities/splitmix64.hpp>
 
 #include <vector>
 
@@ -33,6 +34,9 @@ struct branch_and_bound_stats_t {
   omp_atomic_t<int64_t> nodes_unexplored = 0;
   // Tracks the number of nodes being solved by the workers at a given time
   omp_atomic_t<i_t> nodes_being_solved = 0;
+
+  // The first worker that acquire this token will report the progress of the solver.
+  omp_atomic_t<bool> report_solver_progress;
 
   omp_atomic_t<int64_t> total_simplex_iters = 0;
   omp_atomic_t<i_t> nodes_since_last_log    = 0;
@@ -98,6 +102,7 @@ class branch_and_bound_worker_t {
   const std::vector<f_t>& root_solution;
   const std::vector<f_t>& root_edge_norm;
   const std::vector<simplex::variable_type_t>& var_types;
+  const std::vector<i_t>& new_slacks;
 
   pseudo_costs_t<i_t, f_t>& pseudo_costs;
 
@@ -120,7 +125,8 @@ class branch_and_bound_worker_t {
                             pseudo_costs_t<i_t, f_t>& pc,
                             const std::vector<f_t>& root_solution,
                             const std::vector<f_t>& root_edge_norm,
-                            uint64_t rng_offset = 0)
+                            const std::vector<i_t>& new_slacks,
+                            splitmix64_t& seed_gen)
     : worker_id(worker_id),
       search_strategy(search_strategy_t::BEST_FIRST),
       is_active(false),
@@ -133,11 +139,11 @@ class branch_and_bound_worker_t {
       nonbasic_list(),
       node_presolver(leaf_problem, Arow, {}, var_type),
       bounds_changed(original_lp.num_cols, false),
-      rng(settings.random_seed + pcgenerator_t::default_seed + rng_offset + worker_id,
-          pcgenerator_t::default_stream ^ (worker_id + rng_offset)),
+      rng{seed_gen.next_u64(), seed_gen.generate_stream()},
       root_solution(root_solution),
       root_edge_norm(root_edge_norm),
       var_types(var_type),
+      new_slacks(new_slacks),
       pseudo_costs(pc)
   {
   }
@@ -179,7 +185,8 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                pseudo_costs_t<i_t, f_t>& pc,
                const std::vector<f_t>& root_solution,
                const std::vector<f_t>& root_edge_norm,
-               uint64_t rng_offset = 0)
+               const std::vector<i_t>& new_slacks,
+               splitmix64_t& seed_gen)
     : Base(worker_id,
            original_lp,
            Arow,
@@ -188,7 +195,8 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
            pc,
            root_solution,
            root_edge_norm,
-           rng_offset)
+           new_slacks,
+           seed_gen)
   {
     this->start_lower     = original_lp.lower;
     this->start_upper     = original_lp.upper;
@@ -221,7 +229,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   // Calculate the number of diving workers that this worker can launch. And update the list
   // with all active diving heuristics.
-  void update_diving_heuristic_list(const mip_diving_hyper_params_t<i_t, f_t>& settings)
+  void update_diving_heuristic_list(const mip_hyper_params_t<i_t, f_t>& settings)
   {
     get_diving_heuristic_list(settings, diving_heuristics);
   }
@@ -265,7 +273,8 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                   pseudo_costs_t<i_t, f_t>& pc,
                   const std::vector<f_t>& root_solution,
                   const std::vector<f_t>& root_edge_norm,
-                  uint64_t rng_offset = 0)
+                  const std::vector<i_t>& new_slacks,
+                  splitmix64_t& seed_gen)
     : Base(worker_id,
            original_lp,
            Arow,
@@ -274,7 +283,8 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
            pc,
            root_solution,
            root_edge_norm,
-           rng_offset)
+           new_slacks,
+           seed_gen)
   {
     this->start_lower     = original_lp.lower;
     this->start_upper     = original_lp.upper;
@@ -291,11 +301,11 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // Set this node inactive
   void set_inactive()
   {
-    if (!this->is_active.load()) { return; }
+    if (!this->is_active.load(std::memory_order::relaxed)) { return; }
     this->is_active = false;
 
     if (bfs_worker) {
-      assert(bfs_worker->active_diving_workers.load() > 0);
+      assert(bfs_worker->active_diving_workers.load(std::memory_order::relaxed) > 0);
       --bfs_worker->active_diving_workers;
     }
   }

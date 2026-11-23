@@ -11,7 +11,8 @@
 #include <utilities/copy_helpers.hpp>
 
 #include <thrust/gather.h>
-#include <cub/cub.cuh>
+#include <cub/block/block_reduce.cuh>
+#include <cub/device/device_reduce.cuh>
 #include <cuda/std/functional>
 
 namespace cuopt {

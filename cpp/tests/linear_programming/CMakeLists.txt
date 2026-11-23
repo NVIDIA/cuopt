@@ -14,7 +14,7 @@ ConfigureTest(LP_UNIT_TEST
 # (cpp/tests/internal/CMakeLists.txt). Under hidden symbol visibility it needs
 # cuopt_static, so it runs there rather than as a separate shared-linked binary.
 
-# Multi-GPU distributed PDLP tests. Binary name ends in _MG_TEST so that
+# Multi-GPU PDLP tests. Binary name ends in _MG_TEST so that
 # ci/test_cpp_multi_gpu.sh picks it up via its *_MG_TEST glob. Each test
 # calls GTEST_SKIP when fewer than 2 GPUs are visible so the binary is
 # harmless on single-GPU runners. STATIC_LIB: needs internal (hidden) PDLP symbols.
@@ -38,6 +38,12 @@ target_include_directories(MPS_FAST_PARSER_TEST
 )
 target_link_libraries(MPS_FAST_PARSER_TEST PRIVATE simde::simde)
 
+
+# ##################################################################################################
+# - LP writer tests --------------------------------------------------------------------------------
+ConfigureTest(LP_WRITER_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/lp_writer_test.cpp
+    LABELS numopt)
 
 # ##################################################################################################
 # - C API Tests----------------------------------------------------------------------
@@ -90,7 +96,7 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
       target_link_options(C_API_TEST PRIVATE -Wl,--enable-new-dtags)
     endif()
 
-    add_test(NAME C_API_TEST COMMAND C_API_TEST)
+    rapids_test_add(NAME C_API_TEST COMMAND C_API_TEST INSTALL_COMPONENT_SET testing)
     set_tests_properties(C_API_TEST PROPERTIES LABELS "numopt")
 
     install(

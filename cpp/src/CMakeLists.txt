@@ -15,12 +15,10 @@ add_subdirectory(linear_algebra)
 add_subdirectory(pdlp)
 add_subdirectory(math_optimization)
 add_subdirectory(mip_heuristics)
+add_subdirectory(presolve)
 add_subdirectory(io)
 
-# Only build routing for full builds, not LP-only builds
-if(NOT SKIP_ROUTING_BUILD)
-  add_subdirectory(routing)
-endif()
+add_subdirectory(routing)
 
 add_subdirectory(dual_simplex)
 add_subdirectory(barrier)
@@ -43,6 +41,7 @@ set(CUOPT_MATHOPT_SRC_FILES
   ${LP_SRC_FILES}
   ${MATH_OPT_SRC_FILES}
   ${MIP_SRC_FILES}
+  ${PRESOLVE_SRC_FILES}
   ${DUAL_SIMPLEX_SRC_FILES}
   ${BARRIER_SRC_FILES}
   ${BRANCH_AND_BOUND_SRC_FILES}

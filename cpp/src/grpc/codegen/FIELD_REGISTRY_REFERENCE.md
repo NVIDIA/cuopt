@@ -117,11 +117,9 @@ scalars:
 | `optional` | no | `false` | Adds `optional` to the proto and guards from-proto reads with `has_X()`. See §2.4 for full propagation rules. |
 | `sentinel` | no | — | Maps a C++ sentinel value (e.g. `max()`) to a reserved wire value (e.g. `-1`). See §2.5. |
 | `proto_only` | no | `false` | Set on the proto but excluded from the C++ constructor call. Used for transport-only fields (e.g. `error_message` on solutions). |
-| `member` | no | `<name>`, with nesting prefix auto-prepended for settings sub-structs (`tolerances.<name>`, `heuristic_params.<name>`, …) | C++ struct member name. Set explicitly only when the C++ name diverges from the wire field name — in practice, warm-start fields whose C++ members carry a trailing underscore (`initial_primal_weight_`). |
+| `member` | no | `<name>`, with nesting prefix auto-prepended for settings sub-structs (`tolerances.<name>`, …) | C++ struct member name. Set explicitly only when the C++ name diverges from the wire field name — in practice, warm-start fields whose C++ members carry a trailing underscore (`initial_primal_weight_`), and the MIP hyper-parameters, whose `mip_hyper_params.heuristic_*` members carry a prefix the wire names predate. An explicit `member` is ignored inside a nested sub-struct, where it is always `<path>.<name>`. |
 | `from_proto_cast` | no | — | Explicit C++ cast when reading from proto. Most commonly used to wrap a wire `int32` back into an enum class (e.g. `presolver_t`, `method_t`) or a narrow type (e.g. `char` for `constraint_row_type`). When set, the matching to-proto cast back to the wire's C++ type (e.g. `int32_t` for wire `int32`) is derived automatically — no `to_proto_cast:` needed. |
 | `to_proto_cast` | no | derived from `type:` when `from_proto_cast` is set; otherwise no cast | Escape hatch: explicit C++ cast when writing to proto (e.g. `int32_t`). Rarely needed — set only when the auto-derivation above is wrong. |
-| `description` | no | — | Settings fields only. Human-readable meaning of the field, emitted into `cuopt_mcp_schema.json` as the JSON Schema `description` an MCP client shows a model deciding whether to set the field. |
-| `default` | no | — | Settings fields only. Free-text string describing the C++ member initializer (e.g. `"1e-4"`, `"-1 (automatic)"`), appended to the emitted `description`. Documentation only — doesn't affect the wire format, and the generator doesn't derive it from the C++ struct or detect initializer drift; write it by reading the struct (`pdlp/solver_settings.hpp`, `mip/solver_settings.hpp`, `mip/heuristics_hyper_params.hpp`), not `docs/cuopt/source/*-settings.rst`, which has been observed to disagree with the code. For a non-`optional` field, `./build.sh codegen` fails if `default` doesn't textually match the proto3 zero value (§4.3); run `python cpp/src/grpc/codegen/lint_registry_defaults.py` by hand for a best-effort (not CI-enforced) check that it still matches the actual C++ initializer. |
 
 ### 2.2 Array fields
 
@@ -355,7 +353,7 @@ specify these explicitly.
 | Problem array `name` | `ArrayFieldId::FIELD_<UPPER_SNAKE(name)>` enum value |
 | Solution array `name` | Default getter `get_<root>_host()` (numeric) or `get_<root>()` (`repeated string`) |
 | Solution array `name` | `ResultFieldId::RESULT_<UPPER_SNAKE(name)>` (warm-start arrays apply `result_id_prefix`) |
-| Settings field `name` | `member` = `<name>`, with the YAML sub-struct path prepended for nested fields (`tolerances.<name>`, `heuristic_params.<name>`). Override only when the C++ member name diverges from the wire field name. |
+| Settings field `name` | `member` = `<name>`, with the YAML sub-struct path prepended for nested fields (`tolerances.<name>`). Override only when the C++ member name diverges from the wire field name. |
 | Enum `key` | C++ type `<key>_t`, proto type acronym-aware PascalCase, converter fns `to_proto_<key>` / `from_proto_<key>` |
 | Enum `value` name (CppName) | Proto value `<proto_prefix>_<UPPER_SNAKE(CppName)>` |
 | Section name (`lp_solution` / `mip_solution`) | `ChunkedResultHeader.problem_category` value (LP or MIP) |
@@ -388,9 +386,14 @@ override knob.
 
 Unique to settings:
 
+`reserved_fields: {removed_setting: 9}` reserves a deleted setting's protobuf
+name and number. The generator emits both reservations and excludes the number
+from auto-numbering; `protoc` rejects conflicting declarations.
+
 | Key | Description |
 |---|---|
 | `fields:` | List of settings fields. Supports nested sub-structs (see below). Used instead of `scalars:` because settings need to express the C++ struct's nesting hierarchy. |
+| `parameter_map:` | `{name, field_num}` for the `map<string, string>` that carries `set_parameter()` bindings. Its presence deprecates every typed field that `set_parameter()` accepts. A field with `param_name: null` is not a string parameter and stays a normal field. Warm start stays an embed, not a deprecated field. The live client writes `set_parameter()` values only in this map and needs a server that applies it. All or nothing is decided by the serialized map, not by `set_parameter()` on the settings object. A non-empty map skips every deprecated typed field; `set_parameter_from_string()` runs only for keys present in the map, and every other parameter stays at its C++ default. An empty map is an older client: the deprecated typed fields are applied and the map changes nothing. Calling `set_parameter()` does not fill the map. A published client that only writes typed fields still has an empty map. A message that contains both a non-empty map and deprecated typed fields is a custom serializer; the bundled client writes the map and does not write those fields. Warm start and fields with `param_name: null` are applied either way. New parameters are registered on `solver_settings_t` only — not as proto fields. |
 
 #### Nested sub-structs
 
@@ -634,10 +637,7 @@ entries — so always re-run `--auto-number` after a `--strip`.
 ### 4.3 Validation
 
 The generator runs a uniqueness check per scope and fails with a precise error
-on collision. It also checks, for every non-`optional` settings field, that
-`default:` (§2.1) textually matches the proto3 zero value for its type — this
-can only catch registry self-inconsistency, not a C++ default that changed
-without a matching `default:` update. CI runs `verify_grpc_codegen.sh` to
+on collision. CI runs `verify_grpc_codegen.sh` to
 ensure the committed `generated/` directory matches what the generator
 produces — drift fails the build.
 
@@ -950,21 +950,20 @@ The chunked path today carries its own header messages on both directions:
   warm-start side to avoid name collisions) plus a `repeated
   ResultArrayDescriptor` listing the arrays that are about to stream.
 
-The plan after the current release is to retire both headers and run the
-chunked path on the same proto shapes as the unary RPCs:
+`StartChunkedUploadV2` and `StartChunkedDownloadV2` now use the unary shapes.
+The legacy headers stay until a later cutover removes them.
 
-- The upload path will reuse `SubmitJobRequest` (carrying `OptimizationProblem`
-  with numeric arrays left empty), with array bulk continuing to arrive via
-  `SendArrayChunk`.
-- The download path will return `LPSolution` / `MIPSolution` with the
-  `repeated` array fields left empty, with array bulk continuing to arrive via
-  `SendResultChunk`. The message type itself becomes the LP/MIP discriminator;
-  warm-start scalars fold into the existing `PDLPWarmStartData` embed; the
-  `ResultArrayDescriptor` list moves onto the unary solution message as a
-  field that's empty in the unary case.
+- Upload sends a `SubmitJobRequest`. Scalars, settings, and per-entry
+  quadratic-constraint scalars stay in `OptimizationProblem`. Numeric arrays
+  are empty there and arrive via `SendArrayChunk`. The generated mapper reads
+  those two pieces separately (`generated_problem_scalars_from_proto.inc` and
+  `generated_chunked_arrays_to_problem.inc`).
+- Download returns a `ResultResponse` whose `LPSolution` / `MIPSolution`
+  carries scalars only, including warm-start scalars inside
+  `PDLPWarmStartData`. Array bulk still arrives via `GetResultChunk`, described
+  by `ResultArrayDescriptor`s on the V2 response.
 
-New `V2` RPC variants will carry the unified envelope; the legacy chunked RPCs
-will remain (deprecated) for a transition period. Net effect: both the chunked
+The legacy chunked RPCs remain for LP and MIP. Net effect: both the chunked
 upload and chunked download become specialized uses of the unary RPC shapes —
 "same message, arrays empty, follow with chunk stream" — and the
 `_gen_chunked_header` / `_gen_chunked_to_solution` codegen plus the

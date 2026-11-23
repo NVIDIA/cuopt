@@ -23,7 +23,6 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
     CUOPT_METHOD,
-    CUOPT_MIP_HEURISTICS_ONLY,
     CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
@@ -290,6 +289,8 @@ def _non_default_solver_param_value(name, current):
         return 0 if int(current) == 1 else 1
     if name == "pdlp_precision":
         return 1 if int(current) == 0 else 0
+    if name == "primal_simplex_pricing":
+        return 0 if int(current) == 1 else 1
     if name == "mip_objective_step":
         return 0 if int(current) == 1 else 1
     if isinstance(current, bool):
@@ -483,6 +484,95 @@ def test_check_data_model_validity():
     solver.Solve(data_model_obj)
 
 
+def _solve_with_constraint_bounds(
+    A_values, A_indices, A_offsets, c, row_lower, row_upper
+):
+    dm = data_model.DataModel()
+    dm.set_csr_constraint_matrix(
+        np.array(A_values, dtype=np.float64),
+        np.array(A_indices, dtype=np.int32),
+        np.array(A_offsets, dtype=np.int32),
+    )
+    dm.set_objective_coefficients(np.array(c, dtype=np.float64))
+    dm.set_variable_lower_bounds(np.zeros(len(c)))
+    dm.set_variable_upper_bounds(np.full(len(c), np.inf))
+    dm.set_constraint_lower_bounds(np.array(row_lower, dtype=np.float64))
+    dm.set_constraint_upper_bounds(np.array(row_upper, dtype=np.float64))
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    return solver.Solve(dm, settings)
+
+
+def test_slack_with_constraint_bounds_all_row_kinds():
+    # Minimize x + y, optimum x = y = 1, with one row of each kind:
+    #   x + y >= 2        (lower bound only)
+    #   x <= 3            (upper bound only)
+    #   x - y == 0        (equal bounds)
+    #   0.5 <= y <= 4     (ranged)
+    solution = _solve_with_constraint_bounds(
+        [1.0, 1.0, 1.0, 1.0, -1.0, 1.0],
+        [0, 1, 0, 0, 1, 1],
+        [0, 2, 3, 5, 6],
+        [1.0, 1.0],
+        [2.0, -np.inf, 0.0, 0.5],
+        [np.inf, 3.0, 0.0, 4.0],
+    )
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_slack() == pytest.approx(
+        [0.0, 2.0, 0.0, 0.5], abs=1e-4
+    )
+
+
+def test_slack_prefers_constraint_bounds_over_rhs_and_row_types():
+    # Minimize x with a stale row x <= 3 and the bounds x >= 1 that take
+    # priority, so the solution is x = 1 and the slack is 0.
+    dm = data_model.DataModel()
+    dm.set_csr_constraint_matrix(
+        np.array([1.0]),
+        np.array([0], dtype=np.int32),
+        np.array([0, 1], dtype=np.int32),
+    )
+    dm.set_objective_coefficients(np.array([1.0]))
+    dm.set_variable_lower_bounds(np.array([0.0]))
+    dm.set_variable_upper_bounds(np.array([np.inf]))
+    dm.set_constraint_bounds(np.array([3.0]))
+    dm.set_row_types(np.array(["L"]))
+    dm.set_constraint_lower_bounds(np.array([1.0]))
+    dm.set_constraint_upper_bounds(np.array([np.inf]))
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    solution = solver.Solve(dm, settings)
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_primal_solution() == pytest.approx([1.0], abs=1e-4)
+    assert solution.get_slack() == pytest.approx([0.0], abs=1e-4)
+
+
+def test_slack_with_row_types_given_as_str():
+    # Row types passed as a plain str keep one code per row, so the slack of
+    # every row is computed. Minimize x + y with x >= 1 and x + y >= 0.5:
+    # the optimum is x = 1, y = 0, so the first row is tight and the second
+    # has slack 0.5.
+    dm = data_model.DataModel()
+    dm.set_csr_constraint_matrix(
+        np.array([1.0, 1.0, 1.0]),
+        np.array([0, 0, 1], dtype=np.int32),
+        np.array([0, 1, 3], dtype=np.int32),
+    )
+    dm.set_objective_coefficients(np.array([1.0, 1.0]))
+    dm.set_variable_lower_bounds(np.zeros(2))
+    dm.set_variable_upper_bounds(np.full(2, np.inf))
+    dm.set_constraint_bounds(np.array([1.0, 0.5]))
+    dm.set_row_types("GG")
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    solution = solver.Solve(dm, settings)
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_slack() == pytest.approx([0.0, 0.5], abs=1e-4)
+
+
 def test_parse_var_names():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
@@ -651,6 +741,43 @@ def test_warm_start():
         solver.BatchSolve(data_model_list, settings)
 
 
+@pytest.mark.parametrize("presolve", [2, 1])  # PSLP, Papilo
+def test_initial_solution_with_presolve(presolve):
+    # An initial primal/dual solution set on the DataModel is in the original
+    # problem's space. PSLP maps it into the presolved problem; Papilo cannot,
+    # so presolve is skipped. Either way, starting from the optimum should
+    # converge to the same objective in fewer iterations.
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
+    data_model_obj = Read(file_path)
+
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    settings.set_parameter(CUOPT_PRESOLVE, presolve)
+
+    cold = solver.Solve(data_model_obj, settings)
+    assert cold.get_termination_reason() == "Optimal"
+    primal = np.array(cold.get_primal_solution())
+    dual = np.array(cold.get_dual_solution())
+    assert len(primal) == len(data_model_obj.get_objective_coefficients())
+    assert len(dual) == len(data_model_obj.get_constraint_matrix_offsets()) - 1
+
+    data_model_obj.set_initial_primal_solution(primal)
+    data_model_obj.set_initial_dual_solution(dual)
+    warm = solver.Solve(data_model_obj, settings)
+    assert warm.get_termination_reason() == "Optimal"
+    assert warm.get_primal_objective() == pytest.approx(
+        cold.get_primal_objective(), rel=1e-3
+    )
+    assert len(warm.get_primal_solution()) == len(primal)
+    assert len(warm.get_dual_solution()) == len(dual)
+    assert (
+        warm.get_lp_stats()["nb_iterations"]
+        < cold.get_lp_stats()["nb_iterations"]
+    )
+
+
 def test_solved_by():
     # maximize   5*xs + 20*xl
     # subject to  1*xs +  3*xl <= 200
@@ -682,26 +809,6 @@ def test_solved_by():
     assert solution.get_termination_reason() == "Optimal"
     assert solution.get_primal_objective() == pytest.approx(1333.33, 2)
     assert solution.get_solved_by() == SolverMethod.Barrier
-
-
-def test_heuristics_only():
-    file_path = RAPIDS_DATASET_ROOT_DIR + "/mip/swath1.mps"
-    data_model_obj = Read(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_parameter(CUOPT_MIP_HEURISTICS_ONLY, True)
-    settings.set_parameter(CUOPT_TIME_LIMIT, 30)
-
-    solution = solver.Solve(data_model_obj, settings)
-
-    lower_bound = solution.get_milp_stats()["solution_bound"]
-
-    settings.set_parameter(CUOPT_MIP_HEURISTICS_ONLY, False)
-    settings.set_parameter(CUOPT_TIME_LIMIT, 30)
-
-    solution = solver.Solve(data_model_obj, settings)
-
-    assert solution.get_milp_stats()["solution_bound"] > lower_bound
 
 
 def test_bound_in_maximization():

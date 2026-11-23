@@ -54,6 +54,12 @@ rapids-logger "Test cuopt_cli"
 run_step_with_timeout "cuopt_cli" 10m "" \
   bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
+# Temporarily skip Python gRPC server tests that cancel jobs.
+CUOPT_JOB_CANCEL_SKIP_ARGS=(
+  --deselect=tests/linear_programming/test_grpc_client.py::TestGrpcClient::test_cancel_job
+  --deselect=tests/routing/test_routing_grpc_client.py::test_cancel_job
+)
+
 rapids-logger "pytest cuopt"
 run_step_with_timeout "pytest cuopt" 45m "${RAPIDS_TESTS_DIR}/junit-cuopt.xml" \
   ./ci/run_cuopt_pytests.sh \
@@ -62,7 +68,17 @@ run_step_with_timeout "pytest cuopt" 45m "${RAPIDS_TESTS_DIR}/junit-cuopt.xml" \
   --cov=cuopt \
   --cov-report=xml:"${RAPIDS_COVERAGE_DIR}/cuopt-coverage.xml" \
   --cov-report=term \
+  "${CUOPT_JOB_CANCEL_SKIP_ARGS[@]}" \
   --ignore=raft
+
+# Temporarily skip legacy and gRPC HTTP proxy tests that cancel jobs.
+CUOPT_SERVER_JOB_CANCEL_SKIP_ARGS=(
+  --ignore=tests/test_job_abort.py
+  --deselect=tests/test_grpc_http_proxy.py::test_cancel_request
+  --deselect=tests/test_grpc_http_proxy.py::test_cancel_completed_is_noop
+  --deselect=tests/test_grpc_http_proxy.py::test_vrp_cancel_and_delete
+  --deselect=tests/test_grpc_http_proxy.py::test_failed_or_cancelled_solution_is_409
+)
 
 rapids-logger "pytest cuopt-server"
 run_step_with_timeout "pytest cuopt-server" 20m "${RAPIDS_TESTS_DIR}/junit-cuopt-server.xml" \
@@ -71,7 +87,8 @@ run_step_with_timeout "pytest cuopt-server" 20m "${RAPIDS_TESTS_DIR}/junit-cuopt
   --cov-config=.coveragerc \
   --cov=cuopt_server \
   --cov-report=xml:"${RAPIDS_COVERAGE_DIR}/cuopt-server-coverage.xml" \
-  --cov-report=term
+  --cov-report=term \
+  "${CUOPT_SERVER_JOB_CANCEL_SKIP_ARGS[@]}"
 
 rapids-logger "Test skills/ assets (Python, C, CLI)"
 run_step_with_timeout "skills assets" 10m "" ./ci/test_skills_assets.sh

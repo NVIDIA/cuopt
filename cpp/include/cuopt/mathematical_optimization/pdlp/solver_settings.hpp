@@ -19,6 +19,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
+#include <functional>
 #include <tuple>
 
 #include <cuda/std/span>
@@ -26,6 +27,7 @@
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
 
+template <typename i_t, typename f_t>
 class barrier_cache_t;
 
 // Forward declare solver_settings_t for friend class
@@ -62,16 +64,18 @@ enum pdlp_solver_mode_t : int {
  * PDLP: Use the PDLP method.
  * DualSimplex: Use the dual simplex method.
  * Barrier: Use the barrier method
+ * PrimalSimplex: Use the primal simplex method.
  * Unset: The value was not set.
  *
  * @note Default method is Concurrent.
  */
 enum method_t : int {
-  Concurrent  = CUOPT_METHOD_CONCURRENT,
-  PDLP        = CUOPT_METHOD_PDLP,
-  DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX,
-  Barrier     = CUOPT_METHOD_BARRIER,
-  Unset       = CUOPT_METHOD_UNSET
+  Concurrent    = CUOPT_METHOD_CONCURRENT,
+  PDLP          = CUOPT_METHOD_PDLP,
+  DualSimplex   = CUOPT_METHOD_DUAL_SIMPLEX,
+  Barrier       = CUOPT_METHOD_BARRIER,
+  PrimalSimplex = CUOPT_METHOD_PRIMAL_SIMPLEX,
+  Unset         = CUOPT_METHOD_UNSET
 };
 
 /// Returns the corresponding string from the enum `method_t`.
@@ -82,6 +86,7 @@ inline std::string method_to_string(method_t method)
     case method_t::PDLP: return "PDLP";
     case method_t::Barrier: return "Barrier";
     case method_t::Concurrent: return "Concurrent";
+    case method_t::PrimalSimplex: return "Primal Simplex";
     default: return "Unset";
   }
 }
@@ -102,16 +107,16 @@ enum pdlp_precision_t : int {
 };
 
 /**
- * @brief Which graph partitioner distributed PDLP uses.
+ * @brief Which graph partitioner multi-GPU PDLP uses.
  *
  * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
  * KaMinPar: multi-threaded KaMinPar graph partitioner.
  * RoundRobin: round-robin assignment, no graph.
  */
-enum distributed_pdlp_partitioner_t : int {
-  Auto       = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO,
-  KaMinPar   = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR,
-  RoundRobin = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN,
+enum multigpu_pdlp_partitioner_t : int {
+  Auto       = CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO,
+  KaMinPar   = CUOPT_MULTIGPU_PDLP_PARTITIONER_KAMINPAR,
+  RoundRobin = CUOPT_MULTIGPU_PDLP_PARTITIONER_ROUND_ROBIN,
 };
 
 template <typename i_t, typename f_t>
@@ -296,10 +301,16 @@ class pdlp_solver_settings_t {
   bool per_constraint_residual{false};
   bool crossover{false};
   bool cudss_deterministic{false};
+  i_t cudss_nd_nlevels{-1};
+  i_t cudss_hybrid_execute_mode{-1};
+  i_t project_initial_primal_override{-1};
   i_t folding{-1};
   i_t augmented{-1};
   i_t dualize{-1};
   i_t ordering{-1};
+  i_t initial_perturbation{-1};
+  i_t remove_perturbation{-1};
+  i_t primal_pricing{1};
   barrier_dual_initial_point_t barrier_dual_initial_point{barrier_dual_initial_point_t::Automatic};
   i_t postsolve_info{-1};
   i_t barrier_presolve_bound_free_variables{-1};  // -1 automatic, 0 disabled, 1 enabled
@@ -307,12 +318,16 @@ class pdlp_solver_settings_t {
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.
   i_t qcqp_ruiz_equilibration{-1};
+  // nnz(A)+nnz(Q) at or above which the barrier path runs Ruiz equilibration on GPU instead
+  // of CPU. Below it the upload costs more than the scaling saves.
+  i_t gpu_ruiz_nnz_threshold{500000};
   // Margin used to push the barrier method's initial iterate into the interior of the
   // nonnegative orthant / SOC (values are shifted to be at least this far from the boundary).
   f_t barrier_initial_point_safeguard{10.0};
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
+  bool barrier_adaptive_iterative_refinement{false};
   i_t barrier_adaptive_regularization{-1};  // -1 automatic, 0 disabled, 1 enabled
   // Initial regularization for the barrier method's augmented KKT system, applied to the first
   // factorization only (adaptive regularization, if enabled, still scales it up/down on later
@@ -343,22 +358,27 @@ class pdlp_solver_settings_t {
   bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
-  // Concurrent LP/MIP: 1–2 GPUs. Distributed PDLP (method=PDLP): up to the visible device
-  // count; -1 selects all visible GPUs. See use_distributed_pdlp.
+  // Concurrent LP/MIP: 1–2 GPUs. Multi-GPU PDLP (method=PDLP): up to the visible device
+  // count; -1 selects all visible GPUs, which dispatches to the multi-GPU PDLP engine
+  // whenever num_gpus == -1 or num_gpus > 1.
   int num_gpus{1};
-  // Dispatch the LP to the multi-GPU distributed PDLP engine (typically set when
-  // method=PDLP and num_gpus>1, or num_gpus=-1).
-  bool use_distributed_pdlp{false};
-  // Which graph partitioner distributed PDLP uses. See
-  // distributed_pdlp_partitioner_t for the meaning of each value.
-  distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};
+  // Which graph partitioner multi-GPU PDLP uses. See
+  // multigpu_pdlp_partitioner_t for the meaning of each value.
+  multigpu_pdlp_partitioner_t multigpu_pdlp_partitioner{multigpu_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
-  // TODO: Remove this cutoff once concurrent CPU solver memory usage and cuDSS long running kernels
-  // are resolved. -1 disables the cutoff regardless of the reduced problem's NNZ.
-  i_t concurrent_nnz_cutoff{50'000'000};
+  // At or above this reduced NNZ, skip concurrent CPU solvers and enable DEFAULT column reduction
+  // on compatible PDLP paths. -1 disables both automatic decisions.
+  // TODO: Remove the concurrent CPU solver bypass once their memory usage and cuDSS long running
+  // kernels are resolved; retain the size threshold for automatic column reduction.
+  i_t large_nnz_threshold{50'000'000};
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
+  // Optional valid lower bound reporting: with the iteration log (iteration 0, then every 1000
+  // iterations), the current dual iterate is turned into a Lagrangian lower bound on the objective
+  // (user space: offset and scaling applied) and passed here when it improves on the last reported
+  // one. Used by the MIP root LP to report a bound before PDLP converges.
+  std::function<void(f_t)> dual_bound_callback{};
   // Shared strong branching solved flags for cooperative DS + PDLP
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
@@ -377,7 +397,7 @@ class pdlp_solver_settings_t {
   /** When true, the first GPU barrier/QCQP solve retains cache state for later reuse. */
   bool sequence_solve{false};
   /** Non-owning cache pointer set by ``call_solve`` for barrier cache reuse. */
-  barrier_cache_t* barrier_cache{nullptr};
+  barrier_cache_t<i_t, f_t>* barrier_cache{nullptr};
 
  private:
   /** Initial primal solution */

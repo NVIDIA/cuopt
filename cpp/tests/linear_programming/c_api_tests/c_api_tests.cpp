@@ -82,7 +82,7 @@ INSTANTIATE_TEST_SUITE_P(
   TimeLimitTestFixture,
   ::testing::Values(
     std::make_tuple("/linear_programming/square41/square41.mps",
-                    5,
+                    2,
                     CUOPT_METHOD_DUAL_SIMPLEX),  // LP, Dual Simplex
     std::make_tuple("/linear_programming/square41/square41.mps", 5, CUOPT_METHOD_PDLP),  // LP, PDLP
     std::make_tuple("/mip/supportcase22.mps", 15, CUOPT_METHOD_DUAL_SIMPLEX)             // MIP
@@ -330,7 +330,7 @@ TEST(c_api, test_maximize_problem_dual_variables)
   }
 }
 
-static bool test_mps_roundtrip(const std::string& mps_file_path)
+static bool test_write_roundtrip(const std::string& mps_file_path, cuopt_int_t format)
 {
   using cuopt::mathematical_optimization::problem_and_stream_view_t;
 
@@ -338,23 +338,23 @@ static bool test_mps_roundtrip(const std::string& mps_file_path)
   cuOptOptimizationProblem reread_handle   = nullptr;
   bool result                              = false;
 
-  std::string model_basename = std::filesystem::path(mps_file_path).filename().string();
+  const std::string extension = (format == CUOPT_FILE_FORMAT_LP) ? ".lp" : ".mps";
+  std::string model_basename  = std::filesystem::path(mps_file_path).stem().string() + extension;
   std::string temp_file =
     std::filesystem::temp_directory_path().string() + "/roundtrip_temp_" + model_basename;
 
   if (cuOptReadProblem(mps_file_path.c_str(), &original_handle) != CUOPT_SUCCESS) {
-    std::cerr << "Failed to read original MPS file: " << mps_file_path << std::endl;
+    std::cerr << "Failed to read original problem file: " << mps_file_path << std::endl;
     goto cleanup;
   }
 
-  if (cuOptWriteProblem(original_handle, temp_file.c_str(), CUOPT_FILE_FORMAT_MPS) !=
-      CUOPT_SUCCESS) {
-    std::cerr << "Failed to write MPS file: " << temp_file << std::endl;
+  if (cuOptWriteProblem(original_handle, temp_file.c_str(), format) != CUOPT_SUCCESS) {
+    std::cerr << "Failed to write problem file: " << temp_file << std::endl;
     goto cleanup;
   }
 
   if (cuOptReadProblem(temp_file.c_str(), &reread_handle) != CUOPT_SUCCESS) {
-    std::cerr << "Failed to re-read MPS file: " << temp_file << std::endl;
+    std::cerr << "Failed to re-read problem file: " << temp_file << std::endl;
     goto cleanup;
   }
 
@@ -379,7 +379,7 @@ class WriteRoundtripTestFixture : public ::testing::TestWithParam<std::string> {
 TEST_P(WriteRoundtripTestFixture, roundtrip)
 {
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  EXPECT_TRUE(test_mps_roundtrip(rapidsDatasetRootDir + GetParam()));
+  EXPECT_TRUE(test_write_roundtrip(rapidsDatasetRootDir + GetParam(), CUOPT_FILE_FORMAT_MPS));
 }
 INSTANTIATE_TEST_SUITE_P(c_api,
                          WriteRoundtripTestFixture,
@@ -410,6 +410,20 @@ INSTANTIATE_TEST_SUITE_P(c_api,
                                            "/mip/enlight_hard.mps",
                                            "/mip/enlight11.mps",
                                            "/mip/supportcase22.mps"));
+
+class LPWriteRoundtripTestFixture : public ::testing::TestWithParam<std::string> {};
+TEST_P(LPWriteRoundtripTestFixture, roundtrip)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  EXPECT_TRUE(test_write_roundtrip(rapidsDatasetRootDir + GetParam(), CUOPT_FILE_FORMAT_LP));
+}
+INSTANTIATE_TEST_SUITE_P(c_api,
+                         LPWriteRoundtripTestFixture,
+                         ::testing::Values("/linear_programming/afiro_original.mps",
+                                           "/mip/50v-10.mps",
+                                           "/mip/gen-ip054.mps",
+                                           "/mip/neos5.mps",
+                                           "/mip/stein9inf.mps"));
 
 class DeterministicBBTestFixture
   : public ::testing::TestWithParam<std::tuple<std::string, int, double, double>> {};
@@ -1389,4 +1403,80 @@ TEST(c_api, solution_accessors_on_a_problem_with_no_constraints)
   // so this assertion is what pins it down.
   EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_INVALID_ARGUMENT);
   EXPECT_EQ(dual[0], sentinel);
+}
+
+TEST(c_api, multi_gpu_pdlp_create_problem_row_sense)
+{
+  // min -x - y  s.t.  x + y <= 1,  0 <= x, y <= 10. Optimum is -1.
+  // cuOptCreateProblem stores a row sense and one RHS. Multi-GPU PDLP sizes the model from ranged
+  // constraint bounds, so those bounds have to be filled in before the solve. Presolve is off so
+  // it cannot fill them in first. num_gpus=-1 selects the multi-GPU path for every visible GPU,
+  // including a single one.
+  cuopt_int_t offsets[]  = {0, 2};
+  cuopt_int_t indices[]  = {0, 1};
+  cuopt_float_t values[] = {1.0, 1.0};
+  cuopt_float_t obj[]    = {-1.0, -1.0};
+  cuopt_float_t lb[]     = {0.0, 0.0};
+  cuopt_float_t ub[]     = {10.0, 10.0};
+  char vtypes[]          = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+  char sense[]           = {CUOPT_LESS_THAN};
+  cuopt_float_t rhs[]    = {1.0};
+
+  struct handles_t {
+    cuOptOptimizationProblem problem{nullptr};
+    cuOptSolverSettings settings{nullptr};
+    cuOptSolution solution{nullptr};
+    ~handles_t()
+    {
+      cuOptDestroySolution(&solution);
+      cuOptDestroySolverSettings(&settings);
+      cuOptDestroyProblem(&problem);
+    }
+    handles_t()                            = default;
+    handles_t(const handles_t&)            = delete;
+    handles_t& operator=(const handles_t&) = delete;
+  } handles;
+
+  ASSERT_EQ(cuOptCreateProblem(1,
+                               2,
+                               CUOPT_MINIMIZE,
+                               0.0,
+                               obj,
+                               offsets,
+                               indices,
+                               values,
+                               sense,
+                               rhs,
+                               lb,
+                               ub,
+                               vtypes,
+                               &handles.problem),
+            CUOPT_SUCCESS);
+
+  cuopt_int_t num_constraints = -1;
+  ASSERT_EQ(cuOptGetNumConstraints(handles.problem, &num_constraints), CUOPT_SUCCESS);
+  ASSERT_EQ(num_constraints, 1);
+
+  ASSERT_EQ(cuOptCreateSolverSettings(&handles.settings), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSetIntegerParameter(handles.settings, CUOPT_METHOD, CUOPT_METHOD_PDLP),
+            CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSetIntegerParameter(handles.settings, CUOPT_PRESOLVE, CUOPT_PRESOLVE_OFF),
+            CUOPT_SUCCESS);
+  // mPDLP path but with 1 GPU
+  ASSERT_EQ(cuOptSetIntegerParameter(handles.settings, CUOPT_NUM_GPUS, -1), CUOPT_SUCCESS);
+
+  const cuopt_int_t solve_status = cuOptSolve(handles.problem, handles.settings, &handles.solution);
+  char error_string[512]         = {};
+  if (handles.solution != nullptr) {
+    cuOptGetErrorString(handles.solution, error_string, sizeof(error_string));
+  }
+  ASSERT_EQ(solve_status, CUOPT_SUCCESS) << error_string;
+
+  cuopt_int_t termination_status = -1;
+  ASSERT_EQ(cuOptGetTerminationStatus(handles.solution, &termination_status), CUOPT_SUCCESS);
+  ASSERT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL) << error_string;
+
+  cuopt_float_t objective = 0.0;
+  ASSERT_EQ(cuOptGetObjectiveValue(handles.solution, &objective), CUOPT_SUCCESS);
+  EXPECT_NEAR(objective, -1.0, 1e-3);
 }

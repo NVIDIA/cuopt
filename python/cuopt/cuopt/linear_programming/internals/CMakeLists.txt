@@ -16,3 +16,9 @@ rapids_cython_create_modules(
 )
 
 target_include_directories(internals_internals PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
+
+# internals.pyx also cimports a mathopt header (callbacks_implems.hpp); mathopt-dev is
+# now a separate wheel, so add its include dir without linking the library.
+target_include_directories(internals_internals PRIVATE
+    $<TARGET_PROPERTY:cuopt::mathopt,INTERFACE_INCLUDE_DIRECTORIES>
+)

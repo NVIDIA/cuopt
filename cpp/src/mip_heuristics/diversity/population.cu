@@ -10,11 +10,14 @@
 
 #include <thrust/for_each.h>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mip_heuristics/presolve/semi_continuous.cuh>
 #include <mip_heuristics/utils.cuh>
 #include <pdlp/utils.cuh>
+#include <presolve/semi_continuous.cuh>
+#include <presolve/third_party_presolve.hpp>
 #include <utilities/copy_helpers.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <mutex>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -143,27 +146,27 @@ size_t population_t<i_t, f_t>::get_external_solution_size()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solution,
                                                    f_t objective,
-                                                   solution_origin_t origin)
+                                                   solution_origin_t origin,
+                                                   bool from_lns)
 {
-  context.solution_publication.publish_if_better(problem_ptr, solution, objective);
+  if (!std::isfinite(objective)) return;
+  // Publish with producer metadata before queueing. Later population callbacks are
+  // suppressed by the publication objective floor; new descendants have their own origin.
+  context.solution_publication.publish_if_better(problem_ptr, solution, objective, from_lns);
   std::lock_guard<std::mutex> lock(solution_mutex);
 
-  if (origin == solution_origin_t::CPUFJ) {
-    external_solution_queue_cpufj.emplace_back(solution, objective, origin);
-  } else {
-    external_solution_queue.emplace_back(solution, objective, origin);
-  }
+  const bool full = external_solution_queue.size() == max_external_solutions;
+  if (full && objective >= external_solution_queue.front().objective) return;
 
-  // Prevent CPUFJ scratch solutions from flooding the queue
-  if (external_solution_queue_cpufj.size() > 10) {
-    auto worst_obj_it =
-      std::max_element(external_solution_queue_cpufj.begin(),
-                       external_solution_queue_cpufj.end(),
-                       [](const external_solution_t& a, const external_solution_t& b) {
-                         return a.objective < b.objective;
-                       });
-    external_solution_queue_cpufj.erase(worst_obj_it);
+  // Copy before changing the heap so allocation failure preserves queued candidates.
+  external_solution_t candidate(solution, objective, origin);
+  if (full) {
+    std::pop_heap(external_solution_queue.begin(), external_solution_queue.end());
+    external_solution_queue.back() = std::move(candidate);
+  } else {
+    external_solution_queue.push_back(std::move(candidate));
   }
+  std::push_heap(external_solution_queue.begin(), external_solution_queue.end());
 
   CUOPT_LOG_DEBUG("%s added a solution to population, solution queue size %lu with objective %g",
                   solution_origin_to_string(origin),
@@ -178,11 +181,43 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
 }
 
 template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::set_feasible_solution_callback(feasible_solution_callback_t callback)
+{
+  cuopt_assert(static_cast<bool>(callback),
+               "Population feasible-solution callback must not be empty");
+  std::lock_guard<std::recursive_mutex> lock(write_mutex);
+  std::lock_guard<std::mutex> callback_lock(feasible_solution_callback_mutex);
+  cuopt_assert(!feasible_solution_callback,
+               "Population feasible-solution callback is already registered");
+  if (!solutions.empty()) {
+    auto& [stored, sol] = solutions[0];
+    if (stored && sol.get_feasible()) {
+      callback(sol.get_host_assignment(), sol.get_objective(), sol.get_user_objective());
+    }
+  }
+  feasible_solution_callback = std::move(callback);
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::clear_feasible_solution_callback()
+{
+  std::lock_guard<std::mutex> callback_lock(feasible_solution_callback_mutex);
+  feasible_solution_callback = {};
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::notify_feasible_solution(solution_t<i_t, f_t>& sol)
+{
+  std::lock_guard<std::mutex> callback_lock(feasible_solution_callback_mutex);
+  if (!feasible_solution_callback || !sol.get_feasible()) return;
+  feasible_solution_callback(
+    sol.get_host_assignment(), sol.get_objective(), sol.get_user_objective());
+}
+
+template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solutions_to_population()
 {
-  // don't do early exit checks here. mutex needs to be acquired to prevent race conditions
-  auto new_sol_vector = get_external_solutions();
-  add_solutions_from_vec(std::move(new_sol_vector));
+  add_solutions_from_vec(get_external_solutions());
 }
 
 // normally we would need a lock here but these are boolean types and race conditions are not
@@ -197,60 +232,59 @@ void population_t<i_t, f_t>::preempt_heuristic_solver()
 template <typename i_t, typename f_t>
 std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions()
 {
-  std::lock_guard<std::mutex> lock(solution_mutex);
+  std::vector<external_solution_t> pending;
+  {
+    std::lock_guard<std::mutex> lock(solution_mutex);
+    pending.swap(external_solution_queue);
+    solutions_in_external_queue_ = false;
+  }
+  // Validate the bounded snapshot best-first, without blocking producers on GPU work.
+  std::sort_heap(pending.begin(), pending.end());
   std::vector<solution_t<i_t, f_t>> return_vector;
+  return_vector.reserve(pending.size());
   [[maybe_unused]] i_t counter    = 0;
   f_t new_best_feasible_objective = best_feasible_objective;
   f_t longest_wait_time           = 0;
-  for (auto& queue : {external_solution_queue, external_solution_queue_cpufj}) {
-    for (auto& h_entry : queue) {
-      // ignore CPUFJ solutions if they're not better than the best feasible.
-      // It seems they worsen results on some instances despite the potential for improved diversity
-      if (h_entry.origin == solution_origin_t::CPUFJ &&
-          h_entry.objective > new_best_feasible_objective) {
-        continue;
-      } else if (h_entry.origin != solution_origin_t::CPUFJ &&
-                 h_entry.objective > new_best_feasible_objective) {
-        new_best_feasible_objective = h_entry.objective;
-      }
-
-      longest_wait_time = std::max(longest_wait_time, h_entry.timer.elapsed_time());
-      solution_t<i_t, f_t> sol(*problem_ptr);
-      sol.copy_new_assignment(h_entry.solution);
-      sol.compute_feasibility();
-      if (!sol.get_feasible()) {
-        CUOPT_LOG_DEBUG(
-          "External solution %d is infeasible, excess %g, obj %g, int viol %g, var viol %g, cstr "
-          "viol %g, n_feasible %d/%d, integers %d/%d",
-          counter,
-          sol.get_total_excess(),
-          sol.get_user_objective(),
-          sol.compute_max_int_violation(),
-          sol.compute_max_variable_violation(),
-          sol.compute_max_constraint_violation(),
-          sol.n_feasible_constraints.value(sol.handle_ptr->get_stream()),
-          problem_ptr->n_constraints,
-          sol.compute_number_of_integers(),
-          problem_ptr->n_integer_vars);
-      }
-      if (std::abs(sol.get_objective() - h_entry.objective) > OBJECTIVE_EPSILON) {
-        CUOPT_LOG_DEBUG(
-          "External solution objective mismatch: sol.get_objective() = %g, h_entry.objective = %g",
-          sol.get_objective(),
-          h_entry.objective);
-      }
-      sol.handle_ptr->sync_stream();
-      return_vector.emplace_back(std::move(sol));
-      counter++;
+  for (auto& h_entry : pending) {
+    // ignore CPUFJ solutions if they're not better than the best feasible.
+    // It seems they worsen results on some instances despite the potential for improved diversity
+    if (h_entry.origin == solution_origin_t::CPUFJ &&
+        h_entry.objective > new_best_feasible_objective) {
+      continue;
+    } else if (h_entry.origin != solution_origin_t::CPUFJ &&
+               h_entry.objective > new_best_feasible_objective) {
+      new_best_feasible_objective = h_entry.objective;
     }
+
+    longest_wait_time = std::max(longest_wait_time, h_entry.timer.elapsed_time());
+    solution_t<i_t, f_t> sol(*problem_ptr);
+    sol.copy_new_assignment(h_entry.solution);
+    sol.compute_feasibility();
+    if (!sol.get_feasible()) {
+      CUOPT_LOG_DEBUG(
+        "External solution %d is infeasible, excess %g, obj %g, int viol %g, var viol %g, cstr "
+        "viol %g, n_feasible %d/%d, integers %d/%d",
+        counter,
+        sol.get_total_excess(),
+        sol.get_user_objective(),
+        sol.compute_max_int_violation(),
+        sol.compute_max_variable_violation(),
+        sol.compute_max_constraint_violation(),
+        sol.n_feasible_constraints.value(sol.handle_ptr->get_stream()),
+        problem_ptr->n_constraints,
+        sol.compute_number_of_integers(),
+        problem_ptr->n_integer_vars);
+    }
+    if (std::abs(sol.get_objective() - h_entry.objective) > OBJECTIVE_EPSILON) {
+      CUOPT_LOG_DEBUG(
+        "External solution objective mismatch: sol.get_objective() = %g, h_entry.objective = %g",
+        sol.get_objective(),
+        h_entry.objective);
+    }
+    sol.handle_ptr->sync_stream();
+    return_vector.emplace_back(std::move(sol));
+    counter++;
   }
-  if (external_solution_queue.size() > 0) {
-    CUOPT_LOG_DEBUG("Consuming B&B solutions, solution queue size %lu",
-                    external_solution_queue.size());
-    external_solution_queue.clear();
-  }
-  external_solution_queue_cpufj.clear();
-  solutions_in_external_queue_ = false;
   if (return_vector.size() > 0) {
     CUOPT_LOG_DEBUG("Longest wait time in external queue: %f seconds", longest_wait_time);
   }
@@ -278,7 +312,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         context.solution_publication.enabled()) {
       auto host_assignment = sol.get_host_assignment();
       if (problem_ptr->branch_and_bound_callback != nullptr) {
-        problem_ptr->branch_and_bound_callback(host_assignment, heuristics_origin_t::HEURISTICS);
+        problem_ptr->branch_and_bound_callback(host_assignment);
       }
       context.solution_publication.publish_if_better(
         problem_ptr, host_assignment, sol.get_objective());
@@ -293,6 +327,8 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       auto set_sol_callback       = static_cast<internals::set_solution_callback_t*>(callback);
       f_t user_bound              = context.stats.get_solution_bound();
       auto callback_num_variables = problem_ptr->original_problem_ptr->get_n_variables();
+      const bool has_papilo       = problem_ptr->has_papilo_presolve_data();
+      if (has_papilo) { callback_num_variables = problem_ptr->get_papilo_original_num_variables(); }
       const bool has_semi_continuous_callback_translation =
         mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
           context.settings);
@@ -316,9 +352,8 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                                      h_user_bound.data(),
                                      set_sol_callback->get_user_data());
       f_t outside_sol_objective = h_outside_sol_objective[0];
-      // The callback might be called without setting any valid solution or objective which triggers
-      // asserts
-      if (outside_sol_objective == inf) { return; }
+      // An unchanged infinite objective means the callback did not provide a candidate.
+      if (outside_sol_objective == inf) { continue; }
       d_outside_sol_objective.set_value_async(outside_sol_objective, sol.handle_ptr->get_stream());
       if (has_semi_continuous_callback_translation) {
         mip::append_semi_continuous_auxiliaries_to_assignment(
@@ -327,6 +362,21 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
             context.settings),
           context.settings.get_tolerances());
       }
+      if (has_papilo) {
+        const auto* presolver = problem_ptr->presolve_data.papilo_presolve_ptr;
+        // Crushing can discard invalid values in eliminated columns or clamp them to bounds.
+        const auto& tolerances = problem_ptr->tolerances;
+        if (!presolver->is_original_primal_solution_feasible(h_incumbent_assignment,
+                                                             tolerances.absolute_tolerance,
+                                                             tolerances.relative_tolerance,
+                                                             tolerances.integrality_tolerance)) {
+          continue;
+        }
+        std::vector<f_t> h_crushed_assignment;
+        presolver->crush_primal_solution(
+          *problem_ptr->original_problem_ptr, h_incumbent_assignment, h_crushed_assignment);
+        h_incumbent_assignment = std::move(h_crushed_assignment);
+      }
       incumbent_assignment.resize(h_incumbent_assignment.size(), sol.handle_ptr->get_stream());
       raft::copy(incumbent_assignment.data(),
                  h_incumbent_assignment.data(),
@@ -334,7 +384,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                  sol.handle_ptr->get_stream());
 
       bool is_valid = problem_ptr->pre_process_assignment(incumbent_assignment);
-      if (!is_valid) { return; }
+      if (!is_valid) { continue; }
       cuopt_assert(outside_sol.assignment.size() == incumbent_assignment.size(),
                    "Incumbent assignment size mismatch");
       raft::copy(outside_sol.assignment.data(),
@@ -347,6 +397,9 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                       outside_sol.get_feasible(),
                       outside_sol.get_user_objective(),
                       outside_sol.get_total_excess());
+      // External solutions are published as incumbents when queued, so validate the
+      // transformed point before it can update the primal bound or reach GET callbacks.
+      if (!outside_sol.get_feasible()) { continue; }
       if (std::abs(outside_sol.get_user_objective() - outside_sol_objective) > 1e-6) {
         cuopt_func_call(
           CUOPT_LOG_DEBUG("External solution objective mismatch: outside_sol.get_user_objective() "
@@ -354,8 +407,11 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                           outside_sol.get_user_objective(),
                           outside_sol_objective));
       }
-      cuopt_assert(std::abs(outside_sol.get_user_objective() - outside_sol_objective) <= 1e-6,
-                   "External solution objective mismatch");
+      // Crushing can adjust eliminated variables and bounds. Queue the validated point's
+      // recomputed objective rather than requiring it to equal the callback's input objective.
+      cuopt_assert(
+        has_papilo || std::abs(outside_sol.get_user_objective() - outside_sol_objective) <= 1e-6,
+        "External solution objective mismatch");
       auto h_outside_sol = outside_sol.get_host_assignment();
       add_external_solution(
         h_outside_sol, outside_sol.get_objective(), solution_origin_t::EXTERNAL);
@@ -423,6 +479,7 @@ std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&&
     solutions[0].second = std::move(temp_sol);
     indices[0].second   = sol_cost;
     best_updated        = true;
+    notify_feasible_solution(solutions[0].second);
   }
 
   // Fast reject

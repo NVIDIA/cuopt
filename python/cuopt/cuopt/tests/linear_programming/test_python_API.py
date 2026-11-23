@@ -18,6 +18,7 @@ from cuopt.linear_programming.problem import (
     MINIMIZE,
     SEMI_CONTINUOUS,
     CType,
+    LinearExpression,
     Problem,
     VType,
     sense,
@@ -199,10 +200,10 @@ def test_variable_type_normalized_from_mps(tmp_path):
     prob.setObjective(x + y, sense=MAXIMIZE)
 
     path = str(tmp_path / "mip.mps")
-    prob.writeMPS(path)
+    prob.write(path)
 
     loaded = Problem.read(path)
-    # writeMPS emits integer columns inside INTORG/INTEND markers, so the
+    # The MPS writer emits integer columns inside INTORG/INTEND markers, so the
     # column order is not preserved; key by name. `is` rather than `==`
     # because VType subclasses str: "I" == VType.INTEGER.
     types = {
@@ -211,6 +212,21 @@ def test_variable_type_normalized_from_mps(tmp_path):
     assert types["x"] is VType.INTEGER
     assert types["y"] is VType.CONTINUOUS
     assert loaded.IsMIP
+
+
+def test_write_mps_with_empty_constraint_row(tmp_path):
+    problem = Problem("empty-row")
+    x = problem.addVariable(name="x", lb=0.0, ub=1.0)
+    empty = LinearExpression(vars=[], coefficients=[], constant=0.0)
+    problem.addConstraint(empty <= 1.0, name="empty")
+    problem.setObjective(x)
+
+    path = tmp_path / "empty-row.mps"
+    problem.write(str(path))
+
+    assert problem.model.get_constraint_matrix_offsets().tolist() == [0, 0]
+    assert " L  empty\n" in path.read_text()
+    assert "RHS1      empty 1\n" in path.read_text()
 
 
 def test_semi_continuous_variable():
@@ -378,7 +394,7 @@ def test_read_write_mps_and_relaxation():
     m.addConstraint(x1 + x2 + x3 + x4 + x5 >= 5, name="c5")
 
     # Write MPS
-    m.writeMPS("small_mip.mps")
+    m.write("small_mip.mps")
 
     # Read MPS and solve
     prob = Problem.readMPS("small_mip.mps")
@@ -904,3 +920,46 @@ def test_quadratic_matrix_2():
     assert x2.getValue() == pytest.approx(0.0000000, abs=1e-3)
     assert x3.getValue() == pytest.approx(0.1092896, abs=1e-3)
     assert problem.ObjValue == pytest.approx(3.715847, abs=1e-3)
+
+
+def test_linear_expression_unary_ops():
+    """
+    Test unary negation and unary plus for LinearExpression, verify that
+    mutating a negated or positively signed expression does not alias or
+    corrupt the original expression, and verify that abs() raises TypeError.
+    """
+    p = Problem("test_unary")
+    x = p.addVariable(lb=0, ub=5, vtype=CONTINUOUS, name="x")
+    y = p.addVariable(lb=0, ub=5, vtype=CONTINUOUS, name="y")
+    z = p.addVariable(lb=0, ub=5, vtype=CONTINUOUS, name="z")
+    e = 2 * x + 3 * y + 4.0
+
+    neg_e = -e
+    assert neg_e.coefficients == [-2.0, -3.0]
+    assert neg_e.constant == -4.0
+
+    # Ensure mutating neg_e does not mutate e (no aliasing)
+    neg_e += z
+    assert any(var is z for var in neg_e.vars)
+    assert all(var is not z for var in e.vars)
+    assert len(e.vars) == 2
+
+    pos_e = +e
+    assert pos_e.coefficients == [2.0, 3.0]
+    assert pos_e.constant == 4.0
+
+    # Ensure mutating pos_e does not mutate e
+    pos_e += z
+    assert any(var is z for var in pos_e.vars)
+    assert all(var is not z for var in e.vars)
+    assert len(e.vars) == 2
+
+    # Verify scalar multiplication float branch also avoids aliasing
+    mul_e = e * -1.0
+    mul_e += z
+    assert any(var is z for var in mul_e.vars)
+    assert all(var is not z for var in e.vars)
+
+    # Ensure abs() is not supported on LinearExpression
+    with pytest.raises(TypeError):
+        abs(e)

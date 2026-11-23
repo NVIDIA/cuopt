@@ -79,6 +79,19 @@ inline std::pair<double, double> scaled_row_limits(double absolute_tolerance,
           upper_bound + scaled_tolerance(absolute_tolerance, positive_activity, upper_bound)};
 }
 
+inline std::pair<double, double> solver_row_limits(double absolute_tolerance,
+                                                   double relative_tolerance,
+                                                   double lower_bound,
+                                                   double upper_bound)
+{
+  // Match mip::get_cstr_tolerance, including one-sided and unbounded rows.
+  double bound_scale = 0.0;
+  if (std::isfinite(lower_bound)) bound_scale = std::max(bound_scale, std::abs(lower_bound));
+  if (std::isfinite(upper_bound)) bound_scale = std::max(bound_scale, std::abs(upper_bound));
+  const double tolerance = absolute_tolerance + relative_tolerance * bound_scale;
+  return {lower_bound - tolerance, upper_bound + tolerance};
+}
+
 struct row_verdict_t {
   double activity;
   double excess;
@@ -198,18 +211,18 @@ static bool verify_solution(
 
     // fp64 first. _Float128 is soft-float on x86-64; only rows whose rounding-error
     // interval meets a bound pay for it. Bound is (nnz+1)*eps*abs_sum.
-    const auto verdict =
-      check_row(values.data(),
-                indices.data(),
-                (int64_t)offsets[row],
-                (int64_t)offsets[row + 1],
-                solution.data(),
-                lower_bound,
-                upper_bound,
-                [&](double positive_activity) {
-                  return scaled_row_limits(
-                    tolerances.absolute_tolerance, positive_activity, lower_bound, upper_bound);
-                });
+    const auto verdict = check_row(
+      values.data(),
+      indices.data(),
+      (int64_t)offsets[row],
+      (int64_t)offsets[row + 1],
+      solution.data(),
+      lower_bound,
+      upper_bound,
+      [&](double) {
+        return solver_row_limits(
+          tolerances.absolute_tolerance, tolerances.relative_tolerance, lower_bound, upper_bound);
+      });
     if (verdict.excess > 0.0) {
       std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << incumbent << " row "
                                   << row << " violates bounds: activity=" << verdict.activity

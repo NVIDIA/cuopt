@@ -240,18 +240,18 @@ static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_prob
   user_problem.range_rows.clear();
   user_problem.range_value.clear();
 
-  auto model_constraint_sense = model.get_row_types_host();
-  auto model_constraint_rhs   = model.get_constraint_bounds_host();
+  auto model_constraint_lower_bounds = model.get_constraint_lower_bounds_host();
+  auto model_constraint_upper_bounds = model.get_constraint_upper_bounds_host();
 
-  if (!model_constraint_sense.empty()) {
+  // Explicit bounds include ranged rows that cannot be represented by sense and RHS alone.
+  if (model_constraint_lower_bounds.empty() || model_constraint_upper_bounds.empty()) {
+    auto model_constraint_sense = model.get_row_types_host();
+    auto model_constraint_rhs   = model.get_constraint_bounds_host();
     for (i_t i = 0; i < m; ++i) {
       user_problem.row_sense[i] = model_constraint_sense[i];
       user_problem.rhs[i]       = model_constraint_rhs[i];
     }
   } else {
-    auto model_constraint_lower_bounds = model.get_constraint_lower_bounds_host();
-    auto model_constraint_upper_bounds = model.get_constraint_upper_bounds_host();
-
     for (i_t i = 0; i < m; ++i) {
       const f_t constraint_lower_bound = model_constraint_lower_bounds[i];
       const f_t constraint_upper_bound = model_constraint_upper_bounds[i];

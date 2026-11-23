@@ -54,6 +54,11 @@ function try_download_from_s3() {
         return 1
     fi
 
+    if aws s3 cp "${CUOPT_S3_URI}ci_datasets/routing_tar/routing.tar.gz" - --only-show-errors | tar xzf - ; then
+        echo "✓ Downloaded datasets from S3"
+        return 0
+    fi
+
     # Try to sync from S3
     local success=true
     if [ ${#s3_dirs[@]} -eq 0 ]; then

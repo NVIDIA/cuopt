@@ -153,8 +153,9 @@ final class ProblemIntegrationTest {
     } else if (testCase.hasQuadraticObjective()) {
       settings.setSetting(CuOptConstants.CUOPT_ITERATION_LIMIT, 50);
     } else {
-      settings.setMethod(SolverMethod.PDLP);
-      settings.setPDLPSolverMode(PDLPSolverMode.STABLE1);
+      settings.setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue());
+      settings.setSetting(
+          CuOptConstants.CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.STABLE1.nativeValue());
       settings.setSetting(CuOptConstants.CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, 1.0e-7);
       settings.setSetting(CuOptConstants.CUOPT_RELATIVE_PRIMAL_TOLERANCE, 1.0e-7);
       settings.setSetting(CuOptConstants.CUOPT_ABSOLUTE_DUAL_TOLERANCE, 1.0e-7);

@@ -240,7 +240,7 @@ class pdlp_restart_strategy_t {
   // to both primal and dual potential_next solutions of pdhg_solver, writing
   // into last_restart_duality_gap_.primal_distance_traveled_ and
   // last_restart_duality_gap_.dual_distance_traveled_.
-  // Used for distributed PDLP mirroring clarity
+  // Used for multi-GPU PDLP mirroring clarity
   void primal_dual_distance_squared_moved_from_last_restart_period(
     pdhg_solver_t<i_t, f_t>& pdhg_solver, i_t primal_size, i_t dual_size);
 

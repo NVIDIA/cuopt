@@ -69,10 +69,14 @@ void convert_quadratic_constraints_to_second_order_cones(
   // Use a practical tolerance for text-parsed MPS numeric values.
   const f_t tol = std::numeric_limits<f_t>::epsilon() * 2;
 
+  // Row number before second-order cone translation.
+  user_problem.original_num_rows = csr_A.m;
+
   // Derive implied lower bounds from singleton inequality rows.
   // Used to check if SOC head variables have implied non-negativity from the constraint system
   // without actually modifying the variable bounds (which would add barrier terms).
   std::vector<f_t> implied_lower(n, -std::numeric_limits<f_t>::infinity());
+  std::vector<std::vector<std::pair<i_t, f_t>>> implied_rows(n);
   for (i_t i = 0; i < csr_A.m; i++) {
     const i_t row_start = csr_A.row_start[i];
     const i_t row_end   = csr_A.row_start[i + 1];
@@ -85,10 +89,20 @@ void convert_quadratic_constraints_to_second_order_cones(
     const f_t bound = b / a;
     if (sense == 'G' && a > 0) {
       implied_lower[j] = std::max(implied_lower[j], bound);
+      implied_rows[j].emplace_back(i, a);
     } else if (sense == 'L' && a < 0) {
       implied_lower[j] = std::max(implied_lower[j], bound);
+      implied_rows[j].emplace_back(i, a);
     }
   }
+
+  auto save_cone_head_bound = [&](i_t head) {
+    if (user_problem.lower[head] >= 0) { return; }
+    simplex::cone_head_bound_t<i_t, f_t> bound;
+    bound.head_col = head;
+    bound.rows     = implied_rows[head];
+    user_problem.cone_head_bounds.push_back(std::move(bound));
+  };
 
   // SOC conversion routes each quadratic constraint as follows:
   //
@@ -376,6 +390,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                       "non-negative lower bound for the constraint to be convex",
                       qc.constraint_row_name.c_str(),
                       static_cast<int>(head));
+        save_cone_head_bound(head);
         cone.reserve(q_nnz);
         cone.push_back(head);
         cone.insert(cone.end(), tail_vars.begin(), tail_vars.end());
@@ -417,6 +432,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                       "non-negative lower bound for the constraint to be convex",
                       qc.constraint_row_name.c_str(),
                       static_cast<int>(a));
+        save_cone_head_bound(a);
         cuopt_expects(std::max(user_problem.lower[b], implied_lower[b]) >= 0,
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s': rotated second-order cone head variable (index "
@@ -424,6 +440,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                       "non-negative lower bound for the constraint to be convex",
                       qc.constraint_row_name.c_str(),
                       static_cast<int>(b));
+        save_cone_head_bound(b);
         rotated_cones.push_back(rotated_soc_t{a, b, tail_vars, false, head_lift_sqrt_ratio});
       }
 

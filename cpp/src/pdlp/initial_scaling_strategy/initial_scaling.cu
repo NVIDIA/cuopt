@@ -16,6 +16,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp_constants.hpp>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 
 #include <raft/core/nvtx.hpp>
@@ -30,6 +31,7 @@
 #include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/scatter.h>
+#include <cub/device/device_transform.cuh>
 
 namespace cuopt::mathematical_optimization::pdlp {
 
@@ -94,10 +96,8 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
     cummulative_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_}
 {
   raft::common::nvtx::range fun_scope("Initializing initial_scaling_strategy");
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "Initializing initial_scaling_strategy" << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("Initializing initial_scaling_strategy");
 
   if (!running_mip_) cuopt_assert(pdhg_solver_ptr_ != nullptr, "PDHG solver pointer is null");
   cuopt_assert(original_batch_size_ > 0, "Original batch size must be positive");
@@ -124,10 +124,24 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
                objective_rescaling_.end(),
                f_t(1));
 
-  // Distributed PDLP shards defer scaling to multi_gpu_engine_t::distributed_scaling,
+  // Multi-GPU PDLP shards defer scaling to multi_gpu_engine_t::distributed_scaling,
   // which runs a cross-shard-coherent Ruiz. Local per-shard Ruiz would be incoherent
   // across shards, so skip it here.
-  if (!skip_ruiz_pock_compute) { compute_scaling_vectors(number_of_ruiz_iterations, alpha); }
+  if (!skip_ruiz_pock_compute) {
+    compute_scaling_vectors(number_of_ruiz_iterations, alpha);
+    // Applying the cumulative factors later does not need the iteration scratch.
+    // Release it before PDLP constructs its restart and termination workspaces.
+    if (!running_mip_) { release_iteration_scratch(); }
+  }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::release_iteration_scratch()
+{
+  iteration_variable_scaling_.resize(0, stream_view_);
+  iteration_variable_scaling_.shrink_to_fit(stream_view_);
+  iteration_constraint_matrix_scaling_.resize(0, stream_view_);
+  iteration_constraint_matrix_scaling_.shrink_to_fit(stream_view_);
 }
 
 template <typename i_t, typename f_t>
@@ -136,9 +150,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
 {
   raft::common::nvtx::range fun_scope("compute_scaling_vectors");
 
-  // Skip scaling entirely for a shape-0 problem (distributed PDLP builds the
+  // Skip scaling entirely for a shape-0 problem (multi-GPU PDLP builds the
   // master pdlp_solver_t from a shape-0 placeholder)
   if (primal_size_h_ == 0 || dual_size_h_ == 0) return;
+
+  // A caller may explicitly recompute scaling after releasing the scratch.
+  iteration_variable_scaling_.resize(primal_size_h_, stream_view_);
+  iteration_constraint_matrix_scaling_.resize(dual_size_h_, stream_view_);
 
   // Curtis-Reid runs first as a prescale: its global log-domain fit removes broad
   // magnitude skew, leaving Ruiz and Pock-Chambolle to equilibrate locally.
@@ -238,7 +256,7 @@ __global__ void inf_norm_col_kernel(
 }
 
 // One iteration of Ruiz inf-norm scaling.
-// Distributed PDLP calls this per outer iteration between halo broadcasts;
+// Multi-GPU PDLP calls this per outer iteration between halo broadcasts;
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
 {
@@ -250,7 +268,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
   RAFT_CUDA_TRY(cudaMemsetAsync(
     iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_.get()));
 
-  // Inf-norm over rows and columns. Split into two kernels so the distributed path can
+  // Inf-norm over rows and columns. Split into two kernels so the multi-GPU path can
   // touch only owned entries.
   // Reading cols data from A_t allows for better cache locality on the AtomicAdd
   // than it would by reading cols data from A as it is csr-represented => scattered cols
@@ -295,10 +313,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_inf_scaling(i_t number_of_ruiz_iterations)
 {
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "Doing ruiz_inf_scaling" << std::endl;
-#endif
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("Doing ruiz_inf_scaling");
   for (int i = 0; i < number_of_ruiz_iterations; i++) {
     ruiz_iter_local();
   }
@@ -479,60 +495,55 @@ __global__ void curtis_reid_col_kernel(i_t n_variables,
   }
 }
 
-// Curtis-Reid prescaling (A. R. Curtis, J. K. Reid, "On the Automatic Scaling of Matrices
-// for Gaussian Elimination", IMA J. Applied Mathematics, 1972; also IIASA Collaborative
-// Paper CP-81-037, https://pure.iiasa.ac.at/id/eprint/1766/7/CP-81-037.pdf): a log-domain
-// least-squares fit run *before* Ruiz/Pock-Chambolle, minimizing
-// sum((log|a_ij| - row_log_scale[i] - col_log_scale[j])^2) via alternating per-row/
-// per-column log-mean fixed-point iteration. This port's sequence and defaults are
-// inspired by the HPR-LP-C codebase (https://github.com/PolyU-IOR/HPR-LP-C).
 template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
-  i_t number_of_curtis_reid_iterations)
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_init()
 {
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  std::cout << "Doing curtis_reid_scaling" << std::endl;
-#endif
-  // Reuse the iteration_* scratch buffers as this phase's row/col log-scale vectors --
-  // same size, same "this phase's working value" role Ruiz/Pock-Chambolle give them.
-  // curtis_reid_row_kernel/curtis_reid_col_kernel read op_problem_scaled_'s coefficients
-  // as-if-already-scaled by the current cummulative_* factors (like Ruiz/Pock-Chambolle's
-  // own kernels do); Curtis-Reid always runs first in compute_scaling_vectors(), so
-  // cummulative_* is still all-1 here in practice.
-  auto& row_log_scale = iteration_constraint_matrix_scaling_;
-  auto& col_log_scale = iteration_variable_scaling_;
-  RAFT_CUDA_TRY(
-    cudaMemsetAsync(row_log_scale.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_.get()));
-  RAFT_CUDA_TRY(
-    cudaMemsetAsync(col_log_scale.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_.get()));
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               iteration_constraint_matrix_scaling_.begin(),
+               iteration_constraint_matrix_scaling_.end(),
+               f_t(0));
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               iteration_variable_scaling_.begin(),
+               iteration_variable_scaling_.end(),
+               f_t(0));
+}
 
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_row_iteration()
+{
   constexpr i_t number_of_threads = 128;
-  for (i_t iter = 0; iter < number_of_curtis_reid_iterations; ++iter) {
-    curtis_reid_row_kernel<i_t, f_t, number_of_threads>
-      <<<dual_size_h_, number_of_threads, 0, stream_view_.get()>>>(
-        op_problem_scaled_.view(),
-        cummulative_constraint_matrix_scaling_.data(),
-        cummulative_variable_scaling_.data(),
-        col_log_scale.data(),
-        row_log_scale.data());
-    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  if (dual_size_h_ <= 0) return;
+  curtis_reid_row_kernel<i_t, f_t, number_of_threads>
+    <<<dual_size_h_, number_of_threads, 0, stream_view_.get()>>>(
+      op_problem_scaled_.view(),
+      cummulative_constraint_matrix_scaling_.data(),
+      cummulative_variable_scaling_.data(),
+      iteration_variable_scaling_.data(),
+      iteration_constraint_matrix_scaling_.data());
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+}
 
-    curtis_reid_col_kernel<i_t, f_t, number_of_threads>
-      <<<primal_size_h_, number_of_threads, 0, stream_view_.get()>>>(
-        primal_size_h_,
-        A_T_.data(),
-        A_T_offsets_.data(),
-        A_T_indices_.data(),
-        cummulative_constraint_matrix_scaling_.data(),
-        cummulative_variable_scaling_.data(),
-        row_log_scale.data(),
-        col_log_scale.data());
-    RAFT_CUDA_TRY(cudaPeekAtLastError());
-  }
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_col_iteration()
+{
+  constexpr i_t number_of_threads = 128;
+  if (primal_size_h_ <= 0) return;
+  curtis_reid_col_kernel<i_t, f_t, number_of_threads>
+    <<<primal_size_h_, number_of_threads, 0, stream_view_.get()>>>(
+      primal_size_h_,
+      A_T_.data(),
+      A_T_offsets_.data(),
+      A_T_indices_.data(),
+      cummulative_constraint_matrix_scaling_.data(),
+      cummulative_variable_scaling_.data(),
+      iteration_constraint_matrix_scaling_.data(),
+      iteration_variable_scaling_.data());
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+}
 
-  if (running_mip_) { reset_integer_variables(); }
-
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_folding()
+{
   // Fold the converged log-domain fit into the cumulative scale (exp + clamp, see
   // a_times_exp_clamped_b): cummulative *= exp(clamp(log_scale)). Unlike Ruiz/
   // Pock-Chambolle's a_divides_sqrt_b_bounded fold (which incorporates *this iteration's*
@@ -544,16 +555,48 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
   constexpr f_t clamp_bound = f_t(30);
   raft::linalg::binaryOp(cummulative_constraint_matrix_scaling_.data(),
                          cummulative_constraint_matrix_scaling_.data(),
-                         row_log_scale.data(),
+                         iteration_constraint_matrix_scaling_.data(),
                          dual_size_h_,
                          a_times_exp_clamped_b<f_t>(clamp_bound),
                          stream_view_.get());
   raft::linalg::binaryOp(cummulative_variable_scaling_.data(),
                          cummulative_variable_scaling_.data(),
-                         col_log_scale.data(),
+                         iteration_variable_scaling_.data(),
                          primal_size_h_,
                          a_times_exp_clamped_b<f_t>(clamp_bound),
                          stream_view_.get());
+}
+
+// Curtis-Reid prescaling (A. R. Curtis, J. K. Reid, "On the Automatic Scaling of Matrices
+// for Gaussian Elimination", IMA J. Applied Mathematics, 1972; also IIASA Collaborative
+// Paper CP-81-037, https://pure.iiasa.ac.at/id/eprint/1766/7/CP-81-037.pdf): a log-domain
+// least-squares fit run *before* Ruiz/Pock-Chambolle, minimizing
+// sum((log|a_ij| - row_log_scale[i] - col_log_scale[j])^2) via alternating per-row/
+// per-column log-mean fixed-point iteration. This port's sequence and defaults are
+// inspired by the HPR-LP-C codebase (https://github.com/PolyU-IOR/HPR-LP-C).
+// Single-GPU entry point. Multi-GPU PDLP calls the init/row/col/fold pieces directly.
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
+  i_t number_of_curtis_reid_iterations)
+{
+  PDLP_DEBUG_SYNC();
+  PDLP_DEBUG_LOG("Doing curtis_reid_scaling");
+  // Reuse the iteration_* scratch buffers as this phase's row/col log-scale vectors --
+  // same size, same "this phase's working value" role Ruiz/Pock-Chambolle give them.
+  // curtis_reid_row_kernel/curtis_reid_col_kernel read op_problem_scaled_'s coefficients
+  // as-if-already-scaled by the current cummulative_* factors (like Ruiz/Pock-Chambolle's
+  // own kernels do); Curtis-Reid always runs first in compute_scaling_vectors(), so
+  // cummulative_* is still all-1 here in practice.
+  curtis_reid_init();
+
+  for (i_t iter = 0; iter < number_of_curtis_reid_iterations; ++iter) {
+    curtis_reid_row_iteration();
+    curtis_reid_col_iteration();
+  }
+
+  if (running_mip_) { reset_integer_variables(); }
+
+  curtis_reid_folding();
 }
 
 template <typename i_t, typename f_t>
@@ -801,9 +844,9 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_cummulative_scaling_to_pro
     cuda::std::multiplies<f_t>{},
     stream_view_.get());
 
-#ifdef CUPDLP_DEBUG_MODE
-  print("constraint_lower_bound", op_problem_scaled_.constraint_lower_bounds);
-  print("constraint_upper_bound", op_problem_scaled_.constraint_upper_bounds);
+#ifdef PDLP_DEBUG_MODE
+  PDLP_DEBUG_LOG("constraint_lower_bound", op_problem_scaled_.constraint_lower_bounds);
+  PDLP_DEBUG_LOG("constraint_upper_bound", op_problem_scaled_.constraint_upper_bounds);
   std::vector<f_t2> variable_bounds = host_copy(op_problem_scaled_.variable_bounds, stream_view_);
   std::vector<f_t> lower_bounds;
   std::vector<f_t> upper_bounds;
@@ -811,13 +854,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_cummulative_scaling_to_pro
     lower_bounds.push_back(variable_bound.x);
     upper_bounds.push_back(variable_bound.y);
   }
-  print("variable_lower_bound", lower_bounds);
-  print("variable_upper_bound", upper_bounds);
-  print("objective_vector", op_problem_scaled_.objective_coefficients);
+  PDLP_DEBUG_LOG("variable_lower_bound", lower_bounds);
+  PDLP_DEBUG_LOG("variable_upper_bound", upper_bounds);
+  PDLP_DEBUG_LOG("objective_vector", op_problem_scaled_.objective_coefficients);
   if (pdhg_solver_ptr_ && pdhg_solver_ptr_->get_new_bounds_idx().size() != 0) {
-    print("New bounds idx", pdhg_solver_ptr_->get_new_bounds_idx());
-    print("New bounds lower", pdhg_solver_ptr_->get_new_bounds_lower());
-    print("New bounds upper", pdhg_solver_ptr_->get_new_bounds_upper());
+    PDLP_DEBUG_LOG("New bounds idx", pdhg_solver_ptr_->get_new_bounds_idx());
+    PDLP_DEBUG_LOG("New bounds lower", pdhg_solver_ptr_->get_new_bounds_lower());
+    PDLP_DEBUG_LOG("New bounds upper", pdhg_solver_ptr_->get_new_bounds_upper());
   }
 #endif
   op_problem_scaled_.is_scaled_ = true;
@@ -828,7 +871,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_cummulative_scaling_to_pro
 
 // Apply the already-published bound_rescaling_ / objective_rescaling_ device
 // vectors to the scaled problem's constraint bounds, variable bounds, and
-// objective. Used in both distributed and non-distributed PDLP.
+// objective. Used in both multi-GPU and single-GPU PDLP.
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_bound_objective_rescaling_to_problem()
 {
@@ -882,7 +925,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
 
   apply_cummulative_scaling_to_problem();
 
-  // Local bound/objective rescaling. Distributed PDLP intentionally does NOT
+  // Local bound/objective rescaling. Multi-GPU PDLP intentionally does NOT
   // reach this code path - it calls apply_cummulative_scaling_to_problem()
   // directly and then applies the GLOBAL (allreduced) bound/objective factors
   // via distributed_bound_objective_rescaling() instead.
@@ -890,10 +933,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     // Coefficients are computed on the already scaled values
     bound_objective_rescaling();
 
-#ifdef CUPDLP_DEBUG_MODE
-    print("bound_rescaling", bound_rescaling_);
-    print("objective_rescaling", objective_rescaling_);
-#endif
+    PDLP_DEBUG_LOG("bound_rescaling", bound_rescaling_);
+    PDLP_DEBUG_LOG("objective_rescaling", objective_rescaling_);
 
     apply_bound_objective_rescaling_to_problem();
   }

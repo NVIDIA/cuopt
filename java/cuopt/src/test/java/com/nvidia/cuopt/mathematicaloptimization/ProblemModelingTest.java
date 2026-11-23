@@ -18,6 +18,8 @@ final class ProblemModelingTest {
   void generatedSolverEnumsMatchCuOptConstants() {
     assertEquals(CuOptConstants.CUOPT_METHOD_PDLP, SolverMethod.PDLP.nativeValue());
     assertEquals(
+        CuOptConstants.CUOPT_METHOD_PRIMAL_SIMPLEX, SolverMethod.PRIMAL_SIMPLEX.nativeValue());
+    assertEquals(
         CuOptConstants.CUOPT_PDLP_SOLVER_MODE_STABLE1,
         PDLPSolverMode.STABLE1.nativeValue());
     assertEquals(

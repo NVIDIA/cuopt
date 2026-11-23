@@ -1,3 +1,4 @@
+{{- include "cuopt-server.validate" . -}}
 {{- if .Values.ingress.enabled -}}
 {{- $fullName := include "cuopt-server.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}

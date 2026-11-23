@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -43,8 +43,8 @@ solver_t<i_t, f_t>::solver_t(data_model_view_t<i_t, f_t> const& data_model,
                              solver_settings_t<i_t, f_t> const& settings)
   : handle_ptr_(data_model.get_handle_ptr()), settings_(settings)
 {
-  auto n_matrix_types = detail::get_cost_matrix_type_dim<i_t, f_t>(data_model);
-  if (n_matrix_types == 1 && !data_model.get_vehicle_max_times().empty()) {
+  if (!detail::has_transit_time_matrix<i_t, f_t>(data_model) &&
+      !data_model.get_vehicle_max_times().empty()) {
     cuopt_expects(false,
                   error_type_t::ValidationError,
                   "Time matrix should be set in order to use vehicle max time constraints");

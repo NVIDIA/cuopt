@@ -123,6 +123,16 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   optimization_problem_t(optimization_problem_t<i_t, f_t>&&) noexcept            = default;
   optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) noexcept = default;
 
+  /**
+   * @brief Release all device buffers while retaining dimensions and host metadata.
+   *
+   * Use after transferring model data to a solver that still references this object's
+   * metadata. Device views are invalidated and the model data must be populated again
+   * before solving, exporting, or converting this object to another precision.
+   * Deallocation is ordered on the problem's stream.
+   */
+  void clear();
+
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
   // ============================================================================
@@ -316,10 +326,11 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   // ============================================================================
 
   /**
-   * @brief Write the optimization problem to an MPS file.
-   * @param[in] mps_file_path Path to the output MPS file
+   * @brief Write the optimization problem to a file.
+   * @param[in] file_path Path to the output file
+   * @param[in] format    File format to write (MPS or LP)
    */
-  void write_to_mps(const std::string& mps_file_path) override;
+  void write_to_file(const std::string& file_path, file_format_t format) override;
 
   /* Print scaling information */
   void print_scaling_information() const;

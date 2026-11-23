@@ -57,7 +57,6 @@ from cuopt.linear_programming.solver_settings.solver_settings cimport (
 from cython.operator cimport dereference as deref, postincrement as postinc
 
 from enum import IntEnum
-import math
 import threading
 import time
 import warnings
@@ -234,14 +233,9 @@ class _LogStreamHandler:
             raise
 
 
-def _call_incumbent_callback(callback, index, objective, assignment, job_complete):
-    try:
-        return callback(index, objective, assignment, job_complete)
-    except TypeError:
-        return callback(index, objective, assignment)
-
-
-def _forward_incumbent_to_settings(settings, index, objective, assignment, job_complete):
+def _forward_incumbent_to_settings(
+    settings, index, objective, bound, assignment, job_complete
+):
     from cuopt.linear_programming.internals import GetSolutionCallback
 
     if job_complete:
@@ -252,9 +246,9 @@ def _forward_incumbent_to_settings(settings, index, objective, assignment, job_c
         if isinstance(mip_callback, GetSolutionCallback):
             solution = np.asarray(assignment, dtype=np.float64)
             cost = np.array([objective], dtype=np.float64)
-            bound = np.array([math.nan], dtype=np.float64)
+            bound_arr = np.array([bound], dtype=np.float64)
             mip_callback.get_solution(
-                solution, cost, bound, mip_callback.user_data
+                solution, cost, bound_arr, mip_callback.user_data
             )
     return True
 
@@ -323,7 +317,13 @@ cdef class Client:
         """Create a sibling connection with the same host/port/TLS settings."""
         return Client(self._host, self._port, tls=self._tls)
 
-    def submit(self, problem, SolverSettings settings not None, enable_incumbents=None):
+    def submit(
+        self,
+        problem,
+        SolverSettings settings not None,
+        enable_incumbents=None,
+        enable_set_incumbent=False,
+    ):
         """
         Submit a problem for solving and return its ``job_id``.
 
@@ -336,11 +336,16 @@ cdef class Client:
         collection when ``settings`` already has MIP callbacks. Pass ``True``
         or ``False`` to override (used by the HTTP proxy, which has no local
         callback objects).
+
+        ``enable_set_incumbent`` registers the server-side MIP set-solution
+        callback that echoes the last get-incumbent back into the solver
+        (legacy ``incumbent_set_solutions``). Default ``False``.
         """
         cdef DataModel data_model
         cdef grpc_submit_result_t submit_result
         cdef bint mip
         cdef bint enable_incumbents_flag = False
+        cdef bint enable_set_incumbent_flag = bool(enable_set_incumbent)
 
         data_model = self._as_data_model(problem)
         data_model.variable_types = type_cast(
@@ -357,6 +362,7 @@ cdef class Client:
             data_model.c_data_model_view.get(),
             settings.c_solver_settings.get(),
             enable_incumbents_flag,
+            enable_set_incumbent_flag,
         )
         if not submit_result.success:
             raise GrpcError(submit_result.error_message.decode("utf-8"))
@@ -588,7 +594,8 @@ cdef class Client:
         Return incumbent solutions collected so far (or all remaining).
 
         Works while the job is running or after it completes. Each entry is a
-        dict with ``index``, ``objective``, and ``assignment`` (list of floats).
+        dict with ``index``, ``objective``, ``bound``, and ``assignment``
+        (list of floats).
         """
         cdef grpc_incumbents_result_t outcome = self._client.get().fetch_incumbents(
             job_id.encode("utf-8"), from_index, 0
@@ -602,6 +609,7 @@ cdef class Client:
             {
                 "index": entry.index,
                 "objective": entry.objective,
+                "bound": entry.bound,
                 "assignment": [v for v in entry.assignment],
             }
             for entry in outcome.incumbents
@@ -629,9 +637,9 @@ cdef class Client:
         if settings is None:
             raise GrpcError("settings is required")
 
-        def combined(index, objective, assignment, job_complete):
+        def combined(index, objective, bound, assignment, job_complete):
             return _forward_incumbent_to_settings(
-                settings, index, objective, assignment, job_complete
+                settings, index, objective, bound, assignment, job_complete
             )
 
         incumbent_client = self._spawn_client()
@@ -705,8 +713,12 @@ cdef class Client:
                 assignment = []
                 for i in range(entry.assignment.size()):
                     assignment.append(entry.assignment[i])
-                if _call_incumbent_callback(
-                    callback, entry.index, entry.objective, assignment, False
+                if callback(
+                    entry.index,
+                    entry.objective,
+                    entry.bound,
+                    assignment,
+                    False,
                 ) is False:
                     self.cancel(job_id)
                     return
@@ -714,7 +726,7 @@ cdef class Client:
             next_index = outcome.next_index
             job_complete = outcome.job_complete
             if job_complete:
-                _call_incumbent_callback(callback, 0, 0.0, [], True)
+                callback(0, 0.0, 0.0, [], True)
                 return
 
             time.sleep(poll_seconds)
@@ -1081,6 +1093,7 @@ cdef _solution_to_py(cpu_routing_solution_t s):
         "status": int(s.status),
         "status_message": s.status_message.decode("utf-8"),
         "error_message": s.error_message.decode("utf-8"),
+        "solve_time": float(s.solve_time),
         "vehicle_count": int(s.vehicle_count),
         "total_objective_value": float(s.total_objective_value),
         "objective_values": objectives,
@@ -1094,10 +1107,9 @@ cdef _solution_to_py(cpu_routing_solution_t s):
     }
 
 
-# dump_best_results is intentionally not forwarded. The proto and C++ mapper
-# already carry dump_best_results_path, but that writes a debug file on the
-# gRPC server host rather than returning data to the client. Wire it up later
-# if a remote-debug use case appears.
+# dump_best_results is intentionally not forwarded. The server mapper ignores
+# dump_best_results_path, so it is only useful for a local solve. Wire it up
+# later if a remote-debug use case appears.
 cdef void _apply_routing_settings(
     routing_solver_settings_t[int, float]& s, settings
 ) except *:

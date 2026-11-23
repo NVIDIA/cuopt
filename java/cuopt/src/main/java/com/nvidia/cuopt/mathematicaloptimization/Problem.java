@@ -6,16 +6,21 @@ package com.nvidia.cuopt.mathematicaloptimization;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 public final class Problem implements AutoCloseable {
   private final String name;
   private final List<Variable> variables = new ArrayList<>();
   private final List<Constraint> constraints = new ArrayList<>();
+  private final Set<Constraint> addedConstraints =
+      Collections.newSetFromMap(new IdentityHashMap<>());
   private LinearExpression linearObjective = new LinearExpression();
   private QuadraticExpression quadraticObjective = null;
   private ObjectiveSense objectiveSense = ObjectiveSense.MINIMIZE;
@@ -59,15 +64,20 @@ public final class Problem implements AutoCloseable {
   }
 
   public Constraint addConstraint(Constraint constraint, String name) {
+    if (addedConstraints.contains(constraint)) {
+      throw new IllegalArgumentException("Constraint has already been added to this problem");
+    }
     requireOwnedVariables(constraint);
     constraint.setConstraintName(name);
     constraint.setIndex(constraints.size());
     constraints.add(constraint);
+    addedConstraints.add(constraint);
     resetSolvedValues();
     return constraint;
   }
 
   public Problem setObjective(LinearExpression expression, ObjectiveSense sense) {
+    requireOwnedObjectiveVariables(expression, null);
     this.linearObjective = expression;
     this.quadraticObjective = null;
     this.objectiveSense = sense;
@@ -86,6 +96,7 @@ public final class Problem implements AutoCloseable {
   }
 
   public Problem setObjective(QuadraticExpression expression, ObjectiveSense sense) {
+    requireOwnedObjectiveVariables(expression.getLinearExpression(), expression);
     this.linearObjective = expression.getLinearExpression();
     this.quadraticObjective = expression;
     this.objectiveSense = sense;
@@ -552,14 +563,31 @@ public final class Problem implements AutoCloseable {
     }
   }
 
+  private void requireOwnedObjectiveVariables(
+      LinearExpression linear, QuadraticExpression quadratic) {
+    for (Variable variable : linear.getTerms().keySet()) {
+      requireOwnedObjectiveVariable(variable);
+    }
+    if (quadratic != null) {
+      for (QuadraticExpression.QuadraticTerm term : quadratic.getQuadraticTerms()) {
+        requireOwnedObjectiveVariable(term.getFirst());
+        requireOwnedObjectiveVariable(term.getSecond());
+      }
+    }
+  }
+
+  private void requireOwnedObjectiveVariable(Variable variable) {
+    int index = variable.getIndex();
+    if (index < 0 || index >= variables.size() || variables.get(index) != variable) {
+      throw new IllegalArgumentException("Objective variable does not belong to this problem");
+    }
+  }
+
   private void syncVariableObjectiveCoefficients(LinearExpression expression) {
     for (Variable variable : variables) {
       variable.setObjectiveCoefficient(0.0);
     }
     for (Map.Entry<Variable, Double> entry : expression.getTerms().entrySet()) {
-      if (!variables.contains(entry.getKey())) {
-        throw new IllegalArgumentException("Objective variable does not belong to this problem");
-      }
       entry.getKey().setObjectiveCoefficient(entry.getValue());
     }
   }

@@ -10,6 +10,7 @@
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
+#include <pdlp/reduced_matrix.cuh>
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utilities/ping_pong_graph.cuh>
@@ -39,10 +40,13 @@ class pdhg_solver_t {
                 const std::vector<pdlp_climber_strategy_t>& climber_strategies,
                 const pdlp::pdlp_hyper_params_t& hyper_params,
                 const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
-                bool enable_mixed_precision_spmv = false);
+                int reduced_matrix_nnz_cutoff,
+                bool enable_mixed_precision_spmv = false,
+                bool is_distributed              = false);
 
   saddle_point_state_t<i_t, f_t>& get_saddle_point_state();
   cusparse_view_t<i_t, f_t>& get_cusparse_view();
+  void redirect_reduced_csr_structure(const mip::problem_t<i_t, f_t>& original_problem);
   rmm::device_uvector<f_t>& get_primal_tmp_resource();
   rmm::device_uvector<f_t>& get_dual_tmp_resource();
   rmm::device_uvector<f_t>& get_potential_next_primal_solution();
@@ -102,8 +106,12 @@ class pdhg_solver_t {
   void spmv_At_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
   void spmv_A_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
 
+  void update_reduced_matrix(f_t relative_kkt,
+                             bool restarted,
+                             rmm::device_uvector<f_t>& restart_primal);
+
   // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
-  // the single-GPU vs distributed-GPU uses the same calls
+  // the single-GPU vs multi-GPU uses the same calls
   void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size,
                                                    rmm::device_uvector<f_t>& initial_primal);
   void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size,
@@ -119,7 +127,7 @@ class pdhg_solver_t {
   void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine) { mgpu_engine_ = engine; }
   multi_gpu_engine_t<i_t, f_t>* get_mgpu_engine() const { return mgpu_engine_; }
 
-  // True only on the master pdhg of a distributed run (the one wired to the
+  // True only on the master pdhg of a multi-GPU run (the one wired to the
   // engine, which orchestrates the shards).
   // Shards report false.
   // Single-GPU PDHG reports false.
@@ -143,7 +151,7 @@ class pdhg_solver_t {
     const i_t* d_iterations_since_last_restart,
     bool should_major);
 
-  // Fills d_halpern_weight_ from (k+1)/(k+2) on device. On the distributed
+  // Fills d_halpern_weight_ from (k+1)/(k+2) on device. On the multi-GPU
   // master this dispatches to each shard; shards and single-GPU run the transform.
   void refresh_halpern_weight(const i_t* d_iterations_since_last_restart);
 
@@ -154,6 +162,7 @@ class pdhg_solver_t {
   // The new_bounds re-projection that follows still needs that pre-Halpern iterate, so save it
   // for those entries before the projection runs.
   void save_new_bounds_primal();
+  void reset_iteration_graphs();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
@@ -178,6 +187,7 @@ class pdhg_solver_t {
 
   // Important that vectors passed down to the cusparse_view are allocated before
   cusparse_view_t<i_t, f_t> cusparse_view_;
+  reduced_matrix_t<i_t, f_t> reduced_matrix_;
 
   const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_0_;
@@ -214,7 +224,7 @@ class pdhg_solver_t {
   rmm::device_uvector<f_t> new_bounds_primal_;
   cuda::fast_mod_div<size_t> batch_size_divisor_;
 
-  // Non-owning. Set on the master pdhg_solver_ in distributed mode; null
+  // Non-owning. Set on the master pdhg_solver_ in multi-GPU mode; null
   // (default) means single-GPU path.
   multi_gpu_engine_t<i_t, f_t>* mgpu_engine_{nullptr};
 };

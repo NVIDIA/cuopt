@@ -12,7 +12,7 @@
   header->set_objective_scaling_factor(cpu_problem.get_objective_scaling_factor());
   header->set_objective_offset(cpu_problem.get_objective_offset());
 
-  map_pdlp_settings_to_proto(settings, header->mutable_lp_settings());
+  map_pdlp_client_settings_to_proto(settings, header->mutable_lp_settings());
 
   if (cpu_problem.has_quadratic_constraints()) {
     for (const auto& _entry : cpu_problem.get_quadratic_constraints()) {

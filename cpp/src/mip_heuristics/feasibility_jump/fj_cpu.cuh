@@ -1,341 +1,44 @@
-/* clang-format off */
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
-/* clang-format on */
 
 #pragma once
 
-#include <atomic>
-#include <functional>
-#include <limits>
-#include <memory>
-#include <mutex>
-#include <random>
-#include <unordered_set>
-#include <vector>
+// Stable external include. CPU implementation details and state ownership live below cpu/.
+#include <mip_heuristics/feasibility_jump/cpu/state.hpp>
 
-#include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
-#include <mip_heuristics/feasibility_jump/fj_cpu_binary.cuh>
-#include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
-#include <utilities/memory_instrumentation.hpp>
-#include <utilities/producer_sync.hpp>
+namespace cuopt::mathematical_optimization {
+template <typename i_t, typename f_t>
+class optimization_problem_t;
+}
 
 namespace cuopt::mathematical_optimization::mip {
 
-// Best feasible assignment found by any lane of one portfolio. Lanes run concurrently, so which
-// lane observes which incumbent depends on scheduling: a portfolio that shares is not run-to-run
-// reproducible. Null until a caller opts a set of climbers into sharing.
 template <typename i_t, typename f_t>
-struct fj_cpu_shared_incumbent_t {
-  // True when the candidate beat the shared best, in which case it was stored.
-  bool publish(f_t candidate_objective,
-               f_t candidate_user_objective,
-               const std::vector<f_t>& candidate)
-  {
-    // Unlocked reject first: the publish sites are hot on instances that improve in tiny steps.
-    if (!(candidate_objective < objective.load(std::memory_order_relaxed))) return false;
-    std::lock_guard<std::mutex> lock(guard);
-    if (!(candidate_objective < objective.load(std::memory_order_relaxed))) return false;
-    assignment = candidate;
-    objective.store(candidate_objective, std::memory_order_relaxed);
-    CUOPT_LOG_DEBUG("New portfolio best found: %.17g:", candidate_user_objective);
-    return true;
-  }
+class problem_t;
 
-  // True when the shared best beat local_objective, in which case it was copied into destination.
-  bool adopt(f_t local_objective, std::vector<f_t>& destination, f_t* adopted_objective = nullptr)
-  {
-    if (!(objective.load(std::memory_order_relaxed) < local_objective)) return false;
-    std::lock_guard<std::mutex> lock(guard);
-    const f_t shared_objective = objective.load(std::memory_order_relaxed);
-    if (!(shared_objective < local_objective)) return false;
-    cuopt_assert(assignment.size() == destination.size(), "shared incumbent size mismatch");
-    destination = assignment;
-    if (adopted_objective != nullptr) *adopted_objective = shared_objective;
-    return true;
-  }
-
-  std::mutex guard;
-  std::vector<f_t> assignment;
-  std::atomic<f_t> objective{std::numeric_limits<f_t>::infinity()};
-};
-
-// The model as given, in the original column space, addressed by non-owning spans over the
-// climber's host arrays. Written once during construction and read-only from then on.
-template <typename i_t, typename f_t>
-struct fj_cpu_problem_t {
-  raft::device_span<i_t> offsets;
-  raft::device_span<i_t> variables;
-  raft::device_span<f_t> coefficients;
-  raft::device_span<i_t> reverse_offsets;
-  raft::device_span<i_t> reverse_constraints;
-  raft::device_span<f_t> cstr_lb;
-  raft::device_span<f_t> cstr_ub;
-  raft::device_span<f_t> h_obj_coeffs;
-  raft::device_span<var_t> h_var_types;
-  raft::device_span<i_t> h_original_ids;
-  raft::device_span<i_t> h_reverse_original_ids;
-  raft::device_span<i_t> h_related_variables;
-  raft::device_span<i_t> h_related_variables_offsets;
-
-  i_t n_variables{0};
-  i_t n_constraints{0};
-  f_t objective_scaling_factor{1};
-  f_t objective_offset{0};
-  typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
-  const probing_cache_t<i_t, f_t>* probing_cache{nullptr};
-
-  bool integer_equal(f_t a, f_t b) const
-  {
-    return std::abs(a - b) <= tolerances.integrality_tolerance;
-  }
-};
-
-template <typename i_t, typename f_t>
-class probing_cache_t;
-
-// NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
-// Maintaining a single source of truth for all members would be nice
-template <typename i_t, typename f_t>
-struct fj_cpu_climber_t {
-  fj_cpu_climber_t(std::atomic<bool>& preemption_flag) : preemption_flag(preemption_flag)
-  {
-#define ADD_INSTRUMENTED(var) \
-  std::make_pair(#var, std::ref(static_cast<memory_instrumentation_base_t&>(var)))
-
-    // Initialize memory aggregator with all ins_vector members
-    memory_aggregator = instrumentation_aggregator_t{ADD_INSTRUMENTED(h_reverse_coefficients),
-                                                     ADD_INSTRUMENTED(h_reverse_constraints),
-                                                     ADD_INSTRUMENTED(h_reverse_offsets),
-                                                     ADD_INSTRUMENTED(h_coefficients),
-                                                     ADD_INSTRUMENTED(h_offsets),
-                                                     ADD_INSTRUMENTED(h_variables),
-                                                     ADD_INSTRUMENTED(h_obj_coeffs),
-                                                     ADD_INSTRUMENTED(h_var_bounds),
-                                                     ADD_INSTRUMENTED(h_cstr_lb),
-                                                     ADD_INSTRUMENTED(h_cstr_ub),
-                                                     ADD_INSTRUMENTED(h_var_types),
-                                                     ADD_INSTRUMENTED(h_is_binary_variable),
-                                                     ADD_INSTRUMENTED(h_objective_vars),
-                                                     ADD_INSTRUMENTED(h_binary_indices),
-                                                     ADD_INSTRUMENTED(h_related_variables),
-                                                     ADD_INSTRUMENTED(h_related_variables_offsets),
-                                                     ADD_INSTRUMENTED(h_binrow_offsets),
-                                                     ADD_INSTRUMENTED(h_binrow_vars),
-                                                     ADD_INSTRUMENTED(h_original_ids),
-                                                     ADD_INSTRUMENTED(h_reverse_original_ids),
-                                                     ADD_INSTRUMENTED(h_tabu_nodec_until),
-                                                     ADD_INSTRUMENTED(h_tabu_noinc_until),
-                                                     ADD_INSTRUMENTED(h_tabu_lastdec),
-                                                     ADD_INSTRUMENTED(h_tabu_lastinc),
-                                                     ADD_INSTRUMENTED(h_lhs),
-                                                     ADD_INSTRUMENTED(h_lhs_sumcomp),
-                                                     ADD_INSTRUMENTED(h_cstr_left_weights),
-                                                     ADD_INSTRUMENTED(h_cstr_right_weights),
-                                                     ADD_INSTRUMENTED(h_assignment),
-                                                     ADD_INSTRUMENTED(h_best_assignment),
-                                                     ADD_INSTRUMENTED(cached_cstr_bounds),
-                                                     ADD_INSTRUMENTED(iter_mtm_vars)};
-
-#undef ADD_INSTRUMENTED
-  }
-  fj_cpu_climber_t(const fj_cpu_climber_t<i_t, f_t>& other)                      = delete;
-  fj_cpu_climber_t<i_t, f_t>& operator=(const fj_cpu_climber_t<i_t, f_t>& other) = delete;
-
-  fj_cpu_climber_t(fj_cpu_climber_t<i_t, f_t>&& other)                      = default;
-  fj_cpu_climber_t<i_t, f_t>& operator=(fj_cpu_climber_t<i_t, f_t>&& other) = default;
-
-  problem_t<i_t, f_t>* pb_ptr;
-  fj_settings_t settings;
-  std::mt19937 rng;
-  typename fj_t<i_t, f_t>::climber_data_t::view_t view;
-  // Host copies of device data as struct members
-  ins_vector<f_t> h_reverse_coefficients;
-  ins_vector<i_t> h_reverse_constraints;
-  ins_vector<i_t> h_reverse_offsets;
-  ins_vector<f_t> h_coefficients;
-  ins_vector<i_t> h_offsets;
-  ins_vector<i_t> h_variables;
-  ins_vector<f_t> h_obj_coeffs;
-  ins_vector<typename type_2<f_t>::type> h_var_bounds;
-  ins_vector<f_t> h_cstr_lb;
-  ins_vector<f_t> h_cstr_ub;
-  ins_vector<var_t> h_var_types;
-  ins_vector<i_t> h_is_binary_variable;
-  ins_vector<i_t> h_objective_vars;
-  ins_vector<i_t> h_binary_indices;
-  ins_vector<i_t> h_related_variables;
-  ins_vector<i_t> h_related_variables_offsets;
-
-  // precompute the binary variables per row for bin 2opt
-  ins_vector<i_t> h_binrow_offsets;
-  ins_vector<i_t> h_binrow_vars;
-  const probing_cache_t<i_t, f_t>* probing_cache{nullptr};
-  // Probing cache keys are pre-trivial-presolve variable ids; these translate to and from them
-  ins_vector<i_t> h_original_ids;
-  ins_vector<i_t> h_reverse_original_ids;
-
-  ins_vector<i_t> h_tabu_nodec_until;
-  ins_vector<i_t> h_tabu_noinc_until;
-  ins_vector<i_t> h_tabu_lastdec;
-  ins_vector<i_t> h_tabu_lastinc;
-
-  ins_vector<f_t> h_lhs;
-  ins_vector<f_t> h_lhs_sumcomp;
-  ins_vector<f_t> h_cstr_left_weights;
-  ins_vector<f_t> h_cstr_right_weights;
-  f_t max_weight;
-  ins_vector<f_t> h_assignment;
-  ins_vector<f_t> h_best_assignment;
-  f_t h_objective_weight;
-  f_t h_incumbent_objective;
-  f_t h_best_objective;
-  i_t last_feasible_entrance_iter{0};
-  i_t iterations;
-  std::unordered_set<i_t> violated_constraints;
-  std::unordered_set<i_t> satisfied_constraints;
-  bool feasible_found{false};
-  bool trigger_early_lhs_recomputation{false};
-  f_t total_violations{0};
-
-  // Timing data structures
-  std::vector<double> find_lift_move_times;
-  std::vector<double> find_mtm_move_viol_times;
-  std::vector<double> find_mtm_move_sat_times;
-  std::vector<double> apply_move_times;
-  std::vector<double> update_weights_times;
-  std::vector<double> compute_score_times;
-
-  i_t hit_count{0};
-  i_t miss_count{0};
-
-  i_t candidate_move_hits[3]   = {0};
-  i_t candidate_move_misses[3] = {0};
-
-  // vector<bool> is actually likely beneficial here since we're memory bound
-  std::vector<bool> flip_move_computed;
-
-  // CSR nnz offset -> (delta, score)
-  std::vector<std::pair<f_t, fj_staged_score_t>> cached_mtm_moves;
-
-  // CSC (transposed!) nnz-offset-indexed constraint bounds (lb, ub)
-  // std::pair<f_t, f_t> better compile down to 16 bytes!! GCC do your job!
-  ins_vector<std::pair<f_t, f_t>> cached_cstr_bounds;
-
-  std::vector<bool> var_bitmap;
-  ins_vector<i_t> iter_mtm_vars;
-
-  // Scratch reused by the binary 2-opt search, which runs at every local minimum
-  std::vector<i_t> two_opt_target_cstrs;
-  std::vector<i_t> two_opt_first_vars;
-  std::vector<std::pair<i_t, f_t>> two_opt_partners;
-  std::vector<std::pair<i_t, f_t>> two_opt_row_deltas;
-
-  i_t mtm_viol_samples{25};
-  i_t mtm_sat_samples{15};
-  i_t nnz_samples{50000};
-  i_t perturb_interval{100};
-
-  i_t log_interval{1000};
-  i_t diversity_callback_interval{3000};
-  i_t timing_stats_interval{5000};
-
-  // Callback with work unit timestamp for deterministic mode
-  // Parameters: objective, solution, work_units
-  std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback{nullptr};
-  std::function<void(f_t, const std::vector<f_t>&)> diversity_callback{nullptr};
-  std::string log_prefix{""};
-
-  // Work unit tracking for deterministic synchronization
-  std::atomic<double> work_units_elapsed{0.0};
-  double work_unit_bias{1.5};               // Bias factor to keep CPUFJ ahead of B&B
-  producer_sync_t* producer_sync{nullptr};  // Optional sync utility for notifying progress
-
-  std::atomic<bool> halted{false};
-
-  // Feature tracking for regression model (last 1000 iterations)
-  i_t nnz_processed_window{0};
-  i_t n_lift_moves_window{0};
-  i_t n_mtm_viol_moves_window{0};
-  i_t n_mtm_sat_moves_window{0};
-  i_t n_variable_updates_window{0};
-  i_t n_local_minima_window{0};
-  std::chrono::high_resolution_clock::time_point last_feature_log_time;
-  f_t prev_best_objective{std::numeric_limits<f_t>::infinity()};
-  i_t iterations_since_best{0};
-
-  // Cache and locality tracking
-  i_t hit_count_window_start{0};
-  i_t miss_count_window_start{0};
-  std::unordered_set<i_t> unique_cstrs_accessed_window;
-  std::unordered_set<i_t> unique_vars_accessed_window;
-
-  // Precomputed static problem features
-  i_t n_binary_vars{0};
-  i_t n_integer_vars{0};
-  i_t max_var_degree{0};
-  i_t max_cstr_degree{0};
-  double avg_var_degree{0.0};
-  double avg_cstr_degree{0.0};
-  double var_degree_cv{0.0};
-  double cstr_degree_cv{0.0};
-  double problem_density{0.0};
-
-  // Shared across every lane and frozen before the first clone is created.
-  std::shared_ptr<const fj_cpu_problem_t<i_t, f_t>> problem;
-
-  f_t get_user_objective(f_t solver_objective) const
-  {
-    cuopt_assert(std::isfinite(problem->objective_scaling_factor) &&
-                   problem->objective_scaling_factor != f_t{0},
-                 "invalid objective scaling factor");
-    return problem->objective_scaling_factor * (solver_objective + problem->objective_offset);
-  }
-
-  // Equality rows backed by private free continuous variables may be omitted by the binary engine
-  // and reconstructed before publication.
-  struct bin_eliminated_row_t {
-    i_t row;
-    f_t rhs;
-    std::vector<i_t> positive, negative, all;
-    std::vector<f_t> positive_coeff, negative_coeff;
-  };
-  std::vector<bin_eliminated_row_t> bin_eliminated_rows;
-  std::vector<uint8_t> bin_ignore_row, bin_ignore_var;
-  bool has_bin_elimination{false};
-  fj_bin_setup_times_t bin_setup;
-
-  // Held with the other lanes of the same portfolio. Null when the climber runs alone, which is
-  // what keeps a solo climber reproducible.
-  std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent;
-
-  // Per-lane search policy. Uniform across lanes until a caller diversifies them.
-  bool low_latency{false};
-  bool use_integer_bit_encoding{true};
-  // Lower bound h_objective_weight decays to, so a lane seeded with objective pressure keeps it.
-  f_t seed_objective_weight{0};
-
-  // Memory instrumentation aggregator
-  instrumentation_aggregator_t memory_aggregator;
-  // TODO atomic ref? c++20
-  std::atomic<bool>& preemption_flag;
-};
-
-template <typename i_t, typename f_t>
-void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu,
-                 f_t in_time_limit      = std::numeric_limits<f_t>::infinity(),
-                 double work_unit_limit = std::numeric_limits<double>::infinity());
-
-// Standalone CPUFJ init for running without full fj_t infrastructure (avoids GPU allocations).
-// Used for early CPUFJ during presolve.
+// CUDA-facing adapters. Their definitions own all interaction with the GPU-backed problem_t;
+// cpu/engine.cpp only sees the resulting host climber state.
 template <typename i_t, typename f_t>
 std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   problem_t<i_t, f_t>& problem,
-  solution_t<i_t, f_t>& solution,
   std::atomic<bool>& preemption_flag,
   uint64_t seed,
   fj_settings_t settings = fj_settings_t{});
+
+template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_optimization_problem(
+  const optimization_problem_t<i_t, f_t>& problem,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings = fj_settings_t{});
+
+template <typename i_t, typename f_t>
+void build_climber_portfolio(problem_t<i_t, f_t>& problem,
+                             std::vector<std::atomic<bool>>& preemption_flags,
+                             std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>>& climbers,
+                             int64_t base_seed,
+                             bool low_latency = false);
 
 }  // namespace cuopt::mathematical_optimization::mip

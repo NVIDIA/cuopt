@@ -2,13 +2,7 @@
 LP Python Examples
 ===============================
 
-The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple LP problem in normal mode and batch mode (where multiple problems are solved at once).
-
-.. note::
-   LP batch mode is deprecated and will be removed in a future release. Prefer
-   sequential ``cuopt.linear_programming.Solve`` calls. Server and CLI batch
-   paths still use batch solve today; check response ``warnings`` or logs for the
-   deprecation notice.
+The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple LP problem.
 
 The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData under "POST /cuopt/request" <../../open-api>` under schema section. LP and MIP share same spec.
 
@@ -19,12 +13,13 @@ If you want to run server locally, please run the following command in a termina
 
     export ip="localhost"
     export port=5000
-    python -m cuopt_server.cuopt_service --ip $ip --port $port
+    cuopt_grpc_server --port 5001 &
+    python -m cuopt_server.cuopt_proxy --ip $ip --port $port --grpc-port 5001
 
-.. _generic-example-with-normal-and-batch-mode:
+.. _generic-lp-example:
 
-Genric Example With Normal Mode and Batch Mode
-------------------------------------------------
+Generic LP Example
+------------------
 
 :download:`basic_lp_example.py <lp/examples/basic_lp_example.py>`
 
@@ -34,8 +29,6 @@ Genric Example With Normal Mode and Batch Mode
 
 
 The response would be as follows:
-
-Normal mode response:
 
 .. code-block:: json
     :linenos:
@@ -74,80 +67,6 @@ Normal mode response:
             "total_solve_time": 0.013341188430786133
         },
         "reqId": "c7f2e5a1-d210-4e2e-9308-4257d0a86c4a"
-    }
-
-
-
-Batch mode response:
-
-.. code-block:: json
-    :linenos:
-
-    {
-        "response": {
-            "solver_response": [
-                {
-                    "status": "Optimal",
-                    "solution": {
-                        "problem_category": "LP",
-                        "primal_solution": [
-                            1.8,
-                            0.0
-                        ],
-                        "dual_solution": [
-                            -0.06666666666666668,
-                            0.0
-                        ],
-                        "primal_objective": -0.36000000000000004,
-                        "dual_objective": 6.92188481708744e-310,
-                        "solver_time": 0.005717039108276367,
-                        "vars": {},
-                        "lp_statistics": {
-                            "primal_residual": 6.92114652678267e-310,
-                            "dual_residual": 6.9218848170975e-310,
-                            "gap": 6.92114652686054e-310,
-                            "nb_iterations": 1
-                        },
-                        "reduced_cost": [
-                            0.0,
-                            0.0031070813207920247
-                        ],
-                        "milp_statistics": {}
-                    }
-                },
-                {
-                    "status": "Optimal",
-                    "solution": {
-                        "problem_category": "LP",
-                        "primal_solution": [
-                            1.8,
-                            0.0
-                        ],
-                        "dual_solution": [
-                            -0.06666666666666668,
-                            0.0
-                        ],
-                        "primal_objective": -0.36000000000000004,
-                        "dual_objective": 6.92188481708744e-310,
-                        "solver_time": 0.007481813430786133,
-                        "vars": {},
-                        "lp_statistics": {
-                            "primal_residual": 6.921146112128e-310,
-                            "dual_residual": 6.9218848170975e-310,
-                            "gap": 6.92114611220587e-310,
-                            "nb_iterations": 1
-                        },
-                        "reduced_cost": [
-                            0.0,
-                            0.0031070813207920247
-                        ],
-                        "milp_statistics": {}
-                    }
-                }
-            ],
-            "total_solve_time": 0.013
-        },
-        "reqId": "69dc8f36-16c3-4e28-8fb9-3977eb92b480"
     }
 
 .. note::
@@ -426,31 +345,6 @@ In case the user needs to update solver settings through CLI, the option ``-ss``
    export ip="localhost"
    export port=5000
    cuopt_sh data.json -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
-
-In the case of batch mode, you can send a bunch of ``mps`` files at once, and acquire results. The batch mode works only for ``mps`` in the case of CLI:
-
-.. note::
-   LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
-   :doc:`../../convex-features`.
-
-.. note::
-   Batch mode is not available for MIP problems.
-
-A sample MPS file (:download:`sample.mps <lp/examples/sample.mps>`):
-
-.. literalinclude:: lp/examples/sample.mps
-   :language: text
-   :linenos:
-
-Run the example:
-
-.. code-block:: bash
-
-   # Please update these values if the server is running on a different IP address or port
-   export ip="localhost"
-   export port=5000
-   cuopt_sh sample.mps sample.mps sample.mps -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
-
 
 Aborting a Running Job In CLI
 -----------------------------

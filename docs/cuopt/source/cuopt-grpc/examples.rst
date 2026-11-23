@@ -10,8 +10,9 @@ Examples
 entry points as a local solve. After you start ``cuopt_grpc_server`` on the
 GPU server (:doc:`quick-start`), set the client environment and run the
 integrated examples below **unchanged** — no code edits are required. The
-:ref:`Python async gRPC client <cuopt-grpc-examples-async-client>` section is
-separate: it uses ``Client(host, port)`` and does not read ``CUOPT_REMOTE_*``.
+:ref:`gRPC linear programming client <cuopt-grpc-examples-async-client>`
+section is separate: it uses ``Client(host, port)`` and does not read
+``CUOPT_REMOTE_*``.
 
 On the **client** machine, before running the example commands or scripts:
 
@@ -24,10 +25,10 @@ Add TLS or tuning variables from :doc:`advanced` if your deployment uses them.
 
 .. note::
 
-   Routing does not read ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` --
-   use the explicit :ref:`VRP gRPC client <cuopt-grpc-examples-routing>`
-   below, or the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`
-   and :doc:`Examples <../cuopt-server/examples/index>`.
+   Routing does not read ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT``. Use the
+   :ref:`gRPC routing client <cuopt-grpc-examples-routing>` below, or the
+   HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>` and
+   :doc:`Examples <../cuopt-server/examples/index>`.
 
 Where to Find Examples
 ======================
@@ -61,8 +62,8 @@ Included with the gRPC docs source for a quick copy-paste path (also walked thro
 * :download:`remote_lp_demo.py <examples/remote_lp_demo.py>`
 * :download:`remote_lp_demo.mps <examples/remote_lp_demo.mps>`
 
-Python Async gRPC Client
-------------------------
+gRPC Linear Programming Client
+------------------------------
 
 .. _cuopt-grpc-examples-async-client:
 
@@ -73,22 +74,23 @@ without ``CUOPT_REMOTE_*``, use ``cuopt.grpc.linear_programming.Client``:
 * :doc:`python-async-client-examples` — log streaming and incumbent streaming
 * :doc:`python-async-client-api` — API reference
 
-Routing (VRP)
--------------
+gRPC Routing Client
+-------------------
 
 .. _cuopt-grpc-examples-routing:
 
-For VRP, TSP, and PDP problems, use ``cuopt.grpc.routing.RoutingClient`` --
-the same submit / wait / result / delete lifecycle, with no
-``CUOPT_REMOTE_*`` equivalent yet:
+For VRP, TSP, and PDP problems, use ``cuopt.grpc.routing.RoutingClient``.
+Routing does not read ``CUOPT_REMOTE_*``:
 
-* :doc:`routing` — overview, API reference, and :download:`remote_routing_demo.py <examples/remote_routing_demo.py>`
+* :doc:`routing` — overview and :download:`remote_routing_demo.py <examples/remote_routing_demo.py>`
+* :doc:`routing-api` — API reference
 
 Custom gRPC Client
 ------------------
 
-Integrations that do **not** use remote execution or the Python async gRPC
-client should speak ``CuOptRemoteService`` directly. See :doc:`api`,
+Integrations that use neither remote execution, the gRPC linear programming
+client, nor the gRPC routing client should speak ``CuOptRemoteService``
+directly. See :doc:`api`,
 :doc:`grpc-server-architecture`, and ``cpp/docs/grpc-server-architecture.md``
 in the repository for protos and server behavior.
 

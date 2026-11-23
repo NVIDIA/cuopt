@@ -25,6 +25,25 @@
       case cuopt::remote::FIELD_INITIAL_DUAL_SOLUTION:
       case cuopt::remote::FIELD_Q_VALUES:
         return 8;
+      case cuopt::remote::FIELD_VEHICLE_TYPES:
+      case cuopt::remote::FIELD_DROP_RETURN_TRIPS:
+      case cuopt::remote::FIELD_SKIP_FIRST_TRIPS:
+        return 1;
+      case cuopt::remote::FIELD_VEHICLE_START_LOCATIONS:
+      case cuopt::remote::FIELD_VEHICLE_RETURN_LOCATIONS:
+      case cuopt::remote::FIELD_VEHICLE_TW_EARLIEST:
+      case cuopt::remote::FIELD_VEHICLE_TW_LATEST:
+      case cuopt::remote::FIELD_VEHICLE_MAX_COSTS:
+      case cuopt::remote::FIELD_VEHICLE_MAX_TIMES:
+      case cuopt::remote::FIELD_VEHICLE_FIXED_COSTS:
+      case cuopt::remote::FIELD_ORDER_LOCATIONS:
+      case cuopt::remote::FIELD_ORDER_TW_EARLIEST:
+      case cuopt::remote::FIELD_ORDER_TW_LATEST:
+      case cuopt::remote::FIELD_ORDER_PRIZES:
+      case cuopt::remote::FIELD_PICKUP_INDICES:
+      case cuopt::remote::FIELD_DELIVERY_INDICES:
+      case cuopt::remote::FIELD_BREAK_LOCATIONS:
+        return 4;
     }
     return -1;
   }
@@ -36,6 +55,85 @@
         case 3: return 4;  // cols
         case 0: return 8;  // linear_values
         case 4: return 8;  // vals
+      }
+      return -1;
+    }
+    case 10: {  // CostMatrix (cost_matrices)
+      switch (field_id) {
+        case 0: return 4;  // values
+      }
+      return -1;
+    }
+    case 11: {  // CostMatrix (transit_time_matrices)
+      switch (field_id) {
+        case 0: return 4;  // values
+      }
+      return -1;
+    }
+    case 50: {  // CapacityDimension (capacity_dimensions)
+      switch (field_id) {
+        case 0: return 4;  // demand
+        case 1: return 4;  // capacity
+      }
+      return -1;
+    }
+    case 61: {  // UniformBreakDimension (uniform_breaks)
+      switch (field_id) {
+        case 0: return 4;  // earliest
+        case 1: return 4;  // latest
+        case 2: return 4;  // duration
+      }
+      return -1;
+    }
+    case 34: {  // ServiceTimeEntry (order_service_times)
+      switch (field_id) {
+        case 0: return 4;  // service_times
+      }
+      return -1;
+    }
+    case 70: {  // MatchEntry (vehicle_order_match)
+      switch (field_id) {
+        case 0: return 4;  // matches
+      }
+      return -1;
+    }
+    case 71: {  // MatchEntry (order_vehicle_match)
+      switch (field_id) {
+        case 0: return 4;  // matches
+      }
+      return -1;
+    }
+    case 80: {  // PrecedenceEntry (order_precedence)
+      switch (field_id) {
+        case 0: return 4;  // preceding_orders
+      }
+      return -1;
+    }
+    case 62: {  // VehicleBreak via PerVehicleBreaks (vehicle_breaks)
+      switch (field_id) {
+        case 0: return 4;  // locations
+      }
+      return -1;
+    }
+    case 63: {  // VehicleDistanceBreak via PerVehicleDistanceBreaks (vehicle_distance_breaks)
+      switch (field_id) {
+        case 0: return 4;  // locations
+      }
+      return -1;
+    }
+    case 90: {  // RoutingObjectiveFunction (objective)
+      switch (field_id) {
+        case 0: return 4;  // objectives
+        case 1: return 4;  // weights
+      }
+      return -1;
+    }
+    case 100: {  // InitialSolution (initial_solutions)
+      switch (field_id) {
+        case 0: return 4;  // vehicle_ids
+        case 1: return 4;  // routes
+        case 2: return 4;  // types
+        case 3: return 4;  // sol_offsets
       }
       return -1;
     }

@@ -57,6 +57,7 @@ def main():
         "maximize": False,
         "solver_config": {
             "tolerances": {"optimality": 0.0001},
+            "method": 1,  # PDLP, the only method that uses warmstart
             "pdlp_solver_mode": 1,  # Stable2
             "presolve": 0,
         },

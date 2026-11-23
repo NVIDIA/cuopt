@@ -14,6 +14,7 @@
 
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#include <pdlp/dual_bound.cuh>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdhg.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -61,16 +62,18 @@ class pdlp_solver_t {
    * @param[in] op_problem An mip::problem_t<i_t, f_t> object with a
    * representation of a linear program
    * @param[in] is_distributed_sub_pdlp true when constructed as a shard of a
-   * distributed solve.
+   * multi-GPU solve.
    */
   pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                 pdlp_solver_settings_t<i_t, f_t> const& settings,
                 bool is_batch_mode           = false,
                 bool is_distributed_sub_pdlp = false);
 
-  // Distributed Solver Constructor
+  // Multi-GPU solver constructor. `index_t` is the model's index type and may be wider
+  // than the solver's i_t: the problem is partitioned into per-GPU shards addressed in i_t.
+  template <typename index_t>
   pdlp_solver_t(mip::problem_t<i_t, f_t>& placeholder_problem,
-                cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
+                cuopt::mathematical_optimization::io::mps_data_model_t<index_t, f_t> const& mps,
                 pdlp_solver_settings_t<i_t, f_t> const& settings);
 
   optimization_problem_solution_t<i_t, f_t> run_solver(const timer_t& timer);
@@ -108,7 +111,7 @@ class pdlp_solver_t {
 
   void compute_initial_step_size();
   void compute_initial_primal_weight();
-  // Thin dispatch wrappers used by run_solver so single-GPU and distributed
+  // Thin dispatch wrappers used by run_solver so single-GPU and multi-GPU
   // callers hit the same call sites.
   void scale_problem();
   void create_spmv_op_plans();
@@ -157,7 +160,7 @@ class pdlp_solver_t {
                  [[maybe_unused]] bool is_major_iteration);
   void take_adaptive_step(i_t total_pdlp_iterations, bool is_major_iteration);
   void take_constant_step(bool is_major_iteration);
-
+  void project_initial_primal_transform();
   /**
    * @brief Update current primal & dual solution by setting new solutions and triggering a
    * recomputation of the primal weight and step size
@@ -183,6 +186,12 @@ class pdlp_solver_t {
   mip::shared_strong_branching_context_view_t<i_t, f_t> sb_view_{settings_.shared_sb_solved};
 
   mip::problem_t<i_t, f_t>* problem_ptr;
+  // Valid lower bound from the current dual iterate, computed with the iteration log (every 1000
+  // iterations) and reported through settings_.dual_bound_callback
+  bool reports_dual_bound();
+  void report_dual_bound();
+  std::unique_ptr<lagrangian_dual_bound_t<i_t, f_t>> dual_bound_;
+  f_t best_dual_bound_{-std::numeric_limits<f_t>::infinity()};  // solver space
   // Combined bounds in op_problem_scaled_ will only be scaled if
   // compute_initial_primal_weight_before_scaling is false because of compute_initial_primal_weight
   mip::problem_t<i_t, f_t> op_problem_scaled_;
@@ -224,7 +233,7 @@ class pdlp_solver_t {
   // Inner solver
   pdlp::pdhg_solver_t<i_t, f_t> pdhg_solver_;
 
-  // This solver is the distributed-PDLP master orchestrator iff it owns the
+  // This solver is the multi-GPU PDLP master orchestrator iff it owns the
   // multi-GPU engine. Shards (sub-solvers) leave the optional empty -> false.
   // Single-GPU PDLP reports false.
   bool is_distributed_master() const;

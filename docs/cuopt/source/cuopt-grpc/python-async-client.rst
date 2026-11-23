@@ -2,21 +2,23 @@
    SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    SPDX-License-Identifier: Apache-2.0
 
-=============================
-Python Async gRPC Client
-=============================
+==============================
+gRPC Linear Programming Client
+==============================
 
-The **Python async gRPC client** (``cuopt.grpc.linear_programming.Client``)
-is an explicit gRPC client for ``cuopt_grpc_server``. It uses a job lifecycle:
+The **gRPC linear programming client**
+(``cuopt.grpc.linear_programming.Client``) is a Python client for LP, MIP,
+and QP jobs on ``cuopt_grpc_server``. It uses a job lifecycle:
 **submit** → **wait** / **status** → **result** → **delete**.
 
-"Async" here means the **job-based** API (submit-and-wait / submit-and-poll). It is
-**not** Python ``asyncio``.
+Asynchronous here means the job-based API (submit, then wait or poll). It is
+separate from Python ``asyncio``.
 
 For **remote execution** (zero code change via ``CUOPT_REMOTE_HOST`` /
 ``CUOPT_REMOTE_PORT``), see :doc:`quick-start` and the section overview in
-:doc:`index`. Prefer this client when you need cancel, live log streaming,
-MIP incumbent streaming, or to manage multiple jobs yourself.
+:doc:`index`. Prefer this client when you need asynchronous semantics,
+cancellation, live log streaming, MIP incumbent streaming, or management
+of multiple jobs.
 
 Prerequisites
 =============

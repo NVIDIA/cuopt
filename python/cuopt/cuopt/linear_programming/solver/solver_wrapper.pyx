@@ -93,7 +93,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp":
     {
       void *p = PyCapsule_GetPointer(cap, "cuopt.barrier_cache");
       if (p != nullptr) {
-        delete reinterpret_cast<cuopt::mathematical_optimization::barrier_cache_t *>(p);
+        delete reinterpret_cast<cuopt::mathematical_optimization::barrier_cache_t<int, double> *>(p);
       }
     }
     """
@@ -158,19 +158,21 @@ cdef object _vector_to_numpy(const vector[double]& vec):
 
 
 def _vars_dict(variable_names, primal_solution):
+    # Returns a function that builds the dict: Solution.vars builds it on
+    # first access.
     if len(primal_solution) == 0:
         # No primal vector (infeasible/unbounded/etc.): match prior
         # behavior (implemented as dict(zip(names, primal)) before
         # refactor for gRPC, which yielded {}).
         return {}
     if variable_names is None or len(variable_names) == 0:
-        return {f"x{i}": v for i, v in enumerate(primal_solution)}
+        return lambda: {f"x{i}": v for i, v in enumerate(primal_solution)}
     if len(variable_names) != len(primal_solution):
         raise ValueError(
             f"variable_names length ({len(variable_names)}) does not match "
             f"solution size ({len(primal_solution)})"
         )
-    return dict(zip(variable_names, primal_solution))
+    return lambda: dict(zip(variable_names, primal_solution))
 
 
 def type_cast(cudf_obj, np_type, name):
@@ -314,6 +316,26 @@ cdef object _compute_slack_csr(const double[::1] rhs,
     return np.asarray(out)
 
 
+cdef object _compute_row_activity_csr(const double[::1] values,
+                                      const int[::1] indices,
+                                      const int[::1] indptr,
+                                      const double[::1] primal_solution):
+    """Row activity ``A @ x`` for a CSR matrix."""
+    cdef Py_ssize_t m = indptr.shape[0] - 1
+    cdef Py_ssize_t i, k
+    cdef double lhs
+    cdef double[::1] out = np.empty(m, dtype=np.float64)
+
+    with nogil:
+        for i in range(m):
+            lhs = 0.0
+            for k in range(indptr[i], indptr[i + 1]):
+                lhs = lhs + values[k] * primal_solution[indices[k]]
+            out[i] = lhs
+
+    return np.asarray(out)
+
+
 cdef object _slack_from_data_model(object data_model_obj,
                                    object primal_solution):
     """Classical LE/GE slack/surplus (EQ residual) from the solved DataModel."""
@@ -328,14 +350,45 @@ cdef object _slack_from_data_model(object data_model_obj,
     if len(offsets) == 0:
         return np.empty(0, dtype=np.float64)
 
-    return _compute_slack_csr(
-        np.ascontiguousarray(dm.get_constraint_bounds(), dtype=np.float64),
-        np.ascontiguousarray(dm.get_row_types(), dtype="S1"),
-        np.ascontiguousarray(dm.get_constraint_matrix_values(), dtype=np.float64),
-        np.ascontiguousarray(dm.get_constraint_matrix_indices(), dtype=np.int32),
-        np.ascontiguousarray(offsets, dtype=np.int32),
-        np.ascontiguousarray(primal_solution, dtype=np.float64),
+    cdef Py_ssize_t m = len(offsets) - 1
+    values = np.ascontiguousarray(
+        dm.get_constraint_matrix_values(), dtype=np.float64
     )
+    indices = np.ascontiguousarray(
+        dm.get_constraint_matrix_indices(), dtype=np.int32
+    )
+    offsets = np.ascontiguousarray(offsets, dtype=np.int32)
+    primal = np.ascontiguousarray(primal_solution, dtype=np.float64)
+
+    # A DataModel carries the rows either as lower and upper bounds or as rhs
+    # and row types, and the bounds take priority when both are set. Only a
+    # representation that was set has m entries.
+    lower = np.asarray(dm.get_constraint_lower_bounds(), dtype=np.float64)
+    upper = np.asarray(dm.get_constraint_upper_bounds(), dtype=np.float64)
+    if len(lower) == m and len(upper) == m:
+        # Distance to the nearest finite bound, which matches the LE and GE
+        # definitions for one-sided rows; equality rows keep ``rhs - lhs``.
+        lhs = _compute_row_activity_csr(values, indices, offsets, primal)
+        slack = np.minimum(lhs - lower, upper - lhs)
+        is_equality = lower == upper
+        slack[is_equality] = lower[is_equality] - lhs[is_equality]
+        return slack
+
+    rhs = dm.get_constraint_bounds()
+    # The setter stores one int8 code per row, so a plain ``str`` such as
+    # "GL" keeps its length (np.asarray(..., dtype="S1") would truncate it).
+    sense = dm.get_ascii_row_types()
+    if len(rhs) == m and len(sense) == m:
+        return _compute_slack_csr(
+            np.ascontiguousarray(rhs, dtype=np.float64),
+            np.ascontiguousarray(sense, dtype=np.int8),
+            values,
+            indices,
+            offsets,
+            primal,
+        )
+
+    return None
 
 
 cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
@@ -551,8 +604,8 @@ def prepare_solver_settings(SolverSettings settings, data_model=None, mip=False)
 def Solve(py_data_model_obj, SolverSettings settings, mip=False):
 
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
-    cdef barrier_cache_t* cache_in = NULL
-    cdef barrier_cache_t* cache_out = NULL
+    cdef barrier_cache_t[int, double]* cache_in = NULL
+    cdef barrier_cache_t[int, double]* cache_out = NULL
     cdef solver_ret_t* sol_ret
 
     if (
@@ -564,7 +617,7 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
             b"cuopt.barrier_cache",
         ):
             raise ValueError("Invalid barrier cache stored on DataModel.")
-        cache_in = <barrier_cache_t*>PyCapsule_GetPointer(
+        cache_in = <barrier_cache_t[int, double]*>PyCapsule_GetPointer(
             data_model_obj.barrier_cache_capsule,
             b"cuopt.barrier_cache",
         )

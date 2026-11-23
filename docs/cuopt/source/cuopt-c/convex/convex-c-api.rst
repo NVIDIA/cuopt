@@ -70,7 +70,7 @@ For problems with quadratic constraints, first create a problem, and then use
    Support for quadratic constraints is currently in **beta**. ``cuOptAddQuadraticConstraint``
    supports three types of quadratic constraints:
    - **Convex quadratic constraints** of the form ``x^T Q x + d^T x <= alpha`` where ``H=(Q+Q^T)/2`` is a symmetric positive semidefinite matrix. `Q` need not be symmetric.
-   - **Second-order cone constraints** of the form ``sum_{i=1}^n x_i^2 <= x_0``, ``x_0 >= 0``
+   - **Second-order cone constraints** of the form ``sum_{i=1}^n x_i^2 <= x_0^2``, ``x_0 >= 0``
    - **Rotated second-order cone constraints** of the form ``sum_{i=2}^n x_i^2 - 2 * x_0 * x_1 <= 0``, ``x_0 >= 0``, ``x_1 >= 0`` (supply ``Q[x_0, x_1] = -2`` in COO, or ``-x_0*x_1`` for the ``<= x_0*x_1`` cone form; see :doc:`/convex-features`)
 
    Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints are not supported.
@@ -134,6 +134,7 @@ The following functions may be used to get information about an `cuOptimizationP
 .. doxygenfunction:: cuOptGetNumNonZeros
 .. doxygenfunction:: cuOptGetConstraintMatrix
 .. doxygenfunction:: cuOptGetConstraintMatrixCSR
+.. doxygenfunction:: cuOptGetConstraintMatrixCSC
 .. doxygenfunction:: cuOptGetConstraintSense
 .. doxygenfunction:: cuOptGetConstraintRightHandSide
 .. doxygenfunction:: cuOptGetConstraintLowerBounds
@@ -172,6 +173,16 @@ The following functions are used to set and get parameters. You can find more de
 .. doxygenfunction:: cuOptSetFloatParameter
 .. doxygenfunction:: cuOptGetFloatParameter
 
+Solver Log Callback
+-------------------
+
+A callback can be registered to receive each solver log line, for example to display or forward solver output in a GUI.
+The callback is invoked in addition to any console or file logging enabled with ``CUOPT_LOG_TO_CONSOLE`` and ``CUOPT_LOG_FILE``.
+Pass ``NULL`` to remove a registered callback.
+
+.. doxygentypedef:: cuOptLogCallback
+.. doxygenfunction:: cuOptSetLogCallback
+
 .. _parameter-constants:
 
 Parameter Constants
@@ -194,6 +205,9 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_TIME_LIMIT
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE
 .. doxygendefine:: CUOPT_METHOD
+.. doxygendefine:: CUOPT_PRIMAL_SIMPLEX_PRICING
+.. doxygendefine:: CUOPT_DUAL_SIMPLEX_INITIAL_PERTURBATION
+.. doxygendefine:: CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION
 .. doxygendefine:: CUOPT_PER_CONSTRAINT_RESIDUAL
 .. doxygendefine:: CUOPT_SAVE_BEST_PRIMAL_SO_FAR
 .. doxygendefine:: CUOPT_FIRST_PRIMAL_FEASIBLE
@@ -210,12 +224,20 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT
 .. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT
 .. doxygendefine:: CUOPT_BARRIER_STEP_SCALE
+.. doxygendefine:: CUOPT_BARRIER_ADAPTIVE_REGULARIZATION
+.. doxygendefine:: CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES
+.. doxygendefine:: CUOPT_BARRIER_PRIMAL_REGULARIZATION
+.. doxygendefine:: CUOPT_BARRIER_DUAL_REGULARIZATION
+.. doxygendefine:: CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD
+.. doxygendefine:: CUOPT_SEQUENCE_SOLVE
 .. doxygendefine:: CUOPT_DUAL_POSTSOLVE
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
 .. doxygendefine:: CUOPT_NUM_GPUS
+.. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE
 .. doxygendefine:: CUOPT_PDLP_PRECISION
+.. doxygendefine:: CUOPT_LARGE_NNZ_THRESHOLD
 
 .. _pdlp-solver-mode-constants:
 
@@ -253,7 +275,41 @@ These constants are used to configure `CUOPT_METHOD` via :c:func:`cuOptSetIntege
 .. doxygendefine:: CUOPT_METHOD_PDLP
 .. doxygendefine:: CUOPT_METHOD_DUAL_SIMPLEX
 .. doxygendefine:: CUOPT_METHOD_BARRIER
+.. doxygendefine:: CUOPT_METHOD_PRIMAL_SIMPLEX
 .. doxygendefine:: CUOPT_METHOD_UNSET
+
+.. _barrier-dual-initial-point-constants:
+
+Barrier Dual Initial Point Constants
+------------------------------------
+
+These constants are used to configure `CUOPT_BARRIER_DUAL_INITIAL_POINT` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT_LEAST_SQUARES
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT_SEDUMI_MU
+
+.. _multigpu-pdlp-partitioner-constants:
+
+Multi-GPU PDLP Partitioner Constants
+------------------------------------
+
+These constants are used to configure `CUOPT_MULTIGPU_PDLP_PARTITIONER` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO
+.. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER_KAMINPAR
+.. doxygendefine:: CUOPT_MULTIGPU_PDLP_PARTITIONER_ROUND_ROBIN
+
+Presolve Constants
+------------------
+
+These constants are used to configure `CUOPT_PRESOLVE` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_PRESOLVE_DEFAULT
+.. doxygendefine:: CUOPT_PRESOLVE_OFF
+.. doxygendefine:: CUOPT_PRESOLVE_PAPILO
+.. doxygendefine:: CUOPT_PRESOLVE_PSLP
 
 .. _barrier-iterative-refinement-constants:
 

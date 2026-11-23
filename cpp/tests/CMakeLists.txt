@@ -74,7 +74,8 @@ set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 # ################################################################ ------------------------------------------------------------------
 # ConfigureTest(NAME source1.cu source2.cu [STATIC_LIB] [LABELS label1 label2 ...])
 #
-# LABELS sets CTest labels for selective local test execution via `ctest -L <label>`.
+# LABELS (routing or numopt) select the CI test group via ci/run_ctests.sh. Tests registered outside
+# ConfigureTest must use rapids_test_add, or they are missing from the installed package.
 # STATIC_LIB links cuopt_static instead of cuopt (for tests needing internal symbols).
 function(ConfigureTest CMAKE_TEST_NAME)
     cmake_parse_arguments(CT "STATIC_LIB" "" "LABELS" ${ARGN})
@@ -118,11 +119,12 @@ function(ConfigureTest CMAKE_TEST_NAME)
         GTest::gtest
         GTest::gtest_main
         ${CUOPT_PRIVATE_CUDA_LIBS}
+        OpenMP::OpenMP_CUDA
     )
     if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
       target_link_options(${CMAKE_TEST_NAME} PRIVATE -Wl,--enable-new-dtags)
     endif()
-    add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
+    rapids_test_add(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME} INSTALL_COMPONENT_SET testing)
     if(CT_LABELS)
         set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES LABELS "${CT_LABELS}")
     endif()
@@ -146,6 +148,15 @@ endif(RAPIDS_DATASET_ROOT_DIR)
 
 # ## test sources
 if(BUILD_TESTS)
+  # Must run before any ConfigureTest/rapids_test_add call in the subdirectories below:
+  # rapids_test_add records each test against the install component set rapids_test_init()
+  # creates, and rapids_test_install_relocatable (after the subdirectories) packages that
+  # record into an installable CTestTestfile.cmake so `ctest` works against the conda
+  # package directly, not just the build tree.
+  enable_testing()
+  include(rapids-test)
+  rapids_test_init()
+
   if(NOT SKIP_ROUTING_BUILD)
     add_subdirectory(routing)
     add_subdirectory(distance_engine)
@@ -159,5 +170,5 @@ if(BUILD_TESTS)
   add_subdirectory(qp)
   add_subdirectory(utilities)
 
-  enable_testing()
+  rapids_test_install_relocatable(INSTALL_COMPONENT_SET testing DESTINATION bin/gtests/libcuopt)
 endif()

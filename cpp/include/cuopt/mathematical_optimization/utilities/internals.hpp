@@ -55,6 +55,42 @@ class get_solution_callback_t : public base_solution_callback_t {
   }
 };
 
+struct solution_callback_data_t {
+  bool from_lns{false};
+};
+
+// Optional extension: keep the existing callback interface and its user data unchanged.
+class get_solution_callback_with_data_t : public get_solution_callback_t {
+ public:
+  void get_solution(void* data,
+                    void* objective_value,
+                    void* solution_bound,
+                    void* user_data) override
+  {
+    get_solution_with_data(data, objective_value, solution_bound, user_data, {});
+  }
+
+  virtual void get_solution_with_data(void* data,
+                                      void* objective_value,
+                                      void* solution_bound,
+                                      void* user_data,
+                                      const solution_callback_data_t& callback_data) = 0;
+};
+
+inline void invoke_get_solution_callback(get_solution_callback_t* callback,
+                                         void* data,
+                                         void* objective_value,
+                                         void* solution_bound,
+                                         const solution_callback_data_t& callback_data = {})
+{
+  if (auto* extended = dynamic_cast<get_solution_callback_with_data_t*>(callback)) {
+    extended->get_solution_with_data(
+      data, objective_value, solution_bound, callback->get_user_data(), callback_data);
+  } else {
+    callback->get_solution(data, objective_value, solution_bound, callback->get_user_data());
+  }
+}
+
 class set_solution_callback_t : public base_solution_callback_t {
  public:
   virtual void set_solution(void* data,
@@ -79,14 +115,20 @@ class base_solution_t {
 
 template <typename T>
 struct parameter_info_t {
-  parameter_info_t(
-    std::string_view param_name, T* value, T min, T max, T def, const char* description = "")
+  parameter_info_t(std::string_view param_name,
+                   T* value,
+                   T min,
+                   T max,
+                   T def,
+                   const char* description = "",
+                   bool deprecated         = false)
     : param_name(param_name),
       value_ptr(value),
       min_value(min),
       max_value(max),
       default_value(def),
-      description(description)
+      description(description),
+      deprecated(deprecated)
   {
   }
   std::string param_name;
@@ -95,18 +137,28 @@ struct parameter_info_t {
   T max_value;
   T default_value;
   const char* description;
+  bool deprecated;
 };
 
 template <>
 struct parameter_info_t<bool> {
-  parameter_info_t(std::string_view name, bool* value, bool def, const char* description = "")
-    : param_name(name), value_ptr(value), default_value(def), description(description)
+  parameter_info_t(std::string_view name,
+                   bool* value,
+                   bool def,
+                   const char* description = "",
+                   bool deprecated         = false)
+    : param_name(name),
+      value_ptr(value),
+      default_value(def),
+      description(description),
+      deprecated(deprecated)
   {
   }
   std::string param_name;
   bool* value_ptr;
   bool default_value;
   const char* description;
+  bool deprecated;
 };
 
 template <>

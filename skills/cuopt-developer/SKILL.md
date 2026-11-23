@@ -1,6 +1,6 @@
 ---
 name: cuopt-developer
-version: "26.10.00"
+version: "26.12.00"
 description: Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions.
 license: Apache-2.0
 metadata:
@@ -97,6 +97,12 @@ When adding an API — a setter, endpoint, parameter, or a layer that wraps anot
 
 - **Derive, don't duplicate.** A second copy of a surface (a hand-maintained list of the methods/fields another layer already defines, or shadow state kept in parallel with the real data) drifts the moment someone forgets to update it. Derive it from the single source instead, so there is nothing to keep in sync.
 - **Fail loud, not silent.** Prefer a design where forgetting a step is caught automatically over one that quietly does the wrong thing. When a mechanism leans on a convention, add a test that asserts full coverage, so a case that slips the convention fails CI instead of silently misbehaving.
+
+### 7. Sanitize Internal Context Before It Becomes Public
+
+Pasted Slack threads, tickets, or other internal context often carry customer or company names, used to explain *why* a change matters. That context has a narrower audience than a commit message, PR description, or PR comment on a public repo — those are permanent and world-readable the moment they're pushed. Before writing any of the above, strip customer/company names and other business-confidential details, even when nothing in the request says not to share them. State the motivation in generic terms instead (e.g. "a REST client hitting the protobuf 2GB limit on large problems" rather than naming who hit it).
+
+If it's already been pushed, treat the leak as not fully contained: force-pushing a corrected commit does not delete the old commit object from GitHub — it stays fetchable by SHA until GC'd, and editing a PR/issue body or comment leaves its old content in edit history unless a human deletes that specific revision from the web UI (Options → Delete revision from history; there's no API for it). Flag this exposure to the user rather than assuming a rewrite or edit fully removes it.
 
 ---
 
@@ -226,9 +232,16 @@ For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow
 
 ## Coding Conventions
 
-Use `_Float128`, never `long double`, whenever extended precision arithmetic is required; `long double` is architecture-dependent and uses x87 on x86.
+Use the existing compensated sum and dot routines for numerically sensitive accumulation in `f_t`.
+Use `_Float128` only when compensated `f_t` is demonstrably insufficient. Never use `long double`;
+its ABI-dependent representation includes slow x87 extended precision on x86-64, binary128 on Linux
+AArch64, and binary64 on other ARM64 targets.
 
 For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), CCCL bit/math helpers in device code, test-impact rules, volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), **no large local lambdas** (extract named helpers instead), and **coarse work-estimate / time-limit gating** (phase/outer-loop only; no fine inner-loop or double checks), see [references/conventions.md](references/conventions.md).
+
+## Pre-PR self-review
+
+Before every `git push`, review `git diff origin/<target-branch>...<branch-you-push>` (the target is usually `main`) against [references/review_rules.md](references/review_rules.md), starting with its Whole-PR review section. The rules (comment content, terminology, types and ownership, reuse, public API surface, test quality, docs wording, PR hygiene) are the ones reviewers repeat most; CodeRabbit applies the same file, so a miss here comes back as a review comment.
 
 ## OpenMP task/runtime compatibility
 
@@ -239,6 +252,14 @@ When diagnosing OpenMP-only failures, test compiler/runtime pairs separately. A 
 ## PCG random number generator
 
 `cpp/src/utilities/pcgenerator.hpp` (`cuopt::pcgenerator_t`) is copied from RAFT's `PCGenerator` (`raft/random/detail/rng_device.cuh`), duplicated only because the RAFT header pulls in CUDA and therefore cannot be included from a `.cpp`. **Treat the generator core as frozen.** Do not "clean it up", modernise it, or swap it for `<random>`: reproducibility under `settings.random_seed` and `settings.deterministic` holds only while the byte-for-byte output sequence is preserved, and the CPU copy must keep producing the same stream as the GPU one. Adding a *new* helper that consumes `next_u32()`/`next_double()` is fine; changing how those values are produced is not.
+
+### RNG call-site policy
+
+Use SplitMix or `derive_seed`/`derive_stream` to fan a base seed out into component, worker, or lane seeds. Do not derive child seeds with arithmetic magic constants.
+
+When solver state owns a PCG, seed it once and pass or reuse it. Do not reconstruct generators inside iterations from `seed + constant * iteration`.
+
+Use `pcgenerator_t::uniform(low, high)` for uniform `[low, high)` draws and `shuffle()` for permutations. Use `next_float()` or `next_double()` directly only for probability thresholds.
 
 Each of the following looks like a defect or an obvious simplification, and is neither. Leave them alone:
 

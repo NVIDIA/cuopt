@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
+#include <utilities/scope_guard.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/handle.hpp>
@@ -26,11 +27,14 @@
 
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <unistd.h>
 
 namespace cuopt::mathematical_optimization::test {
 
@@ -134,10 +138,17 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
-  auto settings       = mip_solver_settings_t<int, double>{};
-  settings.time_limit = 30.;
-  settings.presolver  = presolver_t::Papilo;
-  int user_data       = 42;
+  auto settings          = mip_solver_settings_t<int, double>{};
+  settings.time_limit    = 30.;
+  settings.presolver     = presolver_t::Papilo;
+  settings.presolve_file = (std::filesystem::temp_directory_path() /
+                            ("cuopt_callback_presolve_" + std::to_string(::getpid()) + ".mps"))
+                             .string();
+  cuopt::scope_guard remove_presolve_file([&]() {
+    std::error_code error;
+    std::filesystem::remove(settings.presolve_file, error);
+  });
+  int user_data = 42;
   std::vector<std::pair<std::vector<double>, double>> solutions;
   test_get_solution_callback_t get_solution_callback(
     solutions, op_problem.get_n_variables(), &user_data);
@@ -148,6 +159,8 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
     settings.set_mip_callback(set_solution_callback.get(), &user_data);
   }
   auto solution = solve_mip(op_problem, settings);
+  ASSERT_TRUE(std::filesystem::exists(settings.presolve_file));
+  EXPECT_GT(std::filesystem::file_size(settings.presolve_file), 0);
   EXPECT_GE(get_solution_callback.n_calls, 1);
   if (include_set_callback) { EXPECT_GE(set_solution_callback->n_calls, 1); }
   check_solutions(get_solution_callback, mps_problem, settings);
@@ -240,9 +253,8 @@ TEST(mip_solve, initial_solution_survives_papilo_crush)
   // and GPU heuristics disabled. B&B runs with node_limit=0 so it exits
   // immediately. The only way we get a good objective is if the MIP start
   // was crushed through PaPILO and accepted by add_user_given_solutions.
-  // Early FJ is not strong enough to find the 11 optimal in the given time frame.
+  // Early FJ is not strong enough to find the 11 optimal before the node limit stops the solve.
   auto settings2       = mip_solver_settings_t<int, double>{};
-  settings2.time_limit = 5.;
   settings2.presolver  = presolver_t::Papilo;
   settings2.node_limit = 0;
   settings2.add_initial_solution(reference_solution.data(), reference_solution.size(), stream);
@@ -260,7 +272,8 @@ TEST(mip_solve, initial_solution_survives_papilo_crush)
     << "Crushed MIP start should yield a feasible result, got "
     << mip_solution_t<int, double>::get_termination_status_string(status2);
   EXPECT_TRUE(std::isfinite(result2.get_objective_value()));
-  EXPECT_NEAR(result2.get_objective_value(), reference_obj, 1e-4);
+  // Heuristics may improve on the MIP start when step 1 stops before optimality.
+  EXPECT_LE(result2.get_objective_value(), reference_obj + 1e-4);
 
   if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings2); }
 }

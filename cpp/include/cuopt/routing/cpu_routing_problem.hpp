@@ -79,6 +79,7 @@ class cpu_routing_problem_t {
 
   std::vector<cpu_cost_matrix_t> cost_matrices;
   std::vector<cpu_cost_matrix_t> transit_time_matrices;
+  std::vector<cpu_cost_matrix_t> distance_matrices;
 
   std::vector<int32_t> vehicle_start_locations;
   std::vector<int32_t> vehicle_return_locations;
@@ -155,6 +156,7 @@ struct cpu_routing_solution_t {
   int32_t status = 0;  // cuopt.remote.RoutingSolutionStatus (0 == SUCCESS)
   std::string status_message;
   std::string error_message;
+  double solve_time = 0.0;
 };
 
 }  // namespace CUOPT_EXPORT routing

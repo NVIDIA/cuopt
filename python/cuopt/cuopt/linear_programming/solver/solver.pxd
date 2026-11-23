@@ -95,7 +95,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_types.hpp" na
         vector[double] last_restart_duality_gap_dual_solution_
 
 cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::mathematical_optimization": # noqa
-    cdef cppclass barrier_cache_t:
+    cdef cppclass barrier_cache_t[i_t, f_t]:
         pass
 
 cdef extern from "cuopt/mathematical_optimization/utilities/cython_solve.hpp" namespace "cuopt::cython": # noqa
@@ -122,7 +122,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_solve.hpp" na
         int nb_iterations_
         double solve_time_
         method_t solved_by_
-        barrier_cache_t* barrier_cache
+        barrier_cache_t[int, double]* barrier_cache
         bool is_gpu()
 
     # Unified MIP solution struct — solution_ variant accessed via helpers
@@ -152,7 +152,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_solve.hpp" na
         solver_settings_t[int, double]* solver_settings,
         unsigned int flags,
         bool is_batch_mode,
-        barrier_cache_t* cache_in,
+        barrier_cache_t[int, double]* cache_in,
     ) except + nogil
 
     cdef pair[vector[unique_ptr[solver_ret_t]], double] call_batch_solve( # noqa

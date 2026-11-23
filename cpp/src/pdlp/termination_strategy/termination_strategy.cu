@@ -555,7 +555,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
   std::vector<pdlp_termination_status_t>&& termination_status,
   bool deep_copy)
 {
-  // Skip the size checks on the distributed master: its pdhg_solver_ is built from a
+  // Skip the size checks on the multi-GPU master: its pdhg_solver_ is built from a
   // shape-0 placeholder while termination_strategy is built from the full problem size
   if (!current_pdhg_solver.is_distributed_master()) {
     cuopt_assert(
@@ -566,7 +566,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
       "Dual iterate size mismatch");
   }
 
-  // In distributed PDLP, gather solutions from the shards to the master.
+  // In multi-GPU PDLP, gather solutions from the shards to the master.
   if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
     const bool is_current_live_iterate =
       (&primal_iterate == &current_pdhg_solver.get_potential_next_primal_solution()) ||
@@ -700,13 +700,23 @@ void pdlp_termination_strategy_t<i_t, f_t>::print_termination_criteria(i_t itera
                                                                        i_t best_id) const
 {
   // TODO less critical batch mode: handle this
-  CUOPT_LOG_INFO("%7d %+.8e %+.8e  %8.2e   %8.2e     %8.2e   %.3fs",
+  // Choose the residual to print based on the settings, linf_primal_residual is computed and stored
+  // as relative
+  const f_t primal_res =
+    settings_.per_constraint_residual
+      ? convergence_information_.get_relative_linf_primal_residual().element(best_id, stream_view_)
+      : convergence_information_.get_relative_l2_primal_residual_value(best_id);
+  const f_t dual_res =
+    settings_.per_constraint_residual
+      ? convergence_information_.get_relative_linf_dual_residual().element(best_id, stream_view_)
+      : convergence_information_.get_relative_l2_dual_residual_value(best_id);
+  CUOPT_LOG_INFO("%7d %+.8e %+.8e  %8.2e   %8.2e    %8.2e   %.3fs",
                  iteration,
                  convergence_information_.get_primal_objective().element(best_id, stream_view_),
                  convergence_information_.get_dual_objective().element(best_id, stream_view_),
-                 convergence_information_.get_gap().element(best_id, stream_view_),
-                 convergence_information_.get_l2_primal_residual().element(best_id, stream_view_),
-                 convergence_information_.get_l2_dual_residual().element(best_id, stream_view_),
+                 convergence_information_.get_relative_gap_value(best_id),
+                 primal_res,
+                 dual_res,
                  elapsed);
 }
 

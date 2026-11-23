@@ -76,7 +76,14 @@ if readelf -d "${NATIVE_LIB}" 2>/dev/null | grep -q 'NEEDED.*libcuopt\.so'; then
 fi
 
 STAGING="$(mktemp -d)"
-trap 'rm -rf "${STAGING}"' EXIT
+POM_WAS_REWRITTEN=0
+cleanup() {
+  rm -rf "${STAGING}"
+  if [[ "${POM_WAS_REWRITTEN}" -eq 1 ]]; then
+    mv "${MODULE_DIR}/pom.xml.backup" "${MODULE_DIR}/pom.xml"
+  fi
+}
+trap cleanup EXIT
 mkdir -p "${STAGING}/${RESOURCE_DIR}"
 cp "${NATIVE_LIB}" "${STAGING}/${RESOURCE_DIR}/libcuopt_jni.so"
 
@@ -95,7 +102,7 @@ echo "  native library -> ${RESOURCE_DIR}/libcuopt_jni.so"
 #   - the CUDA math libraries (libcublas*, libcusparse*), which NativeLibraryLoader's
 #     preloadCudaLibraries() resolves from the CUDA toolkit layout at runtime instead (they are
 #     large, and assumed already present on any CUDA-capable system -- see its own comment).
-# Everything else DT_NEEDED names -- TBB (KaMinPar throws through it), NCCL (PDLP's distributed
+# Everything else DT_NEEDED names -- TBB (KaMinPar throws through it), NCCL (PDLP's multi-GPU
 # path references it unconditionally), cuDSS (kept dynamic deliberately, matching
 # CMakeLists.txt's CUOPT_CUDSS_LIBRARY comment), rmm and rapids_logger (prebuilt RAPIDS wheels,
 # not a static build -- see CMakeLists.txt and setup_java_static_env.sh), and the build host's
@@ -109,7 +116,7 @@ echo "  native library -> ${RESOURCE_DIR}/libcuopt_jni.so"
 # Without it that call fails and cuDSS writes the failure straight to the process's native
 # stdout, corrupting Maven Surefire's forked-JVM protocol, so it is always added explicitly.
 BASELINE_SYSTEM_LIBRARY_PATTERN='^(ld-linux|linux-vdso)|^lib(c|m|dl|rt|pthread|resolv|util)\.so'
-CUDA_RUNTIME_LIBRARY_PATTERN='^lib(cublas|cublasLt|cusparse|cusolver|nvJitLink)\.so'
+CUDA_RUNTIME_LIBRARY_PATTERN='^lib(cublas|cublasLt|cusparse|nvJitLink)\.so'
 
 # Searched by filename rather than a single prefix, since the build environment may be a conda
 # environment (CUOPT_PREFIX/lib), a dnf/system install (e.g. /usr/lib64, cuDSS's own versioned
@@ -120,10 +127,10 @@ CUDA_RUNTIME_LIBRARY_PATTERN='^lib(cublas|cublasLt|cusparse|cusolver|nvJitLink)\
 # preferred_dir, when given, is searched first and exclusively -- no falling through to the
 # broad search below even on a miss. It exists for two cases where the broad search could match
 # the wrong file even though a name-only match succeeds:
-#   - libcudss_mtlayer_gomp.so.0 (when cuDSS's prebuilt plugin is used instead of the custom
-#     one): dnf's cuDSS package registers /usr/lib64/libcudss_mtlayer_gomp.so.0 as an
+#   - libcudss_mtlayer_gomp.so.1 (when cuDSS's prebuilt plugin is used instead of the custom
+#     one): dnf's cuDSS package registers /usr/lib64/libcudss_mtlayer_gomp.so.1 as an
 #     `alternatives` symlink, which can point at a *different* cuDSS version's copy than the one
-#     actually pinned and linked. The versioned directory libcudss.so.0 itself was found in is
+#     actually pinned and linked. The versioned directory libcudss.so.1 itself was found in is
 #     unambiguous, so once that is known, use it for anything else that must be its exact version
 #     match.
 #   - libgomp.so.1: Rocky 8's own libgomp (including gcc-toolset-14's copy) lacks the OpenMP 5.0
@@ -174,13 +181,13 @@ MANIFEST="${STAGING}/${RESOURCE_DIR}/companions.txt"
 CUDSS_LIBRARY_DIR=""
 for companion in "${COMPANIONS[@]}"; do
   preferred_dir=""
-  if [[ "${companion}" == "libcudss_mtlayer_gomp.so.0" && -n "${CUDSS_LIBRARY_DIR}" ]]; then
+  if [[ "${companion}" == "libcudss_mtlayer_gomp.so.1" && -n "${CUDSS_LIBRARY_DIR}" ]]; then
     preferred_dir="${CUDSS_LIBRARY_DIR}"
   elif [[ "${companion}" == "libgomp.so.1" && -n "${CUOPT_MODERN_LIBGOMP_DIR:-}" ]]; then
     preferred_dir="${CUOPT_MODERN_LIBGOMP_DIR}"
   fi
   companion_path="$(find_companion "${companion}" "${preferred_dir}")"
-  if [[ "${companion}" == "libcudss.so.0" ]]; then
+  if [[ "${companion}" == "libcudss.so.1" ]]; then
     CUDSS_LIBRARY_DIR="$(dirname "${companion_path}")"
   fi
   # Dereference, since these are commonly symlinks into a versioned file.
@@ -190,6 +197,31 @@ for companion in "${COMPANIONS[@]}"; do
 done
 
 mkdir -p "${OUTPUT_DIR}/${CLASSIFIER}"
+
+# Read the version straight from the POM (no network needed; ci/release/update-version.sh
+# keeps the marker in sync). Release tag builds strip -SNAPSHOT and rewrite the POM, matching
+# cudf's build_cudf_java_jar_in_container.sh; the cleanup trap above restores it afterward.
+VERSION="$(sed -n 's/.*VERSION_UPDATE_MARKER_START--><version>\([^<]*\)<\/version>.*/\1/p' \
+  "${MODULE_DIR}/pom.xml")"
+if [[ -z "${VERSION}" ]]; then
+  echo "could not read the version from ${MODULE_DIR}/pom.xml" >&2
+  exit 1
+fi
+
+if rapids-is-release-build; then
+  VERSION="${VERSION%-SNAPSHOT}"
+  cp -p "${MODULE_DIR}/pom.xml" "${MODULE_DIR}/pom.xml.backup"
+  POM_WAS_REWRITTEN=1
+  cuopt_mvn -f "${MODULE_DIR}/pom.xml" versions:set \
+    -DnewVersion="${VERSION}" -DgenerateBackupPoms=false
+else
+  # Non-release runs publish snapshots, so fail fast if the POM isn't -SNAPSHOT.
+  if [[ "${VERSION}" != *-SNAPSHOT ]]; then
+    echo "Error: non-release build read a non-SNAPSHOT version from pom.xml: '${VERSION}'" >&2
+    exit 1
+  fi
+fi
+
 # -Pattach-source-javadoc: this publishes to a Maven repository, which requires sources and
 # javadoc jars. Most mvn invocations (test, verify) don't activate it, since they don't
 # package anything -- see the profile's own comment in pom.xml for why that distinction exists.
@@ -199,15 +231,6 @@ cuopt_mvn -f "${MODULE_DIR}/pom.xml" -B \
   -Dcuopt.jar.classifier="${CLASSIFIER}" \
   -Dcuopt.native.resources="${STAGING}" \
   package
-
-# Read straight from the POM rather than asking Maven: this needs no network, and
-# ci/release/update-version.sh keeps the marker in step with the version.
-VERSION="$(sed -n 's/.*VERSION_UPDATE_MARKER_START--><version>\([^<]*\)<\/version>.*/\1/p' \
-  "${MODULE_DIR}/pom.xml")"
-if [[ -z "${VERSION}" ]]; then
-  echo "could not read the version from ${MODULE_DIR}/pom.xml" >&2
-  exit 1
-fi
 
 # Each classifier directory carries everything Maven Central needs for the artifact, so the
 # gather step can work from the classifier directories alone.

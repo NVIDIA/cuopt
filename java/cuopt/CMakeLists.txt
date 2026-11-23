@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 4.3)
 project(cuopt_java_native LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -93,7 +93,7 @@ if(CUOPT_STATIC_BUILD_DIR)
   # and this project both receive from CUOPT_JAVA_STATIC_CMAKE_PREFIX_PATH -- so they are linked
   # as shared libraries and travel as companions (see build_cuopt_java_jar.sh) like TBB/NCCL/cuDSS.
   # TBB and NCCL have no static build available (KaMinPar throws through the former; PDLP's
-  # distributed path references the latter unconditionally, and cpp/CMakeLists.txt has no switch
+  # multi-GPU path references the latter unconditionally, and cpp/CMakeLists.txt has no switch
   # to compile that out), and cuDSS is kept dynamic deliberately -- see build_cuopt_java_jar.sh's
   # companion list for why. All are found wherever the build environment put them (a dnf package
   # under /usr, a pip-installed wheel's site-packages directory, or a conda environment) rather
@@ -102,14 +102,14 @@ if(CUOPT_STATIC_BUILD_DIR)
   find_package(rapids_logger REQUIRED)
   find_library(CUOPT_TBB_LIBRARY NAMES tbb libtbb.so.12 REQUIRED)
   find_library(CUOPT_NCCL_LIBRARY NAMES nccl libnccl.so.2 REQUIRED)
-  find_library(CUOPT_CUDSS_LIBRARY NAMES cudss libcudss.so.0 REQUIRED)
+  find_library(CUOPT_CUDSS_LIBRARY NAMES cudss libcudss.so.1 REQUIRED)
 
   # The JNI layer references only a fraction of cuOpt directly; the rest is reached through
   # registrations and virtual dispatch, so the archive has to be kept whole.
   target_link_libraries(cuopt_jni PRIVATE
     -Wl,--whole-archive "${CUOPT_STATIC_ARCHIVE}" -Wl,--no-whole-archive
     ${CUOPT_STATIC_DEP_ARCHIVES}
-    CUDA::cublas CUDA::cusparse CUDA::cusolver CUDA::cudart_static
+    CUDA::cublas CUDA::cusparse CUDA::cudart_static
     OpenMP::OpenMP_CXX
     rmm::rmm
     rapids_logger::rapids_logger
@@ -117,6 +117,10 @@ if(CUOPT_STATIC_BUILD_DIR)
     "${CUOPT_NCCL_LIBRARY}"
     "${CUOPT_CUDSS_LIBRARY}")
 else()
+  # Lets ld resolve CUOPT_LIBRARY's sibling DT_NEEDs (libcuopt_client.so, etc.) at link time.
+  if(CUOPT_RUNTIME_LIBRARY_DIR)
+    target_link_directories(cuopt_jni PRIVATE ${CUOPT_RUNTIME_LIBRARY_DIR})
+  endif()
   target_link_libraries(cuopt_jni PRIVATE "${CUOPT_LIBRARY}" CUDA::cudart)
 endif()
 

@@ -3,11 +3,13 @@
 
 """Post or update a sticky PR comment summarizing CI test job failures."""
 
+import http.client
 import io
 import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -22,11 +24,21 @@ _TEST_PREFIXES = (
 
 _MARKER = "<!-- pr-test-summary -->"
 _HTTP_TIMEOUT_SEC = 30
+_HTTP_ATTEMPTS = 4
+_MAX_RETRY_WAIT_SEC = 120
+_NETWORK_ERRORS = (OSError, http.client.HTTPException)
 _MAX_TESTS = 50
 
 # gtest prints "[  FAILED  ] Suite.Test (12 ms)" per failing test and again
 # without the timing suffix; the dedup set collapses the duplicate.
 _GTEST_FAILED = re.compile(r"\[  FAILED  \] (\S+\.\S+?)(?: \(\d+ ms\))?$")
+
+# Binary-level failures never reach gtest's own FAILED output, so
+# ci/run_ctests.sh prints these instead:
+#   "CRASH: FOO_TEST died from SIGABRT (exit code 134)"
+#   "FAILED: FOO_TEST (exit code 1)"
+_BINARY_CRASH = re.compile(r"CRASH: (\S+) died from (\w+) \(exit code \d+\)")
+_BINARY_FAILED = re.compile(r"FAILED: (\S+) \(exit code (\d+)\)")
 
 
 class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
@@ -49,22 +61,76 @@ def _headers(token):
     }
 
 
+def _retry_delay(attempt, headers):
+    retry_after = headers.get("Retry-After")
+    if retry_after and retry_after.isdigit():
+        return int(retry_after)
+    reset = headers.get("x-ratelimit-reset")
+    if (
+        headers.get("x-ratelimit-remaining") == "0"
+        and reset
+        and reset.isdigit()
+    ):
+        return max(int(reset) - time.time(), 1)
+    return 2**attempt
+
+
+def _is_transient(e):
+    if not isinstance(e, urllib.error.HTTPError):
+        return True
+    if e.code == 429 or 500 <= e.code < 600:
+        return True
+    # Primary and secondary rate limits are reported as 403.
+    return e.code == 403 and (
+        e.headers.get("x-ratelimit-remaining") == "0"
+        or e.headers.get("Retry-After") is not None
+    )
+
+
+def _backoff(e, attempt):
+    """Sleep before a retry, or re-raise e if it is not worth retrying."""
+    if not _is_transient(e) or attempt == _HTTP_ATTEMPTS:
+        raise e
+    delay = _retry_delay(attempt, getattr(e, "headers", None) or {})
+    if delay > _MAX_RETRY_WAIT_SEC:
+        raise e
+    time.sleep(delay)
+
+
+def _fetch(req):
+    """Return (body, headers) of req, retrying transient errors for GETs.
+
+    A POST may have created the comment before the error, and a PATCH is
+    already retried by _upsert_comment, which looks the comment up again first.
+    """
+    for attempt in range(1, _HTTP_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(
+                req, timeout=_HTTP_TIMEOUT_SEC
+            ) as resp:
+                return resp.read(), resp.headers
+        except _NETWORK_ERRORS as e:
+            if req.get_method() != "GET":
+                raise
+            _backoff(e, attempt)
+
+
 def _paginate(path, token):
     url = f"https://api.github.com{path}?per_page=100"
     while url:
         req = urllib.request.Request(url, headers=_headers(token))
-        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
-            data = json.loads(resp.read())
-            yield from (data["jobs"] if isinstance(data, dict) else data)
-            link = resp.headers.get("Link", "")
-            url = next(
-                (
-                    p.split(";")[0].strip().strip("<>")
-                    for p in link.split(",")
-                    if 'rel="next"' in p
-                ),
-                None,
-            )
+        body, headers = _fetch(req)
+        data = json.loads(body)
+        yield from (data["jobs"] if isinstance(data, dict) else data)
+        link = headers.get("Link", "")
+        url = next(
+            (
+                p.split(";")[0].strip().strip("<>")
+                for p in link.split(",")
+                if 'rel="next"' in p
+            ),
+            None,
+        )
 
 
 def _api(path, token, method, payload):
@@ -74,8 +140,7 @@ def _api(path, token, method, payload):
         method=method,
         headers={**_headers(token), "Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())
+    return json.loads(_fetch(req)[0])
 
 
 def _is_test_job(name):
@@ -113,6 +178,16 @@ def _analyze_job_log(job_id, repo, token):
                 m = _GTEST_FAILED.match(line)
                 if m:
                     _add(m.group(1))
+                    continue
+
+                m = _BINARY_CRASH.match(line)
+                if m:
+                    _add(f"{m.group(1)} (crashed: {m.group(2)})")
+                    continue
+
+                m = _BINARY_FAILED.match(line)
+                if m:
+                    _add(f"{m.group(1)} (exit code {m.group(2)})")
                     continue
 
                 if "short test summary info" in line:
@@ -156,6 +231,12 @@ def _build_body(failed, passed, skipped, cancelled, job_analysis):
         for job in failed:
             tests = job_analysis[job["id"]]
             if not tests:
+                # Don't hide a failed job just because nothing was parsed.
+                lines += [
+                    "",
+                    f"- `{job['name']}` — failed; no test names found in log "
+                    f"([job log]({job['html_url']}))",
+                ]
                 continue
             n = len(tests)
             lines += [
@@ -169,6 +250,37 @@ def _build_body(failed, passed, skipped, cancelled, job_analysis):
             ]
 
     return "\n".join(lines)
+
+
+def _upsert_comment(repo, token, pr_number, body):
+    for attempt in range(1, _HTTP_ATTEMPTS + 1):
+        comments = _paginate(
+            f"/repos/{repo}/issues/{pr_number}/comments", token
+        )
+        existing = next(
+            (c for c in comments if c.get("body", "").startswith(_MARKER)),
+            None,
+        )
+        try:
+            if existing:
+                _api(
+                    f"/repos/{repo}/issues/comments/{existing['id']}",
+                    token,
+                    "PATCH",
+                    {"body": body},
+                )
+                print(f"Updated comment {existing['id']} on PR #{pr_number}.")
+            else:
+                result = _api(
+                    f"/repos/{repo}/issues/{pr_number}/comments",
+                    token,
+                    "POST",
+                    {"body": body},
+                )
+                print(f"Posted comment {result['id']} on PR #{pr_number}.")
+            return
+        except _NETWORK_ERRORS as e:
+            _backoff(e, attempt)
 
 
 def main():
@@ -206,29 +318,7 @@ def main():
 
     body = _build_body(failed, passed, skipped, cancelled, job_analysis)
 
-    comments = list(
-        _paginate(f"/repos/{repo}/issues/{pr_number}/comments", token)
-    )
-    existing = next(
-        (c for c in comments if c.get("body", "").startswith(_MARKER)), None
-    )
-
-    if existing:
-        _api(
-            f"/repos/{repo}/issues/comments/{existing['id']}",
-            token,
-            "PATCH",
-            {"body": body},
-        )
-        print(f"Updated comment {existing['id']} on PR #{pr_number}.")
-    else:
-        result = _api(
-            f"/repos/{repo}/issues/{pr_number}/comments",
-            token,
-            "POST",
-            {"body": body},
-        )
-        print(f"Posted comment {result['id']} on PR #{pr_number}.")
+    _upsert_comment(repo, token, pr_number, body)
 
 
 if __name__ == "__main__":

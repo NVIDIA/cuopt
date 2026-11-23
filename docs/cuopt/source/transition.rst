@@ -18,6 +18,11 @@ Parameter/option statuses are listed below, they express how each of these optio
 
 For all solver_configs fields, see the :doc:`convex-settings` and :doc:`mip-settings` guides or the service openapi spec :doc:`open-api`.
 
+Legacy HTTP Server
+------------------
+
+The legacy HTTP server is **Deprecated**. See :doc:`cuopt-server/legacy-http-server`. HTTP behavior the HTTP proxy does not carry forward is listed in :ref:`legacy-http-differences`.
+
 Changes to solver_configs.tolerances
 ------------------------------------
 
@@ -60,12 +65,10 @@ Changes to solver_configs
 The following fields are **Deprecated** in ``solver_configs`` for the service:
 
 - solver_mode
-- heuristics_only
 
 The following fields are **New** in ``solver_configs`` for the service and replace the deprecated fields above:
 
 - pdlp_solver_mode
-- mip_heuristics_only
 
 The following are **New** in ``solver_configs`` for the service but were available in the C API in 25.05
 
@@ -76,3 +79,13 @@ The following are **New** in ``solver_configs`` for the service but were availab
 - first_primal_feasible
 - log_file
 - solution_file
+
+Changes to Solver Parameters
+----------------------------
+
+The following parameters are **Deprecated**. They are accepted but have no effect, and a warning is logged when one is set to a value other than its former default:
+
+- mip_heuristics_only (former default false)
+- mip_hyper_heuristic_rins_time_limit (former default 3.0)
+- mip_hyper_heuristic_rins_max_time_limit (former default 20.0)
+- mip_hyper_heuristic_rins_fix_rate (former default 0.5)

@@ -884,7 +884,7 @@ async def postrequest(
     ),
     incumbent_set_solutions: Optional[bool] = Query(
         default=False,
-        description="If set to True, MIP problems will register a set-solution callback (this disables presolve).",  # noqa
+        description="If set to True, MIP problems will register a set-solution callback. The configured presolve setting is preserved, with dual reductions disabled.",  # noqa
     ),
     solver_logs: Optional[bool] = Query(
         default=False,

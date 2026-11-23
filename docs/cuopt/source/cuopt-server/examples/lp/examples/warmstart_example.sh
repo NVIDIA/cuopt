@@ -46,7 +46,9 @@ echo '{
         "tolerances": {
             "optimality": 0.0001
         },
-        "pdlp_solver_mode": 1
+        "method": 1,
+        "pdlp_solver_mode": 1,
+        "presolve": 0
     }
  }' > data.json
 

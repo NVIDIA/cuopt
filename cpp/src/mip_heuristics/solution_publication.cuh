@@ -11,10 +11,10 @@
 #include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
-#include <mip_heuristics/presolve/semi_continuous.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <presolve/semi_continuous.cuh>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
@@ -58,7 +58,8 @@ class solution_publication_t {
   // Returns whether the incumbent was published.
   bool publish_if_better(problem_t<i_t, f_t>* problem_ptr,
                          const std::vector<f_t>& assignment,
-                         f_t solver_objective)
+                         f_t solver_objective,
+                         bool from_lns = false)
   {
     if (handle_ == nullptr) { return false; }
     cuopt_assert(problem_ptr != nullptr, "Publication problem pointer must not be null");
@@ -101,10 +102,11 @@ class solution_publication_t {
       std::vector<f_t> callback_objective(1, user_objective);
       std::vector<f_t> callback_bound(1, user_bound);
       auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-      get_sol_callback->get_solution(callback_assignment.data(),
-                                     callback_objective.data(),
-                                     callback_bound.data(),
-                                     get_sol_callback->get_user_data());
+      internals::invoke_get_solution_callback(get_sol_callback,
+                                              callback_assignment.data(),
+                                              callback_objective.data(),
+                                              callback_bound.data(),
+                                              {from_lns});
     }
     return true;
   }

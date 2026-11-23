@@ -21,30 +21,25 @@ template <typename i_t, typename f_t>
 class cpu_optimization_problem_t;
 
 template <typename i_t, typename f_t>
-class pdlp_solver_settings_t;
-
-template <typename i_t, typename f_t>
-class mip_solver_settings_t;
+class solver_settings_t;
 
 // ============================================================================
 // Remote Execution Functions
 // ============================================================================
 
 /**
- * @brief Solve LP problem remotely (CPU backend)
+ * @brief Solve an LP remotely.
  */
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
-  cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings);
+  cpu_optimization_problem_t<i_t, f_t> const& cpu_problem, solver_settings_t<i_t, f_t>& settings);
 
 /**
- * @brief Solve MIP problem remotely (CPU backend)
+ * @brief Solve a MIP remotely.
  */
 template <typename i_t, typename f_t>
 std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
-  cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
-  mip_solver_settings_t<i_t, f_t> const& settings);
+  cpu_optimization_problem_t<i_t, f_t> const& cpu_problem, solver_settings_t<i_t, f_t>& settings);
 
 }  // namespace CUOPT_EXPORT mathematical_optimization
 }  // namespace cuopt

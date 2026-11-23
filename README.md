@@ -2,7 +2,8 @@
 # cuOpt - GPU-accelerated Optimization
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
-[![Version](https://img.shields.io/badge/version-26.10.00-blue)](https://github.com/NVIDIA/cuopt/releases)
+[![Dev](https://img.shields.io/badge/dev-26.12.00-blue)](https://github.com/NVIDIA/cuopt/tree/main)
+[![Release](https://img.shields.io/github/v/release/NVIDIA/cuopt?label=release&color=blue)](#latest-release)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 [![Docker Hub](https://img.shields.io/badge/docker-nvidia%2Fcuopt-blue?logo=docker)](https://hub.docker.com/r/nvidia/cuopt)
 [![Examples](https://img.shields.io/badge/examples-cuopt--examples-orange)](https://github.com/NVIDIA/cuopt-examples)
@@ -67,7 +68,7 @@ This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) projec
 
 ### Python requirements
 
-* Python >=3.11, <=3.14
+* Python >=3.12, <=3.14
 
 ### OS requirements
 
@@ -79,66 +80,48 @@ Note: WSL2 is tested to run cuOpt, but not for building.
 
 More details on system requirements can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html)
 
-### Pip
+### Latest Release
+
+**[Latest release](https://github.com/NVIDIA/cuopt/releases/latest)** | [Release notes](RELEASE-NOTES.md) | [Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
+
+> [!TIP]
+> **Want a different interface or install method?** The [install selector](https://docs.nvidia.com/cuopt/user-guide/latest/install.html#install-selector) in the docs builds the exact command for the C API, CLI, server, Java, pip, conda or Docker, for your CUDA version.
+
+#### Pip
 
 Pip wheels are easy to install and easy to configure. Users with existing workflows who uses pip as base to build their workflows can use pip to install cuOpt.
 
-cuOpt can be installed via `pip` from the NVIDIA Python Package Index.
+cuOpt can be installed via `pip` from [PyPI](https://pypi.org/project/cuopt-cu13/).
 Be sure to select the appropriate cuOpt package depending
 on the major version of CUDA available in your environment:
 
 For CUDA 12.x:
 
 ```bash
-pip install \
-  --extra-index-url=https://pypi.nvidia.com \
-  nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12==26.10.* cuopt-sh-client==26.10.*
-```
-
-Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
-```bash
-pip install --pre \
-  --extra-index-url=https://pypi.nvidia.com \
-  --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu12==26.10.* cuopt-sh-client==26.10.*
+pip install nvidia-cuda-runtime-cu12==12.9.* cuopt-cu12
 ```
 
 For CUDA 13.x:
 
 ```bash
-pip install \
-  --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13==26.10.* cuopt-sh-client==26.10.*
+pip install cuopt-cu13
 ```
 
-Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
-```bash
-pip install --pre \
-  --extra-index-url=https://pypi.nvidia.com \
-  --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==26.10.* cuopt-sh-client==26.10.*
-```
-
-
-### Conda
+#### Conda
 
 cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forge/miniforge)):
 
-All other dependencies are installed automatically when `cuopt-server` and `cuopt-sh-client` are installed.
+All other dependencies are installed automatically when `cuopt` is installed.
 
 ```bash
-conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=26.10.* cuopt-sh-client=26.10.*
+conda install -c rapidsai -c conda-forge -c nvidia cuopt
 ```
 
-We also provide [nightly conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
-of our latest development branch. Just replace `-c rapidsai` with `-c rapidsai-nightly`.
-
-### Container
+#### Container
 
 cuOpt ships two container variants on Docker Hub — an Ubuntu-based image for general use and a Red Hat Universal Base Image 10 (UBI10) image for FIPS 140-3 compliant environments.
 
-#### Ubuntu image
+##### Ubuntu image
 
 ```bash
 # For CUDA 12.x
@@ -148,9 +131,9 @@ docker pull nvidia/cuopt:latest-cu12
 docker pull nvidia/cuopt:latest-cu13
 ```
 
-The `latest` tag is the latest stable release. To pin a specific version use `<version>-cu12` / `<version>-cu13` (e.g. `26.6.0-cu13`). Fully-qualified tags that also pin the CUDA minor and Python version (e.g. `26.6.0-cuda13.3-py3.14`) are published alongside the short tags. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+The `latest` tag is the latest stable release. To pin a specific version use `<version>-cu12` / `<version>-cu13` (e.g. `26.6.0-cu13`). See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
 
-#### UBI10 image (FIPS 140-3)
+##### UBI10 image (FIPS 140-3)
 
 Based on Red Hat Universal Base Image 10 (RHEL 10), which ships OpenSSL 3.5 validated under FIPS 140-3. Use this image in environments with strict FIPS or RHEL compliance requirements. UBI10 images are available for CUDA 13.x only.
 
@@ -158,11 +141,53 @@ Based on Red Hat Universal Base Image 10 (RHEL 10), which ships OpenSSL 3.5 vali
 docker pull nvidia/cuopt:latest-cu13-ubi10
 ```
 
-Fully-qualified tags follow the pattern `<version>-cuda<X.Y>-ubi10` (e.g. `26.6.0-cuda13.3-ubi10`). Nightly builds use the `<version>a-cu13-ubi10` tag scheme. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+### Nightly
 
-Both images include the same cuOpt packages (`libcuopt`, `cuopt`, `cuopt-server`, `cuopt-sh-client`) and expose the same server entrypoint. They are built and tested for x86-64 and ARM64.
+Nightly packages are built from the HEAD of the development branch (26.12) and are not as stable as the latest release.
 
-Nightly container images for both variants are built from the HEAD of the development branch. They are tagged as `<version>a-cu12` / `<version>a-cu13` (Ubuntu) and `<version>a-cu13-ubi10` (UBI10).
+#### Pip
+
+```bash
+# For CUDA 12.x
+pip install --pre \
+  --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
+  nvidia-cuda-runtime-cu12==12.9.* \
+  cuopt-cu12==26.12.*
+
+# For CUDA 13.x
+pip install --pre \
+  --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
+  cuopt-cu13==26.12.*
+```
+
+#### Conda
+
+```bash
+conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt=26.12.*
+```
+
+See the [nightly conda packages](https://anaconda.org/rapidsai-nightly) for the full list.
+
+#### Container
+
+Nightly images are tagged `<version>a-cu12` / `<version>a-cu13` (Ubuntu) and `<version>a-cu13-ubi10` (UBI10, CUDA 13.x only):
+
+```bash
+# For CUDA 12.x
+docker pull nvidia/cuopt:26.12.0a-cu12
+
+# For CUDA 13.x
+docker pull nvidia/cuopt:26.12.0a-cu13
+
+# UBI10, CUDA 13.x only
+docker pull nvidia/cuopt:26.12.0a-cu13-ubi10
+```
+
+See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+
+### Container notes
+
+Both container variants include the same cuOpt packages (`libcuopt`, `cuopt`, `cuopt-server`, `cuopt-sh-client`) and expose the same server entrypoint. They are built and tested for x86-64 and ARM64.
 
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 

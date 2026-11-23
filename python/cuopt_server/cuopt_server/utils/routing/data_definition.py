@@ -1010,6 +1010,9 @@ class FeasibleSolve(StrictModel):
     perf_times: Optional[Dict] = Field(
         default=None, description=("Etl and Solve times of the solve call")
     )
+    total_solve_time: Optional[float] = Field(
+        default=None, description=("Total solve time in seconds")
+    )
 
 
 class InFeasibleSolve(StrictModel):
@@ -1023,6 +1026,9 @@ class InFeasibleSolve(StrictModel):
     )
     perf_times: Optional[Dict] = Field(
         default=None, description=("Etl and Solve times of the solve call")
+    )
+    total_solve_time: Optional[float] = Field(
+        default=None, description=("Total solve time in seconds")
     )
 
 

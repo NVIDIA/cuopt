@@ -8,8 +8,6 @@
 #pragma once
 
 #include <cuopt/export.hpp>
-#include <raft/random/rng_device.cuh>
-#include <utilities/cuda_helpers.cuh>
 
 namespace cuopt {
 
