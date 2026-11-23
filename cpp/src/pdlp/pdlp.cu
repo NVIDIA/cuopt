@@ -2963,8 +2963,12 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 #endif
   }
   if (!inside_mip_) {
+    if (settings_.per_constraint_residual) {
+      CUOPT_LOG_INFO(
+        "Primal and Dual residuals are reported relative to the per-constraint-residual metric.");
+    }
     CUOPT_LOG_INFO(
-      "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
+      "   Iter   Primal Obj.      Dual Obj.       Gap     Primal Res.  Dual Res.   Time");
   }
   while (true) {
 #ifdef CUPDLP_DEBUG_MODE
