@@ -54,7 +54,7 @@ bound_candidate(f_t beta, f_t2 activity, f_t coeff, f_t own_bound, f_t no_candid
 {
   if (!isfinite(beta) || activity.y > 1) { return no_candidate; }
   if (activity.y == 1) { return isfinite(own_bound) ? no_candidate : (beta - activity.x) / coeff; }
-  return (beta - activity.x) / coeff + own_bound;
+  return (beta - (activity.x - coeff * own_bound)) / coeff;
 }
 
 template <typename i_t, typename f_t, i_t BDIM>

@@ -24,10 +24,13 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstdint>
 #include <limits>
+#include <numeric>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::test {
@@ -206,19 +209,23 @@ TEST(presolve, multi_probe)
   }
 }
 
-// x1 + x2 + x3 <= 10 with x1 = 2, x2 = 3 fixed and x3 free. x3's own term is the only infinite one
-// in the minimum activity, so propagation must derive x3 <= 5.
-TEST(presolve, bound_presolve_tightens_single_free_variable)
+// Propagates sum_j coefficients[j] * x_j <= row_upper over continuous variables with
+// bound_presolve_t and returns the resulting {lower, upper} bounds.
+static std::pair<std::vector<double>, std::vector<double>> propagate_single_row(
+  const std::vector<double>& coefficients,
+  double row_upper,
+  const std::vector<double>& lower,
+  const std::vector<double>& upper)
 {
   const raft::handle_t handle_{};
   const double inf = std::numeric_limits<double>::infinity();
+  const int n      = static_cast<int>(coefficients.size());
   optimization_problem_t<int, double> op_problem(&handle_);
-  const std::vector<double> coefficients{1, 1, 1};
-  const std::vector<int> variables{0, 1, 2}, offsets{0, 3};
-  const std::vector<double> row_lower{-inf}, row_upper{10};
-  const std::vector<double> lower{2, 3, -inf}, upper{2, 3, inf};
-  const std::vector<double> objective(3, 0);
-  const std::vector<var_t> types(3, var_t::CONTINUOUS);
+  std::vector<int> variables(n), offsets{0, n};
+  std::iota(variables.begin(), variables.end(), 0);
+  const std::vector<double> row_lower{-inf}, row_uppers{row_upper};
+  const std::vector<double> objective(n, 0);
+  const std::vector<var_t> types(n, var_t::CONTINUOUS);
   op_problem.set_csr_constraint_matrix(coefficients.data(),
                                        coefficients.size(),
                                        variables.data(),
@@ -226,7 +233,7 @@ TEST(presolve, bound_presolve_tightens_single_free_variable)
                                        offsets.data(),
                                        offsets.size());
   op_problem.set_constraint_lower_bounds(row_lower.data(), row_lower.size());
-  op_problem.set_constraint_upper_bounds(row_upper.data(), row_upper.size());
+  op_problem.set_constraint_upper_bounds(row_uppers.data(), row_uppers.size());
   op_problem.set_variable_lower_bounds(lower.data(), lower.size());
   op_problem.set_variable_upper_bounds(upper.data(), upper.size());
   op_problem.set_variable_types(types.data(), types.size());
@@ -237,11 +244,30 @@ TEST(presolve, bound_presolve_tightens_single_free_variable)
   mip::mip_solver_t<int, double> solver(problem, settings, cuopt::timer_t(0));
   mip::bound_presolve_t<int, double> bound_presolve(solver.context);
   bound_presolve.solve(problem);
+  EXPECT_EQ(bound_presolve.infeas_constraints_count, 0);
 
   auto stream = problem.handle_ptr->get_stream();
-  EXPECT_EQ(bound_presolve.infeas_constraints_count, 0);
-  EXPECT_EQ(host_copy(bound_presolve.upd.lb, stream), (std::vector<double>{2, 3, -inf}));
-  EXPECT_EQ(host_copy(bound_presolve.upd.ub, stream), (std::vector<double>{2, 3, 5}));
+  return {host_copy(bound_presolve.upd.lb, stream), host_copy(bound_presolve.upd.ub, stream)};
+}
+
+// x1 + x2 + x3 <= 10 with x1 = 2, x2 = 3 fixed and x3 free. x3's own term is the only infinite one
+// in the minimum activity, so propagation must derive x3 <= 5.
+TEST(presolve, bound_presolve_tightens_single_free_variable)
+{
+  const double inf    = std::numeric_limits<double>::infinity();
+  const auto [lb, ub] = propagate_single_row({1, 1, 1}, 10, {2, 3, -inf}, {2, 3, inf});
+  EXPECT_EQ(lb, (std::vector<double>{2, 3, -inf}));
+  EXPECT_EQ(ub, (std::vector<double>{2, 3, 5}));
+}
+
+// x + y <= 1 with x in [-2^54, 10] and y in [0, 1]. The minimum activity is dominated by x's own
+// term, so x <= 1 must not lose the 1 to rounding (1 + 2^54 - 2^54 would give x <= 0).
+TEST(presolve, bound_presolve_keeps_residual_precision_with_dominant_own_term)
+{
+  const double big    = std::ldexp(1.0, 54);
+  const auto [lb, ub] = propagate_single_row({1, 1}, 1, {-big, 0}, {10, 1});
+  EXPECT_EQ(lb, (std::vector<double>{-big, 0}));
+  EXPECT_EQ(ub, (std::vector<double>{1, 1}));
 }
 
 }  // namespace cuopt::mathematical_optimization::test
