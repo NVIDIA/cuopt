@@ -3051,7 +3051,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     problem_ptr->Q_values.empty() && graph_reduction_disabled &&
     graph_hyper.use_reflected_primal_dual && !graph_hyper.use_adaptive_step_size_strategy &&
     graph_hyper.never_restart_to_average && !graph_hyper.artificial_restart_in_main_loop;
-#if defined(CUPDLP_DEBUG_MODE) || defined(PDLP_DEBUG_MODE)
+#ifdef PDLP_DEBUG_MODE
   graph_batch_eligible = false;
 #endif
   ordinary_graph_batch_t<f_t> ordinary_batch{
