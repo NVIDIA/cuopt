@@ -135,6 +135,33 @@ TEST(RoutingProblemMapper, VehicleDistanceBreaksRoundTrip)
   EXPECT_EQ(back.vehicle_distance_breaks[1][1].locations, (std::vector<int32_t>{1, 4}));
 }
 
+TEST(RoutingProblemMapper, IndependentMatricesRoundTrip)
+{
+  auto p = make_base_problem();
+  p.cost_matrices.push_back({3, std::vector<float>(25, 2.f)});
+  p.transit_time_matrices.push_back({3, std::vector<float>(25, 7.f)});
+  p.distance_matrices.push_back({3, std::vector<float>(25, 100.f)});
+  cuopt::remote::RoutingProblem pb;
+  cuopt::routing::map_routing_problem_to_proto(p, &pb);
+  cuopt::routing::cpu_routing_problem_t back;
+  cuopt::routing::map_proto_to_routing_problem(pb, back);
+  ASSERT_EQ(back.distance_matrices.size(), 1u);
+  ASSERT_EQ(back.cost_matrices.size(), 1u);
+  ASSERT_EQ(back.transit_time_matrices.size(), 1u);
+  EXPECT_EQ(back.distance_matrices[0].vehicle_type, 3);
+  EXPECT_EQ(back.distance_matrices[0].matrix, p.distance_matrices[0].matrix);
+  EXPECT_EQ(back.cost_matrices[0].matrix, p.cost_matrices[0].matrix);
+  EXPECT_EQ(back.transit_time_matrices[0].matrix, p.transit_time_matrices[0].matrix);
+}
+
+TEST(RoutingProblemMapper, DistanceMatrixRejectsOverflowingVehicleType)
+{
+  cuopt::remote::RoutingProblem pb;
+  pb.add_distance_matrices()->set_vehicle_type(256);
+  cuopt::routing::cpu_routing_problem_t p;
+  EXPECT_THROW(cuopt::routing::map_proto_to_routing_problem(pb, p), std::invalid_argument);
+}
+
 TEST(RoutingProblemMapper, MatrixValuesSkippedKeepsMatrixEntries)
 {
   auto p = make_base_problem();
@@ -191,6 +218,7 @@ TEST(RoutingProblemMapper, ChunkFillsStrippedArrays)
   auto p            = make_base_problem();
   p.order_locations = {4, 3, 2};
   p.cost_matrices.push_back({2, std::vector<float>(25, 1.5f)});
+  p.distance_matrices.push_back({2, std::vector<float>(25, 90.f)});
 
   cuopt::remote::RoutingProblem pb;
   cuopt::routing::map_routing_problem_to_proto(p, &pb, false, false);
@@ -198,6 +226,8 @@ TEST(RoutingProblemMapper, ChunkFillsStrippedArrays)
   ASSERT_EQ(pb.cost_matrices_size(), 1);
   EXPECT_EQ(pb.cost_matrices(0).values_size(), 0);
   EXPECT_EQ(pb.cost_matrices(0).vehicle_type(), 2u);
+  ASSERT_EQ(pb.distance_matrices_size(), 1);
+  EXPECT_EQ(pb.distance_matrices(0).values_size(), 0);
 
   std::map<int32_t, std::vector<uint8_t>> arrays;
   std::vector<uint8_t> orders(p.order_locations.size() * sizeof(int32_t));
@@ -211,6 +241,11 @@ TEST(RoutingProblemMapper, ChunkFillsStrippedArrays)
   containers[{cuopt::remote::RoutingProblem::kCostMatricesFieldNumber,
               0,
               static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES)}] = std::move(matrix);
+  auto& distance = containers[{cuopt::remote::RoutingProblem::kDistanceMatricesFieldNumber,
+                               0,
+                               static_cast<int32_t>(cuopt::remote::CostMatrix::VALUES)}];
+  distance.resize(p.distance_matrices[0].matrix.size() * sizeof(float));
+  std::memcpy(distance.data(), p.distance_matrices[0].matrix.data(), distance.size());
 
   cuopt::routing::cpu_routing_problem_t back;
   cuopt::routing::map_proto_to_routing_problem(pb, back, arrays, containers);
@@ -218,6 +253,9 @@ TEST(RoutingProblemMapper, ChunkFillsStrippedArrays)
   ASSERT_EQ(back.cost_matrices.size(), 1u);
   EXPECT_EQ(back.cost_matrices[0].vehicle_type, 2);
   EXPECT_EQ(back.cost_matrices[0].matrix, p.cost_matrices[0].matrix);
+  ASSERT_EQ(back.distance_matrices.size(), 1u);
+  EXPECT_EQ(back.distance_matrices[0].vehicle_type, 2);
+  EXPECT_EQ(back.distance_matrices[0].matrix, p.distance_matrices[0].matrix);
 }
 
 TEST(RoutingProblemMapper, ShortMatrixChunkThrows)

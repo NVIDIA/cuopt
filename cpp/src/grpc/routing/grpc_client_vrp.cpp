@@ -97,6 +97,9 @@ submit_result_t grpc_client_t::submit_vrp(
   for (const auto& m : problem.transit_time_matrices) {
     matrix_bytes += static_cast<int64_t>(m.matrix.size() * sizeof(float));
   }
+  for (const auto& m : problem.distance_matrices) {
+    matrix_bytes += static_cast<int64_t>(m.matrix.size() * sizeof(float));
+  }
 
   // The unary request has to fit the configured threshold, the client channel
   // limit, and the server limit stored by connect()'s CheckStatus probe. An

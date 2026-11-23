@@ -136,16 +136,14 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     } else if (job.has_vrp_request()) {
       problem_category    = cuopt::remote::VRP;
       const auto& problem = job.vrp_request().problem();
-      for (const auto& matrix : problem.cost_matrices()) {
-        if (!matrix.values().empty()) {
-          return Status(StatusCode::INVALID_ARGUMENT,
-                        "Chunked VRP header must leave matrix values empty");
-        }
-      }
-      for (const auto& matrix : problem.transit_time_matrices()) {
-        if (!matrix.values().empty()) {
-          return Status(StatusCode::INVALID_ARGUMENT,
-                        "Chunked VRP header must leave matrix values empty");
+      for (auto* matrices : {&problem.cost_matrices(),
+                             &problem.transit_time_matrices(),
+                             &problem.distance_matrices()}) {
+        for (const auto& matrix : *matrices) {
+          if (!matrix.values().empty()) {
+            return Status(StatusCode::INVALID_ARGUMENT,
+                          "Chunked VRP header must leave matrix values empty");
+          }
         }
       }
     } else {

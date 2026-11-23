@@ -1223,6 +1223,11 @@ routing_problem:
       message_type: CostMatrix
       cpp_type: cpu_cost_matrix_t
       define_message: false
+  - distance_matrices:
+      field_num: 12
+      message_type: CostMatrix
+      cpp_type: cpu_cost_matrix_t
+      define_message: false
   - capacity_dimensions:
       field_num: 50
       message_type: CapacityDimension

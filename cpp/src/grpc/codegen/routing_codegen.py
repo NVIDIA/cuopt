@@ -667,11 +667,7 @@ def generate_routing_from_proto(registry):
             )
             lines.append("      if (_chunk) {")
             if f.get("matrix_values"):
-                which = (
-                    "cost"
-                    if rec["name"] == "cost_matrices"
-                    else "transit-time"
-                )
+                which = rec["name"].removesuffix("_matrices").replace("_", "-")
                 lines.append(
                     f'        apply_matrix(*_chunk, _out.{f["member"]}, "{which}", _i);'
                 )

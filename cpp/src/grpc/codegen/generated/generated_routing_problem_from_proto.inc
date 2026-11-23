@@ -227,6 +227,20 @@
     }
     p.transit_time_matrices.push_back(std::move(_out));
   }
+  for (int _i = 0; _i < pb.distance_matrices_size(); ++_i) {
+    auto const& _in = pb.distance_matrices(_i);
+    cpu_cost_matrix_t _out;
+    _out.vehicle_type = static_cast<uint8_t>(_in.vehicle_type());
+    {
+      const auto* _chunk = take_container(12, _i, 0);
+      if (_chunk) {
+        apply_matrix(*_chunk, _out.matrix, "distance", _i);
+      } else {
+      copy_repeated_to_vector(_in.values(), _out.matrix);
+      }
+    }
+    p.distance_matrices.push_back(std::move(_out));
+  }
   for (int _i = 0; _i < pb.capacity_dimensions_size(); ++_i) {
     auto const& _in = pb.capacity_dimensions(_i);
     cpu_capacity_dimension_t _out;
