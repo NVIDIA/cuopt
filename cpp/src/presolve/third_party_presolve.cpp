@@ -39,6 +39,7 @@
 #include <presolve/indicator_strengthening.hpp>
 #include <presolve/single_lock_dual_aggregation.hpp>
 #include <presolve/third_party_presolve.hpp>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/sparse_matrix_helpers.hpp>
@@ -1358,6 +1359,109 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
   raft::copy(dual_solution.data(), h_dual.data(), h_dual.size(), stream_view);
   raft::copy(reduced_costs.data(), h_rc.data(), h_rc.size(), stream_view);
   stream_view.sync();
+}
+
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::postsolve_to_original_problem(
+  optimization_problem_t<i_t, f_t> const& op_problem,
+  bool dual_postsolve,
+  optimization_problem_solution_t<i_t, f_t>& solution)
+{
+  auto stream          = op_problem.get_handle_ptr()->get_stream();
+  auto primal_solution = cuopt::device_copy(solution.get_primal_solution(), stream);
+  auto dual_solution   = cuopt::device_copy(solution.get_dual_solution(), stream);
+  auto reduced_costs   = cuopt::device_copy(solution.get_reduced_cost(), stream);
+
+  undo_from_device(primal_solution,
+                   dual_solution,
+                   reduced_costs,
+                   problem_category_t::LP,
+                   false,  // status_to_skip
+                   dual_postsolve,
+                   stream);
+
+  auto term_vec   = solution.get_additional_termination_informations();
+  auto status_vec = solution.get_terminations_status();
+  // Create a new solution with the full problem solution
+  solution =
+    optimization_problem_solution_t<i_t, f_t>(primal_solution,
+                                              dual_solution,
+                                              reduced_costs,
+                                              std::move(solution.get_pdlp_warm_start_data()),
+                                              op_problem.get_objective_name(),
+                                              op_problem.get_variable_names(),
+                                              op_problem.get_row_names(),
+                                              std::move(term_vec),
+                                              std::move(status_vec));
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t>
+third_party_presolve_t<i_t, f_t>::solution_from_empty_reduced_problem(
+  f_t objective_offset,
+  double presolve_time,
+  optimization_problem_t<i_t, f_t> const& op_problem,
+  bool dual_postsolve)
+{
+  CUOPT_LOG_INFO("Presolve completely solved the problem");
+  // Postsolve stays fully on device on the single-GPU path.
+  auto stream = op_problem.get_handle_ptr()->get_stream();
+  rmm::device_uvector<f_t> primal(0, stream);
+  rmm::device_uvector<f_t> dual(0, stream);
+  rmm::device_uvector<f_t> reduced_costs(0, stream);
+  undo_from_device(primal,
+                   dual,
+                   reduced_costs,
+                   problem_category_t::LP,
+                   false,  // status_to_skip
+                   dual_postsolve,
+                   stream);
+  return build_presolve_optimal_solution(primal,
+                                         dual,
+                                         reduced_costs,
+                                         objective_offset,
+                                         presolve_time,
+                                         op_problem.get_objective_name(),
+                                         op_problem.get_variable_names(),
+                                         op_problem.get_row_names());
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t>
+third_party_presolve_t<i_t, f_t>::build_presolve_optimal_solution(
+  rmm::device_uvector<f_t>& primal_uv,
+  rmm::device_uvector<f_t>& dual_uv,
+  rmm::device_uvector<f_t>& rc_uv,
+  f_t objective_offset,
+  double presolve_time,
+  std::string const& objective_name,
+  std::vector<std::string> const& variable_names,
+  std::vector<std::string> const& row_names)
+{
+  typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
+    term_info;
+  term_info.primal_objective      = objective_offset;
+  term_info.dual_objective        = objective_offset;
+  term_info.number_of_steps_taken = 0;
+  term_info.solve_time            = presolve_time;
+  term_info.l2_primal_residual    = 0.0;
+  term_info.l2_dual_residual      = 0.0;
+  term_info.gap                   = 0.0;
+
+  std::vector<
+    typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+    term_vec{term_info};
+  std::vector<pdlp_termination_status_t> status_vec{pdlp_termination_status_t::Optimal};
+
+  CUOPT_LOG_INFO("Status: Optimal  Objective: %f", term_info.primal_objective);
+  return optimization_problem_solution_t<i_t, f_t>(primal_uv,
+                                                   dual_uv,
+                                                   rc_uv,
+                                                   objective_name,
+                                                   variable_names,
+                                                   row_names,
+                                                   std::move(term_vec),
+                                                   std::move(status_vec));
 }
 
 template <typename i_t, typename f_t>
