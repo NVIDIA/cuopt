@@ -151,7 +151,10 @@ def test_model():
     assert prob.ObjValue == pytest.approx(5 * x.Value + 3 * y.Value + 70)
 
 
-def test_fully_presolved_mip():
+@pytest.mark.parametrize(
+    "decimal_offset", [False, True], ids=["repro", "decimal-offset"]
+)
+def test_fully_presolved_mip(decimal_offset):
     problem = Problem()
     x = [
         [problem.addVariable(ub=1, vtype=INTEGER) for _ in range(3)]
@@ -161,13 +164,24 @@ def test_fully_presolved_mip():
         problem.addConstraint(sum(row) == 1)
     for a, b in zip(*x):
         problem.addConstraint(a + b <= 1)
-    problem.setObjective(x[0][0] + x[1][1], sense=MAXIMIZE)
+    if decimal_offset:
+        fixed = problem.addVariable(lb=1, ub=1, vtype=INTEGER)
+        objective = 0.3 * x[0][0] + 0.6 * x[1][1] + 0.7 * fixed - 0.1
+        expected_objective = 1.5
+    else:
+        objective = x[0][0] + x[1][1]
+        expected_objective = 2.0
+    problem.setObjective(objective, sense=MAXIMIZE)
     settings = SolverSettings()
     settings.set_parameter("mip_determinism_mode", 1)
 
     problem.solve(settings)
 
     assert [var.Value for row in x for var in row] == [1, 0, 0, 0, 1, 0]
+    assert problem.Status.name == "Optimal"
+    assert problem.ObjValue == pytest.approx(expected_objective)
+    assert problem.SolutionStats.mip_gap == 0
+    assert problem.SolutionStats.solution_bound == problem.ObjValue
 
 
 def test_constraint_duplicate_terms_slack():
