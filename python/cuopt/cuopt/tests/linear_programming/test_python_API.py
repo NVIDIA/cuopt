@@ -151,6 +151,25 @@ def test_model():
     assert prob.ObjValue == pytest.approx(5 * x.Value + 3 * y.Value + 70)
 
 
+def test_fully_presolved_mip():
+    problem = Problem()
+    x = [
+        [problem.addVariable(ub=1, vtype=INTEGER) for _ in range(3)]
+        for _ in range(2)
+    ]
+    for row in x:
+        problem.addConstraint(sum(row) == 1)
+    for a, b in zip(*x):
+        problem.addConstraint(a + b <= 1)
+    problem.setObjective(x[0][0] + x[1][1], sense=MAXIMIZE)
+    settings = SolverSettings()
+    settings.set_parameter("mip_determinism_mode", 1)
+
+    problem.solve(settings)
+
+    assert [var.Value for row in x for var in row] == [1, 0, 0, 0, 1, 0]
+
+
 def test_constraint_duplicate_terms_slack():
     """Merged coeffs in vindex_coeff_dict must not be double-counted in slack."""
     prob = Problem()
