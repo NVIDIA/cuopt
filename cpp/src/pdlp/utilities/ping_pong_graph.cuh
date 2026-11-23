@@ -40,12 +40,12 @@ class ping_pong_graph_t {
   // Either launch the cached graph for this parity slot, or capture `work`
   // into a freshly-created parent graph, instantiate, and launch. Capture
   // invalidation is recovered by re-running `work` eagerly (see
-  // manual_cuda_graph_t::run). In CUPDLP_DEBUG_MODE or legacy-batch mode
+  // manual_cuda_graph_t::run). In PDLP_DEBUG_MODE or legacy-batch mode
   // the work is always executed eagerly with no graph involvement.
   template <typename F>
   void run(i_t total_pdlp_iterations, F&& work)
   {
-#ifdef CUPDLP_DEBUG_MODE
+#ifdef PDLP_DEBUG_MODE
     work();
 #else
     if (is_legacy_batch_mode_) {
