@@ -225,6 +225,12 @@ def validate_fleet_data(
             if len(v_ids) > 0 and not unique_vehicle_types.issubset(v_ids):
                 return (False, matrix_type + " not set for all vehicle types")
     else:
+        distance_types = vehicle_types_dict.get("Distance Matrix", [])
+        if distance_types and 0 not in distance_types:
+            return (
+                False,
+                "Distance matrix not set for default vehicle type 0",
+            )
         for _, vehicle_ids in vehicle_types_dict.items():
             if len(set(vehicle_ids)) > 1:
                 return (

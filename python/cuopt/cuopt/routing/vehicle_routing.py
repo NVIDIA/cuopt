@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
+import pandas as pd
 
 import cudf
 
@@ -168,8 +169,7 @@ class DataModel(_DeferredDataModel):
         vehicle_type : int
             Vehicle-type identifier within [0, 255].
         skip_validation : bool
-            Skip Python checks for matrix shape and values. The caller must
-            provide a valid square matrix matching the number of locations.
+            Skip Python checks for matrix values. Shape is always checked.
         """
         if not isinstance(vehicle_type, (int, np.integer)):
             raise TypeError("vehicle_type must be an integer")
@@ -192,16 +192,19 @@ class DataModel(_DeferredDataModel):
             for dtype in dtypes
         ):
             raise TypeError("distance matrix must contain real numeric values")
+        if distance_mat.ndim != 2:
+            raise ValueError("distance matrix must be two-dimensional")
+        validate_matrix(
+            distance_mat,
+            "distance matrix",
+            self.get_num_locations(),
+            check_values=not skip_validation,
+        )
         if not skip_validation:
-            if getattr(distance_mat, "ndim", None) != 2:
-                raise ValueError("distance matrix must be two-dimensional")
             if np.ma.isMaskedArray(distance_mat) and np.ma.is_masked(
                 distance_mat
             ):
                 raise ValueError("distance matrix cannot have NULL values")
-            validate_matrix(
-                distance_mat, "distance matrix", self.get_num_locations()
-            )
             # Only wider floating types can overflow the float32 range.
             if any(
                 dtype.kind == "f" and dtype.itemsize > 4 for dtype in dtypes
@@ -213,6 +216,11 @@ class DataModel(_DeferredDataModel):
                     raise ValueError(
                         "distance matrix finite values must be representable as float32"
                     )
+        if isinstance(distance_mat, pd.DataFrame):
+            # Nullable numeric columns can otherwise produce an object array.
+            distance_mat = distance_mat.to_numpy(
+                dtype=np.float32, na_value=np.nan
+            )
         super().add_distance_matrix(distance_mat, vehicle_type)
 
     @catch_cuopt_exception

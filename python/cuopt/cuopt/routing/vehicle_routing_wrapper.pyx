@@ -284,6 +284,9 @@ cdef class DataModel:
 
     def add_distance_matrix(self, distances, vehicle_type):
         distances = prepare_matrix(distances, "distance_matrix")
+        n = self.c_data_model_view.get().get_num_locations()
+        if distances.shape != (n, n):
+            raise ValueError("distance matrix shape must match the number of locations")
         self.distance_matrices[vehicle_type] = distances
         cdef uintptr_t c_distances = self.distance_matrices[vehicle_type].data.ptr
         self.c_data_model_view.get().add_distance_matrix(

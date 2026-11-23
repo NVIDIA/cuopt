@@ -464,7 +464,8 @@ class OptimizationDataModel:
 
     def update_distance_matrix(self, distance_matrix):
         is_valid = validate_distance_matrix(
-            distance_matrix, comparison_matrix=self.cost_matrix or None
+            distance_matrix,
+            comparison_matrix=self.cost_matrix or self.distance_matrix,
         )
         if is_valid[0]:
             for v_type, matrix in distance_matrix.items():

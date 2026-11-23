@@ -136,6 +136,47 @@ def test_distance_shape_rechecked_after_cost_preparation():
         conversion.prep_optimization_data(optimization)
 
 
+def test_update_distance_without_cost_preserves_registered_shape():
+    model = OptimizationDataModel()
+    assert model.set_distance_matrix({0: [[0, 3], [5, 0]]})[0]
+    assert not model.update_distance_matrix({1: [[0]]})[0]
+    assert not model.update_distance_matrix({0: [[0]]})[0]
+    assert model.get_distance_matrix() == {0: [[0, 3], [5, 0]]}
+    assert model.update_distance_matrix({0: [[0, 4], [6, 0]]})[0]
+
+
+@pytest.mark.parametrize(
+    "matrix_type, fleet_types", [(0, None), (1, [1]), (1, None)]
+)
+def test_legacy_validation_only_checks_default_distance_type(
+    matrix_type, fleet_types
+):
+    from cuopt_server.utils.deprecated.solver import (
+        solve_optimized_routes_sync,
+    )
+
+    request = dict(
+        cost_matrix_data=CostMatrices(data={matrix_type: [[0, 3], [5, 0]]}),
+        distance_matrix_data=DistanceMatrices(
+            data={matrix_type: [[0, 9], [7, 0]]}
+        ),
+        fleet_data=FleetData(
+            vehicle_locations=[[0, 0]], vehicle_types=fleet_types
+        ),
+        task_data=TaskData(task_locations=[1]),
+        validation_only=True,
+    )
+    if fleet_types is None and matrix_type != 0:
+        with pytest.raises(
+            HTTPException, match="default vehicle type 0"
+        ) as exc:
+            solve_optimized_routes_sync(**request)
+        assert exc.value.status_code == 400
+    else:
+        response, _, _ = solve_optimized_routes_sync(**request)
+        assert response["response"]["solver_response"]["status"] == 0
+
+
 def test_json_request_without_distance_matrix_remains_valid(monkeypatch):
     from cuopt_server.utils.routing.data_definition import OptimizedRoutingData
 

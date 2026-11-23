@@ -43,6 +43,13 @@ def test_distance_matrix_rejects_invalid_values_or_shape(matrix):
         model.add_distance_matrix(np.asarray(matrix, dtype=np.float64))
 
 
+@pytest.mark.parametrize("shape", [(4,), (2, 3), (3, 3)])
+def test_skip_distance_validation_still_checks_shape(shape):
+    model = routing.DataModel(2, 1)
+    with pytest.raises(ValueError):
+        model.add_distance_matrix(np.zeros(shape), skip_validation=True)
+
+
 @pytest.mark.parametrize("skip_validation", [False, True])
 @pytest.mark.parametrize(
     "matrix",
@@ -65,7 +72,7 @@ def test_distance_matrix_rejects_masked_distance():
         )
 
 
-@pytest.mark.parametrize("backend", ["numpy", "cudf"])
+@pytest.mark.parametrize("backend", ["numpy", "cudf", "pandas_nullable"])
 def test_auxiliary_distance_matrix_preserves_cost_and_time(backend):
     import cudf
 
@@ -75,7 +82,12 @@ def test_auxiliary_distance_matrix_preserves_cost_and_time(backend):
 
     model = routing.DataModel(2, 1, 1)
     model.add_cost_matrix(matrix([[0, 3], [5, 0]]))
-    model.add_distance_matrix(matrix([[0, np.inf], [200, 0]]))
+    if backend == "pandas_nullable":
+        model.add_distance_matrix(
+            pd.DataFrame([[0, 100], [200, 0]], dtype="Int64")
+        )
+    else:
+        model.add_distance_matrix(matrix([[0, np.inf], [200, 0]]))
     model.add_transit_time_matrix(matrix([[0, 11], [17, 0]]))
     model.set_order_locations(np.array([1], dtype=np.int32))
     settings = routing.SolverSettings()
