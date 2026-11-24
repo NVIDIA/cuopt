@@ -738,7 +738,8 @@ void branch_and_bound_t<i_t, f_t>::set_solution_at_root(mip_solution_t<i_t, f_t>
 {
   mutex_upper_.lock();
   incumbent_.set_incumbent_solution(root_objective_, root_relax_soln_.x);
-  upper_bound_ = root_objective_;
+  incumbent_.has_incumbent = true;
+  upper_bound_             = root_objective_;
   mutex_upper_.unlock();
 
   print_cut_info(settings_, cut_info);
@@ -756,6 +757,7 @@ void branch_and_bound_t<i_t, f_t>::set_solution_at_root(mip_solution_t<i_t, f_t>
   if (settings_.solution_callback != nullptr) {
     settings_.solution_callback(solution.x, solution.objective);
   }
+
   if (settings_.heuristic_preemption_callback != nullptr) {
     settings_.heuristic_preemption_callback();
   }
@@ -2428,7 +2430,6 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   }
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
     solver_status_ = mip_status_t::TIME_LIMIT;
-    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
   f_t cut_generation_time = toc(cut_start_time);
@@ -2494,12 +2495,10 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   }
   if (received_halt_signal()) {
     solver_status_ = mip_status_t::HALT;
-    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
     solver_status_ = mip_status_t::TIME_LIMIT;
-    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
 
@@ -2625,7 +2624,6 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
 
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
     solver_status_ = mip_status_t::TIME_LIMIT;
-    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
 
@@ -2654,13 +2652,11 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   }
   if (cut_status == dual_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
-    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
 
   if (cut_status == dual_status_t::CONCURRENT_LIMIT) {
     solver_status_ = mip_status_t::HALT;
-    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
 
@@ -2686,7 +2682,6 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
     } else if (scratch_status == lp_status_t::CONCURRENT_LIMIT) {
       cut_status     = convert_lp_status_to_dual_status(scratch_status);
       solver_status_ = mip_status_t::HALT;
-      set_final_solution(solution, root_objective_);
       return cut_pass_action_t::RETURN;
     } else {
       settings_.log.printf("Cut status %s\n", simplex::dual_status_to_string(cut_status).c_str());
@@ -2756,13 +2751,11 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
 
   if (remove_cuts_status == TIME_LIMIT_RETURN) {
     solver_status_ = mip_status_t::TIME_LIMIT;
-    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
 
   if (remove_cuts_status == CONCURRENT_HALT_RETURN) {
     solver_status_ = mip_status_t::HALT;
-    set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
   if (remove_cuts_status != 0) {
@@ -2794,8 +2787,6 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   f_t abs_gap    = compute_user_abs_gap(
     original_lp_, upper_bound_.load(std::memory_order::relaxed), root_objective_);
   if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
-    if (num_fractional == 0) { set_solution_at_root(solution, cut_info); }
-    set_final_solution(solution, root_objective_);
     solver_status_ = mip_status_t::OPTIMAL;
     return cut_pass_action_t::RETURN;
   }
@@ -3309,8 +3300,26 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
       }
       assert(solver_status_ != mip_status_t::UNSET);
+
+      root_heuristics.stop_and_sync();
+      mutex_upper_.lock();
+      if (incumbent_.has_incumbent && incumbent_.x.size() != original_lp_.num_cols) {
+        std::vector<f_t> uncrushed_incumbent;
+        uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, uncrushed_incumbent);
+        crush_primal_solution(
+          original_problem_, original_lp_, uncrushed_incumbent, new_slacks_, incumbent_.x);
+      }
+      mutex_upper_.unlock();
+
+      if (solver_status_ == mip_status_t::OPTIMAL && num_fractional == 0) {
+        set_solution_at_root(solution, cut_info);
+      }
+      f_t lower_bound = solver_status_ == mip_status_t::INFEASIBLE ? inf : root_objective_;
+      set_final_solution(solution, lower_bound);
+
       return solver_status_;
     }
+
     if (cut_pass_action == cut_pass_action_t::BREAK) { break; }
   }
 
