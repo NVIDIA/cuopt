@@ -19,6 +19,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
+#include <functional>
 #include <tuple>
 
 #include <cuda/std/span>
@@ -326,6 +327,7 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
+  bool barrier_adaptive_iterative_refinement{false};
   i_t barrier_adaptive_regularization{-1};  // -1 automatic, 0 disabled, 1 enabled
   // Initial regularization for the barrier method's augmented KKT system, applied to the first
   // factorization only (adaptive regularization, if enabled, still scales it up/down on later
@@ -372,6 +374,11 @@ class pdlp_solver_settings_t {
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
+  // Optional valid lower bound reporting: with the iteration log (iteration 0, then every 1000
+  // iterations), the current dual iterate is turned into a Lagrangian lower bound on the objective
+  // (user space: offset and scaling applied) and passed here when it improves on the last reported
+  // one. Used by the MIP root LP to report a bound before PDLP converges.
+  std::function<void(f_t)> dual_bound_callback{};
   // Shared strong branching solved flags for cooperative DS + PDLP
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
