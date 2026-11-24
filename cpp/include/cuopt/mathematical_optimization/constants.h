@@ -51,6 +51,7 @@
 #define CUOPT_POSTSOLVE_INFO                        "postsolve_info"
 #define CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES "barrier_presolve_bound_free_variables"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT          "barrier_iterative_refinement"
+#define CUOPT_BARRIER_ADAPTIVE_ITERATIVE_REFINEMENT "barrier_adaptive_iterative_refinement"
 #define CUOPT_BARRIER_ADAPTIVE_REGULARIZATION       "barrier_adaptive_regularization"
 #define CUOPT_BARRIER_PRIMAL_REGULARIZATION         "barrier_primal_regularization"
 #define CUOPT_BARRIER_DUAL_REGULARIZATION           "barrier_dual_regularization"
@@ -142,8 +143,8 @@
 #define CUOPT_MIP_HYPER_DIVING_NODE_LIMIT             "mip_hyper_diving_node_limit"
 #define CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR "mip_hyper_diving_iteration_limit_factor"
 #define CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT        "mip_hyper_diving_backtrack_limit"
-/* @brief Show per-strategy diving symbol in logs instead of a generic 'D' */
-#define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
+/* @brief Show per-strategy diving/sub-MIP/FJ symbol in logs instead of a generic 'D'/'S'/'H' */
+#define CUOPT_MIP_HYPER_HEURISTIC_SHOW_TYPE "mip_hyper_heuristic_show_type"
 
 /* @brief Recursive sub-MIP (RINS) hyper-parameters */
 #define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE    "mip_hyper_submip_base_target_fixrate"
@@ -172,6 +173,9 @@
 /* @brief Indicator-strengthening step that runs before Papilo presolve on MIPs */
 #define CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING \
   "mip_hyper_presolve_indicator_strengthening"
+
+/* @brief Report the root PDLP dual bound every 1000 iterations while the root LP is solving */
+#define CUOPT_MIP_HYPER_ROOT_PDLP_DUAL_BOUND "mip_hyper_root_pdlp_dual_bound"
 
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"

@@ -11,6 +11,7 @@
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -183,14 +184,10 @@ __global__ void compute_step_sizes_from_movement_and_interaction(
     (step_size_strategy_view.hyper_params.dual_distance_smoothing / primal_weight) *
       *step_size_strategy_view.norm_squared_delta_dual;
 
-#ifdef PDLP_DEBUG_MODE
-  printf("-compute_step_sizes_from_movement_and_interaction:\n");
-#endif
+  PDLP_DEBUG_DEVICE_LOG("-compute_step_sizes_from_movement_and_interaction:\n");
   if (movement <= 0 || movement >= divergent_movement<f_t>) {
     *step_size_strategy_view.valid_step_size = -1;
-#ifdef PDLP_DEBUG_MODE
-    printf("  Movement is %lf. Done or numerical error has happened\n", movement);
-#endif
+    PDLP_DEBUG_DEVICE_LOG("  Movement is %lf. Done or numerical error has happened\n", movement);
     return;
   }
 
@@ -205,21 +202,18 @@ __global__ void compute_step_sizes_from_movement_and_interaction(
   // proof of thm 1 requires movement / step_size >= interaction.
   f_t step_size_limit = interaction > 0.0 ? movement / interaction : raft::myInf<f_t>();
 
-#ifdef PDLP_DEBUG_MODE
-  printf("    interaction=%lf movement=%lf\n", interaction, movement);
-  printf("    step_size_=%lf step_size_limit=%lf pdhg_iteration=%d iteration_coefficient_=%lf\n",
-         step_size,
-         step_size_limit,
-         *pdhg_iteration,
-         iteration_coefficient_);
-#endif
+  PDLP_DEBUG_DEVICE_LOG("    interaction=%lf movement=%lf\n", interaction, movement);
+  PDLP_DEBUG_DEVICE_LOG(
+    "    step_size_=%lf step_size_limit=%lf pdhg_iteration=%d iteration_coefficient_=%lf\n",
+    step_size,
+    step_size_limit,
+    *pdhg_iteration,
+    iteration_coefficient_);
 
   if (step_size <= step_size_limit) {
     *step_size_strategy_view.valid_step_size = 1;
 
-#ifdef PDLP_DEBUG_MODE
-    printf("    Step size is smaller\n");
-#endif
+    PDLP_DEBUG_DEVICE_LOG("    Step size is smaller\n");
   }
 
   // The step size was too large and therefore we now compute the next stepsize to test out.
@@ -233,30 +227,26 @@ __global__ void compute_step_sizes_from_movement_and_interaction(
                                -step_size_strategy_view.hyper_params.growth_exponent)) *
     step_size;
 
-#ifdef PDLP_DEBUG_MODE
-  printf(
+  PDLP_DEBUG_DEVICE_LOG(
     "Compute adaptative step size: iteration_coefficient_=%lf "
     "-hyper_params.reduction_exponent=%lf step_size_limit=%lf\n",
     iteration_coefficient_,
     -step_size_strategy_view.hyper_params.reduction_exponent,
     step_size_limit);
-  printf(
+  PDLP_DEBUG_DEVICE_LOG(
     "Compute adaptative step size: iteration_coefficient_=%lf "
     "-hyper_params.growth_exponent=%lf step_size_=%lf\n",
     iteration_coefficient_,
     -step_size_strategy_view.hyper_params.growth_exponent,
     step_size);
-  printf(
+  PDLP_DEBUG_DEVICE_LOG(
     "Compute adaptative step size: potential_new_step_size_1=%lf potential_new_step_size_2=%lf\n",
     potential_new_step_size_1,
     potential_new_step_size_2);
-#endif
 
   step_size = raft::min<f_t>(potential_new_step_size_1, potential_new_step_size_2);
 
-#ifdef PDLP_DEBUG_MODE
-  printf("Compute adaptative step size: min_step_size_picked=%lf\n", step_size);
-#endif
+  PDLP_DEBUG_DEVICE_LOG("Compute adaptative step size: min_step_size_picked=%lf\n", step_size);
 
   *primal_step_size = step_size / primal_weight;
   *dual_step_size   = step_size * primal_weight;

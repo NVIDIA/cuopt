@@ -110,10 +110,6 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
         )
 
 
-_SKIP_REASON = "https://github.com/NVIDIA/cuopt/issues/1909"
-
-
-@pytest.mark.skip(reason=_SKIP_REASON)
 @pytest.mark.parametrize(
     "file_name",
     [
@@ -124,7 +120,6 @@ def test_incumbent_get_callback(file_name):
     _run_incumbent_solver_callback(file_name, include_set_callback=False)
 
 
-@pytest.mark.skip(reason=_SKIP_REASON)
 @pytest.mark.parametrize(
     "file_name",
     [

@@ -16,6 +16,7 @@
 #include <cub/block/block_store.cuh>
 #include <cub/device/device_segmented_sort.cuh>
 
+#include <thrust/sequence.h>
 #include <thrust/sort.h>
 
 #include <algorithm>
