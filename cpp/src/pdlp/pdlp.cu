@@ -42,6 +42,7 @@
 #include <cub/device/device_reduce.cuh>
 #include <cub/device/device_transform.cuh>
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
@@ -2673,13 +2674,13 @@ static int ordinary_graph_batch_size()
   const char* value = std::getenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE");
   if (value == nullptr) { return default_ordinary_graph_batch_size; }
   char* end       = nullptr;
+  errno           = 0;
   const long size = std::strtol(value, &end, 10);
-  if (end != value && *end == '\0' &&
-      (size == 1 || size == 4 || size == 8 || size == 16 ||
-       size == default_ordinary_graph_batch_size)) {
+  if (errno == 0 && end != value && *end == '\0' && size > 0 &&
+      size <= std::numeric_limits<int>::max() - 2) {
     return static_cast<int>(size);
   }
-  CUOPT_LOG_INFO("PDLP graph batching disabled: unsupported batch size '%s'", value);
+  CUOPT_LOG_INFO("PDLP graph batching disabled: invalid batch size '%s'", value);
   return 1;
 }
 
@@ -3054,8 +3055,16 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 #ifdef PDLP_DEBUG_MODE
   graph_batch_eligible = false;
 #endif
+  const int requested_graph_batch_size = ordinary_graph_batch_size();
+  // Reject batches that cannot fit between checkpoints before allocating their weights.
+  // PDHG's conditional-major checkpoint is required even when host checks are disabled.
+  graph_batch_eligible =
+    graph_batch_eligible && graph_hyper.major_iteration > 2 &&
+    requested_graph_batch_size <= graph_hyper.major_iteration - 2 &&
+    requested_graph_batch_size < conditional_major<i_t>(std::numeric_limits<i_t>::max()) &&
+    requested_graph_batch_size <= settings_.iteration_limit;
   ordinary_graph_batch_t<f_t> ordinary_batch{
-    stream_view_, ordinary_graph_batch_size(), graph_batch_eligible};
+    stream_view_, requested_graph_batch_size, graph_batch_eligible};
 
   while (true) {
     PDLP_DEBUG_LOG("Step", total_pdlp_iterations_);

@@ -134,7 +134,7 @@ struct scalar_state {
 
 TEST(BatchedHalpern, WeightsMatchSequentialDeviceArithmetic)
 {
-  for (int batch : {1, 4, 8, 16, 24}) {
+  for (int batch : {1, 3, 4, 8, 12, 16, 24, 33}) {
     scalar_state state(batch);
     for (int age : {0, 1, 51, 199, 99999, std::numeric_limits<int>::max() - batch - 2}) {
       state.reset(age);
@@ -366,7 +366,7 @@ TEST_F(OrdinaryGraphBatching, AutomaticColumnReductionPreservesSolutionAndIterat
 
 class OrdinaryGraphBatchingCheckpoints
   : public OrdinaryGraphBatching,
-    public testing::WithParamInterface<std::tuple<int, int, bool>> {};
+    public testing::WithParamInterface<std::tuple<int, int, bool, const char*>> {};
 
 TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitResults)
 {
@@ -379,8 +379,13 @@ TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitRes
 
   // Preserve the test's checkpoint schedule instead of replacing it with a solver-mode preset.
   ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", "1", 1), 0);
-  auto sequential = solve_lp(&handle, model, settings, true, false);
-  ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
+  auto sequential                  = solve_lp(&handle, model, settings, true, false);
+  const char* requested_batch_size = std::get<3>(GetParam());
+  if (requested_batch_size != nullptr) {
+    ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", requested_batch_size, 1), 0);
+  } else {
+    ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
+  }
   auto batched = solve_lp(&handle, model, settings, true, false);
 
   ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
@@ -395,10 +400,22 @@ TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitRes
 
 INSTANTIATE_TEST_SUITE_P(CheckpointBoundaries,
                          OrdinaryGraphBatchingCheckpoints,
-                         testing::Values(std::tuple{1407, 200, true},
-                                         std::tuple{1407, 211, true},
-                                         std::tuple{1407, 211, false},
-                                         std::tuple{10007, 200, true}));
+                         testing::Values(std::tuple{1407, 200, true, nullptr},
+                                         std::tuple{1407, 211, true, nullptr},
+                                         std::tuple{1407, 211, false, nullptr},
+                                         std::tuple{10007, 200, true, nullptr},
+                                         std::tuple{1407, 211, true, "3"},
+                                         std::tuple{1407, 211, false, "12"},
+                                         std::tuple{10007, 211, true, "33"},
+                                         std::tuple{1407, 13, false, "11"},
+                                         std::tuple{1407, 13, false, "12"},
+                                         std::tuple{7, 200, true, "12"},
+                                         std::tuple{1407, 200, true, "2147483645"},
+                                         std::tuple{7, 200, true, "2147483647"},
+                                         std::tuple{7, 200, true, "9223372036854775808"},
+                                         std::tuple{7, 200, true, "0"},
+                                         std::tuple{7, 200, true, "-1"},
+                                         std::tuple{7, 200, true, "3x"}));
 
 }  // namespace
 }  // namespace cuopt::mathematical_optimization::pdlp::test
