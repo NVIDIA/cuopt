@@ -1,12 +1,11 @@
 # Review Rules — Pre-PR Self-Review and CodeRabbit
 
-One rule set for two consumers: the author (human or agent) before `git commit` and `git push`,
+One rule set for two consumers: the author (human or agent) before `git commit`,
 and CodeRabbit during review.
 
 - **Author / agent (self-review loop):** before every `git commit`, stage your changes and
-  check `git diff --staged` against this list, fix each violation, stage the fix, and repeat
-  until nothing is found. Before `git push`, do the same on
-  `git diff origin/<target-branch>...<branch-you-push>` if anything changed.
+  check `git diff --staged` and the commit message against this list, fix each violation,
+  stage the fix, and repeat until nothing is found.
 - **CodeRabbit:** raise a violation as a short nit that names the rule. Do not raise style
   that is not listed here, or anything `clang-format` or `ruff` already enforces.
 - **Reviewer:** name the rule instead of re-explaining. If a rule is wrong or missing, change this
@@ -23,6 +22,8 @@ Before the line-by-line rules, look at the PR as a whole.
 - **One coherent change.** Read the full diff as a reviewer would. Does everything in it
   belong, and do the code, comments and description agree?
 - **Reuse first.** Is there an existing utility or pattern for this? See Reuse and placement.
+- **No secrets or private details.** No keys, tokens, passwords, signed URLs, internal
+  hostnames, internal paths or personal data in code, tests, docs or the commit message.
 - **Docs and tests cover it.** Do the docs, examples and tests cover the new and the changed
   behaviour, including the other parts affected? See the Tests and Docs sections.
 
