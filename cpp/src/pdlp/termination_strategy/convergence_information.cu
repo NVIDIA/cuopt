@@ -11,6 +11,7 @@
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/termination_strategy/convergence_information.hpp>
+#include <pdlp/utilities/pdlp_debug.hpp>
 #include <pdlp/utils.cuh>
 #include <utilities/device_scalar_init.hpp>
 
@@ -560,11 +561,9 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   }
   raft::common::nvtx::range fun_scope("compute_convergence_information");
 
-#ifdef CUPDLP_DEBUG_MODE
-  print("primal_iterate", primal_iterate);
-  print("dual_iterate", dual_iterate);
-  print("dual_slack", dual_slack);
-#endif
+  PDLP_DEBUG_LOG("primal_iterate", primal_iterate);
+  PDLP_DEBUG_LOG("dual_iterate", dual_iterate);
+  PDLP_DEBUG_LOG("dual_slack", dual_slack);
 
   if (current_pdhg_solver.is_distributed_master()) {
     distributed_compute_primal_residual_and_objective(*current_pdhg_solver.get_mgpu_engine(),
@@ -575,9 +574,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
     compute_primal_objective(primal_iterate);
   }
 
-#ifdef CUPDLP_DEBUG_MODE
-  print("Primal Residual", primal_residual_);
-#endif
+  PDLP_DEBUG_LOG("Primal Residual", primal_residual_);
 
   // L2 Norm
   if (current_pdhg_solver.is_distributed_master()) {
@@ -608,9 +605,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
       stream_view_.get());
   }
 
-#ifdef CUPDLP_DEBUG_MODE
-  print("Absolute Primal Residual", l2_primal_residual_);
-#endif
+  PDLP_DEBUG_LOG("Absolute Primal Residual", l2_primal_residual_);
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
   // Not suported in mGPU
   if (settings.per_constraint_residual) {
@@ -645,9 +640,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
     compute_dual_objective(dual_iterate, primal_iterate, dual_slack);
   }
 
-#ifdef CUPDLP_DEBUG_MODE
-  print("Dual Residual", dual_residual_);
-#endif
+  PDLP_DEBUG_LOG("Dual Residual", dual_residual_);
 
   if (current_pdhg_solver.is_distributed_master()) {
     // Same pattern as the primal L2 above.
@@ -676,9 +669,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
       [] HD(f_t x) { return raft::sqrt(x); },
       stream_view_.get());
   }
-#ifdef CUPDLP_DEBUG_MODE
-  print("Absolute Dual Residual", l2_dual_residual_);
-#endif
+  PDLP_DEBUG_LOG("Absolute Dual Residual", l2_dual_residual_);
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
   if (settings.per_constraint_residual) {
     // Compute the linf of (residual_i - rel * c_i)
@@ -766,9 +757,7 @@ void convergence_information_t<i_t, f_t>::compute_primal_residual(
   } else {
     cuopt_assert(primal_residual_.size() == primal_slack_.size(),
                  "Both vectors should had the same size");
-#ifdef CUPDLP_DEBUG_MODE
-    print("tmp_dual", tmp_dual);
-#endif
+    PDLP_DEBUG_LOG("tmp_dual", tmp_dual);
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(tmp_dual.data(),
                             problem_wrap_container(problem_ptr->constraint_lower_bounds),
@@ -785,9 +774,7 @@ void convergence_information_t<i_t, f_t>::compute_primal_residual(
       stream_view_.get());
   }
 
-#ifdef PDLP_DEBUG_MODE
-  RAFT_CUDA_TRY(cudaDeviceSynchronize());
-#endif
+  PDLP_DEBUG_SYNC();
 }
 
 template <typename i_t, typename f_t>
@@ -845,9 +832,7 @@ void convergence_information_t<i_t, f_t>::compute_primal_objective(
   // (defaults to the scalar problem offset replicated, or user-specified per-climber offsets).
   apply_primal_objective_scaling_and_offset();
 
-#ifdef CUPDLP_DEBUG_MODE
-  print("Primal objective", primal_objective_);
-#endif
+  PDLP_DEBUG_LOG("Primal objective", primal_objective_);
 }
 
 template <typename i_t, typename f_t>
@@ -1063,9 +1048,7 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective(
   // Apply per-climber objective scaling and offset.
   apply_dual_objective_scaling_and_offset();
 
-#ifdef CUPDLP_DEBUG_MODE
-  print("Dual objective", dual_objective_);
-#endif
+  PDLP_DEBUG_LOG("Dual objective", dual_objective_);
 }
 
 template <typename i_t, typename f_t>
