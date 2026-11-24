@@ -347,6 +347,8 @@ __global__ void kernel_convert_greater_to_less(raft::device_span<f_t> coefficien
     coefficients[row_start + tid] = -coefficients[row_start + tid];
   }
 
+  __syncthreads();
+
   if (threadIdx.x == 0) {
     constraint_lower_bounds[constraint_id] = -ub;
     constraint_upper_bounds[constraint_id] = -lb;
