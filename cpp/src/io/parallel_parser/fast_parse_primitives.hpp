@@ -386,10 +386,10 @@ static inline f_t expect_number(cursor_t& cursor)
 {
   auto num = cursor.read_field();
   if (num.empty()) { cursor.error("expected number, got empty field"); }
-  const char* p = num.data();
-  double value;
-  const fp64::fp64_status status =
-    check_fp_range<f_t>(fp64::try_parse_fp64_advance(p, p + num.size(), value), value);
+  const char* p            = num.data();
+  double value             = 0;
+  fp64::fp64_status status = fp64::try_parse_fp64_advance(p, p + num.size(), value);
+  status                   = check_fp_range<f_t>(status, value);
   if (UNLIKELY(status != fp64::fp64_status::ok)) {
     cursor.ptr = num.data();
     cursor.error("%s '%.*s'", fp64::fp64_status_message(status), (int)num.size(), num.data());
@@ -400,10 +400,10 @@ static inline f_t expect_number(cursor_t& cursor)
 template <typename f_t>
 static inline f_t expect_fp64_advance(cursor_t& cursor)
 {
-  const char* token = cursor.ptr;
-  double value;
-  const fp64::fp64_status status =
-    check_fp_range<f_t>(fp64::try_parse_fp64_advance(cursor.ptr, cursor.end, value), value);
+  const char* token        = cursor.ptr;
+  double value             = 0;
+  fp64::fp64_status status = fp64::try_parse_fp64_advance(cursor.ptr, cursor.end, value);
+  status                   = check_fp_range<f_t>(status, value);
   if (UNLIKELY(status != fp64::fp64_status::ok)) {
     const int len = (int)(cursor.ptr - token);
     cursor.ptr    = token;
