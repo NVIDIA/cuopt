@@ -7,9 +7,9 @@
 #include <mip_heuristics/feasibility_jump/cpu/climber.hpp>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
-#include <mip_heuristics/lns/cpufj.cuh>
-#include <mip_heuristics/lns/cpufj_validation.cuh>
-#include <mip_heuristics/lns/thread_budget.hpp>
+#include <mip_heuristics/ruin-repair-lns/cpufj.cuh>
+#include <mip_heuristics/ruin-repair-lns/cpufj_validation.cuh>
+#include <mip_heuristics/ruin-repair-lns/thread_budget.hpp>
 #include <pdlp/utils.cuh>
 
 #include <gtest/gtest.h>
