@@ -344,8 +344,9 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_feasible(
   const bool consider_unserviced = false;
   const bool enable_time_limit   = true;
   const bool enable_cycle_finder = false;
+  const bool stop_when_feasible  = true;
   local_search_ptr_->run_best_local_search(
-    *solution_ptr, consider_unserviced, enable_time_limit, enable_cycle_finder);
+    *solution_ptr, consider_unserviced, enable_time_limit, enable_cycle_finder, stop_when_feasible);
   // check if solution is feasible at the end
   bool feasibilized = solution_ptr->is_feasible();
   local_search_ptr_->set_active_weights(local_search_ptr_->move_candidates.weights,

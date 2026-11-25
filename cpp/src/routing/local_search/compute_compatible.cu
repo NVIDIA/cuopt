@@ -404,8 +404,10 @@ __global__ void calculate_route_compatibility_kernel(
 {
   const i_t n_requests = solution.get_num_requests();
   const i_t n_orders   = solution.get_num_orders();
-  i_t route_id         = blockIdx.x / n_requests;
-  i_t request_id       = blockIdx.x % n_requests;
+  const i_t pair_id    = threadIdx.x + blockDim.x * blockIdx.x;
+  if (pair_id >= solution.n_routes * n_requests) { return; }
+  i_t route_id   = pair_id / n_requests;
+  i_t request_id = pair_id % n_requests;
 
   i_t p_i = solution.get_request(request_id).id();
 
@@ -414,7 +416,7 @@ __global__ void calculate_route_compatibility_kernel(
   const auto route             = solution.routes[route_id];
   uint32_t thread_incompatible = 0;
   // loop over all the nodes and check compatibility matrix
-  for (i_t z = threadIdx.x + 1; z < route.get_num_nodes(); z += blockDim.x) {
+  for (i_t z = 1; z < route.get_num_nodes() && thread_incompatible < 2; ++z) {
     if constexpr (REQUEST == request_t::PDP) {
       if (route.requests().node_info[z].is_pickup()) {
         i_t node_id = route.requests().node_info[z].node();
@@ -427,11 +429,7 @@ __global__ void calculate_route_compatibility_kernel(
       }
     }
   }
-  __syncthreads();
-  __shared__ uint32_t sh_buf[raft::WarpSize];
-  uint32_t result = raft::blockReduce(thread_incompatible, (char*)sh_buf);
-  __syncthreads();
-  if (threadIdx.x == 0) { route_compatibility[route_id * n_orders + p_i] = min(result, 2); }
+  route_compatibility[route_id * n_orders + p_i] = thread_incompatible;
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -445,8 +443,8 @@ void local_search_t<i_t, f_t, REQUEST>::calculate_route_compatibility(
                move_candidates.route_compatibility.begin(),
                move_candidates.route_compatibility.end(),
                uint8_t(2));
-  i_t TPB      = 128;
-  i_t n_blocks = sol.n_routes * sol.get_num_requests();
+  i_t TPB      = 256;
+  i_t n_blocks = (sol.n_routes * sol.get_num_requests() + TPB - 1) / TPB;
   calculate_route_compatibility_kernel<i_t, f_t, REQUEST>
     <<<n_blocks, TPB, 0, sol.sol_handle->get_stream().get()>>>(
       sol.view(),

@@ -79,29 +79,6 @@ DI bool is_positive(i_t const* array, i_t size)
   return is_stricly_positive;
 }
 
-template <typename i_t, int BLOCK_SIZE>
-DI i_t binary_block_reduce(int val)
-{
-  static_assert(BLOCK_SIZE <= 1024);
-  cuopt_assert(val == 0 || val == 1, "Binary block reduce only acceptes 0 or 1");
-  __shared__ i_t shared[BLOCK_SIZE / raft::WarpSize];
-  const uint32_t mask                 = __ballot_sync(~0, val);
-  const uint32_t n_deletable_requests = __popc(mask);
-
-  // Each first thread of the warp
-  if (threadIdx.x % raft::WarpSize == 0)
-    shared[threadIdx.x / raft::WarpSize] = n_deletable_requests;
-  __syncthreads();
-
-  val = (threadIdx.x < BLOCK_SIZE / raft::WarpSize) ? shared[threadIdx.x] : 0;
-
-  // Warp reduce on shared array
-  if (threadIdx.x < raft::WarpSize)
-    return raft::warpReduce(val);
-  else  // Only first warp gets the results
-    return -1;
-}
-
 template <typename i_t, typename f_t, request_t REQUEST, insert_mode_t insert_mode>
 DI bool find_node_insertion(const typename route_t<i_t, f_t, REQUEST>::view_t& curr_route,
                             request_node_t<i_t, f_t, REQUEST>& request_node,
@@ -276,10 +253,16 @@ DI void find_all_delivery_insertions(typename solution_t<i_t, f_t, REQUEST>::vie
     i_t insertion_pos  = insertion_2;
     if constexpr (store_all) {
       // Increase size in global struct
-      i_t number_of_feasible_moves = binary_block_reduce<i_t, BLOCK_SIZE>(th_move_found);
+      typedef cub::BlockScan<i_t, BLOCK_SIZE> BlockScan;
+      __shared__ typename BlockScan::TempStorage temp_storage;
+      __shared__ i_t block_offset;
+      i_t rank = th_move_found;
+      i_t number_of_feasible_moves;
+      BlockScan(temp_storage).ExclusiveSum(rank, rank, number_of_feasible_moves);
       if (threadIdx.x == 0 && number_of_feasible_moves > 0) {
-        atomicAdd(feasible_candidates.size_, number_of_feasible_moves);
+        block_offset = atomicAdd(feasible_candidates.size_, number_of_feasible_moves);
       }
+      __syncthreads();
 
       // Write to global
       if (th_move_found) {
@@ -288,13 +271,11 @@ DI void find_all_delivery_insertions(typename solution_t<i_t, f_t, REQUEST>::vie
         cuopt_assert(curr_route.get_id() < view.n_routes,
                      "Can't write a route id greater than number of routes");
 
-        auto found_sol                  = found_sol_t(0,
-                                     static_cast<uint16_t>(curr_route.get_id()),
-                                     static_cast<uint16_t>(pickup_insertion_idx),
-                                     static_cast<uint16_t>(insertion_pos));
-        auto pickup_insertion_node_info = curr_route.requests().node_info[pickup_insertion_idx];
-        feasible_candidates.record(
-          pickup_insertion_node_info, curr_route.get_id(), insertion_pos, found_sol);
+        feasible_candidates.record(block_offset + rank,
+                                   found_sol_t(0,
+                                               static_cast<uint16_t>(curr_route.get_id()),
+                                               static_cast<uint16_t>(pickup_insertion_idx),
+                                               static_cast<uint16_t>(insertion_pos)));
       }
     } else {
       // Scan to count the number of found feasible insertion + elect the correct thread (with its
@@ -317,7 +298,7 @@ DI void find_all_delivery_insertions(typename solution_t<i_t, f_t, REQUEST>::vie
         // Handles undifined % 0, if not move was found, next if will not trigger and no atomic
         // will be performed
         if (thread_data != 0) {
-          selected_position = thread_rng.next_u32() % thread_data;
+          selected_position = thread_rng.next_u32() % thread_data + 1;
         } else {
           selected_position = -1;
         }
