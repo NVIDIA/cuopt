@@ -488,15 +488,7 @@ Behaviours that fail quietly: a confident, feasible-looking result, or a status 
 
 .. dropdown:: Why does my quadratic objective return ``NumericalError``?
 
-    Quadratic objectives are **MINIMIZE-only**. Setting one with ``MAXIMIZE`` does not raise an error: the solve returns status ``NumericalError`` with an objective value of ``0.0``, which looks like a numerical problem rather than an unsupported option.
-
-    To maximize ``f(x)``, minimize ``-f(x)`` and negate the reported objective value:
-
-    .. code-block:: python
-
-        problem.setObjective(-expression, sense=MINIMIZE)
-        # ...
-        maximum = -problem.ObjValue
+    Quadratic objectives must be convex when minimizing and concave when maximizing. A wrong-shaped objective, such as maximizing ``x*x``, does not raise an error: the solve returns status ``NumericalError``, which looks like a numerical problem rather than an unsupported model.
 
     Quadratic objectives also require continuous variables; integer QP is not supported.
 
