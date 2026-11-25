@@ -33,7 +33,9 @@
 namespace cuopt::mathematical_optimization::mip {
 template <typename i_t, typename f_t>
 struct clique_table_t;
-}
+template <typename i_t, typename f_t>
+class probing_cache_t;
+}  // namespace cuopt::mathematical_optimization::mip
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -110,6 +112,14 @@ struct probing_implied_bound_t {
   std::vector<f_t> one_lower_bound;
   std::vector<f_t> one_upper_bound;
 };
+
+// Extract probing cache into CPU-only CSR struct for implied bounds cuts
+template <typename i_t, typename f_t>
+void extract_probing_implied_bounds(
+  const std::vector<i_t>& reverse_original_ids,
+  const simplex::user_problem_t<i_t, f_t>& branch_and_bound_problem,
+  const probing_cache_t<i_t, f_t>& probing_cache,
+  probing_implied_bound_t<i_t, f_t>& probing_implied_bound);
 
 template <typename i_t, typename f_t>
 struct inequality_t {
