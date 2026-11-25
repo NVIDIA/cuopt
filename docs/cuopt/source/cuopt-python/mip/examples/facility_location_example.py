@@ -39,8 +39,7 @@ from cuopt.linear_programming.solver_settings import SolverSettings
 fixed_cost = [100.0, 80.0]
 capacity = [50.0, 50.0]
 demand = [30.0, 20.0]
-ship_cost = [[4.0, 6.0],
-             [5.0, 3.0]]
+ship_cost = [[4.0, 6.0], [5.0, 3.0]]
 
 facilities = range(len(fixed_cost))
 customers = range(len(demand))
@@ -72,9 +71,7 @@ for f in facilities:
 
 problem.setObjective(
     sum(fixed_cost[f] * is_open[f] for f in facilities)
-    + sum(
-        ship_cost[f][c] * ship[f, c] for f in facilities for c in customers
-    ),
+    + sum(ship_cost[f][c] * ship[f, c] for f in facilities for c in customers),
     sense=MINIMIZE,
 )
 

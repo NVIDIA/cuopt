@@ -34,8 +34,7 @@ from cuopt.linear_programming.solver_settings import SolverSettings
 
 supply = [20.0, 30.0]
 demand = [10.0, 25.0, 15.0]
-cost = [[2.0, 3.0, 1.0],
-        [5.0, 4.0, 8.0]]
+cost = [[2.0, 3.0, 1.0], [5.0, 4.0, 8.0]]
 
 plants = range(len(supply))
 warehouses = range(len(demand))

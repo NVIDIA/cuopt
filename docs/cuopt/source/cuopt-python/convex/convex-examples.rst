@@ -276,7 +276,7 @@ Multi-GPU PDLP shards an LP across GPUs. Set the method to PDLP and ``CUOPT_NUM_
    :linenos:
 
 
-Transportation Example (model built over index sets)
+Transportation Example (Model Built over Index Sets)
 ------------------------------------------------------
 
 Most of the examples above declare a few variables by name. Larger models are
@@ -303,7 +303,7 @@ The response is as follows:
       plant 1 -> warehouse 1: 25.0
 
 
-Multi-Period Planning Example (inventory carried between periods)
+Multi-Period Planning Example (Inventory Carried between Periods)
 -------------------------------------------------------------------
 
 Constraints that link one period to the next need a boundary value for the first

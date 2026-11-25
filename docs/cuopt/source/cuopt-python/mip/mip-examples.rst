@@ -78,7 +78,7 @@ The response is as follows:
     Total incumbent solutions found: 1
 
 
-Facility Location Example (binary variables with linking constraints)
+Facility Location Example (Binary Variables with Linking Constraints)
 ---------------------------------------------------------------------
 
 Models indexed over sets are usually built in loops, with the variables held in a
