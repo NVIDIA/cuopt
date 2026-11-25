@@ -193,7 +193,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
     primal_weight_{climber_strategies_.size(), stream_view_},
     best_primal_weight_{climber_strategies_.size(), stream_view_},
     step_size_{climber_strategies_.size(), stream_view_},
-    h_fixed_error_inputs_(5),
+    h_fixed_error_inputs_(1),
     step_size_strategy_{handle_ptr_,
                         &primal_weight_,
                         &step_size_,
@@ -2376,37 +2376,38 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
     PDLP_DEBUG_SYNC();
   } else {
     // Read the scalar inputs together before evaluating the unchanged host expression.
-    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[0],
+    auto& inputs = h_fixed_error_inputs_.front();
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&inputs.norm_squared_delta_primal,
                                   step_size_strategy_.get_norm_squared_delta_primal().data(),
                                   sizeof(f_t),
                                   cudaMemcpyDeviceToHost,
                                   stream_view_.get()));
-    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[1],
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&inputs.norm_squared_delta_dual,
                                   step_size_strategy_.get_norm_squared_delta_dual().data(),
                                   sizeof(f_t),
                                   cudaMemcpyDeviceToHost,
                                   stream_view_.get()));
-    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[2],
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&inputs.primal_weight,
                                   primal_weight_.data(),
                                   sizeof(f_t),
                                   cudaMemcpyDeviceToHost,
                                   stream_view_.get()));
-    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[3],
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&inputs.step_size,
                                   step_size_.data(),
                                   sizeof(f_t),
                                   cudaMemcpyDeviceToHost,
                                   stream_view_.get()));
-    RAFT_CUDA_TRY(cudaMemcpyAsync(&h_fixed_error_inputs_[4],
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&inputs.interaction,
                                   step_size_strategy_.get_interaction().data(),
                                   sizeof(f_t),
                                   cudaMemcpyDeviceToHost,
                                   stream_view_.get()));
     stream_view_.sync();
-    fixed_error_computation<f_t>(h_fixed_error_inputs_[0],
-                                 h_fixed_error_inputs_[1],
-                                 h_fixed_error_inputs_[2],
-                                 h_fixed_error_inputs_[3],
-                                 h_fixed_error_inputs_[4],
+    fixed_error_computation<f_t>(inputs.norm_squared_delta_primal,
+                                 inputs.norm_squared_delta_dual,
+                                 inputs.primal_weight,
+                                 inputs.step_size,
+                                 inputs.interaction,
                                  &restart_strategy_.fixed_point_error_[0]);
   }
 
