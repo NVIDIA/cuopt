@@ -342,7 +342,7 @@ jobs:
           - '!cpp/tests/internal/**'
           - '!cpp/tests/linear_programming/c_api_tests/**'
           - '!cpp/tests/linear_programming/grpc/**'
-          - '!cpp/tests/linear_programming/experimental_mps_fast/**'
+          - '!cpp/tests/linear_programming/parallel_parser/**'
           - '!cpp/tests/linear_programming/unit_tests/**'
           - '!cpp/tests/linear_programming/utilities/**'
           - '!cpp/tests/linear_programming/*.cpp'

@@ -28,8 +28,8 @@ ConfigureTest(PDLP_MG_TEST
 # parser_test.cpp is compiled into NUMOPT_INTERNAL_TEST (static); it needs internal
 # symbols hidden from the shared lib, so it runs there rather than standalone.
 ConfigureTest(MPS_FAST_PARSER_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_fp64_parser_test.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_parser_edge_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/parallel_parser/fast_fp64_parser_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/parallel_parser/fast_parser_edge_test.cpp
     LABELS numopt
     STATIC_LIB)
 target_include_directories(MPS_FAST_PARSER_TEST
