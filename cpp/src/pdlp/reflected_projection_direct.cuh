@@ -48,12 +48,12 @@ struct dual_reflected_projection {
 
 namespace detail {
 
-template <typename f_t, typename last_input_t, typename projection_t>
-__global__ void reflected_projection_direct_kernel(f_t* current,
-                                                   const f_t* initial,
-                                                   const f_t* input3,
-                                                   const f_t* input4,
-                                                   const last_input_t* input5,
+template <typename f_t, typename bounds_t, typename projection_t>
+__global__ void reflected_projection_direct_kernel(f_t* current_solution,
+                                                   const f_t* initial_solution,
+                                                   const f_t* objective_or_primal_product,
+                                                   const f_t* dual_product_or_lower_bounds,
+                                                   const bounds_t* variable_or_upper_bounds,
                                                    f_t* reflected,
                                                    size_t count,
                                                    projection_t projection)
@@ -61,20 +61,23 @@ __global__ void reflected_projection_direct_kernel(f_t* current,
   const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx < count) {
     // Read the current iterate before either output is overwritten.
-    const auto result =
-      projection(current[idx], initial[idx], input3[idx], input4[idx], input5[idx]);
-    reflected[idx] = thrust::get<0>(result);
-    current[idx]   = thrust::get<1>(result);
+    const auto result     = projection(current_solution[idx],
+                                   initial_solution[idx],
+                                   objective_or_primal_product[idx],
+                                   dual_product_or_lower_bounds[idx],
+                                   variable_or_upper_bounds[idx]);
+    reflected[idx]        = thrust::get<0>(result);
+    current_solution[idx] = thrust::get<1>(result);
   }
 }
 
-template <typename f_t, typename last_input_t, typename projection_t>
+template <typename f_t, typename bounds_t, typename projection_t>
 bool try_direct_reflected_projection(bool enabled,
-                                     f_t* current,
-                                     const f_t* initial,
-                                     const f_t* input3,
-                                     const f_t* input4,
-                                     const last_input_t* input5,
+                                     f_t* current_solution,
+                                     const f_t* initial_solution,
+                                     const f_t* objective_or_primal_product,
+                                     const f_t* dual_product_or_lower_bounds,
+                                     const bounds_t* variable_or_upper_bounds,
                                      f_t* reflected,
                                      size_t count,
                                      projection_t projection,
@@ -86,7 +89,14 @@ bool try_direct_reflected_projection(bool enabled,
         constexpr size_t block_size = 256;
         const size_t grid_size      = cuda::ceil_div(count, block_size);
         reflected_projection_direct_kernel<<<grid_size, block_size, 0, stream.get()>>>(
-          current, initial, input3, input4, input5, reflected, count, projection);
+          current_solution,
+          initial_solution,
+          objective_or_primal_product,
+          dual_product_or_lower_bounds,
+          variable_or_upper_bounds,
+          reflected,
+          count,
+          projection);
         RAFT_CUDA_TRY(cudaPeekAtLastError());
       }
       return true;

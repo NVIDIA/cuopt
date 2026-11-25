@@ -2667,12 +2667,12 @@ void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
 }
 // Batch eligible ordinary iterations by default. The environment override is retained
 // for internal performance comparisons; it is not a supported solver parameter.
-constexpr int default_ordinary_graph_batch_size = 24;
+constexpr int default_ordinary_iterations_per_graph = 24;
 
-static int ordinary_graph_batch_size()
+static int ordinary_iterations_per_graph()
 {
   const char* value = std::getenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE");
-  if (value == nullptr) { return default_ordinary_graph_batch_size; }
+  if (value == nullptr) { return default_ordinary_iterations_per_graph; }
   char* end       = nullptr;
   errno           = 0;
   const long size = std::strtol(value, &end, 10);
@@ -2686,18 +2686,23 @@ static int ordinary_graph_batch_size()
 
 template <typename f_t>
 struct ordinary_graph_batch_t {
-  ordinary_graph_batch_t(cuda::stream_ref stream, int requested, bool eligible)
+  ordinary_graph_batch_t(cuda::stream_ref stream, int requested_iterations_per_graph, bool eligible)
     : stream{stream},
-      effective{eligible ? requested : 1},
-      halpern_weights{static_cast<size_t>(eligible && requested > 1 ? requested : 0), stream}
+      iterations_per_graph{eligible ? requested_iterations_per_graph : 1},
+      halpern_weights{static_cast<size_t>(eligible && requested_iterations_per_graph > 1
+                                            ? requested_iterations_per_graph
+                                            : 0),
+                      stream}
   {
-    if (effective > 1) {
-      CUOPT_LOG_INFO("PDLP graph batching: requested=%d effective=%d", requested, effective);
+    if (iterations_per_graph > 1) {
+      CUOPT_LOG_INFO("PDLP graph batching: requested=%d effective=%d",
+                     requested_iterations_per_graph,
+                     iterations_per_graph);
     }
   }
   ~ordinary_graph_batch_t()
   {
-    if (effective > 1) {
+    if (iterations_per_graph > 1) {
       // The local graph must not outlive pending use of the solver's buffers.
       RAFT_CUDA_TRY_NO_THROW(cudaStreamSynchronize(stream.get()));
       CUOPT_LOG_INFO(
@@ -2709,7 +2714,7 @@ struct ordinary_graph_batch_t {
     }
   }
   cuda::stream_ref stream;
-  int effective;
+  int iterations_per_graph;
   uint64_t launches{0};
   uint64_t iterations{0};
   uint64_t recoveries{0};
@@ -2718,15 +2723,18 @@ struct ordinary_graph_batch_t {
 };
 
 template <typename i_t>
-static bool ordinary_graph_batch_fits(
-  i_t total, i_t internal, i_t limit, int batch_size, const pdlp_hyper_params_t& hyper_params)
+static bool ordinary_graph_batch_fits(i_t total,
+                                      i_t internal,
+                                      i_t limit,
+                                      int iterations_per_graph,
+                                      const pdlp_hyper_params_t& hyper_params)
 {
-  if (batch_size <= 1 || hyper_params.major_iteration <= 0 ||
-      total > std::numeric_limits<i_t>::max() - batch_size - 2 || internal > limit ||
-      limit - internal < batch_size) {
+  if (iterations_per_graph <= 1 || hyper_params.major_iteration <= 0 ||
+      total > std::numeric_limits<i_t>::max() - iterations_per_graph - 2 || internal > limit ||
+      limit - internal < iterations_per_graph) {
     return false;
   }
-  for (int offset = 0; offset < batch_size; ++offset) {
+  for (int offset = 0; offset < iterations_per_graph; ++offset) {
     const i_t iteration = total + offset;
     // Preserve every host checkpoint and both independent major-step triggers.
     // PDHG's (iteration + 2) trigger is unconditional even when conditional
@@ -3055,16 +3063,16 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 #ifdef PDLP_DEBUG_MODE
   graph_batch_eligible = false;
 #endif
-  const int requested_graph_batch_size = ordinary_graph_batch_size();
+  const int requested_iterations_per_graph = ordinary_iterations_per_graph();
   // Reject batches that cannot fit between checkpoints before allocating their weights.
   // PDHG's conditional-major checkpoint is required even when host checks are disabled.
   graph_batch_eligible =
     graph_batch_eligible && graph_hyper.major_iteration > 2 &&
-    requested_graph_batch_size <= graph_hyper.major_iteration - 2 &&
-    requested_graph_batch_size < conditional_major<i_t>(std::numeric_limits<i_t>::max()) &&
-    requested_graph_batch_size <= settings_.iteration_limit;
+    requested_iterations_per_graph <= graph_hyper.major_iteration - 2 &&
+    requested_iterations_per_graph < conditional_major<i_t>(std::numeric_limits<i_t>::max()) &&
+    requested_iterations_per_graph <= settings_.iteration_limit;
   ordinary_graph_batch_t<f_t> ordinary_batch{
-    stream_view_, requested_graph_batch_size, graph_batch_eligible};
+    stream_view_, requested_iterations_per_graph, graph_batch_eligible};
 
   while (true) {
     PDLP_DEBUG_LOG("Step", total_pdlp_iterations_);
@@ -3303,14 +3311,14 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         ordinary_graph_batch_fits(total_pdlp_iterations_,
                                   internal_solver_iterations_,
                                   settings_.iteration_limit,
-                                  ordinary_batch.effective,
+                                  ordinary_batch.iterations_per_graph,
                                   settings_.hyper_params)) {
       cuopt_assert(total_pdlp_iterations_ == pdhg_solver_.get_total_pdhg_iterations(),
                    "PDLP and PDHG iteration counters must agree before graph batching");
       auto& average = restart_strategy_.weighted_average_solution_;
       pdhg_solver_.take_ordinary_graph_batch(
         ordinary_batch.graph,
-        static_cast<i_t>(ordinary_batch.effective),
+        static_cast<i_t>(ordinary_batch.iterations_per_graph),
         primal_step_size_,
         dual_step_size_,
         restart_strategy_.last_restart_duality_gap_.primal_solution_,
@@ -3319,10 +3327,10 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         ordinary_batch.halpern_weights);
       // The captured body already advanced the device age by the full batch size.
       // Keep all host effects outside capture, including eager-recovery paths.
-      average.advance_host_iterations_since_last_restart(ordinary_batch.effective);
-      total_pdlp_iterations_ += ordinary_batch.effective;
-      internal_solver_iterations_ += ordinary_batch.effective;
-      ordinary_batch.iterations += ordinary_batch.effective;
+      average.advance_host_iterations_since_last_restart(ordinary_batch.iterations_per_graph);
+      total_pdlp_iterations_ += ordinary_batch.iterations_per_graph;
+      internal_solver_iterations_ += ordinary_batch.iterations_per_graph;
+      ordinary_batch.iterations += ordinary_batch.iterations_per_graph;
       if (ordinary_batch.graph.is_initialized()) {
         ++ordinary_batch.launches;
       } else {

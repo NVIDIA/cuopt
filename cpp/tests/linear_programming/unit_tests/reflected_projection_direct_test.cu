@@ -52,37 +52,39 @@ void expect_same_bits(const rmm::device_uvector<double>& reference,
   }
 }
 
-template <template <typename> class projection_t, typename last_input_t>
+template <template <typename> class projection_t, typename bounds_t>
 void compare_with_cub(size_t count,
-                      const std::vector<last_input_t>& last_input,
+                      const std::vector<bounds_t>& variable_or_upper_bounds,
                       double reflection,
                       bool capture_graph)
 {
   raft::handle_t handle;
   cuda::stream_ref stream{handle.get_stream()};
   const size_t storage = count + 2;  // Guard the tail, including the empty-input case.
-  std::vector<double> current(storage), initial(storage), input3(storage), input4(storage);
+  std::vector<double> current(storage), initial(storage), objective_or_primal_product(storage),
+    dual_product_or_lower_bounds(storage);
   for (size_t i = 0; i < storage; ++i) {
-    const int centered = static_cast<int>(i % 17) - 8;
-    current[i]         = i % 11 == 0 ? -0.0 : 0.37 * centered;
-    initial[i]         = -0.19 * centered;
-    input3[i]          = 0.23 * (static_cast<int>(i % 7) - 3);
-    input4[i]          = 0.31 * (static_cast<int>(i % 13) - 6);
+    const int centered              = static_cast<int>(i % 17) - 8;
+    current[i]                      = i % 11 == 0 ? -0.0 : 0.37 * centered;
+    initial[i]                      = -0.19 * centered;
+    objective_or_primal_product[i]  = 0.23 * (static_cast<int>(i % 7) - 3);
+    dual_product_or_lower_bounds[i] = 0.31 * (static_cast<int>(i % 13) - 6);
   }
   rmm::device_uvector<double> reference(storage, stream), actual(storage, stream);
   rmm::device_uvector<double> reflected_reference(storage, stream),
     reflected_actual(storage, stream);
-  rmm::device_uvector<double> d_initial(storage, stream), d_input3(storage, stream),
-    d_input4(storage, stream), parameters(2, stream);
-  rmm::device_uvector<last_input_t> d_last(storage, stream);
+  rmm::device_uvector<double> d_initial(storage, stream),
+    d_objective_or_primal_product(storage, stream), d_dual_product_or_lower_bounds(storage, stream),
+    parameters(2, stream);
+  rmm::device_uvector<bounds_t> d_variable_or_upper_bounds(storage, stream);
   upload(reference, current, stream);
   upload(actual, current, stream);
   upload(reflected_reference, initial, stream);
   upload(reflected_actual, initial, stream);
   upload(d_initial, initial, stream);
-  upload(d_input3, input3, stream);
-  upload(d_input4, input4, stream);
-  upload(d_last, last_input, stream);
+  upload(d_objective_or_primal_product, objective_or_primal_product, stream);
+  upload(d_dual_product_or_lower_bounds, dual_product_or_lower_bounds, stream);
+  upload(d_variable_or_upper_bounds, variable_or_upper_bounds, stream);
   const std::vector<double> initial_parameters{0.125, 0.5};
   upload(parameters, initial_parameters, stream);
   stream.sync();
@@ -91,8 +93,11 @@ void compare_with_cub(size_t count,
   auto launch_both = [&]() {
     if (count != 0) {
       RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(
-          reference.data(), d_initial.data(), d_input3.data(), d_input4.data(), d_last.data()),
+        cuda::std::make_tuple(reference.data(),
+                              d_initial.data(),
+                              d_objective_or_primal_product.data(),
+                              d_dual_product_or_lower_bounds.data(),
+                              d_variable_or_upper_bounds.data()),
         thrust::make_zip_iterator(reflected_reference.data(), reference.data()),
         count,
         projection,
@@ -101,9 +106,9 @@ void compare_with_cub(size_t count,
     EXPECT_TRUE(detail::try_direct_reflected_projection(true,
                                                         actual.data(),
                                                         d_initial.data(),
-                                                        d_input3.data(),
-                                                        d_input4.data(),
-                                                        d_last.data(),
+                                                        d_objective_or_primal_product.data(),
+                                                        d_dual_product_or_lower_bounds.data(),
+                                                        d_variable_or_upper_bounds.data(),
                                                         reflected_actual.data(),
                                                         count,
                                                         projection,

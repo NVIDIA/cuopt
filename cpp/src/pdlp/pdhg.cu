@@ -1689,7 +1689,7 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::take_ordinary_graph_batch(
   manual_cuda_graph_t& graph,
-  i_t batch_size,
+  i_t iterations_per_graph,
   rmm::device_uvector<f_t>& primal_step_size,
   rmm::device_uvector<f_t>& dual_step_size,
   rmm::device_uvector<f_t>& initial_primal,
@@ -1700,10 +1700,11 @@ void pdhg_solver_t<i_t, f_t>::take_ordinary_graph_batch(
   cuopt_assert(!batch_mode_ && !is_distributed_master() && !reduced_matrix_.active() &&
                  new_bounds_idx_.is_empty(),
                "Ordinary graph batching requires the unchanged full single-problem operator");
-  cuopt_assert(batch_size > 0 && batched_halpern_weights.size() >= static_cast<size_t>(batch_size),
+  cuopt_assert(iterations_per_graph > 0 &&
+                 batched_halpern_weights.size() >= static_cast<size_t>(iterations_per_graph),
                "Graph batch requires one persistent Halpern weight per step");
   graph.run(stream_view_, [&]() {
-    enqueue_ordinary_graph_batch(batch_size,
+    enqueue_ordinary_graph_batch(iterations_per_graph,
                                  primal_step_size,
                                  dual_step_size,
                                  initial_primal,
@@ -1711,12 +1712,12 @@ void pdhg_solver_t<i_t, f_t>::take_ordinary_graph_batch(
                                  d_iterations_since_last_restart,
                                  batched_halpern_weights);
   });
-  total_pdhg_iterations_ += batch_size;
+  total_pdhg_iterations_ += iterations_per_graph;
 }
 
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::enqueue_ordinary_graph_batch(
-  i_t batch_size,
+  i_t iterations_per_graph,
   rmm::device_uvector<f_t>& primal_step_size,
   rmm::device_uvector<f_t>& dual_step_size,
   rmm::device_uvector<f_t>& initial_primal,
@@ -1726,9 +1727,11 @@ void pdhg_solver_t<i_t, f_t>::enqueue_ordinary_graph_batch(
 {
   // No restart or checkpoint occurs within this batch. Preserve the original
   // device weight expression and keep all host bookkeeping outside capture.
-  detail::prepare_batched_halpern_weights(
-    d_iterations_since_last_restart, batched_halpern_weights.data(), batch_size, stream_view_);
-  for (i_t step = 0; step < batch_size; ++step) {
+  detail::prepare_batched_halpern_weights(d_iterations_since_last_restart,
+                                          batched_halpern_weights.data(),
+                                          iterations_per_graph,
+                                          stream_view_);
+  for (i_t step = 0; step < iterations_per_graph; ++step) {
     compute_At_y();
     if (!detail::try_direct_reflected_projection(
           !cusparse_view_.mixed_precision_enabled_ && !reduced_matrix_.active(),
@@ -1789,7 +1792,7 @@ void pdhg_solver_t<i_t, f_t>::enqueue_ordinary_graph_batch(
   detail::finish_batched_halpern(d_iterations_since_last_restart,
                                  d_halpern_weight_.data(),
                                  batched_halpern_weights.data(),
-                                 batch_size,
+                                 iterations_per_graph,
                                  stream_view_);
 }
 

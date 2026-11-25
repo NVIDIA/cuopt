@@ -25,24 +25,24 @@ template <typename i_t, typename f_t>
 __global__ void finish_batched_halpern_kernel(i_t* restart_age,
                                               f_t* final_weight,
                                               const f_t* weights,
-                                              i_t batch_size)
+                                              i_t iterations_per_graph)
 {
   // The graph batch cannot cross a restart or a host checkpoint. Commit exactly
   // the scalar state left by the final ordinary iteration, once all steps finish.
-  *restart_age += batch_size;
-  *final_weight = weights[batch_size - 1];
+  *restart_age += iterations_per_graph;
+  *final_weight = weights[iterations_per_graph - 1];
 }
 
 template <typename i_t, typename f_t>
 void prepare_batched_halpern_weights(const i_t* restart_age,
                                      f_t* weights,
-                                     i_t batch_size,
+                                     i_t iterations_per_graph,
                                      cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
     thrust::make_counting_iterator<i_t>(0),
     weights,
-    batch_size,
+    iterations_per_graph,
     [restart_age] __device__(i_t step) {
       return halpern_weight_from_iteration<i_t, f_t>{}(*restart_age + step);
     },
@@ -50,11 +50,14 @@ void prepare_batched_halpern_weights(const i_t* restart_age,
 }
 
 template <typename i_t, typename f_t>
-void finish_batched_halpern(
-  i_t* restart_age, f_t* final_weight, const f_t* weights, i_t batch_size, cuda::stream_ref stream)
+void finish_batched_halpern(i_t* restart_age,
+                            f_t* final_weight,
+                            const f_t* weights,
+                            i_t iterations_per_graph,
+                            cuda::stream_ref stream)
 {
   finish_batched_halpern_kernel<<<1, 1, 0, stream.get()>>>(
-    restart_age, final_weight, weights, batch_size);
+    restart_age, final_weight, weights, iterations_per_graph);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 

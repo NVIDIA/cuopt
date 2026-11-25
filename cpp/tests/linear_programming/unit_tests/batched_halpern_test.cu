@@ -56,13 +56,13 @@ void expect_same_bits(const std::vector<double>& expected, const std::vector<dou
 }
 
 struct scalar_state {
-  explicit scalar_state(int batch_size)
+  explicit scalar_state(int iterations_per_graph)
     : stream{handle.get_stream()},
-      batch_size{batch_size},
+      iterations_per_graph{iterations_per_graph},
       age_reference{1, stream},
       age_batched{1, stream},
-      weights_reference{static_cast<size_t>(batch_size + 2), stream},
-      weights_batched{static_cast<size_t>(batch_size + 2), stream},
+      weights_reference{static_cast<size_t>(iterations_per_graph + 2), stream},
+      weights_batched{static_cast<size_t>(iterations_per_graph + 2), stream},
       final_weight{1, stream}
   {
   }
@@ -70,7 +70,7 @@ struct scalar_state {
   void reset(int age)
   {
     const std::vector<int> ages{age};
-    const std::vector<double> guards(batch_size + 2, -123.25);
+    const std::vector<double> guards(iterations_per_graph + 2, -123.25);
     const std::vector<double> final_guard{-456.5};
     upload(age_reference, ages, stream);
     upload(age_batched, ages, stream);
@@ -97,7 +97,7 @@ struct scalar_state {
 
   void reference()
   {
-    for (int step = 0; step < batch_size; ++step) {
+    for (int step = 0; step < iterations_per_graph; ++step) {
       reference_step(step);
     }
   }
@@ -105,13 +105,16 @@ struct scalar_state {
   void prepare()
   {
     detail::prepare_batched_halpern_weights(
-      age_batched.data(), weights_batched.data(), batch_size, stream);
+      age_batched.data(), weights_batched.data(), iterations_per_graph, stream);
   }
 
   void finish()
   {
-    detail::finish_batched_halpern(
-      age_batched.data(), final_weight.data(), weights_batched.data(), batch_size, stream);
+    detail::finish_batched_halpern(age_batched.data(),
+                                   final_weight.data(),
+                                   weights_batched.data(),
+                                   iterations_per_graph,
+                                   stream);
   }
 
   void check(int expected_age)
@@ -122,12 +125,12 @@ struct scalar_state {
     EXPECT_EQ(download(age_reference, stream).at(0), expected_age);
     EXPECT_EQ(download(age_batched, stream).at(0), expected_age);
     EXPECT_EQ(std::bit_cast<uint64_t>(download(final_weight, stream).at(0)),
-              std::bit_cast<uint64_t>(expected.at(batch_size - 1)));
+              std::bit_cast<uint64_t>(expected.at(iterations_per_graph - 1)));
   }
 
   raft::handle_t handle;
   cuda::stream_ref stream;
-  int batch_size;
+  int iterations_per_graph;
   rmm::device_uvector<int> age_reference, age_batched;
   rmm::device_uvector<double> weights_reference, weights_batched, final_weight;
 };
@@ -379,10 +382,10 @@ TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitRes
 
   // Preserve the test's checkpoint schedule instead of replacing it with a solver-mode preset.
   ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", "1", 1), 0);
-  auto sequential                  = solve_lp(&handle, model, settings, true, false);
-  const char* requested_batch_size = std::get<3>(GetParam());
-  if (requested_batch_size != nullptr) {
-    ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", requested_batch_size, 1), 0);
+  auto sequential                            = solve_lp(&handle, model, settings, true, false);
+  const char* requested_iterations_per_graph = std::get<3>(GetParam());
+  if (requested_iterations_per_graph != nullptr) {
+    ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", requested_iterations_per_graph, 1), 0);
   } else {
     ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
   }

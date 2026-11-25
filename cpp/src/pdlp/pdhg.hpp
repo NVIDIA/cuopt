@@ -88,7 +88,7 @@ class pdhg_solver_t {
                  bool is_major_iteration);
   // Batch eligible single-problem fixed-step iterations between checkpoints.
   void take_ordinary_graph_batch(manual_cuda_graph_t& graph,
-                                 i_t batch_size,
+                                 i_t iterations_per_graph,
                                  rmm::device_uvector<f_t>& primal_step_size,
                                  rmm::device_uvector<f_t>& dual_step_size,
                                  rmm::device_uvector<f_t>& initial_primal,
@@ -147,7 +147,7 @@ class pdhg_solver_t {
   i_t total_pdhg_iterations_;
 
  private:
-  void enqueue_ordinary_graph_batch(i_t batch_size,
+  void enqueue_ordinary_graph_batch(i_t iterations_per_graph,
                                     rmm::device_uvector<f_t>& primal_step_size,
                                     rmm::device_uvector<f_t>& dual_step_size,
                                     rmm::device_uvector<f_t>& initial_primal,
