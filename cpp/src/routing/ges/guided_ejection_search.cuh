@@ -132,6 +132,7 @@ class guided_ejection_search_t {
   void squeeze_remaining_requests();
   bool squeeze_all_and_save();
   f_t remaining_time() const;
+  i_t get_min_routes_by_capacity();
 
   // Data reuse for get_all_feasible_insertion
   // 0, Route_id, pickup_position, delivery_position

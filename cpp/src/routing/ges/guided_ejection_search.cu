@@ -482,6 +482,40 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::construct_feasible_solution()
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
+i_t guided_ejection_search_t<i_t, f_t, REQUEST>::get_min_routes_by_capacity()
+{
+  const auto& problem    = *solution_ptr->problem_ptr;
+  const auto& demands    = problem.order_info_h.demand;
+  const auto& capacities = problem.fleet_info_h.capacities;
+  const i_t n_orders     = problem.get_num_orders();
+  const i_t fleet_size   = problem.get_fleet_size();
+  const i_t n_cap_dims   = capacities.size() / fleet_size;
+  cuopt_assert(demands.size() == (size_t)(n_cap_dims * n_orders),
+               "Host demands should hold every capacity dimension");
+  i_t min_routes = 0;
+  for (i_t dim = 0; dim < n_cap_dims; ++dim) {
+    int64_t total_demand = 0;
+    for (i_t i = problem.order_info.depot_included_; i < n_orders; ++i) {
+      total_demand += demands[dim * n_orders + i];
+    }
+    std::vector<cap_i_t> sorted_capacities(capacities.begin() + dim * fleet_size,
+                                           capacities.begin() + (dim + 1) * fleet_size);
+    std::sort(sorted_capacities.rbegin(), sorted_capacities.rend());
+    int64_t total_capacity = 0;
+    i_t n_vehicles_needed  = 0;
+    while (total_capacity < total_demand) {
+      cuopt_assert(n_vehicles_needed < fleet_size,
+                   "A feasible solution cannot carry more than the fleet capacity");
+      total_capacity += sorted_capacities[n_vehicles_needed++];
+    }
+    cuopt_assert(get_num_non_empty_vehicles() >= n_vehicles_needed,
+                 "A feasible solution serving all orders needs at least the capacity bound");
+    min_routes = std::max(min_routes, n_vehicles_needed);
+  }
+  return min_routes;
+}
+
+template <typename i_t, typename f_t, request_t REQUEST>
 void guided_ejection_search_t<i_t, f_t, REQUEST>::route_minimizer_loop()
 {
   raft::common::nvtx::range fun_scope("route_minimizer_loop");
@@ -517,34 +551,7 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::route_minimizer_loop()
 
   const auto& problem = *solution_ptr->problem_ptr;
   i_t min_routes      = std::max(1, problem.data_view_ptr->get_min_vehicles());
-  if (!problem.has_prize_collection()) {
-    const auto& demands    = problem.order_info_h.demand;
-    const auto& capacities = problem.fleet_info_h.capacities;
-    const i_t n_orders     = problem.get_num_orders();
-    const i_t fleet_size   = problem.get_fleet_size();
-    const i_t n_cap_dims   = capacities.size() / fleet_size;
-    cuopt_assert(demands.size() == (size_t)(n_cap_dims * n_orders),
-                 "Host demands should hold every capacity dimension");
-    for (i_t dim = 0; dim < n_cap_dims; ++dim) {
-      int64_t total_demand = 0;
-      for (i_t i = problem.order_info.depot_included_; i < n_orders; ++i) {
-        total_demand += demands[dim * n_orders + i];
-      }
-      std::vector<cap_i_t> sorted_capacities(capacities.begin() + dim * fleet_size,
-                                             capacities.begin() + (dim + 1) * fleet_size);
-      std::sort(sorted_capacities.rbegin(), sorted_capacities.rend());
-      int64_t total_capacity = 0;
-      i_t n_vehicles_needed  = 0;
-      while (total_capacity < total_demand) {
-        cuopt_assert(n_vehicles_needed < fleet_size,
-                     "A feasible solution cannot carry more than the fleet capacity");
-        total_capacity += sorted_capacities[n_vehicles_needed++];
-      }
-      cuopt_assert(get_num_non_empty_vehicles() >= n_vehicles_needed,
-                   "A feasible solution serving all orders needs at least the capacity bound");
-      min_routes = std::max(min_routes, n_vehicles_needed);
-    }
-  }
+  min_routes          = std::max(min_routes, get_min_routes_by_capacity());
 
   i_t counter = 0;
   while (!time_stop_condition_reached() && get_num_non_empty_vehicles() > min_routes) {
