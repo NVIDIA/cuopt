@@ -472,6 +472,9 @@ bool domain_propagation_t<i_t, f_t>::propagate_objective(
         feasible = false;
         break;
       }
+      if (lp.lower[j] != lb || lp.upper[j] != ub) {
+        queue_variable(j, var_types, lp, settings.primal_tol);
+      }
     }
     work += objective_vars_.size();
 
