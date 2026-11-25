@@ -21,6 +21,7 @@
 #include <thrust/tuple.h>
 #include <cub/device/device_segmented_reduce.cuh>
 #include <cuda/std/functional>
+#include <cuda/stream>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
@@ -29,6 +30,21 @@
 #include <utilities/omp_helpers.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
+
+namespace {
+
+template <typename i_t, typename f_t>
+void copy_baseline_activities(const bounds_update_data_t<i_t, f_t>& baseline,
+                              cuda::stream_ref stream,
+                              bounds_update_data_t<i_t, f_t>& update)
+{
+  raft::copy(
+    update.min_activity.data(), baseline.min_activity.data(), baseline.min_activity.size(), stream);
+  raft::copy(
+    update.max_activity.data(), baseline.max_activity.data(), baseline.max_activity.size(), stream);
+}
+
+}  // namespace
 
 template <typename i_t, typename f_t>
 i_t probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
@@ -446,8 +462,19 @@ void compute_cache_for_var(i_t var_idx,
       }
     }
   }
+  const auto& baseline = bound_presolve.upd;
+  copy_baseline_activities(baseline, handle.get_stream(), multi_probe_presolve.upd_0);
+  copy_baseline_activities(baseline, handle.get_stream(), multi_probe_presolve.upd_1);
   auto bounds_presolve_result =
     multi_probe_presolve.solve_for_interval(problem, var_interval_vals, &handle);
+
+  // Untouched rows retain their baseline activities. Only a branch stopped at a limit can
+  // have stale activities after propagation.
+  if (!multi_probe_presolve.skip_0 || !multi_probe_presolve.skip_1) {
+    multi_probe_presolve.calculate_activity(problem, &handle);
+  }
+  multi_probe_presolve.constraint_stats(problem, &handle);
+
   if (bounds_presolve_result != termination_criterion_t::NO_UPDATE) {
     CUOPT_LOG_TRACE("Adding cached bounds for var %d", var_idx);
   }
@@ -923,6 +950,8 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   size_t num_tasks = bound_presolve.settings.num_tasks < 0 ? omp_get_num_threads() - 1
                                                            : bound_presolve.settings.num_tasks;
 
+  bound_presolve.upd.resize(problem);
+
   // Create a vector of multi_probe_t objects
   std::vector<multi_probe_t<i_t, f_t>> multi_probe_presolve_pool;
   std::vector<std::vector<std::tuple<f_t, i_t, f_t, f_t>>> modification_vector_pool(num_tasks);
@@ -934,7 +963,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   for (size_t i = 0; i < num_tasks; i++) {
     multi_probe_presolve_pool.emplace_back(bound_presolve.context);
     multi_probe_presolve_pool[i].resize(problem);
-    multi_probe_presolve_pool[i].compute_stats          = true;
+    multi_probe_presolve_pool[i].compute_stats          = false;
     multi_probe_presolve_pool[i].local_iter_accumulator = &iter_accum_pool[i];
   }
 
@@ -971,6 +1000,10 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
     if (timer.check_time_limit() || early_exit || problem_is_infeasible.load()) { break; }
     if (work_used >= work_limit) { break; }
     size_t step_end = std::min(step_start + step_size, priority_indices.size());
+
+    // Share the activities across worker streams until the queued bound changes are applied.
+    bound_presolve.calculate_activity_on_problem_bounds(problem);
+    problem.handle_ptr->sync_stream();
 
 #pragma omp taskloop num_tasks(num_tasks) default(shared) priority(CUOPT_DEFAULT_TASK_PRIORITY)
     for (size_t task_id = 0; task_id < num_tasks; ++task_id) {
