@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <thrust/iterator/counting_iterator.h>
+#include <cub/device/device_transform.cuh>
 #include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
 
@@ -18,17 +20,6 @@ struct halpern_weight_from_iteration {
 };
 
 namespace detail {
-
-template <typename i_t, typename f_t>
-__global__ void prepare_batched_halpern_weights_kernel(const i_t* restart_age,
-                                                       f_t* weights,
-                                                       i_t batch_size)
-{
-  const i_t step = blockIdx.x * blockDim.x + threadIdx.x;
-  if (step < batch_size) {
-    weights[step] = halpern_weight_from_iteration<i_t, f_t>{}(*restart_age + step);
-  }
-}
 
 template <typename i_t, typename f_t>
 __global__ void finish_batched_halpern_kernel(i_t* restart_age,
@@ -48,12 +39,14 @@ void prepare_batched_halpern_weights(const i_t* restart_age,
                                      i_t batch_size,
                                      cuda::stream_ref stream)
 {
-  constexpr int threads = 32;
-  prepare_batched_halpern_weights_kernel<<<(batch_size + threads - 1) / threads,
-                                           threads,
-                                           0,
-                                           stream.get()>>>(restart_age, weights, batch_size);
-  RAFT_CUDA_TRY(cudaPeekAtLastError());
+  RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
+    thrust::make_counting_iterator<i_t>(0),
+    weights,
+    batch_size,
+    [restart_age] __device__(i_t step) {
+      return halpern_weight_from_iteration<i_t, f_t>{}(*restart_age + step);
+    },
+    stream.get()));
 }
 
 template <typename i_t, typename f_t>
