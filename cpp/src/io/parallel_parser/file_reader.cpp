@@ -109,7 +109,6 @@ std::size_t get_file_size(const std::string& path)
   });
 
   std::size_t size = get_file_size(fd, path);
-  ::close(fd);
   return size;
 }
 

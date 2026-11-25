@@ -456,6 +456,9 @@ static inline void observe_dense_name(bool& candidate,
 // explains most of the paired/dual code paths throughout this file.
 template <typename i_t, typename f_t>
 struct parse_state_t {
+  // FP32 support should be easy: mostly range checks in the float parsing routines
+  static_assert(std::same_as<f_t, double>);
+
   mps_data_model_t<i_t, f_t>& problem;
   cursor_t& cursor;
 
@@ -3381,6 +3384,7 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
                                                         const char* total_timer_name,
                                                         const char* producer_task_name)
 {
+  static_assert(std::same_as<f_t, double>);
   omp_max_active_levels_guard_t omp_active_levels(2);
 
   input_stream_view_t input = stream.view();
@@ -3687,12 +3691,8 @@ mps_data_model_t<i_t, f_t> parse_mps_fast_file(const std::string& path, FileRead
   __builtin_unreachable();
 }
 
-template mps_data_model_t<int, float> parse_mps_fast_file(const std::string& path,
-                                                          FileReadMethod read_method);
 template mps_data_model_t<int, double> parse_mps_fast_file(const std::string& path,
                                                            FileReadMethod read_method);
-template mps_data_model_t<int64_t, float> parse_mps_fast_file(const std::string& path,
-                                                              FileReadMethod read_method);
 template mps_data_model_t<int64_t, double> parse_mps_fast_file(const std::string& path,
                                                                FileReadMethod read_method);
 
@@ -3705,12 +3705,8 @@ mps_data_model_t<i_t, f_t> parse_mps_fast_buffer(std::vector<char> buffer, std::
     stream, "parse_mps_fast_buffer (total)", "task_memory_scan");
 }
 
-template mps_data_model_t<int, float> parse_mps_fast_buffer(std::vector<char> buffer,
-                                                            std::size_t input_size);
 template mps_data_model_t<int, double> parse_mps_fast_buffer(std::vector<char> buffer,
                                                              std::size_t input_size);
-template mps_data_model_t<int64_t, float> parse_mps_fast_buffer(std::vector<char> buffer,
-                                                                std::size_t input_size);
 template mps_data_model_t<int64_t, double> parse_mps_fast_buffer(std::vector<char> buffer,
                                                                  std::size_t input_size);
 
