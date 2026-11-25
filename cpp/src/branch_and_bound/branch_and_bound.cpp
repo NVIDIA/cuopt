@@ -1472,14 +1472,13 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   worker->recompute_bounds = true;
 
   if (lp_status == dual_status_t::DUAL_UNBOUNDED) {
-    node_ptr->lower_bound = inf;
-    policy.graphviz(search_tree, node_ptr, "infeasible", 0.0);
+    node_ptr->lower_bound = upper_bound;
+    policy.graphviz(search_tree, node_ptr, "infeasible", upper_bound);
     status = node_status_t::INFEASIBLE;
 
   } else if (lp_status == dual_status_t::CUTOFF) {
-    f_t leaf_obj          = compute_objective(leaf_problem, leaf_solution.x);
     node_ptr->lower_bound = upper_bound;
-    policy.graphviz(search_tree, node_ptr, "cut off", leaf_obj);
+    policy.graphviz(search_tree, node_ptr, "cut off", upper_bound);
     status = node_status_t::FATHOMED;
 
   } else if (lp_status == dual_status_t::OPTIMAL) {
@@ -5428,7 +5427,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
 #endif
 
   if (!feasible) {
-    node_ptr->lower_bound = std::numeric_limits<f_t>::infinity();
+    node_ptr->lower_bound = worker.local_upper_bound;
     worker.record_infeasible(node_ptr);
     node_ptr->set_status(node_status_t::INFEASIBLE);
     --exploration_stats_.nodes_unexplored;
