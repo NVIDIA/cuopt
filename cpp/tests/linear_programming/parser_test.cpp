@@ -65,8 +65,8 @@ struct mps_reader_param_t {
   mps_reader_type_t reader;
 };
 
-constexpr mps_reader_param_t default_mps_reader_param{"default_reader",
-                                                      mps_reader_type_t::default_reader};
+constexpr mps_reader_param_t serial_mps_reader_param{"serial_reader",
+                                                     mps_reader_type_t::serial_reader};
 constexpr mps_reader_param_t fast_mps_reader_param{"parallel_reader",
                                                    mps_reader_type_t::parallel_reader};
 
@@ -939,15 +939,15 @@ TEST_F(mip_partial_bounds_test, lp)
   check_model(read_lp_file("mixed_integer_programming/good-mip-mps-partial-bounds.lp"));
 }
 
-#define INSTANTIATE_MPS_READER_TEST(Fixture)                                                   \
-  INSTANTIATE_TEST_SUITE_P(mps_readers,                                                        \
-                           Fixture,                                                            \
-                           ::testing::Values(default_mps_reader_param, fast_mps_reader_param), \
+#define INSTANTIATE_MPS_READER_TEST(Fixture)                                                  \
+  INSTANTIATE_TEST_SUITE_P(mps_readers,                                                       \
+                           Fixture,                                                           \
+                           ::testing::Values(serial_mps_reader_param, fast_mps_reader_param), \
                            mps_reader_param_name)
 
 #define INSTANTIATE_DEFAULT_MPS_READER_TEST(Fixture) \
   INSTANTIATE_TEST_SUITE_P(                          \
-    mps_readers, Fixture, ::testing::Values(default_mps_reader_param), mps_reader_param_name)
+    mps_readers, Fixture, ::testing::Values(serial_mps_reader_param), mps_reader_param_name)
 
 INSTANTIATE_MPS_READER_TEST(good_mps_1_test);
 INSTANTIATE_MPS_READER_TEST(up_low_bounds_test);
@@ -2722,7 +2722,7 @@ namespace {
 mps_data_model_t<int, double> dispatch_parse(
   const std::string& content,
   const std::string& suffix,
-  mps_reader_type_t mps_reader = mps_reader_type_t::default_reader)
+  mps_reader_type_t mps_reader = mps_reader_type_t::serial_reader)
 {
   temp_file_t tmp(suffix);
   {

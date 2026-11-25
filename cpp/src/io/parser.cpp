@@ -48,7 +48,7 @@ template CUOPT_EXPORT mps_data_model_t<int, double> read_mps_from_string(
 template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> read_mps_parallel(const std::string& mps_file_path)
 {
-  CUOPT_LOG_INFO("Using parallel MPS parser for '%s'", mps_file_path.c_str());
+  CUOPT_LOG_DEBUG("Using parallel MPS parser for '%s'", mps_file_path.c_str());
   return detail::parse_mps_fast_file<i_t, f_t>(mps_file_path);
 }
 

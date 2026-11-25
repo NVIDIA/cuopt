@@ -24,10 +24,11 @@ namespace io {
 /**
  * @brief Selects which MPS reader implementation should be used by dispatching entry points.
  *
- * The parallel reader is intentionally opt-in. It supports the same free-format
+ * The parallel reader is the default. It supports the same free-format
  * MPS/QPS scope as read_mps(): LP, MIP, QP (QUADOBJ/QMATRIX), and QCQP/SOCP (QCMATRIX).
+ * Fixed MPS format falls back to the serial reader.
  */
-enum class mps_reader_type_t { default_reader, parallel_reader };
+enum class mps_reader_type_t { serial_reader, parallel_reader, default_reader = parallel_reader };
 
 /**
  * @brief Reads the equation from an MPS or QPS file.
@@ -138,8 +139,8 @@ mps_data_model_t<i_t, f_t> read_lp_from_string(std::string_view lp_contents);
  *
  * Routing (case-insensitive extensions):
  *   - .mps, .mps.gz, .mps.bz2, .mps.lz4, .qps, .qps.gz, .qps.bz2, .qps.lz4
- *     → read_mps() when mps_reader == default_reader, or read_mps_parallel()
- *       when mps_reader == parallel_reader (fixed_mps_format must be false)
+ *     → read_mps_parallel() when mps_reader == parallel_reader and fixed_mps_format is
+ *       false, read_mps() otherwise
  *   - .lp,  .lp.gz,  .lp.bz2, .lp.lz4 → read_lp()
  *   - anything else → std::logic_error
  *
@@ -168,10 +169,7 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path,
     }
   }
   if (lower.ends_with(".mps") || lower.ends_with(".qps") || lower.ends_with(".sif")) {
-    if (mps_reader == mps_reader_type_t::parallel_reader) {
-      if (fixed_mps_format) {
-        throw std::logic_error("parallel MPS reader does not support fixed MPS format forcing");
-      }
+    if (mps_reader == mps_reader_type_t::parallel_reader && !fixed_mps_format) {
       return read_mps_parallel<i_t, f_t>(path);
     }
     return read_mps<i_t, f_t>(path, fixed_mps_format);
