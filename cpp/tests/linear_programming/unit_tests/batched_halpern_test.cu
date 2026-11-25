@@ -20,10 +20,8 @@
 
 #include <bit>
 #include <cstdint>
-#include <cstdlib>
 #include <limits>
 #include <optional>
-#include <string>
 #include <tuple>
 #include <vector>
 
@@ -277,22 +275,6 @@ TEST(BatchedHalpern, DirectProjectionSequencePreservesBits)
 
 class OrdinaryGraphBatching : public testing::Test {
  protected:
-  void SetUp() override
-  {
-    const char* value = std::getenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE");
-    if (value != nullptr) { previous_override_ = value; }
-    ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
-  }
-
-  void TearDown() override
-  {
-    if (previous_override_.has_value()) {
-      EXPECT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", previous_override_->c_str(), 1), 0);
-    } else {
-      EXPECT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
-    }
-  }
-
   static io::mps_data_model_t<int, double> make_model()
   {
     // Nearly parallel equality constraints keep this solve active beyond the initial
@@ -321,19 +303,16 @@ class OrdinaryGraphBatching : public testing::Test {
     settings.set_optimality_tolerance(1e-14);
     return settings;
   }
-
- private:
-  std::optional<std::string> previous_override_;
 };
 
 TEST_F(OrdinaryGraphBatching, DefaultExecutionMatchesSingleIterationGraphs)
 {
   raft::handle_t handle;
-  auto model    = make_model();
-  auto settings = make_settings();
-  ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", "1", 1), 0);
-  auto sequential = solve_lp(&handle, model, settings);
-  ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
+  auto model                                            = make_model();
+  auto settings                                         = make_settings();
+  auto sequential_settings                              = settings;
+  sequential_settings.hyper_params.iterations_per_graph = 1;
+  auto sequential = solve_lp(&handle, model, sequential_settings);
 
   auto batched = solve_lp(&handle, model, settings);
   ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
@@ -353,10 +332,10 @@ TEST_F(OrdinaryGraphBatching, AutomaticColumnReductionPreservesSolutionAndIterat
   auto settings                = make_settings();
   settings.large_nnz_threshold = 0;
 
-  ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", "1", 1), 0);
-  auto sequential = solve_lp(&handle, model, settings);
-  ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
-  auto automatic = solve_lp(&handle, model, settings);
+  auto sequential_settings                              = settings;
+  sequential_settings.hyper_params.iterations_per_graph = 1;
+  auto sequential = solve_lp(&handle, model, sequential_settings);
+  auto automatic  = solve_lp(&handle, model, settings);
   ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
   EXPECT_EQ(automatic.get_termination_status(), sequential.get_termination_status());
   EXPECT_EQ(automatic.get_additional_termination_information().number_of_steps_taken,
@@ -369,7 +348,7 @@ TEST_F(OrdinaryGraphBatching, AutomaticColumnReductionPreservesSolutionAndIterat
 
 class OrdinaryGraphBatchingCheckpoints
   : public OrdinaryGraphBatching,
-    public testing::WithParamInterface<std::tuple<int, int, bool, const char*>> {};
+    public testing::WithParamInterface<std::tuple<int, int, bool, std::optional<int>>> {};
 
 TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitResults)
 {
@@ -380,16 +359,14 @@ TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitRes
   settings.hyper_params.major_iteration       = std::get<1>(GetParam());
   settings.hyper_params.use_conditional_major = std::get<2>(GetParam());
 
-  // Preserve the test's checkpoint schedule instead of replacing it with a solver-mode preset.
-  ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", "1", 1), 0);
-  auto sequential                            = solve_lp(&handle, model, settings, true, false);
-  const char* requested_iterations_per_graph = std::get<3>(GetParam());
-  if (requested_iterations_per_graph != nullptr) {
-    ASSERT_EQ(setenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE", requested_iterations_per_graph, 1), 0);
-  } else {
-    ASSERT_EQ(unsetenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE"), 0);
+  if (const auto requested = std::get<3>(GetParam()); requested.has_value()) {
+    settings.hyper_params.iterations_per_graph = *requested;
   }
-  auto batched = solve_lp(&handle, model, settings, true, false);
+  auto sequential_settings                              = settings;
+  sequential_settings.hyper_params.iterations_per_graph = 1;
+  // Preserve the test's checkpoint schedule instead of replacing it with a solver-mode preset.
+  auto sequential = solve_lp(&handle, model, sequential_settings, true, false);
+  auto batched    = solve_lp(&handle, model, settings, true, false);
 
   ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
   EXPECT_EQ(batched.get_termination_status(), sequential.get_termination_status());
@@ -403,22 +380,21 @@ TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitRes
 
 INSTANTIATE_TEST_SUITE_P(CheckpointBoundaries,
                          OrdinaryGraphBatchingCheckpoints,
-                         testing::Values(std::tuple{1407, 200, true, nullptr},
-                                         std::tuple{1407, 211, true, nullptr},
-                                         std::tuple{1407, 211, false, nullptr},
-                                         std::tuple{10007, 200, true, nullptr},
-                                         std::tuple{1407, 211, true, "3"},
-                                         std::tuple{1407, 211, false, "12"},
-                                         std::tuple{10007, 211, true, "33"},
-                                         std::tuple{1407, 13, false, "11"},
-                                         std::tuple{1407, 13, false, "12"},
-                                         std::tuple{7, 200, true, "12"},
-                                         std::tuple{1407, 200, true, "2147483645"},
-                                         std::tuple{7, 200, true, "2147483647"},
-                                         std::tuple{7, 200, true, "9223372036854775808"},
-                                         std::tuple{7, 200, true, "0"},
-                                         std::tuple{7, 200, true, "-1"},
-                                         std::tuple{7, 200, true, "3x"}));
+                         testing::Values(std::tuple{1407, 200, true, std::nullopt},
+                                         std::tuple{1407, 211, true, std::nullopt},
+                                         std::tuple{1407, 211, false, std::nullopt},
+                                         std::tuple{10007, 200, true, std::nullopt},
+                                         std::tuple{1407, 211, true, 3},
+                                         std::tuple{1407, 211, false, 12},
+                                         std::tuple{10007, 211, true, 33},
+                                         std::tuple{1407, 13, false, 11},
+                                         std::tuple{1407, 13, false, 12},
+                                         std::tuple{7, 200, true, 12},
+                                         std::tuple{
+                                           1407, 200, true, std::numeric_limits<int>::max() - 2},
+                                         std::tuple{7, 200, true, std::numeric_limits<int>::max()},
+                                         std::tuple{7, 200, true, 0},
+                                         std::tuple{7, 200, true, -1}));
 
 }  // namespace
 }  // namespace cuopt::mathematical_optimization::pdlp::test

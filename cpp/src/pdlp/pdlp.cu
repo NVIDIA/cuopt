@@ -42,9 +42,7 @@
 #include <cub/device/device_reduce.cuh>
 #include <cub/device/device_transform.cuh>
 
-#include <cerrno>
 #include <cstdint>
-#include <cstdlib>
 #include <limits>
 
 #include <thrust/count.h>
@@ -2666,25 +2664,6 @@ void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
       stream_view_.get());
   }
 }
-// Batch eligible ordinary iterations by default. The environment override is retained
-// for internal performance comparisons; it is not a supported solver parameter.
-constexpr int default_ordinary_iterations_per_graph = 24;
-
-static int ordinary_iterations_per_graph()
-{
-  const char* value = std::getenv("CUOPT_EXPERIMENTAL_GRAPH_BATCH_SIZE");
-  if (value == nullptr) { return default_ordinary_iterations_per_graph; }
-  char* end       = nullptr;
-  errno           = 0;
-  const long size = std::strtol(value, &end, 10);
-  if (errno == 0 && end != value && *end == '\0' && size > 0 &&
-      size <= std::numeric_limits<int>::max() - 2) {
-    return static_cast<int>(size);
-  }
-  CUOPT_LOG_INFO("PDLP graph batching disabled: invalid batch size '%s'", value);
-  return 1;
-}
-
 template <typename f_t>
 struct ordinary_graph_batch_t {
   ordinary_graph_batch_t(cuda::stream_ref stream, int requested_iterations_per_graph, bool eligible)
@@ -3064,11 +3043,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 #ifdef PDLP_DEBUG_MODE
   graph_batch_eligible = false;
 #endif
-  const int requested_iterations_per_graph = ordinary_iterations_per_graph();
+  const int requested_iterations_per_graph = graph_hyper.iterations_per_graph;
   // Reject batches that cannot fit between checkpoints before allocating their weights.
   // PDHG's conditional-major checkpoint is required even when host checks are disabled.
   graph_batch_eligible =
-    graph_batch_eligible && graph_hyper.major_iteration > 2 &&
+    graph_batch_eligible && requested_iterations_per_graph > 1 && graph_hyper.major_iteration > 2 &&
     requested_iterations_per_graph <= graph_hyper.major_iteration - 2 &&
     requested_iterations_per_graph < conditional_major<i_t>(std::numeric_limits<i_t>::max()) &&
     requested_iterations_per_graph <= settings_.iteration_limit;
