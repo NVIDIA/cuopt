@@ -72,37 +72,32 @@ __global__ void reflected_projection_direct_kernel(f_t* current_solution,
 }
 
 template <typename f_t, typename bounds_t, typename projection_t>
-bool try_direct_reflected_projection(bool enabled,
-                                     f_t* current_solution,
-                                     const f_t* initial_solution,
-                                     const f_t* objective_or_primal_product,
-                                     const f_t* dual_product_or_lower_bounds,
-                                     const bounds_t* variable_or_upper_bounds,
-                                     f_t* reflected,
-                                     size_t count,
-                                     projection_t projection,
-                                     cuda::stream_ref stream)
+void launch_direct_reflected_projection(f_t* current_solution,
+                                        const f_t* initial_solution,
+                                        const f_t* objective_or_primal_product,
+                                        const f_t* dual_product_or_lower_bounds,
+                                        const bounds_t* variable_or_upper_bounds,
+                                        f_t* reflected,
+                                        size_t count,
+                                        projection_t projection,
+                                        cuda::stream_ref stream)
 {
   if constexpr (std::is_same_v<f_t, double>) {
-    if (enabled) {
-      if (count != 0) {
-        constexpr size_t block_size = 256;
-        const size_t grid_size      = cuda::ceil_div(count, block_size);
-        reflected_projection_direct_kernel<<<grid_size, block_size, 0, stream.get()>>>(
-          current_solution,
-          initial_solution,
-          objective_or_primal_product,
-          dual_product_or_lower_bounds,
-          variable_or_upper_bounds,
-          reflected,
-          count,
-          projection);
-        RAFT_CUDA_TRY(cudaPeekAtLastError());
-      }
-      return true;
+    if (count != 0) {
+      constexpr size_t block_size = 256;
+      const size_t grid_size      = cuda::ceil_div(count, block_size);
+      reflected_projection_direct_kernel<<<grid_size, block_size, 0, stream.get()>>>(
+        current_solution,
+        initial_solution,
+        objective_or_primal_product,
+        dual_product_or_lower_bounds,
+        variable_or_upper_bounds,
+        reflected,
+        count,
+        projection);
+      RAFT_CUDA_TRY(cudaPeekAtLastError());
     }
   }
-  return false;
 }
 
 }  // namespace detail

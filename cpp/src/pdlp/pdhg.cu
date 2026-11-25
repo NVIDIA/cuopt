@@ -1502,19 +1502,21 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       } else if (reduced_matrix_.active()) {
         reduced_matrix_.update_primal(primal_step_size, d_halpern_weight_);
       } else if (!batch_mode_) {
-        if (!detail::try_direct_reflected_projection(
-              !cusparse_view_.mixed_precision_enabled_ && !reduced_matrix_.active(),
-              current_saddle_point_state_.get_primal_solution().data(),
-              initial_primal.data(),
-              problem_ptr->objective_coefficients.data(),
-              current_saddle_point_state_.get_current_AtY().data(),
-              problem_ptr->variable_bounds.data(),
-              reflected_primal_.data(),
-              primal_size_h_,
-              primal_reflected_projection<f_t>(primal_step_size.data(),
-                                               d_halpern_weight_.data(),
-                                               hyper_params_.reflection_coefficient),
-              stream_view_)) {
+        if (std::is_same_v<f_t, double> && !cusparse_view_.mixed_precision_enabled_ &&
+            !reduced_matrix_.active()) {
+          detail::launch_direct_reflected_projection(
+            current_saddle_point_state_.get_primal_solution().data(),
+            initial_primal.data(),
+            problem_ptr->objective_coefficients.data(),
+            current_saddle_point_state_.get_current_AtY().data(),
+            problem_ptr->variable_bounds.data(),
+            reflected_primal_.data(),
+            primal_size_h_,
+            primal_reflected_projection<f_t>(primal_step_size.data(),
+                                             d_halpern_weight_.data(),
+                                             hyper_params_.reflection_coefficient),
+            stream_view_);
+        } else {
           primal_reflected_projection_transform(primal_step_size, initial_primal);
         }
       } else {
@@ -1587,19 +1589,21 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
             sub_pdlp.get_restart_strategy().last_restart_duality_gap_.dual_solution_);
         });
       } else if (!batch_mode_) {
-        if (!detail::try_direct_reflected_projection(
-              !cusparse_view_.mixed_precision_enabled_ && !reduced_matrix_.active(),
-              current_saddle_point_state_.get_dual_solution().data(),
-              initial_dual.data(),
-              current_saddle_point_state_.get_dual_gradient().data(),
-              problem_ptr->constraint_lower_bounds.data(),
-              problem_ptr->constraint_upper_bounds.data(),
-              reflected_dual_.data(),
-              dual_size_h_,
-              dual_reflected_projection<f_t>(dual_step_size.data(),
-                                             d_halpern_weight_.data(),
-                                             hyper_params_.reflection_coefficient),
-              stream_view_)) {
+        if (std::is_same_v<f_t, double> && !cusparse_view_.mixed_precision_enabled_ &&
+            !reduced_matrix_.active()) {
+          detail::launch_direct_reflected_projection(
+            current_saddle_point_state_.get_dual_solution().data(),
+            initial_dual.data(),
+            current_saddle_point_state_.get_dual_gradient().data(),
+            problem_ptr->constraint_lower_bounds.data(),
+            problem_ptr->constraint_upper_bounds.data(),
+            reflected_dual_.data(),
+            dual_size_h_,
+            dual_reflected_projection<f_t>(dual_step_size.data(),
+                                           d_halpern_weight_.data(),
+                                           hyper_params_.reflection_coefficient),
+            stream_view_);
+        } else {
           dual_reflected_projection_transform(dual_step_size, initial_dual);
         }
       } else {
@@ -1733,19 +1737,21 @@ void pdhg_solver_t<i_t, f_t>::enqueue_ordinary_graph_batch(
                                           stream_view_);
   for (i_t step = 0; step < iterations_per_graph; ++step) {
     compute_At_y();
-    if (!detail::try_direct_reflected_projection(
-          !cusparse_view_.mixed_precision_enabled_ && !reduced_matrix_.active(),
-          current_saddle_point_state_.get_primal_solution().data(),
-          initial_primal.data(),
-          problem_ptr->objective_coefficients.data(),
-          current_saddle_point_state_.get_current_AtY().data(),
-          problem_ptr->variable_bounds.data(),
-          reflected_primal_.data(),
-          primal_size_h_,
-          primal_reflected_projection<f_t>(primal_step_size.data(),
-                                           batched_halpern_weights.data() + step,
-                                           hyper_params_.reflection_coefficient),
-          stream_view_)) {
+    if (std::is_same_v<f_t, double> && !cusparse_view_.mixed_precision_enabled_ &&
+        !reduced_matrix_.active()) {
+      detail::launch_direct_reflected_projection(
+        current_saddle_point_state_.get_primal_solution().data(),
+        initial_primal.data(),
+        problem_ptr->objective_coefficients.data(),
+        current_saddle_point_state_.get_current_AtY().data(),
+        problem_ptr->variable_bounds.data(),
+        reflected_primal_.data(),
+        primal_size_h_,
+        primal_reflected_projection<f_t>(primal_step_size.data(),
+                                         batched_halpern_weights.data() + step,
+                                         hyper_params_.reflection_coefficient),
+        stream_view_);
+    } else {
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
                               initial_primal.data(),
@@ -1761,19 +1767,21 @@ void pdhg_solver_t<i_t, f_t>::enqueue_ordinary_graph_batch(
         stream_view_.get());
     }
     compute_A_x();
-    if (!detail::try_direct_reflected_projection(
-          !cusparse_view_.mixed_precision_enabled_ && !reduced_matrix_.active(),
-          current_saddle_point_state_.get_dual_solution().data(),
-          initial_dual.data(),
-          current_saddle_point_state_.get_dual_gradient().data(),
-          problem_ptr->constraint_lower_bounds.data(),
-          problem_ptr->constraint_upper_bounds.data(),
-          reflected_dual_.data(),
-          dual_size_h_,
-          dual_reflected_projection<f_t>(dual_step_size.data(),
-                                         batched_halpern_weights.data() + step,
-                                         hyper_params_.reflection_coefficient),
-          stream_view_)) {
+    if (std::is_same_v<f_t, double> && !cusparse_view_.mixed_precision_enabled_ &&
+        !reduced_matrix_.active()) {
+      detail::launch_direct_reflected_projection(
+        current_saddle_point_state_.get_dual_solution().data(),
+        initial_dual.data(),
+        current_saddle_point_state_.get_dual_gradient().data(),
+        problem_ptr->constraint_lower_bounds.data(),
+        problem_ptr->constraint_upper_bounds.data(),
+        reflected_dual_.data(),
+        dual_size_h_,
+        dual_reflected_projection<f_t>(dual_step_size.data(),
+                                       batched_halpern_weights.data() + step,
+                                       hyper_params_.reflection_coefficient),
+        stream_view_);
+    } else {
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
                               initial_dual.data(),

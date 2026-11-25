@@ -103,16 +103,15 @@ void compare_with_cub(size_t count,
         projection,
         stream.get()));
     }
-    EXPECT_TRUE(detail::try_direct_reflected_projection(true,
-                                                        actual.data(),
-                                                        d_initial.data(),
-                                                        d_objective_or_primal_product.data(),
-                                                        d_dual_product_or_lower_bounds.data(),
-                                                        d_variable_or_upper_bounds.data(),
-                                                        reflected_actual.data(),
-                                                        count,
-                                                        projection,
-                                                        stream));
+    detail::launch_direct_reflected_projection(actual.data(),
+                                               d_initial.data(),
+                                               d_objective_or_primal_product.data(),
+                                               d_dual_product_or_lower_bounds.data(),
+                                               d_variable_or_upper_bounds.data(),
+                                               reflected_actual.data(),
+                                               count,
+                                               projection,
+                                               stream);
   };
   launch_both();
   expect_same_bits(reference, actual, stream);
@@ -189,13 +188,14 @@ TEST(DirectReflectedProjection, CapturedBatchReadsLiveScalarParameters)
     count, std::vector<double>(count + 2, 3.0), 1.0, true);
 }
 
-TEST(DirectReflectedProjection, UnsupportedTypeAndDisabledDispatchDoNotLaunch)
+TEST(DirectReflectedProjection, UnsupportedTypeAndEmptyInputDoNotLaunch)
 {
   raft::handle_t handle;
   cuda::stream_ref stream{handle.get_stream()};
-  // Deliberately null pointers with a nonzero count make accidental dispatch observable.
-  EXPECT_FALSE(detail::try_direct_reflected_projection(
-    true,
+  cudaGraph_t graph{};
+  // Capture detects accidental launches without executing the deliberately null inputs.
+  RAFT_CUDA_TRY(cudaStreamBeginCapture(stream.get(), cudaStreamCaptureModeThreadLocal));
+  detail::launch_direct_reflected_projection(
     static_cast<float*>(nullptr),
     static_cast<const float*>(nullptr),
     static_cast<const float*>(nullptr),
@@ -204,18 +204,22 @@ TEST(DirectReflectedProjection, UnsupportedTypeAndDisabledDispatchDoNotLaunch)
     static_cast<float*>(nullptr),
     257,
     primal_reflected_projection<float>(nullptr, nullptr, 1.0f),
-    stream));
-  EXPECT_FALSE(detail::try_direct_reflected_projection(
-    false,
+    stream);
+  detail::launch_direct_reflected_projection(
     static_cast<double*>(nullptr),
     static_cast<const double*>(nullptr),
     static_cast<const double*>(nullptr),
     static_cast<const double*>(nullptr),
     static_cast<const double2*>(nullptr),
     static_cast<double*>(nullptr),
-    257,
+    0,
     primal_reflected_projection<double>(nullptr, nullptr, 1.0),
-    stream));
+    stream);
+  RAFT_CUDA_TRY(cudaStreamEndCapture(stream.get(), &graph));
+  size_t node_count = 0;
+  RAFT_CUDA_TRY(cudaGraphGetNodes(graph, nullptr, &node_count));
+  EXPECT_EQ(node_count, 0);
+  RAFT_CUDA_TRY(cudaGraphDestroy(graph));
   stream.sync();
 }
 

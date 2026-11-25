@@ -9,6 +9,8 @@
 #include <cuopt/mathematical_optimization/solve.hpp>
 
 #include <pdlp/batched_halpern.cuh>
+#include <pdlp/ordinary_graph_batch_observer.hpp>
+#include <pdlp/pdlp_constants.hpp>
 #include <pdlp/reflected_projection_direct.cuh>
 #include <utilities/manual_cuda_graph.cuh>
 
@@ -236,8 +238,7 @@ void compare_projection_sequence(const std::vector<bound_t>& bounds)
   state.prepare();
   for (int iteration = 0; iteration < 24; ++iteration) {
     state.reference_step(iteration);
-    EXPECT_TRUE(detail::try_direct_reflected_projection(
-      true,
+    detail::launch_direct_reflected_projection(
       reference.data(),
       d_initial.data(),
       d_input3.data(),
@@ -246,9 +247,8 @@ void compare_projection_sequence(const std::vector<bound_t>& bounds)
       ref_reflected.data(),
       size,
       projection_t<double>(step_size.data(), state.weights_reference.data() + iteration, 1.5),
-      state.stream));
-    EXPECT_TRUE(detail::try_direct_reflected_projection(
-      true,
+      state.stream);
+    detail::launch_direct_reflected_projection(
       candidate.data(),
       d_initial.data(),
       d_input3.data(),
@@ -257,7 +257,7 @@ void compare_projection_sequence(const std::vector<bound_t>& bounds)
       new_reflected.data(),
       size,
       projection_t<double>(step_size.data(), state.weights_batched.data() + iteration, 1.5),
-      state.stream));
+      state.stream);
   }
   state.finish();
   state.check(24);
@@ -303,6 +303,34 @@ class OrdinaryGraphBatching : public testing::Test {
     settings.set_optimality_tolerance(1e-14);
     return settings;
   }
+
+  static optimization_problem_solution_t<int, double> solve_observed(
+    raft::handle_t const* handle,
+    const io::mps_data_model_t<int, double>& model,
+    const pdlp_solver_settings_t<int, double>& settings,
+    detail::ordinary_graph_batch_stats_t& stats,
+    bool use_solver_mode = true)
+  {
+    detail::scoped_ordinary_graph_batch_observer_t observer{stats};
+    return solve_lp(handle, model, settings, true, use_solver_mode);
+  }
+
+  static void expect_dispatch(const detail::ordinary_graph_batch_stats_t& stats,
+                              int expected_iterations_per_graph)
+  {
+#ifdef PDLP_DEBUG_MODE
+    expected_iterations_per_graph = 1;
+#endif
+    EXPECT_GT(stats.reports, 0);
+    EXPECT_EQ(stats.recoveries, 0);
+    if (expected_iterations_per_graph > 1) {
+      EXPECT_GT(stats.launches, 0);
+      EXPECT_EQ(stats.iterations, stats.launches * expected_iterations_per_graph);
+    } else {
+      EXPECT_EQ(stats.launches, 0);
+      EXPECT_EQ(stats.iterations, 0);
+    }
+  }
 };
 
 TEST_F(OrdinaryGraphBatching, DefaultExecutionMatchesSingleIterationGraphs)
@@ -312,9 +340,11 @@ TEST_F(OrdinaryGraphBatching, DefaultExecutionMatchesSingleIterationGraphs)
   auto settings                                         = make_settings();
   auto sequential_settings                              = settings;
   sequential_settings.hyper_params.iterations_per_graph = 1;
-  auto sequential = solve_lp(&handle, model, sequential_settings);
-
-  auto batched = solve_lp(&handle, model, settings);
+  detail::ordinary_graph_batch_stats_t sequential_stats, batched_stats;
+  auto sequential = solve_observed(&handle, model, sequential_settings, sequential_stats);
+  auto batched    = solve_observed(&handle, model, settings, batched_stats);
+  expect_dispatch(sequential_stats, 1);
+  expect_dispatch(batched_stats, settings.hyper_params.iterations_per_graph);
   ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
   EXPECT_EQ(batched.get_termination_status(), sequential.get_termination_status());
   EXPECT_EQ(batched.get_additional_termination_information().number_of_steps_taken,
@@ -334,8 +364,11 @@ TEST_F(OrdinaryGraphBatching, AutomaticColumnReductionPreservesSolutionAndIterat
 
   auto sequential_settings                              = settings;
   sequential_settings.hyper_params.iterations_per_graph = 1;
-  auto sequential = solve_lp(&handle, model, sequential_settings);
-  auto automatic  = solve_lp(&handle, model, settings);
+  detail::ordinary_graph_batch_stats_t sequential_stats, automatic_stats;
+  auto sequential = solve_observed(&handle, model, sequential_settings, sequential_stats);
+  auto automatic  = solve_observed(&handle, model, settings, automatic_stats);
+  expect_dispatch(sequential_stats, 1);
+  expect_dispatch(automatic_stats, 1);
   ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
   EXPECT_EQ(automatic.get_termination_status(), sequential.get_termination_status());
   EXPECT_EQ(automatic.get_additional_termination_information().number_of_steps_taken,
@@ -348,7 +381,7 @@ TEST_F(OrdinaryGraphBatching, AutomaticColumnReductionPreservesSolutionAndIterat
 
 class OrdinaryGraphBatchingCheckpoints
   : public OrdinaryGraphBatching,
-    public testing::WithParamInterface<std::tuple<int, int, bool, std::optional<int>>> {};
+    public testing::WithParamInterface<std::tuple<int, int, bool, std::optional<int>, bool>> {};
 
 TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitResults)
 {
@@ -365,8 +398,12 @@ TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitRes
   auto sequential_settings                              = settings;
   sequential_settings.hyper_params.iterations_per_graph = 1;
   // Preserve the test's checkpoint schedule instead of replacing it with a solver-mode preset.
-  auto sequential = solve_lp(&handle, model, sequential_settings, true, false);
-  auto batched    = solve_lp(&handle, model, settings, true, false);
+  detail::ordinary_graph_batch_stats_t sequential_stats, batched_stats;
+  auto sequential = solve_observed(&handle, model, sequential_settings, sequential_stats, false);
+  auto batched    = solve_observed(&handle, model, settings, batched_stats, false);
+  expect_dispatch(sequential_stats, 1);
+  expect_dispatch(batched_stats,
+                  std::get<4>(GetParam()) ? settings.hyper_params.iterations_per_graph : 1);
 
   ASSERT_EQ(sequential.get_termination_status(), pdlp_termination_status_t::IterationLimit);
   EXPECT_EQ(batched.get_termination_status(), sequential.get_termination_status());
@@ -378,23 +415,23 @@ TEST_P(OrdinaryGraphBatchingCheckpoints, PreservesCheckpointAndIterationLimitRes
                    download(batched.get_dual_solution(), handle.get_stream()));
 }
 
-INSTANTIATE_TEST_SUITE_P(CheckpointBoundaries,
-                         OrdinaryGraphBatchingCheckpoints,
-                         testing::Values(std::tuple{1407, 200, true, std::nullopt},
-                                         std::tuple{1407, 211, true, std::nullopt},
-                                         std::tuple{1407, 211, false, std::nullopt},
-                                         std::tuple{10007, 200, true, std::nullopt},
-                                         std::tuple{1407, 211, true, 3},
-                                         std::tuple{1407, 211, false, 12},
-                                         std::tuple{10007, 211, true, 33},
-                                         std::tuple{1407, 13, false, 11},
-                                         std::tuple{1407, 13, false, 12},
-                                         std::tuple{7, 200, true, 12},
-                                         std::tuple{
-                                           1407, 200, true, std::numeric_limits<int>::max() - 2},
-                                         std::tuple{7, 200, true, std::numeric_limits<int>::max()},
-                                         std::tuple{7, 200, true, 0},
-                                         std::tuple{7, 200, true, -1}));
+INSTANTIATE_TEST_SUITE_P(
+  CheckpointBoundaries,
+  OrdinaryGraphBatchingCheckpoints,
+  testing::Values(std::tuple{1407, 200, true, std::nullopt, true},
+                  std::tuple{1407, 211, true, std::nullopt, true},
+                  std::tuple{1407, 211, false, std::nullopt, true},
+                  std::tuple{10007, 200, true, std::nullopt, true},
+                  std::tuple{1407, 211, true, 3, true},
+                  std::tuple{1407, 211, false, 12, true},
+                  std::tuple{10007, 211, true, 33, true},
+                  std::tuple{1407, 13, false, 11, true},
+                  std::tuple{1407, 13, false, 12, false},
+                  std::tuple{7, 200, true, 12, false},
+                  std::tuple{1407, 200, true, std::numeric_limits<int>::max() - 2, false},
+                  std::tuple{7, 200, true, std::numeric_limits<int>::max(), false},
+                  std::tuple{7, 200, true, 0, false},
+                  std::tuple{7, 200, true, -1, false}));
 
 }  // namespace
 }  // namespace cuopt::mathematical_optimization::pdlp::test

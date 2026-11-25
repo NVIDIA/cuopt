@@ -13,6 +13,7 @@
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/distributed_pdlp/distributed_utils.hpp>
 #include <pdlp/distributed_pdlp/partitioner.hpp>
+#include <pdlp/ordinary_graph_batch_observer.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/problem_memory.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -2664,6 +2665,37 @@ void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
       stream_view_.get());
   }
 }
+namespace detail {
+namespace {
+thread_local ordinary_graph_batch_stats_t* graph_batch_stats_sink = nullptr;
+}  // namespace
+
+scoped_ordinary_graph_batch_observer_t::scoped_ordinary_graph_batch_observer_t(
+  ordinary_graph_batch_stats_t& stats) noexcept
+  : previous_{graph_batch_stats_sink}
+{
+  stats                  = {};
+  graph_batch_stats_sink = &stats;
+}
+
+scoped_ordinary_graph_batch_observer_t::~scoped_ordinary_graph_batch_observer_t() noexcept
+{
+  graph_batch_stats_sink = previous_;
+}
+
+static void record_ordinary_graph_batch_stats(uint64_t launches,
+                                              uint64_t iterations,
+                                              uint64_t recoveries) noexcept
+{
+  if (auto* stats = graph_batch_stats_sink) {
+    ++stats->reports;
+    stats->launches += launches;
+    stats->iterations += iterations;
+    stats->recoveries += recoveries;
+  }
+}
+}  // namespace detail
+
 template <typename f_t>
 struct ordinary_graph_batch_t {
   ordinary_graph_batch_t(cuda::stream_ref stream, int iterations_per_graph)
@@ -2685,6 +2717,7 @@ struct ordinary_graph_batch_t {
         static_cast<unsigned long long>(iterations),
         static_cast<unsigned long long>(recoveries));
     }
+    detail::record_ordinary_graph_batch_stats(launches, iterations, recoveries);
   }
   cuda::stream_ref stream;
   int iterations_per_graph;
