@@ -1,12 +1,14 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
 
 #include "fast_fp64_parser.hpp"
+#include "source_location.hpp"
 
 #include <cstdarg>
 #include <cstddef>
+#include <cstdio>
 #include <utility>
 
 #include <simde/x86/avx2.h>
@@ -33,41 +35,66 @@ struct cursor_t {
   const char* start;
   const char* ptr;
   const char* end;
+  const source_location_t* source = nullptr;
 
-  cursor_t(const char* data, std::size_t size) : start(data), ptr(data), end(data + size) {}
+  cursor_t(const char* data, std::size_t size, const source_location_t* source = nullptr)
+    : start(data), ptr(data), end(data + size), source(source)
+  {
+  }
+
+  // nothing's owned, copies are fine as they act as views into the input range
+  cursor_t(const cursor_t& other)            = default;
+  cursor_t& operator=(const cursor_t& other) = default;
 
   bool done() const { return ptr >= end; }
 
-  // used in error reporting
-  std::pair<std::size_t, std::size_t> linecol_position() const
-  {
-    std::size_t line       = 1;
-    const char* line_start = start;
-    for (const char* p = start; p < ptr; ++p) {
-      if (*p == '\n') {
-        ++line;
-        line_start = p + 1;
-      }
-    }
-    std::size_t column = (std::size_t)(ptr - line_start) + 1;
-    return {line, column};
-  }
-
   [[noreturn]] void error(const char* msg, ...)
   {
-    auto [line, col] = linecol_position();
     va_list args;
     va_start(args, msg);
     char msg_buf[512];
     std::vsnprintf(msg_buf, sizeof(msg_buf), msg, args);
     va_end(args);
-    mps_parser_fail(error_type_t::ValidationError, "%zu:%zu: %s", line, col, msg_buf);
+    if (source == nullptr) { mps_parser_fail(error_type_t::ValidationError, "%s", msg_buf); }
+    auto [line, col] = source->locate(ptr);
+    mps_parser_fail(error_type_t::ValidationError,
+                    "%s:%lld:%lld: %s",
+                    source->filename().c_str(),
+                    (long long)line,
+                    (long long)col,
+                    msg_buf);
+  }
+
+  void warn(const char* msg, ...) const
+  {
+    va_list args;
+    va_start(args, msg);
+    char msg_buf[512];
+    std::vsnprintf(msg_buf, sizeof(msg_buf), msg, args);
+    va_end(args);
+    if (source == nullptr) {
+      std::fprintf(stderr, "WARNING: %s\n", msg_buf);
+      return;
+    }
+    auto [line, col] = source->locate(ptr);
+    std::fprintf(stderr,
+                 "WARNING: %s:%lld:%lld: %s\n",
+                 source->filename().c_str(),
+                 (long long)line,
+                 (long long)col,
+                 msg_buf);
   }
 
   void advance(std::size_t n)
   {
     if (ptr + n > end) { mps_parser_fail(error_type_t::ValidationError, "Unexpected end of file"); }
     ptr += n;
+  }
+
+  void rewind(std::size_t n)
+  {
+    assert(ptr - n >= start);
+    ptr -= n;
   }
 
   template <scan_mode mode>
@@ -112,22 +139,18 @@ struct cursor_t {
 
   void skip_ws() { ptr = simd_scan<skip_whitespace>(ptr, end); }
 
-  bool eol() const { return ptr < end && (*ptr == '\n' || *ptr == '\r'); }
+  // '\r' is plain whitespace, so CRLF records end at the '\n' once trailing whitespace is skipped
+  bool eol() const { return ptr >= end || *ptr == '\n'; }
 
   void consume_eol()
   {
-    if (ptr < end && *ptr == '\r') {
-      ptr++;
-      if (ptr < end && *ptr == '\n') { ptr++; }
-      return;
-    }
     if (ptr < end && *ptr == '\n') { ptr++; }
   }
 
   // could be SIMD but comments are usually rare
   void skip_comment_line()
   {
-    while (!done() && *ptr != '\n' && *ptr != '\r') {
+    while (!done() && *ptr != '\n') {
       ptr++;
     }
     consume_eol();
@@ -135,7 +158,7 @@ struct cursor_t {
 
   void skip_to_eol()
   {
-    while (!done() && *ptr != '\n' && *ptr != '\r') {
+    while (!done() && *ptr != '\n') {
       ptr++;
     }
   }
@@ -145,17 +168,17 @@ struct cursor_t {
   {
     const char* begin    = ptr;
     const char* line_end = begin;
-    while (line_end < end && *line_end != '\n' && *line_end != '\r') {
+    while (line_end < end && *line_end != '\n') {
       ++line_end;
     }
-
-    while (begin < line_end && (*begin == ' ' || *begin == '\t')) {
+    ptr = line_end;
+    while (begin < line_end && (*begin == ' ' || *begin == '\t' || *begin == '\r')) {
       ++begin;
     }
-    while (line_end > begin && (line_end[-1] == ' ' || line_end[-1] == '\t')) {
+    while (line_end > begin &&
+           (line_end[-1] == ' ' || line_end[-1] == '\t' || line_end[-1] == '\r')) {
       --line_end;
     }
-    ptr = line_end;
     return std::string_view(begin, (std::size_t)(line_end - begin));
   }
 
@@ -251,10 +274,7 @@ struct cursor_t {
     unsigned int barrier_after_field1 = (printable_mask | nl_mask) >> field1_end_off;
     if (UNLIKELY(barrier_after_field1 == 0)) { return slow(); }
     int field2_rel_off = __builtin_ctz(barrier_after_field1);
-    if (UNLIKELY(ptr[field1_end_off + field2_rel_off] == '\n' ||
-                 ptr[field1_end_off + field2_rel_off] == '\r')) {
-      return slow();
-    }
+    if (UNLIKELY(ptr[field1_end_off + field2_rel_off] == '\n')) { return slow(); }
     int field2_start_off = field1_end_off + field2_rel_off;
 
     unsigned int ws_after_field2_start = ws_mask >> field2_start_off;
@@ -289,7 +309,7 @@ static inline void accept_comment_line(cursor_t& cursor)
     while (!cursor.done() && cursor.eol()) {
       cursor.consume_eol();
     }
-    if (cursor.done() || (cursor.ptr[0] != '*' && cursor.ptr[0] != '$')) { return; }
+    if (cursor.done() || cursor.ptr[0] != '*') { return; }
     cursor.skip_comment_line();
   }
 }
@@ -302,12 +322,12 @@ static inline void expect_eol(cursor_t& cursor)
   }
 
   for (;;) {
-    while (cursor.eol()) {
+    while (!cursor.done() && cursor.eol()) {
       cursor.consume_eol();
     }
     if (UNLIKELY(cursor.done())) { return; }
 
-    if (UNLIKELY(cursor.ptr[0] == '*' || cursor.ptr[0] == '$')) {
+    if (UNLIKELY(cursor.ptr[0] == '*')) {
       cursor.skip_comment_line();
       continue;
     }
@@ -325,6 +345,11 @@ static inline void expect_eol(cursor_t& cursor)
 }
 
 static inline std::string_view peek(cursor_t& cursor) { return cursor.peek_field(); }
+
+static inline bool at_column_one(const cursor_t& cursor)
+{
+  return cursor.ptr == cursor.start || cursor.ptr[-1] == '\n';
+}
 
 static inline bool accept(cursor_t& cursor, const char* field)
 {
@@ -346,23 +371,58 @@ static inline double expect_number(cursor_t& cursor)
   auto num = cursor.read_field();
   if (num.empty()) { cursor.error("expected number, got empty field"); }
   const char* p = num.data();
-  return fp64::parse_fp64_advance(p, p + num.size());
+  double value;
+  const fp64::fp64_status status = fp64::try_parse_fp64_advance(p, p + num.size(), value);
+  if (UNLIKELY(status != fp64::fp64_status::ok)) {
+    cursor.ptr = num.data();
+    cursor.error("%s '%.*s'", fp64::fp64_status_message(status), (int)num.size(), num.data());
+  }
+  return value;
 }
 
-static inline double expect_number_fast_pm_one(cursor_t& cursor)
+static inline double expect_fp64_advance(cursor_t& cursor)
+{
+  const char* token = cursor.ptr;
+  double value;
+  const fp64::fp64_status status = fp64::try_parse_fp64_advance(cursor.ptr, cursor.end, value);
+  if (UNLIKELY(status != fp64::fp64_status::ok)) {
+    const int len = (int)(cursor.ptr - token);
+    cursor.ptr    = token;
+    cursor.error("%s '%.*s'", fp64::fp64_status_message(status), len, token);
+  }
+  return value;
+}
+
+static inline bool try_number_fast_pm_one(cursor_t& cursor, double& value)
 {
   const char* p = cursor.ptr;
   if (cursor.end - p >= 3 && p[0] == '-' && p[1] == '1' && p[2] <= ' ') {
     cursor.ptr = p + 2;
     cursor.skip_ws();
-    return -1.0;
+    value = -1.0;
+    return true;
   }
   if (cursor.end - p >= 2 && p[0] == '1' && p[1] <= ' ') {
     cursor.ptr = p + 1;
     cursor.skip_ws();
-    return 1.0;
+    value = 1.0;
+    return true;
   }
-  return expect_number(cursor);
+  auto num      = cursor.read_field();
+  const char* q = num.data();
+  if (num.empty() ||
+      fp64::try_parse_fp64_advance(q, q + num.size(), value) != fp64::fp64_status::ok) {
+    cursor.ptr = p;
+    return false;
+  }
+  return true;
+}
+
+static inline double expect_number_fast_pm_one(cursor_t& cursor)
+{
+  double value;
+  if (UNLIKELY(!try_number_fast_pm_one(cursor, value))) { return expect_number(cursor); }
+  return value;
 }
 
 static inline bool accept_section(cursor_t& cursor, const char* section)

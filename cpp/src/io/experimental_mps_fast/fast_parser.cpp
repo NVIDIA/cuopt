@@ -8,8 +8,8 @@
 #include "mmap_region.hpp"
 #include "mps_section_scanner.hpp"
 #include "nvtx_ranges.hpp"
+#include "parser_parameters.hpp"
 
-#include <cuda/cmath>
 #if defined(MPS_FAST_PERF_COUNTERS) || defined(MPS_FAST_TIMERS)
 #include <utilities/perf_counters.hpp>
 #endif
@@ -19,11 +19,13 @@
 
 #include <omp.h>
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cctype>
 #include <cerrno>
 #include <charconv>
 #include <climits>
+#include <cmath>
 #include <concepts>
 #include <cstdint>
 #include <cstdio>
@@ -60,12 +62,6 @@ static constexpr int MPS_ROWS_THREAD_CAP            = 16;
 static constexpr int MPS_COLUMNS_THREAD_CAP         = 32;
 static constexpr int MPS_BOUNDS_THREAD_CAP          = 32;
 static constexpr int MPS_NAMES_THREAD_CAP           = 16;
-// avoid openmp setup for small bounds sections
-static constexpr size_t MPS_BOUNDS_PARALLEL_MIN_BYTES = 256 * MiB;
-// ordered-name fallback is cheap enough to parallelize on smaller bounds sections
-static constexpr size_t MPS_BOUNDS_ORDERED_HINT_PARALLEL_MIN_BYTES = 8 * MiB;
-// lower bound on columns chunk size to avoid tiny parser tasks
-static constexpr size_t MPS_COLUMNS_MIN_CHUNK_BYTES = 1 * MiB;
 // parser-wide thread cap switch; very small files lose to scheduling overhead
 static constexpr size_t MPS_MEDIUM_FILE_THREAD_THRESHOLD_BYTES = 100ull * 1000ull * 1000ull;
 // thread caps for small and large files
@@ -270,6 +266,12 @@ static inline void error_unknown_row(cursor_t& cursor, const char* row_start, co
     row_end++;
   }
   cursor.error("unknown row name in %s: %.*s", section, (int)(row_end - row_start), row_start);
+}
+
+[[noreturn]] static void fail_duplicate_row(cursor_t& cursor, std::string_view name)
+{
+  cursor.ptr = name.data();
+  cursor.error("Duplicate row named '%.*s' found!", (int)name.size(), name.data());
 }
 
 // Two modes for row/column name lookup:
@@ -488,14 +490,20 @@ struct parse_state_t {
   size_t temp_csr_nnz        = 0;
   bool temp_csr_materialized = false;
 
+  std::atomic<i_t> multiobj_row_count  = 0;
+  std::atomic<i_t> bound_warning_count = 0;
+
   struct bounds_only_var_t {
-    f_t lb    = f_t{0};
-    f_t ub    = std::numeric_limits<f_t>::infinity();
-    char type = 'C';
+    f_t lb       = f_t{0};
+    f_t ub       = std::numeric_limits<f_t>::infinity();
+    char type    = 'C';
+    bool lb_seen = false;
+    bool ub_seen = false;
   };
 
   // some writers introduce zero-column variables only in BOUNDS.
-  std::map<std::string_view, bounds_only_var_t> bounds_only_vars;
+  std::vector<std::pair<std::string_view, bounds_only_var_t>> bounds_only_vars;
+  std::unordered_map<std::string_view, size_t> bounds_only_index;
 
   struct qcmatrix_block_t {
     size_t row_idx = SIZE_MAX;
@@ -506,6 +514,14 @@ struct parse_state_t {
   std::vector<qcmatrix_block_t> qcmatrix_blocks;
 
   parse_state_t(mps_data_model_t<i_t, f_t>& p, cursor_t& c) : problem(p), cursor(c) {}
+
+  bounds_only_var_t& bounds_only_var(std::string_view name)
+  {
+    auto [it, inserted] = bounds_only_index.try_emplace(name, bounds_only_vars.size());
+    if (inserted) { bounds_only_vars.emplace_back(name, bounds_only_var_t{}); }
+    assert(it->second < bounds_only_vars.size());
+    return bounds_only_vars[it->second].second;
+  }
 
   void init_row_hash_table()
   {
@@ -548,6 +564,8 @@ struct parse_state_t {
 #ifdef MPS_FAST_PERF_COUNTERS
     std::vector<perf_counter_snapshot_t> perf_snapshots(MPS_ROW_HASH_PARTITIONS);
 #endif
+    std::array<size_t, MPS_ROW_HASH_PARTITIONS> duplicate_row;
+    duplicate_row.fill(SIZE_MAX);
 #pragma omp parallel for schedule(static) num_threads(num_threads)
     for (int part_id = 0; part_id < (int)MPS_ROW_HASH_PARTITIONS; ++part_id) {
       size_t p = (size_t)part_id;
@@ -556,7 +574,11 @@ struct parse_state_t {
 #endif
       for (size_t pos = partition_offsets[p]; pos < partition_offsets[p + 1]; ++pos) {
         size_t idx = row_order[pos];
-        row_hash_.insert_partition(p, row_names_sv[idx], row_hashes[idx], idx);
+        if (UNLIKELY(row_hash_.insert_partition(p, row_names_sv[idx], row_hashes[idx], idx) ==
+                     MPS_HASH_INSERT_DUPLICATE)) {
+          duplicate_row[p] = idx;
+          break;
+        }
       }
 #ifdef MPS_FAST_PERF_COUNTERS
       perf_snapshots[p] = perf_counters.stop();
@@ -565,6 +587,9 @@ struct parse_state_t {
 #ifdef MPS_FAST_PERF_COUNTERS
     print_perf_totals("row_hash_insert_partitioned", perf_snapshots);
 #endif
+    for (size_t idx : duplicate_row) {
+      if (idx != SIZE_MAX) { fail_duplicate_row(cursor, row_names_sv[idx]); }
+    }
   }
 
   void insert_rows_serial(size_t n_rows)
@@ -573,7 +598,9 @@ struct parse_state_t {
     thread_perf_counters_t perf_counters;
 #endif
     for (size_t idx = 0; idx < n_rows; ++idx) {
-      row_hash_.insert_serial(row_names_sv[idx], idx);
+      if (UNLIKELY(row_hash_.insert_serial(row_names_sv[idx], idx) == MPS_HASH_INSERT_DUPLICATE)) {
+        fail_duplicate_row(cursor, row_names_sv[idx]);
+      }
     }
 #ifdef MPS_FAST_PERF_COUNTERS
     print_perf_totals("row_hash_insert_all", {perf_counters.stop()});
@@ -603,7 +630,9 @@ struct parse_state_t {
       for (size_t idx = 0; idx < n_rows; ++idx) {
         std::string_view name = row_names_sv[idx];
         if (UNLIKELY(name.size() > HASH_KEY_BYTES)) {
-          row_hash_.note_long_name(name, idx);
+          if (row_hash_.note_long_name(name, idx) == MPS_HASH_INSERT_DUPLICATE) {
+            fail_duplicate_row(cursor, name);
+          }
           continue;
         }
         uint32_t hash   = fnv1a_hash(name.data(), name.size());
@@ -723,8 +752,8 @@ template <typename i_t, typename f_t>
 static void parse_name_section(parse_state_t<i_t, f_t>& state)
 {
   scoped_timer_t timer("parse_name");
-  if (peek(state.cursor) == "ROWS") { return; }
-  expect(state.cursor, "NAME");
+  // we deviate from the MPS spec by allowing a missing name section same as the default parser
+  if (!accept(state.cursor, "NAME")) { return; }
   if (!state.cursor.eol()) { state.problem_name_sv = state.cursor.read_rest_of_line_trimmed(); }
   expect_eol(state.cursor);
 }
@@ -733,17 +762,20 @@ template <typename i_t, typename f_t>
 static void parse_objsense_section(parse_state_t<i_t, f_t>& state)
 {
   scoped_timer_t timer("parse_objsense");
-  if (accept(state.cursor, "OBJSENSE")) {
-    if (state.cursor.eol()) { expect_eol(state.cursor); }
+  if (at_column_one(state.cursor) && accept(state.cursor, "OBJSENSE")) {
+    if (state.cursor.eol()) {
+      expect_eol(state.cursor);
+      if (state.cursor.done() || at_column_one(state.cursor)) { return; }
+    }
     auto sense = state.cursor.read_field();
     if (sense == "MIN" || sense == "MINIMIZE") {
       state.problem.maximize_ = false;
     } else if (sense == "MAX" || sense == "MAXIMIZE") {
       state.problem.maximize_ = true;
     } else {
-      state.cursor.error("expected MIN/MAX or MINIMIZE/MAXIMIZE, got '%s'", sense.data());
+      state.cursor.error(
+        "expected MIN/MAX or MINIMIZE/MAXIMIZE, got '%.*s'", (int)sense.size(), sense.data());
     }
-    accept_comment(state.cursor);
     expect_eol(state.cursor);
   }
 }
@@ -752,10 +784,9 @@ template <typename i_t, typename f_t>
 static void parse_objname_section(parse_state_t<i_t, f_t>& state)
 {
   scoped_timer_t timer("parse_objname");
-  if (accept(state.cursor, "OBJNAME")) {
+  if (at_column_one(state.cursor) && accept(state.cursor, "OBJNAME")) {
     if (state.cursor.eol()) { expect_eol(state.cursor); }
     state.objective_name_sv = state.cursor.read_field();
-    accept_comment(state.cursor);
     expect_eol(state.cursor);
   }
 }
@@ -781,34 +812,83 @@ static const char* rows_find_next_line(const char* p, const char* end)
   return p;
 }
 
+static bool is_valid_row_type(char c) { return c == 'N' || c == 'L' || c == 'G' || c == 'E'; }
+
 static bool parse_rows_line_fast(const char*& p,
                                  const char* end,
                                  char& row_type,
                                  std::string_view& row_name)
 {
+  const char* line_begin = p;
+  if (UNLIKELY(*line_begin == '*') && UNLIKELY(line_begin[-1] == '\n')) {
+    p = rows_find_next_line(p, end);
+    return false;
+  }
   p = cursor_t::simd_scan<skip_whitespace>(p, end);
   if (p >= end) { return false; }
   if (*p == '\n') {
     p++;
     return false;
   }
-  if (*p == '*' || *p == '$') {
-    p = rows_find_next_line(p, end);
+  row_type = *p++;
+  if (UNLIKELY(!is_valid_row_type(row_type) || (p < end && (unsigned char)*p > ' '))) {
+    p = line_begin;
     return false;
   }
-
-  row_type = *p++;
-  p        = cursor_t::simd_scan<skip_whitespace>(p, end);
+  p = cursor_t::simd_scan<skip_whitespace>(p, end);
 
   const char* name_start = p;
   p                      = cursor_t::simd_scan<until_whitespace>(p, end);
-  if (name_start == p) { return false; }
+  // unexpected end of line
+  if (name_start == p) {
+    p = line_begin;
+    return false;
+  }
   row_name = std::string_view(name_start, (size_t)(p - name_start));
 
-  // ROWS only uses fields 1-2. Fields 3-6 are ignored by the MPS spec, and
-  // field 3 may start with '$' to comment the rest of the record.
-  // could be SIMD'd, but in practice the newline is right after the row name
+  p = cursor_t::simd_scan<skip_whitespace>(p, end);
+  if (UNLIKELY(p < end && *p != '\n' && *p != '$')) {
+    p = line_begin;
+    return false;
+  }
   p = rows_find_next_line(p, end);
+  return true;
+}
+
+// not supported yet
+static void parse_multiobj_fields(
+  cursor_t& cursor, int& priority, double& weight, double& reltol, double& abstol)
+{
+  const double priority_value = expect_number(cursor);
+  if (priority_value != std::trunc(priority_value) || std::abs(priority_value) > INT_MAX) {
+    cursor.error("multi-objective priority must be an integer, got %g", priority_value);
+  }
+  priority = (int)priority_value;
+  weight   = expect_number(cursor);
+  reltol   = expect_number(cursor);
+  abstol   = expect_number(cursor);
+}
+
+// slow, but not much of a concern since multiobj rows are rare and cold-path
+static bool parse_rows_line_multiobj(const char*& p,
+                                     const char* end,
+                                     std::string_view& row_name,
+                                     int& priority,
+                                     double& weight,
+                                     double& reltol,
+                                     double& abstol)
+{
+  cursor_t line(p, (size_t)(end - p));
+  try {
+    line.skip_ws();
+    expect(line, "N");
+    row_name = line.read_field();
+    parse_multiobj_fields(line, priority, weight, reltol, abstol);
+  } catch (const std::logic_error&) {
+    return false;
+  }
+  if (!line.eol() && *line.ptr != '$') { return false; }
+  p = rows_find_next_line(line.ptr, end);
   return true;
 }
 
@@ -871,12 +951,25 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
         const char* before = p;
         if (!parse_rows_line_fast(p, end, row_type, row_name)) {
           if (p == before) {
+            // this may be a multiobj line. Attempt to parse it as such
+            int priority  = 0;
+            double weight = 0, reltol = 0, abstol = 0;
+            if (row_type == 'N' &&
+                parse_rows_line_multiobj(p, end, row_name, priority, weight, reltol, abstol)) {
+              assert(!row_name.empty());
+              if (state.multiobj_row_count.fetch_add(1, std::memory_order_relaxed) == 0)
+                state.cursor.warn("Multi-objective rows are not supported yet");
+              info.objective_names.push_back(row_name);
+              continue;
+            }
+
             info.malformed = true;
             break;
           }
           continue;
         }
 
+        assert(!row_name.empty());
         if (row_type == 'N') {
           info.objective_names.push_back(row_name);
         } else {
@@ -980,8 +1073,8 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
         const char* before = p;
         if (!parse_rows_line_fast(p, end, row_type, row_name)) {
           if (p == before) {
-            local_dense_ok = false;
-            break;
+            assert(row_type == 'N');
+            p = rows_find_next_line(p, end);
           }
           continue;
         }
@@ -1027,12 +1120,25 @@ static void parse_rows_section_serial_impl(parse_state_t<i_t, f_t>& state, const
 
   while (state.cursor.ptr < rows_end) {
     auto row_type = state.cursor.ptr[0];
+    if (UNLIKELY(!is_valid_row_type(row_type))) {
+      state.cursor.error("invalid row type '%c' in ROWS; expected N, L, G, or E", row_type);
+    }
     state.cursor.advance(1);
+    if (UNLIKELY(!state.cursor.done() && (unsigned char)state.cursor.ptr[0] > ' ')) {
+      state.cursor.error("invalid row type in ROWS; expected N, L, G, or E");
+    }
     state.cursor.skip_ws();
 
     auto row_name = state.cursor.read_field();
-    // ROWS fields after the row name are unused; tolerate annotations/comments there.
-    state.cursor.skip_to_eol();
+    if (row_name.empty()) { state.cursor.error("empty row name found in ROWS"); }
+    if (row_type == 'N' && !state.cursor.eol() && *state.cursor.ptr != '$') {
+      int priority  = 0;
+      double weight = 0, reltol = 0, abstol = 0;
+      parse_multiobj_fields(state.cursor, priority, weight, reltol, abstol);
+      if (state.multiobj_row_count.fetch_add(1, std::memory_order_relaxed) == 0)
+        state.cursor.warn("Multi-objective rows are not supported yet");
+    }
+    accept_comment(state.cursor);
 
     // 'N' type is the objective row - store its name but don't add to constraints
     if (row_type == 'N') {
@@ -1057,7 +1163,9 @@ static void parse_rows_section_serial_impl(parse_state_t<i_t, f_t>& state, const
 }
 
 template <typename i_t, typename f_t>
-static void parse_rows_section(parse_state_t<i_t, f_t>& state, const char* rows_end)
+static void parse_rows_section(parse_state_t<i_t, f_t>& state,
+                               const char* rows_end,
+                               mps_phase_range_t lazycons)
 {
   scoped_timer_t timer("parse_rows");
   expect_section(state.cursor, "ROWS");
@@ -1069,7 +1177,7 @@ static void parse_rows_section(parse_state_t<i_t, f_t>& state, const char* rows_
     size_t rows_bytes    = (size_t)(rows_end - state.cursor.ptr);
     int num_threads      = phase_thread_count(MPS_ROWS_THREAD_CAP);
     bool parsed_parallel = false;
-    if (rows_bytes >= 512 * MiB && num_threads > 1) {
+    if (rows_bytes >= g_parser_parameters.rows_parallel_min_bytes && num_threads > 1) {
       parsed_parallel =
         parse_rows_section_parallel_impl<i_t, f_t>(state, state.cursor.ptr, rows_end, num_threads);
       // serial fallback in case a likely malformed chunk has been encounter
@@ -1087,6 +1195,22 @@ static void parse_rows_section(parse_state_t<i_t, f_t>& state, const char* rows_
     }
     state.cursor.ptr = rows_end;
   }
+  if (lazycons.present) {
+    assert(lazycons.begin == rows_end);
+    state.cursor.ptr = lazycons.begin;
+    state.cursor.end = lazycons.end;
+    expect(state.cursor, "LAZYCONS");
+    if (!state.cursor.eol()) {
+      const std::string_view level = state.cursor.read_field();
+      if (level != "1" && level != "2" && level != "3") {
+        state.cursor.error(
+          "LAZYCONS laziness level must be 1, 2 or 3, got '%.*s'", (int)level.size(), level.data());
+      }
+      state.cursor.warn("LAZYCONS laziness levels are unsupported");
+    }
+    expect_eol(state.cursor);
+    parse_rows_section_serial_impl(state, lazycons.end);
+  }
 
   state.problem.n_constraints_ = (i_t)state.row_names_sv.size();
   state.problem.b_.resize((size_t)state.problem.n_constraints_);
@@ -1095,15 +1219,33 @@ static void parse_rows_section(parse_state_t<i_t, f_t>& state, const char* rows_
     scoped_timer_t timer("parse_rows_hash_init");
     state.init_row_hash_table();
   }
+
+  if (!state.objective_name_sv.empty() &&
+      UNLIKELY(state.row_lookup(state.objective_name_sv) != SIZE_MAX)) {
+    mps_parser_fail(error_type_t::ValidationError,
+                    "Objective row (%.*s) has the same name as a constraint row",
+                    (int)state.objective_name_sv.size(),
+                    state.objective_name_sv.data());
+  }
+  for (std::string_view name : state.ignored_objective_names) {
+    if (UNLIKELY(state.row_lookup(name) != SIZE_MAX)) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "Objective row (%.*s) has the same name as a constraint row",
+                      (int)name.size(),
+                      name.data());
+    }
+  }
 }
 
 // Columns parser
 
 // integer variable markers
+// fine if the struct is a little bloated, not many markers per nnz anyways
 struct marker_info_t {
   enum Type { INTORG, INTEND };
   Type type;
   size_t after_local_var_idx;  // SIZE_MAX means "before first variable"
+  const char* source_location;
 };
 
 struct row_count_block_t {
@@ -1238,6 +1380,17 @@ static std::vector<bounds_chunk_boundary_t> compute_bounds_chunk_boundaries(
   return boundaries;
 }
 
+// empty for comment, blank and MARKER lines
+static std::string_view peek_columns_data_var(const char* line_start, const char* columns_end)
+{
+  if (*line_start == '*') { return {}; }
+  cursor_t cursor(line_start, (size_t)(columns_end - line_start));
+  cursor.skip_ws();
+  const auto var_name = cursor.read_field();
+  if (cursor.peek_field() == "'MARKER'") { return {}; }
+  return var_name;
+}
+
 static std::vector<chunk_boundary_t> compute_chunk_boundaries(const char* columns_start,
                                                               const char* columns_end,
                                                               int num_threads)
@@ -1261,18 +1414,25 @@ static std::vector<chunk_boundary_t> compute_chunk_boundaries(const char* column
       while (line_start < columns_end && *line_start != '\n')
         line_start++;
       if (line_start < columns_end) line_start++;
+      while (line_start < columns_end && peek_columns_data_var(line_start, columns_end).empty())
+        line_start = find_next_line(line_start, columns_end);
 
       // Read column name at this line
-      std::string_view col_name = cursor_t::peek_field_at(line_start, columns_end);
+      std::string_view col_name = line_start < columns_end
+                                    ? peek_columns_data_var(line_start, columns_end)
+                                    : std::string_view{};
 
       // Scan forward until column name changes (to avoid splitting a column)
       const char* boundary = line_start;
       while (boundary < columns_end) {
         const char* next_line = find_next_line(boundary, columns_end);
-        if (next_line >= columns_end) break;
+        if (next_line >= columns_end) {
+          boundary = columns_end;
+          break;
+        }
 
-        std::string_view next_col = cursor_t::peek_field_at(next_line, columns_end);
-        if (next_col != col_name && !next_col.empty() && next_col[0] != '\'') {
+        std::string_view next_col = peek_columns_data_var(next_line, columns_end);
+        if (!next_col.empty() && next_col != col_name) {
           // Found a column transition. Marker-state fixup later handles any split near markers.
           boundary = next_line;
           break;
@@ -1315,30 +1475,30 @@ static chunk_result_t parse_columns_chunk(const char* chunk_start,
   result.var_names.reserve(estimated_cols);
   result.var_name_arena.reserve(std::max<size_t>(4096, estimated_cols * 16));
   result.objective_entries.reserve(estimated_cols);
-  size_t n_row_blocks =
-    cuda::ceil_div((size_t)state.problem.n_constraints_, COLUMN_ROW_COUNT_BLOCK_ROWS);
+  size_t n_row_blocks = ((size_t)state.problem.n_constraints_ + COLUMN_ROW_COUNT_BLOCK_ROWS - 1) /
+                        COLUMN_ROW_COUNT_BLOCK_ROWS;
   result.row_count_block_dir.resize(n_row_blocks, -1);
   size_t estimated_touched_blocks = std::min(n_row_blocks, std::max<size_t>(16, estimated_nnz));
   result.row_count_blocks.reserve(estimated_touched_blocks);
   result.row_count_storage.reserve(estimated_touched_blocks * COLUMN_ROW_COUNT_BLOCK_ROWS);
 
-  cursor_t cursor(chunk_start, (size_t)(chunk_end - chunk_start));
+  cursor_t cursor(chunk_start, (size_t)(chunk_end - chunk_start), state.cursor.source);
   std::string_view prev_var_name = "";
 
   cursor.skip_ws();
+  if (cursor.eol()) { expect_eol(cursor); }
 
   while (!cursor.done()) {
     if (UNLIKELY(*cursor.ptr == 'R')) {
       auto next = cursor.peek_field();
       // RHS section is mandatory right after COLUMNS section
-      if (next == "RHS") { break; }
+      if (next == "RHS" && cursor.ptr[-1] == '\n') { break; }
     }
 
     auto [var_name, field2] = cursor.read_two_fields();
-    if (UNLIKELY(!field2.empty() && field2[0] == '$')) {
-      cursor.skip_to_eol();
-      expect_eol(cursor);
-      continue;
+    assert(!var_name.empty());
+    if (UNLIKELY(field2.empty() || field2[0] == '$')) {
+      cursor.error("empty row field in COLUMNS");
     }
 
     // Check for integer marker
@@ -1358,12 +1518,11 @@ static chunk_result_t parse_columns_chunk(const char* chunk_start,
                      (int)marker_type.size(),
                      marker_type.data());
       }
+      marker.source_location = cursor.ptr;
       result.markers.push_back(marker);
 
-      while (!cursor.done() && !cursor.eol())
-        cursor.ptr++;
-      if (!cursor.done()) cursor.ptr++;
-      cursor.skip_ws();
+      accept_comment(cursor);
+      expect_eol(cursor);
       continue;
     }
 
@@ -1375,12 +1534,15 @@ static chunk_result_t parse_columns_chunk(const char* chunk_start,
       sign = -1.0;
       cursor.advance(1);
     }
-    if (cursor.ptr + 1 < cursor.end && fp64::is_digit(cursor.ptr[0]) &&
+    if (LIKELY(cursor.ptr + 1 < cursor.end) && LIKELY(fp64::is_digit(cursor.ptr[0])) &&
         (cursor.ptr[1] == '\n' || cursor.ptr[1] == '\r')) {
       value = sign * (cursor.ptr[0] - '0');
       cursor.advance(1);
     } else {
-      value = sign * fp64::parse_fp64_advance(cursor.ptr, cursor.end);
+      // frankly not a great workaround. should profile if this one step forward one step back
+      // juggling hurts
+      if (sign == -1.0) cursor.rewind(1);
+      value = expect_fp64_advance(cursor);
     }
     // usually EOL directly follows
     if (UNLIKELY(!cursor.eol())) { cursor.skip_ws(); }
@@ -1392,7 +1554,8 @@ static chunk_result_t parse_columns_chunk(const char* chunk_start,
       observe_dense_name(result.dense_col_stats.candidate,
                          result.dense_col_stats.index,
                          result.dense_col_stats.count,
-                         owned_var_name);
+                         owned_var_name,
+                         result.dense_col_stats.index.min_id + result.dense_col_stats.count);
       result.col_offsets.push_back(result.values.size());
       prev_var_name = owned_var_name;
     }
@@ -1423,10 +1586,10 @@ static chunk_result_t parse_columns_chunk(const char* chunk_start,
         expect_eol(cursor);
         continue;
       }
-      double value2 = fp64::parse_fp64_advance(cursor.ptr, cursor.end);
+      double value2 = expect_fp64_advance(cursor);
       cursor.skip_ws();
-      accept_comment(cursor);
 
+      if (row_name2.empty()) { cursor.error("empty row field in COLUMNS"); }
       add_entry(row_name2, value2);
     }
 
@@ -1623,7 +1786,7 @@ static void allocate_column_outputs(parse_state_t<i_t, f_t>& state,
   size_t indices_bytes = shape.total_nnz * sizeof(i_t);
   state.temp_csr_nnz   = shape.total_nnz;
 
-#pragma omp parallel sections num_threads(4)
+#pragma omp parallel sections num_threads(g_parser_parameters.column_alloc_threads)
   {
 #pragma omp section
     {
@@ -1719,6 +1882,7 @@ static void scatter_column_chunks_to_csr(parse_state_t<i_t, f_t>& state,
 struct global_marker_t {
   marker_info_t::Type type;
   size_t global_var_idx;
+  const char* source_location;
 };
 
 template <typename i_t, typename f_t>
@@ -1737,6 +1901,7 @@ static void apply_column_integer_markers(parse_state_t<i_t, f_t>& state,
           ? (shape.global_col_offset[(size_t)t] > 0 ? shape.global_col_offset[(size_t)t] - 1
                                                     : SIZE_MAX)
           : shape.global_col_offset[(size_t)t] + m.after_local_var_idx;
+      gm.source_location = m.source_location;
       all_markers.push_back(gm);
     }
   }
@@ -1747,15 +1912,37 @@ static void apply_column_integer_markers(parse_state_t<i_t, f_t>& state,
     return a.global_var_idx < b.global_var_idx;
   });
 
-  bool is_integer   = false;
-  size_t marker_idx = 0;
+  size_t marker_idx           = 0;
+  bool inside_integer_section = false;
+  // temp cursor for error reporting
+  cursor_t error_cursor = cursor_t(state.cursor);
   for (size_t v = 0; v < shape.total_cols; v++) {
     while (marker_idx < all_markers.size() && (all_markers[marker_idx].global_var_idx == SIZE_MAX ||
                                                all_markers[marker_idx].global_var_idx < v)) {
-      is_integer = all_markers[marker_idx].type == marker_info_t::INTORG;
+      error_cursor.ptr = all_markers[marker_idx].source_location;
+      if (all_markers[marker_idx].type == marker_info_t::INTORG) {
+        if (inside_integer_section) error_cursor.error("Unexpected INTORG marker");
+        inside_integer_section = true;
+      } else if (all_markers[marker_idx].type == marker_info_t::INTEND) {
+        if (!inside_integer_section) error_cursor.error("Unexpected INTEND marker");
+        inside_integer_section = false;
+      }
       marker_idx++;
     }
-    state.problem.var_types_[v] = is_integer ? 'I' : 'C';
+    state.problem.var_types_[v] = inside_integer_section ? 'I' : 'C';
+  }
+
+  // walk the remaining markers and check parity
+  while (marker_idx < all_markers.size()) {
+    error_cursor.ptr = all_markers[marker_idx].source_location;
+    if (all_markers[marker_idx].type == marker_info_t::INTORG) {
+      if (inside_integer_section) error_cursor.error("Unterminated integer section");
+      inside_integer_section = true;
+    } else if (all_markers[marker_idx].type == marker_info_t::INTEND) {
+      if (!inside_integer_section) error_cursor.error("Unexpected INTEND marker");
+      inside_integer_section = false;
+    }
+    marker_idx++;
   }
 }
 
@@ -1801,7 +1988,7 @@ static void materialize_problem_csr(parse_state_t<i_t, f_t>& state)
 {
   scoped_timer_t timer("materialize_problem_csr");
   size_t nnz       = state.temp_csr_nnz;
-  int copy_threads = 2;
+  int copy_threads = g_parser_parameters.copy_threads;
   copy_threads     = std::max(1, std::min(copy_threads, MPS_LARGE_FILE_THREAD_CAP));
 
   int resize_threads = copy_threads > 1 ? 2 : 1;
@@ -1872,7 +2059,8 @@ static void parse_columns_section_parallel(parse_state_t<i_t, f_t>& state,
 
   const char* columns_start    = state.cursor.ptr;
   size_t columns_bytes         = (size_t)(columns_end - columns_start);
-  size_t chunk_limited_threads = std::max<size_t>(1, columns_bytes / MPS_COLUMNS_MIN_CHUNK_BYTES);
+  size_t chunk_limited_threads = std::max<size_t>(
+    1, columns_bytes / std::max<size_t>(1, g_parser_parameters.columns_min_chunk_bytes));
   num_threads = std::max(1, std::min<int>(num_threads, (int)chunk_limited_threads));
 
   auto chunk_bounds = compute_chunk_boundaries(columns_start, columns_end, num_threads);
@@ -1921,60 +2109,105 @@ static void parse_columns_section_parallel(parse_state_t<i_t, f_t>& state,
 }
 
 template <typename i_t, typename f_t>
+static void apply_rhs(parse_state_t<i_t, f_t>& state,
+                      cursor_t& cursor,
+                      const char* row_start,
+                      size_t row_idx,
+                      f_t value)
+{
+  // This is a regular non-obj row.
+  if (row_idx != SIZE_MAX) {
+    state.problem.b_[row_idx] = value;
+    return;
+  }
+  // This is the objective row.
+  // necessary on the cold path since we directly read and lookup on the hot path
+  const char* row_end = row_start;
+  while (row_end < cursor.end && *row_end > ' ') {
+    row_end++;
+  }
+  std::string_view row_name(row_start, (size_t)(row_end - row_start));
+  if (row_name == state.objective_name_sv) {
+    state.problem.objective_offset_ = -value;
+    return;
+  }
+  // Other objectives, ignored currently. cold path
+  if (state.ignored_objective_names.count(row_name)) { return; }
+  // Unexpected!
+  error_unknown_row(cursor, row_start, "RHS");
+}
+
+template <typename i_t, typename f_t>
+static void parse_rhs_line_no_rhs_field(parse_state_t<i_t, f_t>& state,
+                                        cursor_t& cursor,
+                                        const char* line_start)
+{
+  cursor.ptr = line_start;
+
+  const char* row_pair_start = cursor.ptr;
+  size_t row_idx             = state.read_row_lookup(cursor);
+  auto value                 = expect_number_fast_pm_one(cursor);
+  apply_rhs(state, cursor, row_pair_start, row_idx, (f_t)value);
+
+  accept_comment(cursor);
+  // Optional second entry
+  if (!cursor.eol()) {
+    const char* row_pair_start2 = cursor.ptr;
+    size_t row_idx2             = state.read_row_lookup(cursor);
+    auto value2                 = expect_number_fast_pm_one(cursor);
+    apply_rhs(state, cursor, row_pair_start2, row_idx2, (f_t)value2);
+  }
+  expect_eol(cursor);
+}
+
+template <typename i_t, typename f_t>
 static void parse_rhs_section(parse_state_t<i_t, f_t>& state, cursor_t& cursor)
 {
   scoped_timer_t timer("parse_rhs");
   expect_section(cursor, "RHS");
 
-  // necessary on the cold path since we directly read and lookup on the hot path
-  auto reread_field_name = [](const char* start, const char* end) {
-    const char* p = start;
-    while (p < end && *p > ' ') {
-      p++;
-    }
-    return std::string_view(start, (size_t)(p - start));
-  };
-
-  auto apply_rhs = [&](const char* row_start, size_t row_idx, f_t value) {
-    // This is a regular non-obj row.
-    if (row_idx != SIZE_MAX) {
-      state.problem.b_[row_idx] = value;
-      return;
-    }
-    // This is the objective row.
-    std::string_view row_name = reread_field_name(row_start, cursor.end);
-    if (row_name == state.objective_name_sv) {
-      state.problem.objective_offset_ = -value;
-      return;
-    }
-    // Other objectives, ignored currently. cold path
-    if (state.ignored_objective_names.count(row_name)) { return; }
-    // Unexpected!
-    error_unknown_row(cursor, row_start, "RHS");
-  };
-
+  // if a row/val pair is broken up, fallback to the slow path in case it is a SIF-style format
+  // where there is no RHS field
   while (cursor.ptr < cursor.end) {
+    auto line_start                = cursor.ptr;
     [[maybe_unused]] auto rhs_name = cursor.read_field();
-    if (accept_comment(cursor)) {
-      expect_eol(cursor);
+    if (UNLIKELY(cursor.done() || cursor.eol() || cursor.ptr[0] == '$')) {
+      cursor.error("expected row name");
+    }
+    const char* row_pair_start = cursor.ptr;
+    size_t row_idx             = state.read_row_lookup(cursor);
+    if (cursor.eol() || cursor.ptr[0] == '$')  // unexpected eol, is this a SIF-style rhs line?
+    {
+      parse_rhs_line_no_rhs_field(state, cursor, line_start);
       continue;
     }
-    const char* row_start = cursor.ptr;
-    size_t row_idx        = state.read_row_lookup(cursor);
-    auto value            = expect_number_fast_pm_one(cursor);
-    apply_rhs(row_start, row_idx, (f_t)value);
+    double value;
+    if (UNLIKELY(!try_number_fast_pm_one(cursor, value))) {
+      parse_rhs_line_no_rhs_field(state, cursor, line_start);
+      continue;
+    }
 
     accept_comment(cursor);
     // Optional second entry
     if (!cursor.eol()) {
-      const char* row_start2 = cursor.ptr;
-      size_t row_idx2        = state.read_row_lookup(cursor);
-      auto value2            = expect_number_fast_pm_one(cursor);
-      apply_rhs(row_start2, row_idx2, (f_t)value2);
-      accept_comment(cursor);
+      const char* row_pair_start2 = cursor.ptr;
+      size_t row_idx2             = state.read_row_lookup(cursor);
+      if (cursor.eol() || cursor.ptr[0] == '$')  // unexpected eol, is this a SIF-style rhs line?
+      {
+        parse_rhs_line_no_rhs_field(state, cursor, line_start);
+        continue;
+      }
+      auto value2 = expect_number_fast_pm_one(cursor);
+      apply_rhs(state, cursor, row_pair_start, row_idx, (f_t)value);
+      apply_rhs(state, cursor, row_pair_start2, row_idx2, (f_t)value2);
+    } else {
+      apply_rhs(state, cursor, row_pair_start, row_idx, (f_t)value);
     }
     expect_eol(cursor);
   }
+
+  // slow fallback. necessary in case we're facing a SIF-style file where the rhs filed is actually
+  // a row name
 }
 
 // does the job on 99% of instances, in the vast majority of cases bound names are sequential with
@@ -1997,40 +2230,108 @@ static size_t find_var_after_hint(const std::vector<std::string_view>& var_names
   return SIZE_MAX;
 }
 
-template <typename f_t, typename SetLb, typename SetUb, typename SetType, typename Error>
+template <typename i_t, typename f_t>
+static size_t lookup_column(parse_state_t<i_t, f_t>& state, std::string_view name, size_t hint_idx)
+{
+  if (LIKELY(state.col_index_mode == index_mode_t::dense_ordered)) {
+    return state.col_dense.lookup(name);
+  }
+  // optimized lookup using hint (bounds often in same order as columns)
+  return find_var_after_hint(state.var_names_sv, name, hint_idx);
+}
+
+template <typename f_t,
+          typename SetLb,
+          typename SetUb,
+          typename SetType,
+          typename Error,
+          typename Warn>
 static bool apply_bound_record(std::string_view bound_type,
+                               std::string_view var_name,
                                f_t value,
                                bool has_value,
-                               bool first_bound_for_var,
+                               bool& lb_seen,
+                               bool& ub_seen,
                                SetLb&& set_lb,
                                SetUb&& set_ub,
                                SetType&& set_type,
-                               Error&& error)
+                               Error&& error,
+                               Warn&& warn)
 {
+  const bool first_bound_for_var = !lb_seen && !ub_seen;
+  auto try_set_bound             = [&](bool& seen, auto& set, f_t x) {
+    if (seen) {
+      char msg[256];
+      std::snprintf(msg,
+                    sizeof(msg),
+                    "Duplicate bound for %.*s ignored",
+                    (int)var_name.size(),
+                    var_name.data());
+      warn(msg);
+      return;
+    }
+    seen = true;
+    set(x);
+  };
   if (bound_type == "LO") {
-    set_lb(value);
+    if (UNLIKELY(!has_value)) {
+      error("LO bound requires a lower bound value", bound_type);
+      return false;
+    }
+    try_set_bound(lb_seen, set_lb, value);
   } else if (bound_type == "UP") {
-    set_ub(value);
+    if (UNLIKELY(!has_value)) {
+      error("UP bound requires an upper bound value", bound_type);
+      return false;
+    }
+    try_set_bound(ub_seen, set_ub, value);
     if (first_bound_for_var && value < f_t{0}) { set_lb(-std::numeric_limits<f_t>::infinity()); }
   } else if (bound_type == "FX") {
-    set_lb(value);
-    set_ub(value);
+    if (UNLIKELY(!has_value)) {
+      error("FX bound requires a value", bound_type);
+      return false;
+    }
+    try_set_bound(lb_seen, set_lb, value);
+    try_set_bound(ub_seen, set_ub, value);
   } else if (bound_type == "FR") {
-    set_lb(-std::numeric_limits<f_t>::infinity());
-    set_ub(std::numeric_limits<f_t>::infinity());
+    if (UNLIKELY(has_value)) { warn("Value field for FR bound is ignored"); }
+    try_set_bound(lb_seen, set_lb, -std::numeric_limits<f_t>::infinity());
+    try_set_bound(ub_seen, set_ub, std::numeric_limits<f_t>::infinity());
   } else if (bound_type == "MI") {
-    set_lb(-std::numeric_limits<f_t>::infinity());
+    if (UNLIKELY(has_value)) { warn("Value field for MI bound is ignored"); }
+    try_set_bound(lb_seen, set_lb, -std::numeric_limits<f_t>::infinity());
   } else if (bound_type == "PL") {
-    set_ub(std::numeric_limits<f_t>::infinity());
+    if (UNLIKELY(has_value)) { warn("Value field for PL bound is ignored"); }
+    try_set_bound(ub_seen, set_ub, std::numeric_limits<f_t>::infinity());
   } else if (bound_type == "BV") {
-    set_lb(f_t{0});
-    set_ub(f_t{1});
+    if (UNLIKELY(has_value && value != f_t{1})) {
+      error("BV bound value must be 1 or blank", bound_type);
+      return false;
+    }
+    try_set_bound(lb_seen, set_lb, f_t{0});
+    try_set_bound(ub_seen, set_ub, f_t{1});
     set_type('I');
   } else if (bound_type == "LI") {
-    set_lb(value);
+    if (UNLIKELY(!has_value)) {
+      error("LI bound requires a value", bound_type);
+      return false;
+    }
+    if (UNLIKELY(std::trunc(value) != value)) {
+      error("LI bound value must be an integer", bound_type);
+      return false;
+    }
+    try_set_bound(lb_seen, set_lb, value);
     set_type('I');
   } else if (bound_type == "UI") {
-    set_ub(value);
+    if (UNLIKELY(!has_value)) {
+      error("UI bound requires a value", bound_type);
+      return false;
+    }
+    if (UNLIKELY(std::trunc(value) != value)) {
+      error("UI bound value must be an integer", bound_type);
+      return false;
+    }
+    try_set_bound(ub_seen, set_ub, value);
     if (first_bound_for_var && value < f_t{0}) { set_lb(-std::numeric_limits<f_t>::infinity()); }
     set_type('I');
   } else if (bound_type == "SC") {
@@ -2038,7 +2339,7 @@ static bool apply_bound_record(std::string_view bound_type,
       error("SC bound requires an upper bound value", bound_type);
       return false;
     }
-    set_ub(value);
+    try_set_bound(ub_seen, set_ub, value);
     set_type('S');
   } else {
     error("unknown bound type", bound_type);
@@ -2058,12 +2359,17 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
                                                 const char* bounds_body_end,
                                                 size_t n_vars)
 {
-  const size_t bounds_bytes   = (size_t)(bounds_body_end - bounds_body_start);
-  const int num_threads       = phase_thread_count(MPS_BOUNDS_THREAD_CAP);
-  const bool use_dense_lookup = state.col_index_mode == index_mode_t::dense_ordered;
-  const size_t min_parallel_bytes =
-    use_dense_lookup ? MPS_BOUNDS_PARALLEL_MIN_BYTES : MPS_BOUNDS_ORDERED_HINT_PARALLEL_MIN_BYTES;
+  const size_t bounds_bytes       = (size_t)(bounds_body_end - bounds_body_start);
+  const int num_threads           = phase_thread_count(MPS_BOUNDS_THREAD_CAP);
+  const bool use_dense_lookup     = state.col_index_mode == index_mode_t::dense_ordered;
+  const size_t min_parallel_bytes = use_dense_lookup
+                                      ? g_parser_parameters.bounds_parallel_min_bytes
+                                      : g_parser_parameters.bounds_ordered_hint_min_bytes;
   if (bounds_bytes < min_parallel_bytes || num_threads < 2) { return false; }
+
+  static_assert(std::atomic_ref<f_t>::is_always_lock_free);
+  static_assert(std::atomic_ref<uint8_t>::is_always_lock_free);
+  static_assert(std::atomic_ref<char>::is_always_lock_free);
 
   MPS_NVTX_RANGE(
     use_dense_lookup ? "parse_bounds_parallel_dense" : "parse_bounds_parallel_ordered_hint",
@@ -2073,7 +2379,6 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
     size_t lines            = 0;
     size_t dense_hits       = 0;
     size_t dense_misses     = 0;
-    size_t comments         = 0;
     size_t min_var          = SIZE_MAX;
     size_t max_var          = 0;
     size_t decreasing_order = 0;
@@ -2085,10 +2390,12 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
   auto boundaries =
     compute_bounds_chunk_boundaries(bounds_body_start, bounds_body_end, num_threads);
 
-  std::vector<uint8_t> bound_seen;
+  std::vector<uint8_t> lb_seen;
+  std::vector<uint8_t> ub_seen;
   {
     scoped_timer_t timer("bounds_parallel_seen_alloc");
-    bound_seen.resize(n_vars, 0);
+    lb_seen.resize(n_vars, 0);
+    ub_seen.resize(n_vars, 0);
   }
 
   {
@@ -2101,7 +2408,10 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
       auto& local = stats[(size_t)t];
       cursor_t cursor(boundaries[(size_t)t].start,
                       (size_t)(boundaries[(size_t)t].end - boundaries[(size_t)t].start));
+      // chunk 0 sees its initial whitespace and comments already parsed and handled
+      if (t > 0) { accept_comment_line(cursor); }
       cursor.skip_ws();
+      if (cursor.eol()) { expect_eol(cursor); }
       size_t prev_var = SIZE_MAX;
       size_t hint_idx = 0;
       auto lookup_var = [&](std::string_view var_name) {
@@ -2112,29 +2422,14 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
       };
       try {
         while (cursor.ptr < cursor.end) {
-          if (UNLIKELY(*cursor.ptr == '$')) {
-            cursor.skip_to_eol();
-            expect_eol(cursor);
-            local.comments++;
-            continue;
-          }
-
           auto bound_type = cursor.read_field();
           if (UNLIKELY(bound_type.empty())) { break; }
-          if (UNLIKELY(bound_type[0] == '$')) {
-            cursor.skip_to_eol();
-            expect_eol(cursor);
-            local.comments++;
-            continue;
-          }
 
           [[maybe_unused]] auto bound_name = cursor.read_field();
           auto var_name                    = cursor.read_field();
-          if (UNLIKELY(!var_name.empty() && var_name[0] == '$')) {
-            cursor.skip_to_eol();
-            expect_eol(cursor);
-            local.comments++;
-            continue;
+          if (UNLIKELY(var_name.empty() || var_name[0] == '$')) {
+            local.dense_misses++;
+            break;
           }
 
           size_t var_idx = lookup_var(var_name);
@@ -2150,21 +2445,34 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
           if (prev_var != SIZE_MAX && var_idx < prev_var) { local.decreasing_order++; }
           prev_var = var_idx;
 
-          bool first_bound_for_var = bound_seen[var_idx] == 0;
-          bound_seen[var_idx]      = 1;
+          std::atomic_ref<uint8_t> lb_seen_ref(lb_seen[var_idx]);
+          std::atomic_ref<uint8_t> ub_seen_ref(ub_seen[var_idx]);
+          bool var_lb_seen = lb_seen_ref.load(std::memory_order_relaxed) != 0;
+          bool var_ub_seen = ub_seen_ref.load(std::memory_order_relaxed) != 0;
 
           f_t value      = 0;
           bool has_value = false;
-          accept_comment(cursor);
           if (!cursor.eol()) {
             value     = (f_t)expect_number_fast_pm_one(cursor);
             has_value = true;
             accept_comment(cursor);
           }
 
-          auto set_lb    = [&](f_t x) { state.problem.variable_lower_bounds_[var_idx] = x; };
-          auto set_ub    = [&](f_t x) { state.problem.variable_upper_bounds_[var_idx] = x; };
-          auto set_type  = [&](char t) { state.problem.var_types_[var_idx] = t; };
+          // necessary because noncompliant mps files (with nonconsecutive var bounds) may cause
+          // technically UB races relaxed atomics for natural types are essentially same as regular
+          // loads/stores
+          auto set_lb = [&](f_t x) {
+            std::atomic_ref<f_t>(state.problem.variable_lower_bounds_[var_idx])
+              .store(x, std::memory_order_relaxed);
+          };
+          auto set_ub = [&](f_t x) {
+            std::atomic_ref<f_t>(state.problem.variable_upper_bounds_[var_idx])
+              .store(x, std::memory_order_relaxed);
+          };
+          auto set_type = [&](char t) {
+            std::atomic_ref<char>(state.problem.var_types_[var_idx])
+              .store(t, std::memory_order_relaxed);
+          };
           auto set_error = [&](const char* msg, std::string_view type) {
             if (type.empty() || std::strcmp(msg, "unknown bound type") != 0) {
               std::snprintf(local.error_msg, sizeof(local.error_msg), "%s", msg);
@@ -2178,16 +2486,26 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
             }
             local.error_ptr = cursor.ptr;
           };
+          auto warn = [&](const char* msg) {
+            if (state.bound_warning_count.fetch_add(1, std::memory_order_relaxed) < 10) {
+              cursor.warn("%s", msg);
+            }
+          };
           if (!apply_bound_record(bound_type,
+                                  var_name,
                                   value,
                                   has_value,
-                                  first_bound_for_var,
+                                  var_lb_seen,
+                                  var_ub_seen,
                                   set_lb,
                                   set_ub,
                                   set_type,
-                                  set_error)) {
+                                  set_error,
+                                  warn)) {
             break;
           }
+          lb_seen_ref.store(var_lb_seen, std::memory_order_relaxed);
+          ub_seen_ref.store(var_ub_seen, std::memory_order_relaxed);
 
           expect_eol(cursor);
         }
@@ -2232,7 +2550,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
   {
     scoped_timer_t timer("bounds_integer_defaults");
     for (size_t i = 0; i < n_vars; ++i) {
-      if (!bound_seen[i] && state.problem.var_types_[i] == 'I') {
+      if (!lb_seen[i] && !ub_seen[i] && state.problem.var_types_[i] == 'I') {
         state.problem.variable_lower_bounds_[i] = f_t{0};
         state.problem.variable_upper_bounds_[i] = f_t{1};
       }
@@ -2291,13 +2609,9 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
   size_t n_vars = (size_t)state.problem.n_vars_;
   init_variable_bounds_defaults(state);
 
-  std::vector<uint64_t> bound_seen((n_vars + 63) / 64, 0);
-  auto has_bound = [&](size_t var_idx) {
-    return (bound_seen[var_idx >> 6] & (uint64_t{1} << (var_idx & 63))) != 0;
-  };
-  auto mark_bound = [&](size_t var_idx) {
-    bound_seen[var_idx >> 6] |= uint64_t{1} << (var_idx & 63);
-  };
+  std::vector<uint8_t> lb_seen(n_vars, 0);
+  std::vector<uint8_t> ub_seen(n_vars, 0);
+  auto has_bound = [&](size_t var_idx) { return lb_seen[var_idx] || ub_seen[var_idx]; };
 
   if (!accept_section(cursor, "BOUNDS")) {
     apply_unspecified_integer_bounds(state, has_bound);
@@ -2326,32 +2640,35 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
   {
     scoped_timer_t timer("parse_bounds");
     while (!cursor.done()) {
-      auto bound_type                  = cursor.read_field();
-      [[maybe_unused]] auto bound_name = cursor.read_field();
-      auto var_name                    = cursor.read_field();
-      if (UNLIKELY(!var_name.empty() && var_name[0] == '$')) {
-        cursor.skip_to_eol();
-        expect_eol(cursor);
-        continue;
+      auto bound_type       = cursor.read_field();
+      auto bound_name       = cursor.read_field();
+      const char* var_field = cursor.ptr;
+      auto var_name         = cursor.read_field();
+      size_t var_idx        = lookup_column(state, var_name, hint_idx);
+      // bounds-only var lookup is only on the slow path due to && shortcircuiting
+      // should never occur on well-behaved MPS files either way, hot path isn't affected
+      if (UNLIKELY(var_idx == SIZE_MAX && !state.bounds_only_index.count(var_name))) {
+        // SIF: no bound set name
+        const size_t bound_name_idx = lookup_column(state, bound_name, hint_idx);
+        if (bound_name_idx != SIZE_MAX || state.bounds_only_index.count(bound_name)) {
+          var_name   = bound_name;
+          var_idx    = bound_name_idx;
+          cursor.ptr = var_field;
+        }
+      }
+      if (UNLIKELY(var_name.empty() || var_name[0] == '$')) {
+        cursor.error("missing variable name in BOUNDS");
       }
 
-      // optimized lookup using hint (bounds often in same order as columns)
-      size_t var_idx = SIZE_MAX;
       // handle annoying bounds-only vars that weren't declared in COLUMNS
       typename parse_state_t<i_t, f_t>::bounds_only_var_t* aux_var = nullptr;
-      if (LIKELY(state.col_index_mode == index_mode_t::dense_ordered)) {
-        var_idx = state.col_dense.lookup(var_name);
-        if (var_idx == SIZE_MAX) { aux_var = &state.bounds_only_vars[var_name]; }
-      } else {
-        var_idx = find_var_after_hint(state.var_names_sv, var_name, hint_idx);
-        if (var_idx == SIZE_MAX) { aux_var = &state.bounds_only_vars[var_name]; }
-      }
+      if (var_idx == SIZE_MAX) { aux_var = &state.bounds_only_var(var_name); }
       if (var_idx != SIZE_MAX) { hint_idx = var_idx; }
-      bool first_bound_for_var = aux_var == nullptr && !has_bound(var_idx);
+      bool var_lb_seen = aux_var == nullptr ? lb_seen[var_idx] != 0 : aux_var->lb_seen;
+      bool var_ub_seen = aux_var == nullptr ? ub_seen[var_idx] != 0 : aux_var->ub_seen;
 
       f_t value      = 0;
       bool has_value = false;
-      accept_comment(cursor);
       if (!cursor.eol()) {
         value     = (f_t)expect_number(cursor);
         has_value = true;
@@ -2386,9 +2703,29 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
         }
         cursor.error("%s", msg);
       };
-      [[maybe_unused]] bool bound_applied = apply_bound_record(
-        bound_type, value, has_value, first_bound_for_var, set_lb, set_ub, set_type, set_error);
-      if (aux_var == nullptr) { mark_bound(var_idx); }
+      auto warn = [&](const char* msg) {
+        if (state.bound_warning_count.fetch_add(1, std::memory_order_relaxed) < 10) {
+          cursor.warn("%s", msg);
+        }
+      };
+      [[maybe_unused]] bool bound_applied = apply_bound_record(bound_type,
+                                                               var_name,
+                                                               value,
+                                                               has_value,
+                                                               var_lb_seen,
+                                                               var_ub_seen,
+                                                               set_lb,
+                                                               set_ub,
+                                                               set_type,
+                                                               set_error,
+                                                               warn);
+      if (aux_var == nullptr) {
+        lb_seen[var_idx] = var_lb_seen;
+        ub_seen[var_idx] = var_ub_seen;
+      } else {
+        aux_var->lb_seen = var_lb_seen;
+        aux_var->ub_seen = var_ub_seen;
+      }
 
       expect_eol(cursor);
     }
@@ -2426,18 +2763,26 @@ static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& curso
 
   if (!accept_section(cursor, "RANGES")) { return; }
 
+  std::vector<uint64_t> range_seen(((size_t)state.problem.n_constraints_ + 63) / 64, 0);
   auto apply_range = [&](std::string_view row_name, f_t range_val) {
     size_t row_idx = state.row_lookup(row_name);
     if (row_idx == SIZE_MAX) {
       cursor.error("unknown row name in RANGES: %.*s", (int)row_name.size(), row_name.data());
     }
+    assert(row_idx < (size_t)state.problem.n_constraints_);
+    uint64_t& seen_word     = range_seen[row_idx >> 6];
+    const uint64_t seen_bit = (uint64_t)1 << (row_idx & 63);
+    if (UNLIKELY(seen_word & seen_bit)) {
+      cursor.error("duplicate RANGES entry for row: %.*s", (int)row_name.size(), row_name.data());
+    }
+    seen_word |= seen_bit;
     char row_type = state.problem.row_types_[row_idx];
     f_t abs_range = std::abs(range_val);
 
     if (row_type == 'E') {
       if (range_val >= 0) {
         state.problem.constraint_upper_bounds_[row_idx] =
-          state.problem.constraint_lower_bounds_[row_idx] + abs_range;
+          state.problem.constraint_lower_bounds_[row_idx] + range_val;
       } else {
         state.problem.constraint_lower_bounds_[row_idx] =
           state.problem.constraint_upper_bounds_[row_idx] - abs_range;
@@ -2453,12 +2798,11 @@ static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& curso
 
   while (cursor.ptr < cursor.end) {
     [[maybe_unused]] auto range_name = cursor.read_field();
-    if (accept_comment(cursor)) {
-      expect_eol(cursor);
-      continue;
+    auto row_name                    = cursor.read_field();
+    if (UNLIKELY(row_name.empty() || row_name[0] == '$')) {
+      cursor.error("missing row name in RANGES");
     }
-    auto row_name = cursor.read_field();
-    auto value    = (f_t)expect_number(cursor);
+    auto value = (f_t)expect_number(cursor);
     apply_range(row_name, value);
 
     accept_comment(cursor);
@@ -2471,7 +2815,6 @@ static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& curso
       }
       auto value2 = (f_t)expect_number(cursor);
       apply_range(row_name2, value2);
-      accept_comment(cursor);
     }
     expect_eol(cursor);
   }
@@ -2495,9 +2838,17 @@ static void build_var_name_map_if_needed(parse_state_t<i_t, f_t>& state)
 template <typename i_t, typename f_t>
 static size_t lookup_quadratic_var(parse_state_t<i_t, f_t>& state, std::string_view name)
 {
-  if (state.col_index_mode == index_mode_t::dense_ordered) { return state.col_dense.lookup(name); }
-  auto it = state.var_names_map.find(name);
-  return it == state.var_names_map.end() ? SIZE_MAX : it->second;
+  if (state.col_index_mode == index_mode_t::dense_ordered) {
+    const size_t col_idx = state.col_dense.lookup(name);
+    if (col_idx != SIZE_MAX) { return col_idx; }
+  } else {
+    auto it = state.var_names_map.find(name);
+    if (it != state.var_names_map.end()) { return it->second; }
+  }
+  auto bounds_only = state.bounds_only_index.find(name);
+  if (bounds_only == state.bounds_only_index.end()) { return SIZE_MAX; }
+  assert(bounds_only->second < state.bounds_only_vars.size());
+  return (size_t)state.problem.n_vars_ + bounds_only->second;
 }
 
 template <typename i_t, typename f_t>
@@ -2506,7 +2857,7 @@ static void build_quadratic_csr(parse_state_t<i_t, f_t>& state,
                                 bool symmetric_upper_triangular)
 {
   scoped_timer_t timer("build_quadratic_csr");
-  const size_t n_vars = (size_t)state.problem.n_vars_;
+  const size_t n_vars = (size_t)state.problem.n_vars_ + state.bounds_only_vars.size();
   if (entries.empty()) { return; }
 
   struct expanded_entry_t {
@@ -2522,6 +2873,7 @@ static void build_quadratic_csr(parse_state_t<i_t, f_t>& state,
   for (const auto& [row_i, col_i, value] : entries) {
     size_t row = (size_t)row_i;
     size_t col = (size_t)col_i;
+    assert(row < n_vars && col < n_vars);
     expanded.push_back({row, col, seq++, value});
     if (symmetric_upper_triangular && row != col) { expanded.push_back({col, row, seq++, value}); }
   }
@@ -2581,26 +2933,22 @@ static void parse_quadratic_sections(parse_state_t<i_t, f_t>& state, cursor_t& c
   };
 
   while (cursor.ptr < cursor.end) {
-    if (accept_section(cursor, "QUADOBJ")) {
+    const bool column_one = at_column_one(cursor);
+    if (column_one && accept_section(cursor, "QUADOBJ")) {
       active_entries = &quadobj_entries;
       continue;
     }
-    if (accept_section(cursor, "QMATRIX")) {
+    if (column_one && accept_section(cursor, "QMATRIX")) {
       active_entries = &qmatrix_entries;
       continue;
     }
-    if (accept(cursor, "QCMATRIX")) {
+    if (column_one && accept(cursor, "QCMATRIX")) {
       auto row_name = cursor.read_field();
       if (row_name.empty()) { cursor.error("QCMATRIX missing constraint row name"); }
       size_t row_idx = state.row_lookup(row_name);
       if (row_idx == SIZE_MAX) {
         cursor.error(
           "unknown constraint row name in QCMATRIX: %.*s", (int)row_name.size(), row_name.data());
-      }
-      char row_type = state.problem.row_types_[row_idx];
-      if (row_type != 'L' && row_type != 'G') {
-        cursor.error(
-          "QCMATRIX row must have ROWS type L or G: %.*s", (int)row_name.size(), row_name.data());
       }
       expect_eol(cursor);
       typename parse_state_t<i_t, f_t>::qcmatrix_block_t block;
@@ -2615,21 +2963,13 @@ static void parse_quadratic_sections(parse_state_t<i_t, f_t>& state, cursor_t& c
     const char* field_start = cursor.ptr;
     auto var1               = cursor.read_field();
     if (UNLIKELY(var1.empty())) { break; }
-    if (UNLIKELY(var1[0] == '$' || var1[0] == '*')) {
-      cursor.skip_to_eol();
-      expect_eol(cursor);
-      continue;
-    }
-    const bool starts_column_one =
-      field_start == cursor.start || field_start[-1] == '\n' || field_start[-1] == '\r';
+    const bool starts_column_one = field_start == cursor.start || field_start[-1] == '\n';
     if (UNLIKELY(starts_column_one)) {
       cursor.error("unknown quadratic section record: %.*s", (int)var1.size(), var1.data());
     }
     auto var2 = cursor.read_field();
-    if (UNLIKELY(!var2.empty() && var2[0] == '$')) {
-      cursor.skip_to_eol();
-      expect_eol(cursor);
-      continue;
+    if (UNLIKELY(var2.empty() || var2[0] == '$')) {
+      cursor.error("missing second variable name in quadratic section");
     }
     f_t value = (f_t)expect_number(cursor);
     add_entry(var1, var2, value);
@@ -2652,68 +2992,158 @@ static void set_cursor_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t r
 }
 
 template <typename i_t, typename f_t>
-static void parse_header_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
+static cursor_t parse_header_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
 {
   set_cursor_range(state, range);
-  accept_comment_line(state.cursor);
-  if (state.cursor.done()) { return; }
+  for (;;) {
+    accept_comment_line(state.cursor);
+    if (state.cursor.done()) { return state.cursor; }
+    const char* line_start = state.cursor.ptr;
+    state.cursor.skip_ws();
+    if (!state.cursor.eol()) {
+      state.cursor.ptr = line_start;
+      break;
+    }
+  }
   parse_name_section(state);
   parse_objsense_section(state);
   parse_objname_section(state);
+  return state.cursor;
 }
 
 template <typename i_t, typename f_t>
-static void parse_rows_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
+static cursor_t parse_rows_range(parse_state_t<i_t, f_t>& state,
+                                 mps_phase_range_t range,
+                                 mps_phase_range_t lazycons)
 {
   set_cursor_range(state, range);
-  parse_rows_section(state, range.end);
+  parse_rows_section(state, range.end, lazycons);
+  return state.cursor;
+}
+
+[[noreturn]] static void fail_noncontiguous_column(std::string_view name)
+{
+  mps_parser_fail(error_type_t::ValidationError,
+                  "All rows for the column (%.*s) should occur contiguously!",
+                  (int)name.size(),
+                  name.data());
+}
+
+// Each entry of var_names_sv is one run of consecutive COLUMNS records. A name seen twice thus
+// means COLUMNS is not contiguous. dense_ordered already proves the names are distinct.
+template <typename i_t, typename f_t>
+static void check_column_runs_unique(const parse_state_t<i_t, f_t>& state, int num_threads)
+{
+  if (state.col_index_mode == index_mode_t::dense_ordered) { return; }
+  const auto& names   = state.var_names_sv;
+  const size_t n_cols = names.size();
+  if (n_cols == 0) { return; }
+  scoped_timer_t timer("columns_check_runs_unique");
+  assert(n_cols < (size_t)std::numeric_limits<uint32_t>::max());
+  if (num_threads <= 0) { num_threads = phase_thread_count(MPS_COLUMNS_THREAD_CAP); }
+
+  std::vector<uint32_t> hashes(n_cols);
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+  for (size_t col = 0; col < n_cols; ++col) {
+    hashes[col] = fnv1a_hash(names[col].data(), names[col].size());
+  }
+
+  smallstr_hash_table_t table;
+  std::array<size_t, MPS_ROW_HASH_PARTITIONS> partition_counts      = {};
+  std::array<size_t, MPS_ROW_HASH_PARTITIONS + 1> partition_offsets = {};
+  for (size_t col = 0; col < n_cols; ++col) {
+    if (UNLIKELY(names[col].size() > HASH_KEY_BYTES)) {
+      if (table.note_long_name(names[col], col) == MPS_HASH_INSERT_DUPLICATE) {
+        fail_noncontiguous_column(names[col]);
+      }
+      continue;
+    }
+    ++partition_counts[hash_partition_for(hashes[col])];
+  }
+  for (size_t p = 0; p < MPS_ROW_HASH_PARTITIONS; ++p) {
+    partition_offsets[p + 1] = partition_offsets[p] + partition_counts[p];
+  }
+
+  std::vector<uint32_t> order(partition_offsets[MPS_ROW_HASH_PARTITIONS]);
+  auto next_offsets = partition_offsets;
+  for (size_t col = 0; col < n_cols; ++col) {
+    if (UNLIKELY(names[col].size() > HASH_KEY_BYTES)) { continue; }
+    order[next_offsets[hash_partition_for(hashes[col])]++] = col;
+  }
+
+  table.configure_partitioned_buckets(partition_counts, true);
+  table.allocate_mmap("column run hash table");
+
+  std::array<size_t, MPS_ROW_HASH_PARTITIONS> duplicate_col;
+  duplicate_col.fill(SIZE_MAX);
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+  for (int part_id = 0; part_id < (int)MPS_ROW_HASH_PARTITIONS; ++part_id) {
+    size_t p = (size_t)part_id;
+    for (size_t pos = partition_offsets[p]; pos < partition_offsets[p + 1]; ++pos) {
+      size_t col = order[pos];
+      if (UNLIKELY(table.insert_partition(p, names[col], hashes[col], col) ==
+                   MPS_HASH_INSERT_DUPLICATE)) {
+        duplicate_col[p] = col;
+        break;
+      }
+    }
+  }
+  for (size_t col : duplicate_col) {
+    if (col != SIZE_MAX) { fail_noncontiguous_column(names[col]); }
+  }
 }
 
 template <typename i_t, typename f_t>
-static void parse_columns_range(parse_state_t<i_t, f_t>& state,
-                                mps_phase_range_t range,
-                                int num_threads = 0)
+static cursor_t parse_columns_range(parse_state_t<i_t, f_t>& state,
+                                    mps_phase_range_t range,
+                                    int num_threads = 0)
 {
   set_cursor_range(state, range);
   parse_columns_section_parallel(state, num_threads, range.end);
+  check_column_runs_unique(state, num_threads);
+  return state.cursor;
 }
 
 template <typename i_t, typename f_t>
-static void parse_rhs_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
+static cursor_t parse_rhs_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
 {
-  if (!range.present) { return; }
-  cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
+  assert(range.present);
+  cursor_t cursor(range.begin, (size_t)(range.end - range.begin), state.cursor.source);
   parse_rhs_section(state, cursor);
+  return cursor;
 }
 
 template <typename i_t, typename f_t>
-static void parse_bounds_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
+static cursor_t parse_bounds_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
 {
   if (!range.present) {
     init_variable_bounds_without_bounds_section(state);
-    return;
+    return state.cursor;
   }
-  cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
+  cursor_t cursor(range.begin, (size_t)(range.end - range.begin), state.cursor.source);
   parse_bounds_section(state, cursor, true);
+  return cursor;
 }
 
 template <typename i_t, typename f_t>
-static void parse_ranges_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
+static cursor_t parse_ranges_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
 {
   if (!range.present) {
     init_constraint_bounds_from_rows(state);
-    return;
+    return state.cursor;
   }
-  cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
+  cursor_t cursor(range.begin, (size_t)(range.end - range.begin), state.cursor.source);
   parse_ranges_section(state, cursor);
+  return cursor;
 }
 
 template <typename i_t, typename f_t>
-static void parse_quadratic_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
+static cursor_t parse_quadratic_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
 {
-  if (!range.present) { return; }
-  cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
+  if (!range.present) { return state.cursor; }
+  cursor_t cursor(range.begin, (size_t)(range.end - range.begin), state.cursor.source);
   parse_quadratic_sections(state, cursor);
+  return cursor;
 }
 
 template <typename i_t, typename f_t>
@@ -2730,6 +3160,12 @@ static void finalize_qcmatrix_constraints(parse_state_t<i_t, f_t>& state)
     if (block.entries.empty()) { continue; }
     if (block.row_idx >= original_rows) {
       state.cursor.error("QCMATRIX row index is out of range");
+    }
+    const char row_type = state.problem.row_types_[block.row_idx];
+    if (row_type != 'L' && row_type != 'G') {
+      state.cursor.error("QCMATRIX row must have ROWS type L or G: %.*s",
+                         (int)block.row_name.size(),
+                         block.row_name.data());
     }
     if (seen_rows[block.row_idx]) {
       state.cursor.error("duplicate QCMATRIX block for constraint row: %.*s",
@@ -2833,6 +3269,10 @@ static void materialize_problem_names(parse_state_t<i_t, f_t>& state)
     state.problem.objective_name_ = std::string(state.objective_name_sv);
   }
 
+  if (state.problem.objective_name_.empty()) {
+    mps_parser_fail(error_type_t::RuntimeError, "No objective name found");
+  }
+
   {
     scoped_timer_t timer("materialize_problem_row_names");
     size_t n = state.row_names_sv.size();
@@ -2840,7 +3280,7 @@ static void materialize_problem_names(parse_state_t<i_t, f_t>& state)
     // row names are usually small enough for SSO - parallel assigns mostly don't touch the heap and
     // as such may help a lot ideally we could just allocate an arena and store non-owning string
     // views but that'd require a refactor of the problem representation
-    if (n >= 1'000'000 && num_threads > 1) {
+    if (n >= g_parser_parameters.names_parallel_min && num_threads > 1) {
 #pragma omp parallel for schedule(static) num_threads(num_threads)
       for (size_t i = 0; i < n; ++i) {
         state.problem.row_names_[i].assign(state.row_names_sv[i]);
@@ -2857,7 +3297,7 @@ static void materialize_problem_names(parse_state_t<i_t, f_t>& state)
     const bool col_dense_ordered = state.col_index_mode == index_mode_t::dense_ordered;
     size_t n = col_dense_ordered ? (size_t)state.problem.n_vars_ : state.var_names_sv.size();
     state.problem.var_names_.resize(n);
-    if (col_dense_ordered && n >= 1'000'000 && num_threads > 1) {
+    if (col_dense_ordered && n >= g_parser_parameters.names_parallel_min && num_threads > 1) {
 #pragma omp parallel for schedule(static) num_threads(num_threads)
       for (size_t i = 0; i < n; ++i) {
         state.col_dense.format_name(i, state.problem.var_names_[i]);
@@ -2866,7 +3306,7 @@ static void materialize_problem_names(parse_state_t<i_t, f_t>& state)
       for (size_t i = 0; i < n; ++i) {
         state.col_dense.format_name(i, state.problem.var_names_[i]);
       }
-    } else if (n >= 1'000'000 && num_threads > 1) {
+    } else if (n >= g_parser_parameters.names_parallel_min && num_threads > 1) {
 #pragma omp parallel for schedule(static) num_threads(num_threads)
       for (size_t i = 0; i < n; ++i) {
         state.problem.var_names_[i].assign(state.var_names_sv[i]);
@@ -2948,11 +3388,20 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
   mps_data_model_t<i_t, f_t> problem;
   std::size_t reserve_dim = init_problem_storage(problem, stream.reserve_size_hint());
 
-  cursor_t cursor(input.data, 0);
+  cursor_t cursor(input.data, 0, input.source);
   parse_state_t<i_t, f_t> state(problem, cursor);
   state.row_names_sv.reserve(reserve_dim);
 
-  auto phase_end = [](const char*) { flush_timers(); };
+  auto phase_end = [](const char* name, cursor_t& cursor, mps_phase_range_t range) {
+    if (range.present && cursor.ptr != range.end) {
+      assert(cursor.ptr < range.end);
+      cursor.error("unexpected stray data after section '%s': %.*s",
+                   name,
+                   (int)(range.end - cursor.ptr),
+                   cursor.ptr);
+    }
+    flush_timers();
+  };
 
   parallel_error_latch_t parser_tasks;
 
@@ -2974,6 +3423,7 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
     input.registry->publish(mps_phase_kind::bounds, empty);
     input.registry->publish(mps_phase_kind::ranges, empty);
     input.registry->publish(mps_phase_kind::quadratic, empty);
+    input.registry->publish(mps_phase_kind::lazycons, empty);
   };
 
   // These ints carry no data; they exist only as OpenMP task-dependency tokens. A task's
@@ -2981,7 +3431,7 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
   // task graph below (e.g. bounds after columns_done, because bounds reference variable names)
   // is expressed purely through which tokens each task depends on.
   int header_ready = 0, rows_ready = 0, columns_ready = 0;
-  int rhs_ready = 0, bounds_ready = 0, ranges_ready = 0, quadratic_ready = 0;
+  int rhs_ready = 0, bounds_ready = 0, ranges_ready = 0, quadratic_ready = 0, lazycons_ready = 0;
   int header_done = 0, rows_done = 0, columns_done = 0;
   int rhs_done = 0, bounds_done = 0, ranges_done = 0, quadratic_done = 0, names_done = 0;
   int csr_done = 0;
@@ -3036,6 +3486,11 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
       {
         input.registry->attach_event(mps_phase_kind::quadratic, ev_quadratic);
       }
+      omp_event_handle_t ev_lazycons;
+#pragma omp task detach(ev_lazycons) depend(out : lazycons_ready)
+      {
+        input.registry->attach_event(mps_phase_kind::lazycons, ev_lazycons);
+      }
 
       // We intentionally keep LZ4/raw input as a stable full-buffer producer here. The
       // progressive decoded-page lifetime prototype saved RSS, but made COLUMNS/merge slower
@@ -3045,6 +3500,18 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
         MPS_NVTX_RANGE(producer_task_name, nvtx::colors::io);
         try {
           stream.run_decode_tasks();
+          for (auto p : {mps_phase_kind::header,
+                         mps_phase_kind::rows,
+                         mps_phase_kind::columns,
+                         mps_phase_kind::rhs,
+                         mps_phase_kind::bounds,
+                         mps_phase_kind::ranges,
+                         mps_phase_kind::quadratic,
+                         mps_phase_kind::lazycons}) {
+            if (!input.registry->ready(p)) {
+              throw std::logic_error("MPS: missing or misplaced section");
+            }
+          }
         } catch (...) {
           parser_tasks.capture(std::current_exception());
           unblock_phase_waiters_after_error();
@@ -3055,17 +3522,20 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_header", nvtx::colors::generic);
-          parse_header_range(state, input.registry->range(mps_phase_kind::header));
-          phase_end("header");
+          cursor_t cursor =
+            parse_header_range(state, input.registry->range(mps_phase_kind::header));
+          phase_end("header", cursor, input.registry->range(mps_phase_kind::header));
         });
       }
 
-#pragma omp task depend(in : rows_ready, header_done) depend(out : rows_done)
+#pragma omp task depend(in : rows_ready, lazycons_ready, header_done) depend(out : rows_done)
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_rows", nvtx::colors::rows);
-          parse_rows_range(state, input.registry->range(mps_phase_kind::rows));
-          phase_end("rows");
+          const mps_phase_range_t rows     = input.registry->range(mps_phase_kind::rows);
+          const mps_phase_range_t lazycons = input.registry->range(mps_phase_kind::lazycons);
+          cursor_t cursor                  = parse_rows_range(state, rows, lazycons);
+          phase_end("rows", cursor, lazycons.present ? lazycons : rows);
         });
       }
 
@@ -3073,8 +3543,9 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_columns", nvtx::colors::columns);
-          parse_columns_range(state, input.registry->range(mps_phase_kind::columns));
-          phase_end("columns");
+          cursor_t cursor =
+            parse_columns_range(state, input.registry->range(mps_phase_kind::columns));
+          phase_end("columns", cursor, input.registry->range(mps_phase_kind::columns));
         });
       }
 
@@ -3099,8 +3570,8 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_rhs", nvtx::colors::rhs);
-          parse_rhs_range(state, input.registry->range(mps_phase_kind::rhs));
-          phase_end("rhs");
+          cursor_t cursor = parse_rhs_range(state, input.registry->range(mps_phase_kind::rhs));
+          phase_end("rhs", cursor, input.registry->range(mps_phase_kind::rhs));
         });
       }
 
@@ -3108,8 +3579,9 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_ranges", nvtx::colors::ranges);
-          parse_ranges_range(state, input.registry->range(mps_phase_kind::ranges));
-          phase_end("ranges");
+          cursor_t cursor =
+            parse_ranges_range(state, input.registry->range(mps_phase_kind::ranges));
+          phase_end("ranges", cursor, input.registry->range(mps_phase_kind::ranges));
         });
       }
 
@@ -3117,17 +3589,20 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_bounds", nvtx::colors::bounds);
-          parse_bounds_range(state, input.registry->range(mps_phase_kind::bounds));
-          phase_end("bounds");
+          cursor_t cursor =
+            parse_bounds_range(state, input.registry->range(mps_phase_kind::bounds));
+          phase_end("bounds", cursor, input.registry->range(mps_phase_kind::bounds));
         });
       }
 
-#pragma omp task depend(in : quadratic_ready, columns_done) depend(out : quadratic_done)
+#pragma omp task depend(in : quadratic_ready, columns_done, bounds_done) \
+  depend(out : quadratic_done)
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_quadratic", nvtx::colors::generic);
-          parse_quadratic_range(state, input.registry->range(mps_phase_kind::quadratic));
-          phase_end("quadratic");
+          cursor_t cursor =
+            parse_quadratic_range(state, input.registry->range(mps_phase_kind::quadratic));
+          phase_end("quadratic", cursor, input.registry->range(mps_phase_kind::quadratic));
         });
       }
     }
@@ -3147,6 +3622,8 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
   if (input.registry->endata_present()) {
     cursor.ptr = input.registry->endata_begin();
     expect(cursor, "ENDATA");
+    if (!cursor.done()) { expect_eol(cursor); }
+    if (UNLIKELY(!cursor.done())) { cursor.error("unexpected data after ENDATA"); }
   }
 
   total_timer.reset();
@@ -3173,6 +3650,7 @@ static padded_memory_input_t read_compressed_mps_file(const std::string& path)
 template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> parse_mps_fast_file(const std::string& path, FileReadMethod read_method)
 {
+  load_parser_parameters_from_env();
   FileReadMethod effective_method = effective_file_read_method(path, read_method);
   switch (effective_method) {
     case FileReadMethod::Lz4: {
@@ -3208,5 +3686,23 @@ template mps_data_model_t<int64_t, float> parse_mps_fast_file(const std::string&
                                                               FileReadMethod read_method);
 template mps_data_model_t<int64_t, double> parse_mps_fast_file(const std::string& path,
                                                                FileReadMethod read_method);
+
+template <typename i_t, typename f_t>
+mps_data_model_t<i_t, f_t> parse_mps_fast_buffer(std::vector<char> buffer, std::size_t input_size)
+{
+  load_parser_parameters_from_env();
+  memory_input_stream_t stream(std::move(buffer), input_size, input_size);
+  return parse_mps_fast_stream<memory_input_stream_t, i_t, f_t>(
+    stream, "parse_mps_fast_buffer (total)", "task_memory_scan");
+}
+
+template mps_data_model_t<int, float> parse_mps_fast_buffer(std::vector<char> buffer,
+                                                            std::size_t input_size);
+template mps_data_model_t<int, double> parse_mps_fast_buffer(std::vector<char> buffer,
+                                                             std::size_t input_size);
+template mps_data_model_t<int64_t, float> parse_mps_fast_buffer(std::vector<char> buffer,
+                                                                std::size_t input_size);
+template mps_data_model_t<int64_t, double> parse_mps_fast_buffer(std::vector<char> buffer,
+                                                                 std::size_t input_size);
 
 }  // namespace cuopt::mathematical_optimization::io::detail

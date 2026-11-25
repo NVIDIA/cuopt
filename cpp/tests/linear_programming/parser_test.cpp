@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -130,6 +131,31 @@ double q_entry(const mps_data_model_t<int, double>& m, int row, int col)
 
 }  // namespace
 
+// RAII temp file path: builds a unique path under temp_directory_path() and
+// removes it on scope exit, so write/parse/compare can throw without leaking
+// the file and parallel test runs don't collide on a shared name. The file
+// is not created at construction; it appears when the writer writes to
+// `path()`.
+struct temp_file_t {
+  std::filesystem::path p;
+  explicit temp_file_t(const std::string& suffix)
+  {
+    static std::atomic<unsigned long> counter{0};
+    const auto pid = static_cast<unsigned long>(::getpid());
+    const auto n   = counter.fetch_add(1, std::memory_order_relaxed);
+    p              = std::filesystem::temp_directory_path() /
+        ("cuopt_test_" + std::to_string(pid) + "_" + std::to_string(n) + suffix);
+  }
+  ~temp_file_t()
+  {
+    std::error_code ec;
+    std::filesystem::remove(p, ec);
+  }
+  temp_file_t(const temp_file_t&)            = delete;
+  temp_file_t& operator=(const temp_file_t&) = delete;
+  std::string string() const { return p.string(); }
+};
+
 // ===========================================================================
 // Per-fixture test classes. Each class describes one named problem fixture
 // and owns the checker for that problem's expected parsed data model. The
@@ -148,6 +174,21 @@ class parser_fixture_base : public ::testing::TestWithParam<mps_reader_param_t> 
     const std::string& root = cuopt::test::get_rapids_dataset_root_dir();
     const auto reader       = GetParam().reader;
     return read<int, double>(root + "/" + file, reader, fixed_format);
+  }
+
+  mps_data_model_t<int, double> read_mps_path(const std::string& path) const
+  {
+    return read<int, double>(path, GetParam().reader, false);
+  }
+
+  mps_data_model_t<int, double> read_mps_string(std::string_view contents) const
+  {
+    temp_file_t tmp(".mps");
+    {
+      std::ofstream out(tmp.string());
+      out << contents;
+    }
+    return read_mps_path(tmp.string());
   }
 
   static mps_data_model_t<int, double> read_lp_file(const std::string& file)
@@ -443,74 +484,30 @@ TEST(mps_parser, good_mps_file_clrf)
   EXPECT_EQ(0.1, mps.c_values[1]);
 }
 
-TEST(mps_parser, good_mps_free_file_clrf)
+TEST_P(good_mps_1_test, mps_free_format_crlf)
 {
-  auto mps = read_from_mps("linear_programming/good-mps-1-clrf.mps", false);
-  EXPECT_EQ("good-1", mps.problem_name);
-  ASSERT_EQ(int(2), mps.row_names.size());
-  EXPECT_EQ("ROW1", mps.row_names[0]);
-  EXPECT_EQ("ROW2", mps.row_names[1]);
-  ASSERT_EQ(int(2), mps.row_types.size());
-  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
-  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
-  EXPECT_EQ("COST", mps.objective_name);
-  ASSERT_EQ(int(2), mps.var_names.size());
-  EXPECT_EQ("VAR1", mps.var_names[0]);
-  EXPECT_EQ("VAR2", mps.var_names[1]);
-  ASSERT_EQ(int(2), mps.A_indices.size());
-  ASSERT_EQ(int(2), mps.A_indices[0].size());
-  EXPECT_EQ(int(0), mps.A_indices[0][0]);
-  EXPECT_EQ(int(1), mps.A_indices[0][1]);
-  ASSERT_EQ(int(2), mps.A_indices[1].size());
-  EXPECT_EQ(int(0), mps.A_indices[1][0]);
-  EXPECT_EQ(int(1), mps.A_indices[1][1]);
-  ASSERT_EQ(int(2), mps.A_values.size());
-  ASSERT_EQ(int(2), mps.A_values[0].size());
-  EXPECT_EQ(3., mps.A_values[0][0]);
-  EXPECT_EQ(4., mps.A_values[0][1]);
-  ASSERT_EQ(int(2), mps.A_values[1].size());
-  EXPECT_EQ(2.7, mps.A_values[1][0]);
-  EXPECT_EQ(10.1, mps.A_values[1][1]);
-  ASSERT_EQ(int(2), mps.b_values.size());
-  EXPECT_EQ(5.4, mps.b_values[0]);
-  EXPECT_EQ(4.9, mps.b_values[1]);
-  ASSERT_EQ(int(2), mps.c_values.size());
-  EXPECT_EQ(0.2, mps.c_values[0]);
-  EXPECT_EQ(0.1, mps.c_values[1]);
+  const auto m = read_mps_file("linear_programming/good-mps-1-clrf.mps", false);
+  EXPECT_EQ("good-1", m.get_problem_name());
+  EXPECT_EQ("COST", m.get_objective_name());
+  EXPECT_THAT(m.get_row_types(), ElementsAre('L', 'L'));
+  check_model(m);
 }
 
-TEST(mps_parser, good_mps_file_comments)
+class mps_parser_test : public parser_fixture_base {};
+
+TEST_P(mps_parser_test, good_mps_file_comments)
 {
-  auto mps = read_from_mps("linear_programming/good-mps-1-comments.mps", false);
-  EXPECT_EQ("good-1", mps.problem_name);
-  ASSERT_EQ(int(2), mps.row_names.size());
-  EXPECT_EQ("ROW1", mps.row_names[0]);
-  EXPECT_EQ("ROW2", mps.row_names[1]);
-  ASSERT_EQ(int(2), mps.row_types.size());
-  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
-  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
-  EXPECT_EQ("COST", mps.objective_name);
-  ASSERT_EQ(int(2), mps.var_names.size());
-  EXPECT_EQ("VAR1", mps.var_names[0]);
-  EXPECT_EQ("VAR2", mps.var_names[1]);
-  ASSERT_EQ(int(2), mps.A_indices.size());
-  ASSERT_EQ(int(2), mps.A_indices[0].size());
-  EXPECT_EQ(int(0), mps.A_indices[0][0]);
-  EXPECT_EQ(int(1), mps.A_indices[0][1]);
-  ASSERT_EQ(int(1), mps.A_indices[1].size());
-  EXPECT_EQ(int(0), mps.A_indices[1][0]);
-  ASSERT_EQ(int(2), mps.A_values.size());
-  ASSERT_EQ(int(2), mps.A_values[0].size());
-  EXPECT_EQ(3., mps.A_values[0][0]);
-  EXPECT_EQ(4., mps.A_values[0][1]);
-  ASSERT_EQ(int(1), mps.A_values[1].size());
-  EXPECT_EQ(2.7, mps.A_values[1][0]);
-  ASSERT_EQ(int(2), mps.b_values.size());
-  EXPECT_EQ(5.4, mps.b_values[0]);
-  EXPECT_EQ(4.9, mps.b_values[1]);
-  ASSERT_EQ(int(2), mps.c_values.size());
-  EXPECT_EQ(0.2, mps.c_values[0]);
-  EXPECT_EQ(0.1, mps.c_values[1]);
+  const auto m = read_mps_file("linear_programming/good-mps-1-comments.mps", false);
+  EXPECT_EQ("good-1", m.get_problem_name());
+  EXPECT_EQ("COST", m.get_objective_name());
+  EXPECT_THAT(m.get_row_names(), ElementsAre("ROW1", "ROW2"));
+  EXPECT_THAT(m.get_row_types(), ElementsAre('L', 'L'));
+  EXPECT_THAT(m.get_variable_names(), ElementsAre("VAR1", "VAR2"));
+  EXPECT_THAT(m.get_constraint_matrix_offsets(), ElementsAre(0, 3, 5));
+  EXPECT_THAT(m.get_constraint_matrix_indices(), ElementsAre(0, 0, 1, 0, 0));
+  EXPECT_THAT(m.get_constraint_matrix_values(), ElementsAre(3., 2.5, 4., 2.7, 2.6));
+  EXPECT_THAT(m.get_constraint_upper_bounds(), ElementsAre(1.4, 2.9));
+  EXPECT_THAT(m.get_objective_coefficients(), ElementsAre(0.2, 0.1));
 }
 
 TEST(mps_parser, good_mps_file_no_name)
@@ -561,55 +558,29 @@ TEST(mps_parser, good_mps_file_2)
   EXPECT_EQ(0.1, mps.c_values[1]);
 }
 
-TEST(mps_parser_free_format, free_format_mps_file_1)
+class mps_parser_free_format : public good_mps_1_test {};
+
+TEST_P(mps_parser_free_format, free_format_mps_file_1)
 {  // tests for arbitrary spacing in rows, column, rhs
-  auto mps = read_from_mps("linear_programming/free-format-mps-1.mps", false);
-  EXPECT_EQ("good-1", mps.problem_name);
-  ASSERT_EQ(int(2), mps.row_names.size());
-  EXPECT_EQ("ROW1", mps.row_names[0]);
-  EXPECT_EQ("ROW2", mps.row_names[1]);
-  ASSERT_EQ(int(2), mps.row_types.size());
-  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
-  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
-  EXPECT_EQ("COST", mps.objective_name);
-  ASSERT_EQ(int(2), mps.var_names.size());
-  EXPECT_EQ("VAR1", mps.var_names[0]);
-  EXPECT_EQ("VAR2", mps.var_names[1]);
-  ASSERT_EQ(int(2), mps.A_indices.size());
-  ASSERT_EQ(int(2), mps.A_indices[0].size());
-  EXPECT_EQ(int(0), mps.A_indices[0][0]);
-  EXPECT_EQ(int(1), mps.A_indices[0][1]);
-  ASSERT_EQ(int(2), mps.A_indices[1].size());
-  EXPECT_EQ(int(0), mps.A_indices[1][0]);
-  EXPECT_EQ(int(1), mps.A_indices[1][1]);
-  ASSERT_EQ(int(2), mps.A_values.size());
-  ASSERT_EQ(int(2), mps.A_values[0].size());
-  EXPECT_EQ(3., mps.A_values[0][0]);
-  EXPECT_EQ(4., mps.A_values[0][1]);
-  ASSERT_EQ(int(2), mps.A_values[1].size());
-  EXPECT_EQ(2.7, mps.A_values[1][0]);
-  EXPECT_EQ(10.1, mps.A_values[1][1]);
-  ASSERT_EQ(int(2), mps.b_values.size());
-  EXPECT_EQ(5.4, mps.b_values[0]);
-  EXPECT_EQ(4.9, mps.b_values[1]);
-  ASSERT_EQ(int(2), mps.c_values.size());
-  EXPECT_EQ(0.2, mps.c_values[0]);
-  EXPECT_EQ(0.1, mps.c_values[1]);
-  EXPECT_EQ(false, mps.maximize);
+  const auto m = read_mps_file("linear_programming/free-format-mps-1.mps", false);
+  EXPECT_EQ("good-1", m.get_problem_name());
+  EXPECT_EQ("COST", m.get_objective_name());
+  EXPECT_THAT(m.get_row_types(), ElementsAre('L', 'L'));
+  check_model(m);
 }
 
-TEST(mps_parser_free_format, bad_free_format_mps_with_spaces_in_names)
+TEST_P(mps_parser_free_format, bad_free_format_mps_with_spaces_in_names)
 {
-  ASSERT_THROW(read_from_mps("linear_programming/good-fixed-mps-2.mps", false), std::logic_error);
+  ASSERT_THROW(read_mps_file("linear_programming/good-fixed-mps-2.mps", false), std::logic_error);
 }
 
-TEST(mps_parser_free_format, bad_mps_files_free_format)
+TEST_P(mps_parser_free_format, bad_mps_files_free_format)
 {
   std::stringstream ss;
   static constexpr int NumMpsFiles = 13;
   for (int i = 1; i <= NumMpsFiles; ++i) {
     ss << "linear_programming/bad-mps-" << i << ".mps";
-    if (file_exists(ss.str())) ASSERT_THROW(read_from_mps(ss.str(), false), std::logic_error);
+    if (file_exists(ss.str())) ASSERT_THROW(read_mps_file(ss.str(), false), std::logic_error);
     ss.str(std::string{});
     ss.clear();
   }
@@ -749,11 +720,13 @@ TEST(mps_ranges, free_ranges)
   EXPECT_NEAR(3.4, mps.ranges_values[1], tolerance);   //  ROW2 range value
   EXPECT_NEAR(-1.6, mps.ranges_values[2], tolerance);  // ROW3 range value
   EXPECT_NEAR(3.4, mps.ranges_values[3], tolerance);   //  ROW3 range value
+}
 
-  std::string rel_file{};
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  rel_file                                = rapidsDatasetRootDir + "/" + file;
-  auto data_model                         = read_mps<int, double>(rel_file, false);
+class mps_ranges_test : public parser_fixture_base {};
+
+TEST_P(mps_ranges_test, free_ranges)
+{
+  const auto data_model = read_mps_file("linear_programming/good-mps-free-ranges.mps", false);
 
   EXPECT_NEAR(1.2, data_model.get_constraint_lower_bounds()[0], tolerance);  // ROW1 lower bound
   EXPECT_NEAR(5.4, data_model.get_constraint_upper_bounds()[0], tolerance);  // ROW1 upper bound
@@ -781,37 +754,41 @@ TEST(mps_ranges, free_ranges)
               tolerance);  // ROW6, greater turned into equal constraint
 }
 
-TEST(mps_name, two_objectives)
+class mps_name : public parser_fixture_base {};
+
+TEST_P(mps_name, two_objectives)
 {
   std::string file = "linear_programming/good-mps-fixed-two-objectives.mps";
-  auto mps         = read_from_mps(file, false);
+  const auto m     = read_mps_file(file, false);
 
   // Objective name should be first one found and not trigger an error
-  EXPECT_EQ(mps.objective_name, "COST");
+  EXPECT_EQ(m.get_objective_name(), "COST");
 }
 
-TEST(mps_objname, two_objectives)
+class mps_objname_test : public parser_fixture_base {};
+
+TEST_P(mps_objname_test, two_objectives)
 {
   std::string file = "linear_programming/good-mps-fixed-two-objectives-objname.mps";
-  auto mps         = read_from_mps(file, false);
+  const auto m     = read_mps_file(file, false);
 
   // Objective name is the second one found since it's specified as objname
-  EXPECT_EQ(mps.objective_name, "COST6679327");
+  EXPECT_EQ(m.get_objective_name(), "COST6679327");
 }
 
-TEST(mps_objname, two_objectives_next_line)
+TEST_P(mps_objname_test, two_objectives_next_line)
 {
   std::string file = "linear_programming/good-mps-fixed-two-objectives-objname-next-line.mps";
-  auto mps         = read_from_mps(file, false);
+  const auto m     = read_mps_file(file, false);
 
   // Objective name is the second one found since it's specified as objname
-  EXPECT_EQ(mps.objective_name, "COST6679327");
+  EXPECT_EQ(m.get_objective_name(), "COST6679327");
 }
 
-TEST(mps_objname, bad_after)
+TEST_P(mps_objname_test, bad_after)
 {
   std::string file = "linear_programming/bad-mps-fixed-objname-after-rows.mps";
-  ASSERT_THROW(read_from_mps(file, false), std::logic_error);
+  ASSERT_THROW(read_mps_file(file, false), std::logic_error);
 }
 
 TEST(mps_objname, bad_no_fixed)
@@ -820,28 +797,96 @@ TEST(mps_objname, bad_no_fixed)
   ASSERT_THROW(read_from_mps(file, true), std::logic_error);
 }
 
-TEST(mps_ranges, bad_name)
+TEST_P(mps_ranges_test, bad_name)
 {
-  ASSERT_THROW(read_from_mps("linear_programming/bad-mps-fixed-ranges-name.mps", false),
+  ASSERT_THROW(read_mps_file("linear_programming/bad-mps-fixed-ranges-name.mps", false),
                std::logic_error);
 }
 
-TEST(mps_ranges, bad_value)
+TEST_P(mps_ranges_test, bad_value)
 {
-  ASSERT_THROW(read_from_mps("linear_programming/bad-mps-fixed-ranges-value.mps", false),
+  ASSERT_THROW(read_mps_file("linear_programming/bad-mps-fixed-ranges-value.mps", false),
                std::logic_error);
 }
 
-TEST(mps_bounds, unsupported_or_invalid_mps_types)
+class mps_bounds_test : public parser_fixture_base {};
+
+TEST_P(mps_bounds_test, unsupported_or_invalid_mps_types)
 {
   std::stringstream ss;
   static constexpr int NumMpsFiles = 2;
   for (int i = 1; i <= NumMpsFiles; ++i) {
     ss << "linear_programming/bad-mps-bound-" << i << ".mps";
-    ASSERT_THROW(read_from_mps(ss.str(), false), std::logic_error);
+    ASSERT_THROW(read_mps_file(ss.str(), false), std::logic_error);
     ss.str(std::string{});
     ss.clear();
   };
+}
+
+// Field 7 is the first column past field 6.
+static std::string fixed_mps_record(std::initializer_list<std::string_view> fields)
+{
+  static constexpr size_t field_starts[] = {1, 4, 14, 24, 39, 49, 61};
+  assert(fields.size() <= std::size(field_starts));
+  std::string record;
+  size_t field = 0;
+  for (const auto value : fields) {
+    assert(record.size() <= field_starts[field]);
+    record.resize(field_starts[field++], ' ');
+    record += value;
+  }
+  return record + "\n";
+}
+
+TEST(mps_dollar_comments, fixed_format_field_five_and_identifiers_accepted)
+{
+  const std::string mps =
+    "NAME          DOLLAR\n"
+    "ROWS\n" +
+    fixed_mps_record({"N", "OBJ"}) + fixed_mps_record({"L", "R$1"}) +
+    fixed_mps_record({"L", "R2"}) + "COLUMNS\n" +
+    fixed_mps_record({"", "X$1", "OBJ", "1", "$ comment"}) +
+    fixed_mps_record({"", "X$1", "R$1", "2", "R2", "3"}) +
+    fixed_mps_record({"", "X2", "OBJ", "1", "R2", "4"}) + "RHS\n" +
+    fixed_mps_record({"", "RHS$", "R$1", "1", "$ comment"}) +
+    fixed_mps_record({"", "RHS$", "R2", "2"}) + "RANGES\n" +
+    fixed_mps_record({"", "RNG", "R$1", "1", "$ comment"}) + "BOUNDS\n" +
+    fixed_mps_record({"UP", "B", "X$1", "5", "$ comment"}) + "ENDATA\n";
+
+  const auto model = read_mps_from_string<int, double>(mps, true);
+  EXPECT_THAT(model.get_variable_names(), ElementsAre("X$1", "X2"));
+  EXPECT_THAT(model.get_row_names(), ElementsAre("R$1", "R2"));
+  EXPECT_NEAR(5.0, model.get_variable_upper_bounds()[0], tolerance);
+  EXPECT_NEAR(0.0, model.get_constraint_lower_bounds()[0], tolerance);
+  EXPECT_NEAR(1.0, model.get_constraint_upper_bounds()[0], tolerance);
+}
+
+TEST(mps_dollar_comments, fixed_format_field_three_and_after_field_six_rejected)
+{
+  const std::string head =
+    "NAME          DOLLAR\n"
+    "ROWS\n" +
+    fixed_mps_record({"N", "OBJ"}) + fixed_mps_record({"L", "R1"}) + fixed_mps_record({"L", "R2"}) +
+    "COLUMNS\n";
+  const std::string columns = fixed_mps_record({"", "X1", "OBJ", "1", "R1", "2"}) +
+                              fixed_mps_record({"", "X2", "OBJ", "1", "R2", "3"});
+  const std::string rhs = "RHS\n" + fixed_mps_record({"", "RHS1", "R1", "1", "R2", "2"});
+
+  const std::vector<std::string> cases = {
+    head + fixed_mps_record({"", "X1", "$R1", "2"}) + rhs + "ENDATA\n",
+    head + fixed_mps_record({"", "X1", "OBJ", "1", "R1", "2", "$ comment"}) + rhs + "ENDATA\n",
+    head + columns + "RHS\n" + fixed_mps_record({"", "RHS1", "$R1", "1"}) + "ENDATA\n",
+    head + columns + "RHS\n" + fixed_mps_record({"", "RHS1", "R1", "1", "R2", "2", "$ comment"}) +
+      "ENDATA\n",
+    head + columns + rhs + "RANGES\n" + fixed_mps_record({"", "RNG", "$R1", "1"}) + "ENDATA\n",
+    head + columns + rhs + "RANGES\n" +
+      fixed_mps_record({"", "RNG", "R1", "1", "R2", "2", "$ comment"}) + "ENDATA\n",
+    head + columns + rhs + "BOUNDS\n" + fixed_mps_record({"UP", "B", "$X1", "1"}) + "ENDATA\n",
+    head + columns + rhs + "QUADOBJ\n" + fixed_mps_record({"", "X1", "$X1", "1"}) + "ENDATA\n"};
+
+  for (const auto& mps : cases) {
+    EXPECT_THROW(((void)read_mps_from_string<int, double>(mps, true)), std::logic_error) << mps;
+  }
 }
 
 TEST_P(mip_with_bounds_test, mps)
@@ -863,49 +908,15 @@ TEST_F(mip_with_bounds_test, lp)
   check_model(read_lp_file("mixed_integer_programming/good-mip-mps-1.lp"));
 }
 
-TEST(mps_parser, good_mps_file_mip_no_marker)
+TEST_P(mip_with_bounds_test, mps_no_marker)
 {
-  auto mps = read_from_mps("mixed_integer_programming/good-mip-mps-1-no-mark.mps", false);
-
-  ASSERT_EQ(int(2), mps.row_names.size());
-  EXPECT_EQ("ROW1", mps.row_names[0]);
-  EXPECT_EQ("ROW2", mps.row_names[1]);
-  ASSERT_EQ(int(2), mps.row_types.size());
-  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
-  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
-  EXPECT_EQ("COST", mps.objective_name);
-  ASSERT_EQ(int(2), mps.var_names.size());
-  EXPECT_EQ("VAR1", mps.var_names[0]);
-  EXPECT_EQ("VAR2", mps.var_names[1]);
-  ASSERT_EQ(int(2), mps.A_indices.size());
-  ASSERT_EQ(int(2), mps.A_indices[0].size());
-  EXPECT_EQ(int(0), mps.A_indices[0][0]);
-  EXPECT_EQ(int(1), mps.A_indices[0][1]);
-  ASSERT_EQ(int(2), mps.A_indices[1].size());
-  EXPECT_EQ(int(0), mps.A_indices[1][0]);
-  EXPECT_EQ(int(1), mps.A_indices[1][1]);
-  ASSERT_EQ(int(2), mps.A_values.size());
-  ASSERT_EQ(int(2), mps.A_values[0].size());
-  EXPECT_EQ(8000., mps.A_values[0][0]);
-  EXPECT_EQ(4000., mps.A_values[0][1]);
-  ASSERT_EQ(int(2), mps.A_values[1].size());
-  EXPECT_EQ(15., mps.A_values[1][0]);
-  EXPECT_EQ(30., mps.A_values[1][1]);
-  ASSERT_EQ(int(2), mps.b_values.size());
-  EXPECT_EQ(40000., mps.b_values[0]);
-  EXPECT_EQ(200., mps.b_values[1]);
-  ASSERT_EQ(int(2), mps.c_values.size());
-  EXPECT_EQ(100., mps.c_values[0]);
-  EXPECT_EQ(150., mps.c_values[1]);
-  ASSERT_EQ(int(2), mps.var_types.size());
-  EXPECT_EQ('I', mps.var_types[0]);
-  EXPECT_EQ('I', mps.var_types[1]);
-  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
-  EXPECT_EQ(0., mps.variable_lower_bounds[0]);
-  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
-  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
-  EXPECT_EQ(10., mps.variable_upper_bounds[0]);
-  EXPECT_EQ(10., mps.variable_upper_bounds[1]);
+  const auto m = read_mps_file("mixed_integer_programming/good-mip-mps-1-no-mark.mps", false);
+  EXPECT_EQ("COST", m.get_objective_name());
+  EXPECT_THAT(m.get_row_names(), ElementsAre("ROW1", "ROW2"));
+  EXPECT_THAT(m.get_row_types(), ElementsAre('L', 'L'));
+  EXPECT_THAT(m.get_constraint_matrix_offsets(), ElementsAre(0, 2, 4));
+  EXPECT_THAT(m.get_constraint_matrix_indices(), ElementsAre(0, 1, 0, 1));
+  check_model(m);
 }
 
 TEST_P(mip_no_bounds_test, mps)
@@ -943,6 +954,11 @@ INSTANTIATE_MPS_READER_TEST(up_low_bounds_test);
 INSTANTIATE_MPS_READER_TEST(mip_with_bounds_test);
 INSTANTIATE_MPS_READER_TEST(mip_no_bounds_test);
 INSTANTIATE_MPS_READER_TEST(mip_partial_bounds_test);
+INSTANTIATE_MPS_READER_TEST(mps_parser_test);
+INSTANTIATE_MPS_READER_TEST(mps_parser_free_format);
+INSTANTIATE_MPS_READER_TEST(mps_ranges_test);
+INSTANTIATE_MPS_READER_TEST(mps_name);
+INSTANTIATE_MPS_READER_TEST(mps_objname_test);
 // fast mps parser doesn't support fixed format
 INSTANTIATE_DEFAULT_MPS_READER_TEST(some_var_bounds_test);
 INSTANTIATE_DEFAULT_MPS_READER_TEST(fixed_var_bound_test);
@@ -990,6 +1006,11 @@ TEST(mps_parser, good_mps_file_bzip2_compressed)
   EXPECT_EQ(0.2, mps.c_values[0]);
   EXPECT_EQ(0.1, mps.c_values[1]);
 }
+
+TEST_P(good_mps_1_test, mps_bzip2_compressed)
+{
+  check_model(read_mps_file("linear_programming/good-mps-1.mps.bz2", false));
+}
 #endif  // MPS_PARSER_WITH_BZIP2
 
 #ifdef MPS_PARSER_WITH_ZLIB
@@ -1027,6 +1048,11 @@ TEST(mps_parser, good_mps_file_zlib_compressed)
   ASSERT_EQ(int(2), mps.c_values.size());
   EXPECT_EQ(0.2, mps.c_values[0]);
   EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
+TEST_P(good_mps_1_test, mps_zlib_compressed)
+{
+  check_model(read_mps_file("linear_programming/good-mps-1.mps.gz", false));
 }
 #endif  // MPS_PARSER_WITH_ZLIB
 
@@ -1097,31 +1123,6 @@ TEST_P(qps_file_reader_test, test_qps_files)
 // ================================================================================================
 // MPS Round-Trip Tests (Read -> Write -> Read -> Compare)
 // ================================================================================================
-
-// RAII temp file path: builds a unique path under temp_directory_path() and
-// removes it on scope exit, so write/parse/compare can throw without leaking
-// the file and parallel test runs don't collide on a shared name. The file
-// is not created at construction; it appears when the writer writes to
-// `path()`.
-struct temp_file_t {
-  std::filesystem::path p;
-  explicit temp_file_t(const std::string& suffix)
-  {
-    static std::atomic<unsigned long> counter{0};
-    const auto pid = static_cast<unsigned long>(::getpid());
-    const auto n   = counter.fetch_add(1, std::memory_order_relaxed);
-    p              = std::filesystem::temp_directory_path() /
-        ("cuopt_test_" + std::to_string(pid) + "_" + std::to_string(n) + suffix);
-  }
-  ~temp_file_t()
-  {
-    std::error_code ec;
-    std::filesystem::remove(p, ec);
-  }
-  temp_file_t(const temp_file_t&)            = delete;
-  temp_file_t& operator=(const temp_file_t&) = delete;
-  std::string string() const { return p.string(); }
-};
 
 // Helper function to compare two data models
 template <typename i_t, typename f_t>
@@ -1244,7 +1245,9 @@ void compare_data_models(const mps_data_model_t<i_t, f_t>& original,
   }
 }
 
-TEST(mps_roundtrip, empty_constraint_matrix)
+class mps_roundtrip : public parser_fixture_base {};
+
+TEST_P(mps_roundtrip, empty_constraint_matrix)
 {
   mps_data_model_t<int, double> model;
   std::vector<double> values;
@@ -1269,14 +1272,14 @@ TEST(mps_roundtrip, empty_constraint_matrix)
   mps_writer_t<int, double> writer(model);
   writer.write(temp_file.string());
 
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
   EXPECT_THAT(reloaded.get_constraint_matrix_offsets(), ElementsAre(0, 0));
   EXPECT_TRUE(reloaded.get_constraint_matrix_values().empty());
   EXPECT_THAT(reloaded.get_constraint_bounds(), ElementsAre(1.0));
   EXPECT_THAT(reloaded.get_row_names(), ElementsAre("empty"));
 }
 
-TEST(mps_roundtrip, unnamed_quadratic_constraint)
+TEST_P(mps_roundtrip, unnamed_quadratic_constraint)
 {
   mps_data_model_t<int, double> model;
   std::vector<double> values{1.0, 1.0};
@@ -1309,13 +1312,13 @@ TEST(mps_roundtrip, unnamed_quadratic_constraint)
   mps_writer_t<int, double> writer(model);
   writer.write(temp_file.string());
 
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
   ASSERT_EQ(1u, reloaded.get_quadratic_constraints().size());
   EXPECT_EQ("QC0", reloaded.get_quadratic_constraints()[0].constraint_row_name);
   EXPECT_EQ(4.0, reloaded.get_quadratic_constraints()[0].rhs_value);
 }
 
-TEST(mps_roundtrip, unnamed_quadratic_constraints_avoid_existing_row_names)
+TEST_P(mps_roundtrip, unnamed_quadratic_constraints_avoid_existing_row_names)
 {
   mps_data_model_t<int, double> model;
   std::vector<double> values{1.0, 1.0};
@@ -1354,7 +1357,7 @@ TEST(mps_roundtrip, unnamed_quadratic_constraints_avoid_existing_row_names)
   mps_writer_t<int, double> writer(model);
   writer.write(temp_file.string());
 
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
   EXPECT_EQ("QC0", reloaded.get_objective_name());
   EXPECT_THAT(reloaded.get_row_names(), ElementsAre("QC1"));
   EXPECT_THAT(reloaded.get_objective_coefficients(), ElementsAre(2.0, 3.0));
@@ -1396,7 +1399,7 @@ TEST(mps_writer_op, rejects_missing_constraint_offsets)
   EXPECT_ANY_THROW(writer.write(temp_file.string()));
 }
 
-TEST(mps_roundtrip, linear_programming_basic)
+TEST_P(mps_roundtrip, linear_programming_basic)
 {
   std::string input_file =
     cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/good-mps-1.mps";
@@ -1410,13 +1413,13 @@ TEST(mps_roundtrip, linear_programming_basic)
   writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
 
   // Compare
   compare_data_models(original, reloaded);
 }
 
-TEST(mps_roundtrip, linear_programming_with_bounds)
+TEST_P(mps_roundtrip, linear_programming_with_bounds)
 {
   if (!file_exists("linear_programming/lp_model_with_var_bounds.mps")) {
     GTEST_SKIP() << "Test file not found";
@@ -1434,13 +1437,13 @@ TEST(mps_roundtrip, linear_programming_with_bounds)
   writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
 
   // Compare
   compare_data_models(original, reloaded);
 }
 
-TEST(mps_roundtrip, quadratic_programming_qp_test_1)
+TEST_P(mps_roundtrip, quadratic_programming_qp_test_1)
 {
   if (!file_exists("quadratic_programming/QP_Test_1.qps")) {
     GTEST_SKIP() << "Test file not found";
@@ -1459,14 +1462,14 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_1)
   writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
   ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
 
   // Compare
   compare_data_models(original, reloaded);
 }
 
-TEST(mps_roundtrip, quadratic_programming_qp_test_2)
+TEST_P(mps_roundtrip, quadratic_programming_qp_test_2)
 {
   if (!file_exists("quadratic_programming/QP_Test_2.qps")) {
     GTEST_SKIP() << "Test file not found";
@@ -1485,7 +1488,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
   writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
   ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
 
   // Compare
@@ -1500,7 +1503,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
 // the LP parser. Exercises the LP reader + the writer + the MPS reader end
 // to end, without trusting any direct LP<->MPS comparison.
 
-TEST_F(good_mps_1_test, lp_roundtrip)
+TEST_P(good_mps_1_test, lp_roundtrip)
 {
   temp_file_t temp_file(".mps");
 
@@ -1509,12 +1512,12 @@ TEST_F(good_mps_1_test, lp_roundtrip)
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
 
   compare_data_models(original, reloaded);
 }
 
-TEST_F(up_low_bounds_test, lp_roundtrip)
+TEST_P(up_low_bounds_test, lp_roundtrip)
 {
   temp_file_t temp_file(".mps");
 
@@ -1523,12 +1526,12 @@ TEST_F(up_low_bounds_test, lp_roundtrip)
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
 
   compare_data_models(original, reloaded);
 }
 
-TEST_F(mip_with_bounds_test, lp_roundtrip)
+TEST_P(mip_with_bounds_test, lp_roundtrip)
 {
   temp_file_t temp_file(".mps");
 
@@ -1537,7 +1540,7 @@ TEST_F(mip_with_bounds_test, lp_roundtrip)
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
 
   compare_data_models(original, reloaded);
 }
@@ -2716,14 +2719,17 @@ namespace {
 // Writes `content` to a temp file with the given suffix, parses it via
 // read, and returns the resulting model. temp_file_t removes the
 // file on every scope exit (including when read throws).
-mps_data_model_t<int, double> dispatch_parse(const std::string& content, const std::string& suffix)
+mps_data_model_t<int, double> dispatch_parse(
+  const std::string& content,
+  const std::string& suffix,
+  mps_reader_type_t mps_reader = mps_reader_type_t::default_reader)
 {
   temp_file_t tmp(suffix);
   {
     std::ofstream out(tmp.string());
     out << content;
   }
-  return read<int, double>(tmp.string());
+  return read<int, double>(tmp.string(), mps_reader);
 }
 
 constexpr const char* kTrivialLp = R"LP(
@@ -2779,19 +2785,21 @@ TEST(read, lp_bz2_extension_dispatches_to_lp_parser)
   EXPECT_EQ(m.get_variable_names()[0], "VAR1");
 }
 
-TEST(read, mps_extension_dispatches_to_mps_parser)
+class read_test : public parser_fixture_base {};
+
+TEST_P(read_test, mps_extension_dispatches_to_mps_parser)
 {
-  auto m = dispatch_parse(kTrivialMps, ".mps");
+  auto m = dispatch_parse(kTrivialMps, ".mps", GetParam().reader);
   ASSERT_EQ(m.get_variable_names().size(), 1u);
   EXPECT_EQ(m.get_variable_names()[0], "x");
   EXPECT_NEAR(m.get_variable_upper_bounds()[0], 10.0, tolerance);
 }
 
-TEST(read, qps_extension_dispatches_to_mps_parser)
+TEST_P(read_test, qps_extension_dispatches_to_mps_parser)
 {
   // QPS is a superset of MPS; the MPS parser handles both. We just need
   // read to route ".qps" to it.
-  auto m = dispatch_parse(kTrivialMps, ".qps");
+  auto m = dispatch_parse(kTrivialMps, ".qps", GetParam().reader);
   ASSERT_EQ(m.get_variable_names().size(), 1u);
   EXPECT_EQ(m.get_variable_names()[0], "x");
 }
@@ -2809,17 +2817,15 @@ TEST(read, qps_extension_dispatches_to_fast_experimental_reader)
   EXPECT_NEAR(m.get_variable_upper_bounds()[0], 10.0, tolerance);
 }
 
-TEST(read, mps_gz_extension_dispatches_to_mps_parser)
+TEST_P(read_test, mps_gz_extension_dispatches_to_mps_parser)
 {
-  auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                             "/linear_programming/good-mps-1.mps.gz");
+  auto m = read_mps_file("linear_programming/good-mps-1.mps.gz", false);
   EXPECT_EQ("good-1", m.get_problem_name());
 }
 
-TEST(read, mps_bz2_extension_dispatches_to_mps_parser)
+TEST_P(read_test, mps_bz2_extension_dispatches_to_mps_parser)
 {
-  auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                             "/linear_programming/good-mps-1.mps.bz2");
+  auto m = read_mps_file("linear_programming/good-mps-1.mps.bz2", false);
   EXPECT_EQ("good-1", m.get_problem_name());
 }
 
@@ -2831,9 +2837,9 @@ TEST(read, uppercase_lp_extension_dispatches_to_lp_parser)
   EXPECT_EQ(m.get_variable_names()[0], "x");
 }
 
-TEST(read, mixed_case_mps_extension_dispatches_to_mps_parser)
+TEST_P(read_test, mixed_case_mps_extension_dispatches_to_mps_parser)
 {
-  auto m = dispatch_parse(kTrivialMps, ".MpS");
+  auto m = dispatch_parse(kTrivialMps, ".MpS", GetParam().reader);
   ASSERT_EQ(m.get_variable_names().size(), 1u);
   EXPECT_EQ(m.get_variable_names()[0], "x");
 }
@@ -2853,17 +2859,17 @@ TEST(read, unrecognized_extension_throws)
 // blocks. LP-equivalent semantic coverage lives above.
 // ===========================================================================
 
-TEST(mps_bounds, standard_var_bounds_0_inf)
+TEST_P(mps_bounds_test, standard_var_bounds_0_inf)
 {
-  auto mps = read_from_mps("linear_programming/free-format-mps-1.mps", false);
+  const auto m = read_mps_file("linear_programming/free-format-mps-1.mps", false);
 
   // standard bounds are 0,inf when no var bounds are specified
-  EXPECT_EQ(int(2), mps.variable_lower_bounds.size());
-  EXPECT_EQ(0., mps.variable_lower_bounds[0]);
-  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
-  EXPECT_EQ(int(2), mps.variable_upper_bounds.size());
-  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[0]);
-  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
+  EXPECT_EQ(int(2), m.get_variable_lower_bounds().size());
+  EXPECT_EQ(0., m.get_variable_lower_bounds()[0]);
+  EXPECT_EQ(0., m.get_variable_lower_bounds()[1]);
+  EXPECT_EQ(int(2), m.get_variable_upper_bounds().size());
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), m.get_variable_upper_bounds()[0]);
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), m.get_variable_upper_bounds()[1]);
 }
 
 TEST(mps_bounds, only_some_UP_LO_var_bounds)
@@ -2879,7 +2885,7 @@ TEST(mps_bounds, only_some_UP_LO_var_bounds)
   EXPECT_EQ(2., mps.variable_upper_bounds[1]);
 }
 
-TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
+TEST_P(mps_bounds_test, semi_continuous_var_bounds_from_dataset)
 {
   struct Case {
     const char* name;
@@ -2896,7 +2902,7 @@ TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
 
   for (const auto& c : cases) {
     SCOPED_TRACE(c.name);
-    auto mps              = cuopt::test::inline_mps::parse_inline_mps(c.mps);
+    auto mps              = read_mps_string(c.mps);
     const auto& var_types = mps.get_variable_types();
     const auto& lower     = mps.get_variable_lower_bounds();
     const auto& upper     = mps.get_variable_upper_bounds();
@@ -2910,9 +2916,9 @@ TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
   }
 }
 
-TEST(mps_bounds, semi_continuous_missing_lower_defaults_to_zero)
+TEST_P(mps_bounds_test, semi_continuous_missing_lower_defaults_to_zero)
 {
-  auto mps = cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_lb_zero_mps);
+  auto mps              = read_mps_string(cuopt::test::inline_mps::sc_lb_zero_mps);
   const auto& var_types = mps.get_variable_types();
   const auto& lower     = mps.get_variable_lower_bounds();
   const auto& upper     = mps.get_variable_upper_bounds();
@@ -2925,29 +2931,27 @@ TEST(mps_bounds, semi_continuous_missing_lower_defaults_to_zero)
   EXPECT_DOUBLE_EQ(10.0, upper[0]);
 }
 
-TEST(mps_bounds, semi_continuous_missing_upper_rejected)
+TEST_P(mps_bounds_test, semi_continuous_missing_upper_rejected)
 {
-  EXPECT_THROW(
-    cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_missing_upper_mps),
-    std::logic_error);
+  EXPECT_THROW(read_mps_string(cuopt::test::inline_mps::sc_missing_upper_mps), std::logic_error);
 }
 
-TEST(mps_bounds, semi_continuous_bound_type)
+TEST_P(mps_bounds_test, semi_continuous_bound_type)
 {
-  auto mps = read_from_mps("linear_programming/good-mps-semi-continuous-bound.mps", false);
+  const auto m = read_mps_file("linear_programming/good-mps-semi-continuous-bound.mps", false);
 
-  ASSERT_EQ(int(2), mps.var_names.size());
-  ASSERT_EQ(int(2), mps.var_types.size());
-  EXPECT_EQ('S', mps.var_types[0]);
-  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
-  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
-  EXPECT_DOUBLE_EQ(0.0, mps.variable_lower_bounds[0]);
-  EXPECT_DOUBLE_EQ(2.0, mps.variable_upper_bounds[0]);
+  ASSERT_EQ(int(2), m.get_variable_names().size());
+  ASSERT_EQ(int(2), m.get_variable_types().size());
+  EXPECT_EQ('S', m.get_variable_types()[0]);
+  ASSERT_EQ(int(2), m.get_variable_lower_bounds().size());
+  ASSERT_EQ(int(2), m.get_variable_upper_bounds().size());
+  EXPECT_DOUBLE_EQ(0.0, m.get_variable_lower_bounds()[0]);
+  EXPECT_DOUBLE_EQ(2.0, m.get_variable_upper_bounds()[0]);
 }
 
-TEST(mps_bounds, invalid_bound_type)
+TEST_P(mps_bounds_test, invalid_bound_type)
 {
-  ASSERT_THROW(read_from_mps("linear_programming/bad-mps-bound-1.mps", false), std::logic_error);
+  ASSERT_THROW(read_mps_file("linear_programming/bad-mps-bound-1.mps", false), std::logic_error);
 }
 
 TEST(append_quadratic_constraint, merges_duplicate_entries)
@@ -3080,7 +3084,7 @@ TEST(qps_parser, qcmatrix_append_api)
 // ---------------------------------------------------------------------------------------------
 // Symmetric-half validation runs during parsing.
 // ---------------------------------------------------------------------------------------------
-TEST(qps_parser, qcmatrix_missing_symmetric_half_throws)
+TEST_P(qps_file_reader_test, qcmatrix_missing_symmetric_half_throws)
 {
   const char* mps = R"(NAME qc_missing_half
 ROWS
@@ -3101,10 +3105,10 @@ QCMATRIX  QC0
     x         y         2.0
 ENDATA
 )";
-  EXPECT_THROW(cuopt::test::inline_mps::parse_inline_mps(mps), std::logic_error);
+  EXPECT_THROW(read_mps_string(mps), std::logic_error);
 }
 
-TEST(qps_parser, qcmatrix_asymmetric_values_throw)
+TEST_P(qps_file_reader_test, qcmatrix_asymmetric_values_throw)
 {
   const char* mps = R"(NAME qc_value_mismatch
 ROWS
@@ -3126,10 +3130,10 @@ QCMATRIX  QC0
     y         x         3.0
 ENDATA
 )";
-  EXPECT_THROW(cuopt::test::inline_mps::parse_inline_mps(mps), std::logic_error);
+  EXPECT_THROW(read_mps_string(mps), std::logic_error);
 }
 
-TEST(qps_parser, qcmatrix_duplicate_entry_throws)
+TEST_P(qps_file_reader_test, qcmatrix_duplicate_entry_throws)
 {
   const char* mps = R"(NAME qc_duplicate
 ROWS
@@ -3152,7 +3156,7 @@ QCMATRIX  QC0
     y         x         2.0
 ENDATA
 )";
-  EXPECT_THROW(cuopt::test::inline_mps::parse_inline_mps(mps), std::logic_error);
+  EXPECT_THROW(read_mps_string(mps), std::logic_error);
 }
 
 // QCQP MPS: each quadratic constraint bundles row + linear + rhs + quadratic.
@@ -3234,7 +3238,7 @@ TEST_P(qps_file_reader_test, qcqp_p0033_mps_sections)
   EXPECT_FALSE(qcs[0].vals.empty());
 }
 
-TEST(mps_roundtrip, qcqp_p0033_qc1)
+TEST_P(mps_roundtrip, qcqp_p0033_qc1)
 {
   if (!file_exists("qcqp/p0033_qc1.mps")) { GTEST_SKIP() << "Test file not found"; }
 
@@ -3249,14 +3253,17 @@ TEST(mps_roundtrip, qcqp_p0033_qc1)
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
-  auto reloaded = read_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps_path(temp_file.string());
   mps_writer_t<int, double> writer_r2(reloaded);
   writer_r2.write(temp_file_2.string());
-  auto reloaded_2 = read_mps<int, double>(temp_file_2.string(), false);
+  auto reloaded_2 = read_mps_path(temp_file_2.string());
   compare_data_models(reloaded, reloaded_2);
 }
 
 INSTANTIATE_MPS_READER_TEST(qps_file_reader_test);
+INSTANTIATE_MPS_READER_TEST(mps_roundtrip);
+INSTANTIATE_MPS_READER_TEST(read_test);
+INSTANTIATE_MPS_READER_TEST(mps_bounds_test);
 
 #undef INSTANTIATE_MPS_READER_TEST
 #undef INSTANTIATE_DEFAULT_MPS_READER_TEST

@@ -42,13 +42,22 @@ inline std::string json_escape(std::string_view value)
   std::string escaped;
   escaped.reserve(value.size());
   for (unsigned char c : value) {
-    if (c < 0x20) {
-      escaped += "\\u00";
-      escaped += hex[c >> 4];
-      escaped += hex[c & 0xf];
-    } else {
-      if (c == '"' || c == '\\') { escaped += '\\'; }
-      escaped += c;
+    switch (c) {
+      case '"': escaped += "\\\""; break;
+      case '\\': escaped += "\\\\"; break;
+      case '\t': escaped += "\\t"; break;
+      case '\n': escaped += "\\n"; break;
+      case '\r': escaped += "\\r"; break;
+      case '\b': escaped += "\\b"; break;
+      case '\f': escaped += "\\f"; break;
+      default:
+        if (c < 0x20) {
+          escaped += "\\u00";
+          escaped += hex[c >> 4];
+          escaped += hex[c & 0xf];
+        } else {
+          escaped += c;
+        }
     }
   }
   return escaped;

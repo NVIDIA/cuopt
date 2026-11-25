@@ -231,14 +231,14 @@ COLUMNS
 RHS
     RHS1      LIN0             10
     RHS1      QC0               6
+BOUNDS
+ MI BND       x
+ MI BND       y
 QCMATRIX   QC0
     x         x                 2
     x         y                 1
     y         x                 1
     y         y                 2
-BOUNDS
- MI BND       x
- MI BND       y
 ENDATA
 """
 

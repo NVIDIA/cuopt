@@ -6,8 +6,9 @@
 #pragma once
 
 #include "mmap_region.hpp"
+#include "parser_parameters.hpp"
 
-#include <cuda/cmath>
+#include <bit>
 
 #include <simde/x86/avx2.h>
 
@@ -28,9 +29,10 @@
 namespace cuopt::mathematical_optimization::io::detail {
 
 // below this threshold, the serial row-hash build is usually cheaper than partition setup
-inline constexpr size_t MPS_ROW_HASH_PARTITIONED_MIN_ROWS = 64 * 1024;
-inline constexpr int MPS_ROW_HASH_PARTITION_BITS          = 5;
-inline constexpr size_t MPS_ROW_HASH_PARTITIONS           = (1 << MPS_ROW_HASH_PARTITION_BITS);
+#define MPS_ROW_HASH_PARTITIONED_MIN_ROWS (g_parser_parameters.row_hash_partitioned_min_rows)
+inline constexpr int MPS_ROW_HASH_PARTITION_BITS = 5;
+inline constexpr size_t MPS_ROW_HASH_PARTITIONS  = (1 << MPS_ROW_HASH_PARTITION_BITS);
+#define MPS_HASH_INSERT_DUPLICATE (std::numeric_limits<size_t>::max())
 
 // FNV-1a over bytes in reverse order; row names commonly share long prefixes.
 static inline uint32_t fnv1a_hash(const char* ptr, std::size_t len)
@@ -94,8 +96,8 @@ static inline size_t hash_partition_for(uint32_t hash)
 
 static inline size_t hash_bucket_count_for(size_t n_rows, bool compact)
 {
-  if (compact) { return cuda::next_power_of_two(std::max(n_rows + n_rows / 2, (size_t)64)); }
-  return cuda::next_power_of_two(std::max(n_rows * 2, (size_t)64));
+  if (compact) { return std::bit_ceil(std::max(n_rows + n_rows / 2, (size_t)64)); }
+  return std::bit_ceil(std::max(n_rows * 2, (size_t)64));
 }
 
 static inline size_t hash_lookup_in(
@@ -110,6 +112,7 @@ static inline size_t hash_lookup_in(
   return std::numeric_limits<size_t>::max();
 }
 
+// Returns the probe count, or MPS_HASH_INSERT_DUPLICATE if the name is already present.
 static inline size_t hash_insert_into(hash_slot_var_t* slots,
                                       size_t buckets,
                                       size_t mask,
@@ -126,10 +129,7 @@ static inline size_t hash_insert_into(hash_slot_var_t* slots,
       slot->count = (uint32_t)(index + 1);
       return i + 1;
     }
-    if (key_cmpeq(slot->key, key)) {
-      slot->count = (uint32_t)(index + 1);
-      return i + 1;
-    }
+    if (key_cmpeq(slot->key, key)) { return MPS_HASH_INSERT_DUPLICATE; }
   }
   __builtin_unreachable();
 }
@@ -163,7 +163,11 @@ struct hash_build_probe_stats_t {
 
 class smallstr_hash_table_t {
  public:
-  void note_long_name(std::string_view name, size_t index) { long_names_[name] = index; }
+  // Returns 0, or MPS_HASH_INSERT_DUPLICATE if the name is already present
+  size_t note_long_name(std::string_view name, size_t index)
+  {
+    return long_names_.try_emplace(name, index).second ? 0 : MPS_HASH_INSERT_DUPLICATE;
+  }
 
   size_t long_name_count() const { return long_names_.size(); }
 
@@ -248,6 +252,7 @@ class smallstr_hash_table_t {
 
   size_t lookup(std::string_view name) const
   {
+    assert(!name.empty());
     if (name.size() > HASH_KEY_BYTES) {
       auto it = long_names_.find(name);
       return it != long_names_.end() ? it->second : std::numeric_limits<size_t>::max();
@@ -261,28 +266,31 @@ class smallstr_hash_table_t {
     return hash_lookup_in(slots_, buckets_, mask_, key, hash);
   }
 
+  // MPS_HASH_INSERT_DUPLICATE if the name is already present
   size_t insert_serial(std::string_view name, size_t index)
   {
     size_t probes;
     if (name.size() > HASH_KEY_BYTES) {
-      note_long_name(name, index);
-      probes = 0;
+      probes = note_long_name(name, index);
     } else {
       probes = hash_insert_into(
         slots_, buckets_, mask_, name, fnv1a_hash(name.data(), name.size()), index);
     }
 #ifdef MPS_FAST_PERF_COUNTERS
-    build_probe_stats_.record_insert(probes);
+    if (probes != MPS_HASH_INSERT_DUPLICATE) { build_probe_stats_.record_insert(probes); }
 #endif
     return probes;
   }
 
+  // Returns the probe count, or MPS_HASH_INSERT_DUPLICATE if the name is already present.
   size_t insert_partition(size_t partition, std::string_view name, uint32_t hash, size_t index)
   {
     const auto& part = partitions_[partition];
     size_t probes    = hash_insert_into(part.slots, part.buckets, part.mask, name, hash, index);
 #ifdef MPS_FAST_PERF_COUNTERS
-    partition_probe_stats_[partition].record_insert(probes);
+    if (probes != MPS_HASH_INSERT_DUPLICATE) {
+      partition_probe_stats_[partition].record_insert(probes);
+    }
 #endif
     return probes;
   }

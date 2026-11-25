@@ -4,11 +4,10 @@
 #include "file_reader.hpp"
 #include "mps_section_scanner.hpp"
 #include "nvtx_ranges.hpp"
+#include "parser_parameters.hpp"
 
 #include <utilities/error.hpp>
 #include <utilities/scope_guard.hpp>
-
-#include <cuda/cmath>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -47,13 +46,11 @@ using cuopt::mathematical_optimization::io::mps_parser_fail;
 
 namespace {
 
-constexpr uint32_t lz4_frame_magic                        = 0x184D2204u;
-constexpr uint32_t lz4_uncompressed_block                 = 0x80000000u;
-constexpr uint32_t lz4_block_size_mask                    = 0x7FFFFFFFu;
-constexpr std::size_t lz4_pipeline_batch_bytes            = 64ull * 1024ull * 1024ull;
-constexpr std::size_t lz4_decode_batch_decompressed_bytes = 256ull * 1024ull * 1024ull;
-constexpr std::size_t lz4_input_max_io_threads            = 8;
-constexpr std::size_t lz4_no_content_size_reserve_ratio   = 128;
+constexpr uint32_t lz4_frame_magic                      = 0x184D2204u;
+constexpr uint32_t lz4_uncompressed_block               = 0x80000000u;
+constexpr uint32_t lz4_block_size_mask                  = 0x7FFFFFFFu;
+constexpr std::size_t lz4_input_max_io_threads          = 8;
+constexpr std::size_t lz4_no_content_size_reserve_ratio = 128;
 
 using LZ4_decompress_safe_t = int (*)(const char*, char*, int, int);
 
@@ -297,6 +294,10 @@ lz4_frame_header_t parse_lz4_frame_header(int fd,
   if (version != 1) {
     mps_parser_fail(error_type_t::ValidationError, "unsupported LZ4 frame version");
   }
+  if ((flg & 0x02u) != 0 || (bd & 0x8Fu) != 0) {
+    mps_parser_fail(error_type_t::ValidationError,
+                    "unsupported LZ4 frame: reserved frame descriptor bits are set");
+  }
   bool block_independent = (flg & 0x20u) != 0;
   if (!block_independent) {
     mps_parser_fail(error_type_t::ValidationError,
@@ -318,11 +319,8 @@ lz4_frame_header_t parse_lz4_frame_header(int fd,
     offset += 8;
   }
   if (info.dict_id) {
-    if (offset + 4 > header_bytes) {
-      mps_parser_fail(error_type_t::ValidationError,
-                      "truncated LZ4 frame while reading dictionary id");
-    }
-    offset += 4;
+    mps_parser_fail(error_type_t::ValidationError,
+                    "unsupported LZ4 frame: dictionary id is set (dictionary compression)");
   }
   if (offset + 1 > header_bytes) {
     mps_parser_fail(error_type_t::ValidationError,
@@ -366,7 +364,8 @@ lz4_input_stream_t::lz4_input_stream_t(const std::string& path) : path_(path)
   reserve_size += input_buffer_padding_bytes;
 
   constexpr std::size_t huge_alignment = 2 * 1024 * 1024;  // 2MiB
-  output_mapped_size_                  = cuda::round_up(reserve_size, system_page_size());
+  const std::size_t page               = system_page_size();
+  output_mapped_size_                  = (reserve_size + page - 1) / page * page;
   output_region_                       = mmap_region_t::anonymous_aligned(output_mapped_size_,
                                                     huge_alignment,
                                                     PROT_NONE,
@@ -374,10 +373,13 @@ lz4_input_stream_t::lz4_input_stream_t(const std::string& path) : path_(path)
                                                     "LZ4 output buffer");
   output_data_                         = output_region_.char_data();
 
-  block_slot_count_ = std::max<std::size_t>(1, cuda::ceil_div(reserve_size, block_max_size_) + 1);
+  block_slot_count_ =
+    std::max<std::size_t>(1, (reserve_size + block_max_size_ - 1) / block_max_size_ + 1);
 
-  section_scanner_ =
-    std::make_unique<mps_section_block_scanner_t>(output_data_, block_slot_count_, registry_);
+  source_location_ = std::make_unique<source_location_t>(
+    output_data_, output_mapped_size_, block_slot_count_, path_);
+  section_scanner_ = std::make_unique<mps_section_block_scanner_t>(
+    output_data_, block_slot_count_, registry_, *source_location_);
 
   fd_ = fd;
   fd  = -1;
@@ -407,7 +409,8 @@ void lz4_input_stream_t::commit_up_to(std::size_t bytes)
   if (bytes > output_mapped_size_) {
     mps_parser_fail(error_type_t::OutOfMemoryError, "LZ4 output exceeded reserved virtual mapping");
   }
-  std::size_t new_committed = cuda::round_up(bytes, system_page_size());
+  const std::size_t page    = system_page_size();
+  std::size_t new_committed = (bytes + page - 1) / page * page;
   if (new_committed > output_mapped_size_) new_committed = output_mapped_size_;
   std::size_t add = new_committed - output_committed_size_;
   void* target    = output_data_ + output_committed_size_;
@@ -450,7 +453,7 @@ struct window_state_t {
 struct lz4_pipeline_t {
   explicit lz4_pipeline_t(lz4_input_stream_t& input_)
     : input(input_),
-      window_count(cuda::ceil_div(input.compressed_size_, window_bytes)),
+      window_count((input.compressed_size_ + window_bytes - 1) / window_bytes),
       windows(window_count),
       window_state_(std::make_unique<window_state_t[]>(
         window_count)),  // NOSONAR(S836): window_count is declared before window_state_ in this
@@ -507,7 +510,7 @@ struct lz4_pipeline_t {
   {
     input.output_view_size_ = input.section_scanner_->ready_bytes();
     input.commit_up_to(input.output_view_size_ + input_buffer_padding_bytes);
-    input.section_scanner_->publish_ready(input.output_view_size_);
+    input.section_scanner_->publish_final();
   }
 
   void fail_and_notify(std::exception_ptr eptr)
@@ -640,6 +643,13 @@ struct lz4_pipeline_t {
       mps_parser_fail(error_type_t::ValidationError,
                       "LZ4 input block decompressed to invalid size");
     }
+    if (input.content_size_present_ && (std::size_t)actual != block.decompressed_size) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "LZ4 block %zu decompressed to %zu bytes, expected %zu",
+                      block.index,
+                      (std::size_t)actual,
+                      block.decompressed_size);
+    }
     release_block_window_ref(block);
     publish_decoded_block(block, dst, (std::size_t)actual);
   }
@@ -724,10 +734,11 @@ struct lz4_pipeline_t {
   {
     lz4_resident_windows_t resident(windows);
     std::vector<resident_block_desc_t> batch;
-    batch.reserve(lz4_decode_batch_decompressed_bytes / input.block_max_size_ + 1);
+    batch.reserve(decode_batch_bytes / input.block_max_size_ + 1);
     std::size_t batch_decoded_bytes = 0;
     std::size_t offset              = input.header_size_;
     std::size_t decompressed_offset = 0;
+    std::size_t previous_block_size = input.block_max_size_;
     blocks_scanned.store(0, std::memory_order_relaxed);
 
     while (true) {
@@ -740,9 +751,18 @@ struct lz4_pipeline_t {
       uint32_t raw_block_size = resident.read_u32(offset);
       offset += 4;
       if (raw_block_size == 0) { break; }
+      if (previous_block_size != input.block_max_size_) {
+        mps_parser_fail(error_type_t::ValidationError,
+                        "unsupported LZ4 frame: non-final block %zu holds %zu bytes, not the frame "
+                        "block size %zu",
+                        blocks_scanned.load(std::memory_order_relaxed) - 1,
+                        previous_block_size,
+                        input.block_max_size_);
+      }
 
       resident_block_desc_t block =
         scan_one_block(resident, raw_block_size, offset, decompressed_offset);
+      previous_block_size = block.decompressed_size;
       batch_decoded_bytes += block.decompressed_size;
       batch.push_back(block);
       blocks_scanned.fetch_add(1, std::memory_order_relaxed);
@@ -750,7 +770,7 @@ struct lz4_pipeline_t {
         mps_parser_fail(error_type_t::OutOfMemoryError,
                         "LZ4 input block count exceeded reserved metadata slots");
       }
-      if (batch_decoded_bytes >= lz4_decode_batch_decompressed_bytes) {
+      if (batch_decoded_bytes >= decode_batch_bytes) {
         push_batch(batch);
         batch_decoded_bytes = 0;
       }
@@ -868,7 +888,10 @@ struct lz4_pipeline_t {
   // The compressed file is split into fixed-size `windows`; `io_threads` reader
   // threads pull them by index.
   lz4_input_stream_t& input;
-  const std::size_t window_bytes = lz4_pipeline_batch_bytes;
+  const std::size_t window_bytes =
+    std::max<std::size_t>(4096, g_parser_parameters.lz4_window_bytes);
+  const std::size_t decode_batch_bytes =
+    std::max<std::size_t>(1, g_parser_parameters.lz4_decode_batch_bytes);
   const std::size_t window_count;
   std::vector<lz4_resident_window_t> windows;
   const std::size_t io_threads;

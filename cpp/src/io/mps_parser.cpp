@@ -11,16 +11,23 @@
 #include <utilities/error.hpp>
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
+#include <cerrno>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
 #include <memory>
 #include <span>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -292,7 +299,7 @@ namespace cuopt::mathematical_optimization::io {
 template <typename i_t>
 std::string_view get_next_string(std::string_view line, i_t& pos, i_t& end)
 {
-  pos = line.find_first_not_of(" \t", end);
+  pos = line.find_first_not_of(" \t\r", end);
   if (pos == std::string_view::npos) return "";
   end = line.find_first_of(" \t\n\r", pos);
   if (end == std::string_view::npos) return line.substr(pos);
@@ -305,6 +312,91 @@ std::string_view trim(std::string_view str)
   if (start == std::string::npos) { return ""; }
   auto end = str.find_last_not_of(" \r\t");
   return str.substr(start, end - start + 1);
+}
+
+constexpr size_t max_numeric_token_length = 63;
+
+static double parse_mps_number(std::string_view num)
+{
+  std::string s(trim(num));
+  if (s.size() > max_numeric_token_length) { throw std::invalid_argument(s); }
+  std::replace_if(s.begin(), s.end(), [](char c) { return c == 'd' || c == 'D'; }, 'e');
+  char* parse_end    = nullptr;
+  errno              = 0;
+  const double value = std::strtod(s.c_str(), &parse_end);
+  if (s.empty() || parse_end != s.c_str() + s.size()) { throw std::invalid_argument(s); }
+  // ERANGE may flag underflow or subnormal results; only overflow (±inf) throws
+  if (errno == ERANGE && std::isinf(value)) { throw std::out_of_range(s); }
+  if (std::isnan(value)) { throw std::invalid_argument(s); }
+  return value;
+}
+
+template <typename i_t>
+static void parse_multiobj_fields(
+  std::string_view line, i_t& end, int& priority, double& weight, double& reltol, double& abstol)
+{
+  i_t pos;
+  double fields[4];
+  for (double& field : fields) {
+    const std::string_view num = get_next_string(line, pos, end);
+    mps_parser_no_except(field = parse_mps_number(num);
+                         ,
+                         error_type_t::ValidationError,
+                         "Bad multi-objective value in ROWS! line=%s, num=%s",
+                         std::string(line).c_str(),
+                         std::string(num).c_str());
+  }
+  mps_parser_expects(
+    fields[0] == std::trunc(fields[0]) && std::abs(fields[0]) <= std::numeric_limits<int>::max(),
+    error_type_t::ValidationError,
+    "Multi-objective priority must be an integer! line=%s",
+    std::string(line).c_str());
+  priority = (int)fields[0];
+  weight   = fields[1];
+  reltol   = fields[2];
+  abstol   = fields[3];
+}
+
+template <typename i_t>
+static bool has_bound_value(std::string_view line, i_t start)
+{
+  return start >= 0 && (size_t)start < line.size() && !trim(line.substr(start)).empty();
+}
+
+constexpr int fixed_rows_record_end         = 12;
+constexpr int fixed_single_value_record_end = 36;
+constexpr int fixed_two_pair_record_end     = 61;
+
+// ordering of the sections of a MPS file.
+// rank equal == can appear in any other with other rank-equal sections
+static const std::unordered_map<std::string_view, int> section_ranks = {
+  {"NAME", -300},
+  {"OBJSENSE", -200},
+  {"OBJNAME", -100},
+  {"ROWS", 0},
+  {"LAZYCONS", 50},
+  {"COLUMNS", 100},
+  {"RHS", 200},
+  {"RANGES", 300},
+  {"BOUNDS", 400},
+  {"QUADOBJ", 500},
+  {"QMATRIX", 500},
+  {"QCMATRIX", 500},
+  {"ENDATA", 600},
+};
+
+template <typename i_t>
+static void expect_record_end(std::string_view line, i_t end, bool allow_comment = true)
+{
+  // get_next_string stores npos (-1) when the last field reaches end of line
+  if (end < 0) { return; }
+  const size_t rest = line.find_first_not_of(" \t\r", (size_t)end);
+  if (rest == std::string_view::npos || (allow_comment && line[rest] == '$')) { return; }
+  mps_parser_expects(false,
+                     error_type_t::ValidationError,
+                     "Unexpected trailing field! line=%s, field=%s",
+                     std::string(line).c_str(),
+                     std::string(line.substr(rest)).c_str());
 }
 
 template <typename i_t, typename f_t>
@@ -586,6 +678,7 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   {
     std::vector<f_t> h_constraint_lower_bounds{};
     std::vector<f_t> h_constraint_upper_bounds{};
+    assert(row_types.size() == b_values.size());
     for (i_t i = 0; i < (i_t)row_types.size(); ++i) {
       if (is_quadratic_row(i)) { continue; }
       if (row_types[i] == Equality) {
@@ -765,9 +858,12 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
   // raft::common::nvtx::range fun_scope("parse string");
 
   // Faster than C++ std::get_line
-  char* saveptr  = nullptr;
-  char* c_line   = strtok_r(buf, "\n", &saveptr);
-  bool skip_line = false;
+  char* saveptr    = nullptr;
+  char* c_line     = strtok_r(buf, "\n", &saveptr);
+  bool skip_line   = false;
+  bool endata_seen = false;
+  int last_rank    = std::numeric_limits<int>::min();
+  std::string_view last_ranked_keyword;
 
   mps_parser_expects(c_line != nullptr,
                      error_type_t::ValidationError,
@@ -776,33 +872,59 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
   do {
     std::string_view line(c_line);
     // ignore empty lines and comments
-    if (line.empty() || line[0] == '*' || line[0] == '$' || line[0] == '\n' || line[0] == '\r') {
+    if (line.find_first_not_of(" \t\r") == std::string_view::npos || line[0] == '*' ||
+        line[0] == '\n') {
       continue;
     }
+    mps_parser_expects(!endata_seen,
+                       error_type_t::ValidationError,
+                       "Data found after ENDATA! Line=%s",
+                       std::string(line).c_str());
     // these lines mark the start of a particular "section"
-    if (line[0] != ' ') {
-      skip_line = false;
+    if (!isspace(line[0])) {
+      skip_line                      = false;
+      const size_t keyword_end       = line.find_first_of(" \t\r");
+      const std::string_view keyword = line.substr(0, keyword_end);
+      if (const auto rank = section_ranks.find(keyword); rank != section_ranks.end()) {
+        mps_parser_expects(rank->second >= last_rank,
+                           error_type_t::ValidationError,
+                           "%s section must precede %s! Line=%s",
+                           std::string(keyword).c_str(),
+                           std::string(last_ranked_keyword).c_str(),
+                           std::string(line).c_str());
+        last_rank           = rank->second;
+        last_ranked_keyword = keyword;
+      }
+      const bool header_carries_data = keyword == "NAME" || keyword == "OBJSENSE" ||
+                                       keyword == "OBJNAME" || keyword == "QCMATRIX" ||
+                                       keyword == "LAZYCONS";
+      mps_parser_expects(header_carries_data ||
+                           line.find_first_not_of(" \t\r", keyword_end) == std::string_view::npos,
+                         error_type_t::ValidationError,
+                         "Unexpected data after section header! Line=%s",
+                         std::string(line).c_str());
       // Leaving QCMATRIX: any non-QCMATRIX section header ends the current block
-      if (inside_qcmatrix_ && line.find("QCMATRIX", 0, 8) != 0) {
+      if (inside_qcmatrix_ && keyword != "QCMATRIX") {
         flush_qcmatrix_block();
         inside_qcmatrix_ = false;
       }
-      if (line.find("NAME", 0, 4) == 0) {
-        encountered_sections.insert("NAME");
+      if (keyword == "NAME") {
+        mps_parser_expects(encountered_sections.insert("NAME").second,
+                           error_type_t::ValidationError,
+                           "Duplicate NAME section");
         auto name_start = line.find_first_not_of(" \t", 4);
         if (name_start != std::string::npos) {
           // max of 8 chars allowed
           if (fixed_mps_format) {
             problem_name = std::string(trim(line.substr(name_start, 8)));
           } else {
-            std::stringstream ss{std::string(line)};
-            ss.seekg(name_start);
-
-            ss >> problem_name;
+            problem_name = std::string(trim(line.substr(name_start)));
           }
         }
-      } else if (line.find("ROWS", 0, 4) == 0) {
-        encountered_sections.insert("ROWS");
+      } else if (keyword == "ROWS") {
+        mps_parser_expects(encountered_sections.insert("ROWS").second,
+                           error_type_t::ValidationError,
+                           "Duplicate ROWS section");
         inside_rows_     = true;
         inside_columns_  = false;
         inside_rhs_      = false;
@@ -810,8 +932,13 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_objsense_ = false;
         inside_ranges_   = false;
         inside_objname_  = false;
-      } else if (line.find("COLUMNS", 0, 7) == 0) {
-        encountered_sections.insert("COLUMNS");
+      } else if (keyword == "COLUMNS") {
+        mps_parser_expects(encountered_sections.count("ROWS"),
+                           error_type_t::ValidationError,
+                           "unexpected COLUMNS section");
+        mps_parser_expects(encountered_sections.insert("COLUMNS").second,
+                           error_type_t::ValidationError,
+                           "Duplicate COLUMNS section");
         inside_rows_     = false;
         inside_columns_  = true;
         inside_rhs_      = false;
@@ -824,8 +951,13 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         b_values.resize(row_names.size());
         // Needed if not all rows are mentioned in RHS
         std::fill(b_values.begin(), b_values.end(), f_t(0));
-      } else if (line.find("RHS", 0, 3) == 0) {
-        encountered_sections.insert("RHS");
+      } else if (keyword == "RHS") {
+        mps_parser_expects(encountered_sections.count("COLUMNS"),
+                           error_type_t::ValidationError,
+                           "unexpected RHS section");
+        mps_parser_expects(encountered_sections.insert("RHS").second,
+                           error_type_t::ValidationError,
+                           "Duplicate RHS section");
         inside_rows_     = false;
         inside_columns_  = false;
         inside_rhs_      = true;
@@ -833,8 +965,13 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_objsense_ = false;
         inside_ranges_   = false;
         inside_objname_  = false;
-      } else if (line.find("BOUNDS", 0, 6) == 0) {
-        encountered_sections.insert("BOUNDS");
+      } else if (keyword == "BOUNDS") {
+        mps_parser_expects(encountered_sections.count("COLUMNS"),
+                           error_type_t::ValidationError,
+                           "unexpected BOUNDS section");
+        mps_parser_expects(encountered_sections.insert("BOUNDS").second,
+                           error_type_t::ValidationError,
+                           "Duplicate BOUNDS section");
         inside_rows_     = false;
         inside_columns_  = false;
         inside_rhs_      = false;
@@ -848,8 +985,13 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         std::fill(variable_upper_bounds.begin(),
                   variable_upper_bounds.end(),
                   +std::numeric_limits<f_t>::infinity());
-      } else if (line.find("RANGES", 0, 6) == 0) {
-        encountered_sections.insert("RANGES");
+      } else if (keyword == "RANGES") {
+        mps_parser_expects(encountered_sections.count("RHS"),
+                           error_type_t::ValidationError,
+                           "unexpected RANGES section");
+        mps_parser_expects(encountered_sections.insert("RANGES").second,
+                           error_type_t::ValidationError,
+                           "Duplicate RANGES section");
         inside_rows_     = false;
         inside_columns_  = false;
         inside_rhs_      = false;
@@ -859,13 +1001,15 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_objname_  = false;
         ranges_values.resize(row_types.size());
         std::fill(ranges_values.begin(), ranges_values.end(), unset_range_value);
-      } else if (line.find("OBJSENSE", 0, 8) == 0) {
+      } else if (keyword == "OBJSENSE") {
+        mps_parser_expects(encountered_sections.insert("OBJSENSE").second,
+                           error_type_t::ValidationError,
+                           "Duplicate OBJSENSE section");
         // Optimization direction is on same line
-        if (!std::none_of(line.begin() + 8, line.end(), ::isalpha)) {
+        if (std::any_of(line.begin() + 8, line.end(), ::isgraph)) {
           parse_objsense(line);
           continue;
         }
-        encountered_sections.insert("OBJSENSE");
         inside_rows_     = false;
         inside_columns_  = false;
         inside_rhs_      = false;
@@ -873,10 +1017,12 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_ranges_   = false;
         inside_objname_  = false;
         inside_objsense_ = true;
-      } else if (line.find("OBJNAME", 0, 7) == 0) {
-        encountered_sections.insert("OBJNAME");
+      } else if (keyword == "OBJNAME") {
+        mps_parser_expects(encountered_sections.insert("OBJNAME").second,
+                           error_type_t::ValidationError,
+                           "Duplicate OBJNAME section");
         // Objective name is on same line
-        if (!std::none_of(line.begin() + 7, line.end(), ::isalpha)) {
+        if (std::any_of(line.begin() + 7, line.end(), ::isgraph)) {
           parse_objname(line);
           continue;
         }
@@ -887,8 +1033,10 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_ranges_   = false;
         inside_objname_  = true;
         inside_objsense_ = false;
-      } else if (line.find("QUADOBJ", 0, 7) == 0) {
-        encountered_sections.insert("QUADOBJ");
+      } else if (keyword == "QUADOBJ") {
+        mps_parser_expects(encountered_sections.insert("QUADOBJ").second,
+                           error_type_t::ValidationError,
+                           "Duplicate QUADOBJ section");
         inside_rows_     = false;
         inside_columns_  = false;
         inside_rhs_      = false;
@@ -899,8 +1047,10 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_qmatrix_  = false;
         inside_qcmatrix_ = false;
         inside_quadobj_  = true;
-      } else if (line.find("QMATRIX", 0, 7) == 0) {
-        encountered_sections.insert("QMATRIX");
+      } else if (keyword == "QMATRIX") {
+        mps_parser_expects(encountered_sections.insert("QMATRIX").second,
+                           error_type_t::ValidationError,
+                           "Duplicate QMATRIX section");
         inside_rows_     = false;
         inside_columns_  = false;
         inside_rhs_      = false;
@@ -911,7 +1061,7 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_quadobj_  = false;
         inside_qmatrix_  = true;
         inside_qcmatrix_ = false;
-      } else if (line.find("QCMATRIX", 0, 8) == 0) {
+      } else if (keyword == "QCMATRIX") {
         encountered_sections.insert("QCMATRIX");
         flush_qcmatrix_block();
         inside_rows_     = false;
@@ -925,13 +1075,30 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_qmatrix_  = false;
         inside_qcmatrix_ = true;
         parse_qcmatrix_header(line);
-      } else if (line.find("ENDATA", 0, 6) == 0) {
-        encountered_sections.insert("ENDATA");
-        break;
+      } else if (keyword == "ENDATA") {
+        mps_parser_expects(encountered_sections.insert("ENDATA").second,
+                           error_type_t::ValidationError,
+                           "Duplicate ENDATA section");
+        endata_seen = true;
       }
       // treating lazy constraints as normal constraints
-      else if (line.find("LAZYCONS", 0, 8) == 0) {
-        encountered_sections.insert("LAZYCONS");
+      else if (keyword == "LAZYCONS") {
+        mps_parser_expects(encountered_sections.count("ROWS"),
+                           error_type_t::ValidationError,
+                           "unexpected LAZYCONS section");
+        mps_parser_expects(encountered_sections.insert("LAZYCONS").second,
+                           error_type_t::ValidationError,
+                           "Duplicate LAZYCONS section");
+        i_t level_begin, level_end = keyword_end;
+        const std::string_view level    = get_next_string(line, level_begin, level_end);
+        const std::string_view trailing = get_next_string(line, level_begin, level_end);
+        mps_parser_expects(
+          (level.empty() || level == "1" || level == "2" || level == "3") && trailing.empty(),
+          error_type_t::ValidationError,
+          "LAZYCONS laziness level must be 1, 2 or 3! Line=%s",
+          std::string(line).c_str());
+        if (!level.empty())
+          std::fprintf(stderr, "LAZYCONS laziness levels are not supported yet\n");
         inside_rows_     = true;
         inside_columns_  = false;
         inside_rhs_      = false;
@@ -977,6 +1144,7 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
                          std::string(line).c_str());
     }
   } while ((c_line = strtok_r(nullptr, "\n", &saveptr)) != nullptr);
+  flush_qcmatrix_block();
   mps_parser_expects(!objective_name.empty(), error_type_t::ValidationError, "No objective found!");
 
   mps_parser_expects(
@@ -989,8 +1157,8 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
 
   // Those sections are mandatory according to the MPS format specification, however some test cases
   // rely on their absence Emit a warning in this case
-  if (!encountered_sections.count("NAME")) { printf("NAME section is missing"); }
-  if (!encountered_sections.count("ENDATA")) { printf("ENDATA section is missing"); }
+  if (!encountered_sections.count("NAME")) { printf("NAME section is missing\n"); }
+  if (!encountered_sections.count("ENDATA")) { printf("ENDATA section is missing\n"); }
 
   if (variable_upper_bounds.size() == 0)  // No variables bounds given, add the default values
   {
@@ -1059,15 +1227,51 @@ void mps_parser_t<i_t, f_t>::parse_rows(std::string_view line)
   if (fixed_mps_format) {
     type = convert_to_row_type(line[1]);
     name = trim(line.substr(4, 8));  // max of 8 chars allowed
+    expect_record_end(line, fixed_rows_record_end);
   } else {
     std::stringstream ss{std::string(line)};
-    char read_word;
-    ss >> read_word;
-    type = convert_to_row_type(read_word);
+    std::string type_field;
+    ss >> type_field;
+    mps_parser_expects(type_field.size() == 1,
+                       error_type_t::ValidationError,
+                       "Invalid row type '%s'! line=%s",
+                       type_field.c_str(),
+                       std::string(line).c_str());
+    type = convert_to_row_type(type_field[0]);
 
     ss >> name;
+    ss >> std::ws;
+    if (type == Objective && ss.peek() != EOF && ss.peek() != '$') {
+      i_t end       = (i_t)ss.tellg();
+      int priority  = 0;
+      double weight = 0, reltol = 0, abstol = 0;
+      parse_multiobj_fields(line, end, priority, weight, reltol, abstol);
+      ss.seekg(end < 0 ? (i_t)line.size() : end);
+      if (multiobj_row_count++ == 0) {
+        std::fprintf(stderr, "WARNING: Multi-objective rows are not supported yet\n");
+      }
+    }
+    std::string extra;
+    mps_parser_expects(!(ss >> extra) || extra[0] == '$',
+                       error_type_t::ValidationError,
+                       "Unexpected trailing field! line=%s, field=%s",
+                       std::string(line).c_str(),
+                       std::string(extra).c_str());
   }
+
+  if (name.empty()) {
+    mps_parser_expects(false,
+                       error_type_t::ValidationError,
+                       "Empty row name found! line=%s",
+                       std::string(line).c_str());
+  }
+
   if (type == Objective) {
+    mps_parser_expects(row_names_map.find(name) == row_names_map.end(),
+                       error_type_t::ValidationError,
+                       "Objective row '%s' has the same name as a constraint row! line=%s",
+                       name.c_str(),
+                       std::string(line).c_str());
     // Keep only the first name or OBJNAME since it was set before
     if (objective_name.empty()) objective_name = name;
     // aligns with CPLEX/SCIP behavior
@@ -1079,6 +1283,11 @@ void mps_parser_t<i_t, f_t>::parse_rows(std::string_view line)
     // it in record as ignored to not consider finding it in COLUMNS section as an error.
     return;
   }
+  mps_parser_expects(name != objective_name && !ignored_objective_names.count(name),
+                     error_type_t::ValidationError,
+                     "Constraint row '%s' has the same name as an objective row! line=%s",
+                     name.c_str(),
+                     std::string(line).c_str());
   mps_parser_expects(row_names_map.find(name) == row_names_map.end(),
                      error_type_t::ValidationError,
                      "Duplicate row named '%s' found! line=%s",
@@ -1108,20 +1317,35 @@ i_t mps_parser_t<i_t, f_t>::parse_column_var_name(std::string_view line)
   } else {
     i_t end_var = 0;
     var_name    = get_next_string(line, pos, end_var);
-    pos         = end_var;
+    mps_parser_expects(end_var != -1,
+                       error_type_t::ValidationError,
+                       "Missing row name in COLUMNS! line=%s",
+                       std::string(line).c_str());
+    pos = end_var;
   }
-  if (line.find("\'MARKER\'") != std::string::npos) {
-    if (line.find("INTORG") != std::string::npos) {
+  i_t field_begin = 0;
+  i_t field_end   = fixed_mps_format ? 22 : pos;
+  const std::string_view marker =
+    fixed_mps_format ? trim(line.substr(14, 8)) : get_next_string(line, field_begin, field_end);
+  if (marker == "'MARKER'") {
+    const std::string_view keyword = get_next_string(line, field_begin, field_end);
+    expect_record_end(line, field_end);
+    if (keyword == "'INTORG'") {
       mps_parser_expects(!inside_intcapture_,
                          error_type_t::ValidationError,
                          "Cannot capture an int section while already capturing an int section");
       inside_intcapture_ = true;
-    }
-    if (line.find("INTEND") != std::string::npos) {
+    } else if (keyword == "'INTEND'") {
       mps_parser_expects(inside_intcapture_,
                          error_type_t::ValidationError,
                          "Cannot stop int capture when a previous capture is not started");
       inside_intcapture_ = false;
+    } else {
+      mps_parser_expects(false,
+                         error_type_t::ValidationError,
+                         "Unknown integer marker type '%s'! line=%s",
+                         std::string(keyword).c_str(),
+                         std::string(line).c_str());
     }
     return -1;
   }
@@ -1156,15 +1380,19 @@ void mps_parser_t<i_t, f_t>::parse_column_row_and_value(std::string_view line, i
   auto var_id = var_names.size() - 1;
 
   if (fixed_mps_format) {
-    pos = read_row_and_value(line, pos, var_id);
+    pos = read_row_and_value(line, pos, var_id, false);
     if (pos == -1) return;
     pos = 39;
   } else {
-    pos = read_row_and_value(line, pos, var_id);
+    pos = read_row_and_value(line, pos, var_id, false);
     if (pos == -1) return;
   }
 
-  if (line.find_last_not_of(" \r\t\n") > pos) { read_row_and_value(line, pos, var_id); }
+  if (line.find_last_not_of(" \r\t\n") > pos) {
+    pos = read_row_and_value(line, pos, var_id, true);
+    if (fixed_mps_format && pos != -1) { pos = fixed_two_pair_record_end; }
+  }
+  expect_record_end(line, pos, false);
 }
 
 template <typename i_t, typename f_t>
@@ -1189,13 +1417,12 @@ std::tuple<std::string_view, std::string_view, i_t> mps_parser_t<i_t, f_t>::pars
 
   if (fixed_mps_format) {
     row_name = trim(line.substr(start, 8));  // max of 8 chars allowed
-    num      = line.substr(start + 10, 12);  // max of 12 chars for numerical values
-    if (row_name[0] == '$') return std::tuple("", "", -1);
+    num      = line.substr(std::min(line.size(), (size_t)start + 10),
+                      12);  // max of 12 chars for numerical values
   } else {
     i_t pos;
     row_name = get_next_string(line, pos, start);
-    if (row_name[0] == '$') return std::tuple("", "", -1);
-    num = get_next_string(line, pos, start);
+    num      = get_next_string(line, pos, start);
   }
 
   return std::tuple(row_name, num, start);
@@ -1210,19 +1437,18 @@ void mps_parser_t<i_t, f_t>::insert_row_name_and_value(std::string_view line,
   static_assert(std::is_same_v<f_t, float> || std::is_same_v<f_t, double>,
                 "f_t must be float or double");
 
+  f_t val;
+  mps_parser_no_except(val = parse_mps_number(num);
+                       ,
+                       error_type_t::ValidationError,
+                       "Bad value found for row=%s in COLUMNS! line=%s. Num is %s",
+                       std::string(row_name).c_str(),
+                       std::string(line).c_str(),
+                       std::string(num).c_str());
+
   // Value for an ignored objective, can just skip it
   if (ignored_objective_names.find(std::string(row_name)) != ignored_objective_names.end()) return;
 
-  f_t val;
-  mps_parser_no_except(
-    if constexpr (std::is_same_v<f_t, float>) {
-      val = std::stof(std::string(num));
-    } else if constexpr (std::is_same_v<f_t, double>) { val = std::stod(std::string(num)); },
-    error_type_t::ValidationError,
-    "Bad value found for row=%s in COLUMNS! line=%s. Num is %s",
-    std::string(row_name).c_str(),
-    std::string(line).c_str(),
-    std::string(num).c_str());
   if (row_name == objective_name) {
     c_values[var_id] = val;
     return;
@@ -1239,12 +1465,19 @@ void mps_parser_t<i_t, f_t>::insert_row_name_and_value(std::string_view line,
 }
 
 template <typename i_t, typename f_t>
-i_t mps_parser_t<i_t, f_t>::read_row_and_value(std::string_view line, i_t start, i_t var_id)
+i_t mps_parser_t<i_t, f_t>::read_row_and_value(std::string_view line,
+                                               i_t start,
+                                               i_t var_id,
+                                               bool optional_pair)
 {
   // raft::common::nvtx::range fun_scope("read_row_and_value");
 
   auto [row_name, num, end] = parse_row_name_and_num(line, start);
-  if (row_name.empty()) return -1;
+  if (optional_pair && row_name.starts_with('$')) return -1;
+  mps_parser_expects(!row_name.empty() && !row_name.starts_with('$'),
+                     error_type_t::ValidationError,
+                     "Missing row name in COLUMNS! line=%s",
+                     std::string(line).c_str());
 
   insert_row_name_and_value(line, row_name, num, var_id);
 
@@ -1263,27 +1496,36 @@ void mps_parser_t<i_t, f_t>::parse_rhs(std::string_view line)
                        "RHS should have atleast 3 entities! line=%s",
                        std::string(line).c_str());
     pos = 14;
-    pos = read_rhs_row_and_value(line, pos);
+    pos = read_rhs_row_and_value(line, pos, false);
     if (pos == -1) return;
     pos = 39;
   } else {
-    // get the first field (which may or may not be the RHS name)
-    i_t first_field_start = 0;
-    auto first_field      = get_next_string(line, first_field_start, pos);
-    if (first_field == objective_name || row_names_map.count(std::string(first_field))) {
-      // first field corresponds to a row name, therefore we can assume that there is no RHS name
-      // field. Reset pos.
-      pos = 0;
+    i_t n_fields = 0;
+    for (size_t p = line.find_first_not_of(" \t\r\n");
+         p != std::string_view::npos && (n_fields == 0 || line[p] != '$');
+         p = line.find_first_not_of(" \t\r\n", line.find_first_of(" \t\r\n", p))) {
+      ++n_fields;
     }
-    pos = read_rhs_row_and_value(line, pos);
+    // odd field count: leading RHS set name present
+    if (n_fields % 2 == 1) {
+      i_t rhs_name_begin = 0;
+      get_next_string(line, rhs_name_begin, pos);
+    }
+    pos = read_rhs_row_and_value(line, pos, false);
     if (pos == -1) return;
   }
 
-  if (line.find_last_not_of(" \r\t\n") > pos) { read_rhs_row_and_value(line, pos); }
+  if (line.find_last_not_of(" \r\t\n") > pos) {
+    pos = read_rhs_row_and_value(line, pos, true);
+    if (fixed_mps_format && pos != -1) { pos = fixed_two_pair_record_end; }
+  }
+  expect_record_end(line, pos, false);
 }
 
 template <typename i_t, typename f_t>
-i_t mps_parser_t<i_t, f_t>::read_rhs_row_and_value(std::string_view line, i_t start)
+i_t mps_parser_t<i_t, f_t>::read_rhs_row_and_value(std::string_view line,
+                                                   i_t start,
+                                                   bool optional_pair)
 {
   static_assert(std::is_same_v<f_t, float> || std::is_same_v<f_t, double>,
                 "f_t must be float or double");
@@ -1293,36 +1535,40 @@ i_t mps_parser_t<i_t, f_t>::read_rhs_row_and_value(std::string_view line, i_t st
 
   if (fixed_mps_format) {
     row_name = trim(line.substr(start, 8));  // max of 8 chars allowed
-    if (row_name[0] == '$') return -1;
-    num = line.substr(start + 10, 12);  // max of 12 chars for numerical values
+    num      = line.substr(std::min(line.size(), (size_t)start + 10),
+                      12);  // max of 12 chars for numerical values
   } else {
     i_t pos;
     row_name = get_next_string(line, pos, start);
-    if (row_name[0] == '$') return -1;
-    num = get_next_string(line, pos, start);
+    num      = get_next_string(line, pos, start);
   }
+  if (optional_pair && row_name.starts_with('$')) return -1;
+  mps_parser_expects(!row_name.empty() && !row_name.starts_with('$'),
+                     error_type_t::ValidationError,
+                     "Missing row name in RHS! line=%s",
+                     std::string(line).c_str());
 
   f_t val;
-  mps_parser_no_except(
-    if constexpr (std::is_same_v<f_t, float>) {
-      val = std::stof(std::string(num));
-    } else if constexpr (std::is_same_v<f_t, double>) { val = std::stod(std::string(num)); },
-    error_type_t::ValidationError,
-    "Bad value found for row=%s in RHS! line=%s",
-    std::string(row_name).c_str(),
-    std::string(line).c_str());
+  mps_parser_no_except(val = parse_mps_number(num);
+                       ,
+                       error_type_t::ValidationError,
+                       "Bad value found for row=%s in RHS! line=%s, num=%s",
+                       std::string(row_name).c_str(),
+                       std::string(line).c_str(),
+                       std::string(num).c_str());
   if (row_name == objective_name) {
     // We treat minus the right hand side of OBJ as the objective offset, in
     // line with what the MPS writer does
     objective_offset_value = -val;
-  } else {
+  } else if (!ignored_objective_names.count(std::string(row_name))) {
     auto itr = row_names_map.find(std::string(row_name));
     mps_parser_expects(itr != row_names_map.end(),
                        error_type_t::ValidationError,
                        "Bad row name found '%s' in RHS! line=%s",
                        std::string(row_name).c_str(),
                        std::string(line).c_str());
-    auto row_id      = itr->second;
+    auto row_id = itr->second;
+    assert(row_id >= 0 && row_id < b_values.size() && "Row ID out of bounds");
     b_values[row_id] = val;
   }
 
@@ -1349,8 +1595,7 @@ void mps_parser_t<i_t, f_t>::parse_bounds(std::string_view line)
     type       = static_cast<BoundType>(convert(line.substr(1, 2)));
     bound_name = trim(line.substr(4, 8));   // max of 8 chars allowed
     var_name   = trim(line.substr(14, 8));  // max of 8 chars allowed
-    if (var_name[0] == '$') return;
-    end = 24;
+    end        = 24;
   } else {
     type = static_cast<BoundType>(convert(get_next_string(line, pos, end)));
 
@@ -1363,15 +1608,18 @@ void mps_parser_t<i_t, f_t>::parse_bounds(std::string_view line)
     // a bound name. This is the case for some older MPS files following the SIF format.
     // c.f.
     // https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=4dd23bcc5afe4c19a5d21c5be86e2aea2b426beb
-    if (var_names_map.count(std::string(bound_name))) {
+    if (var_names_map.count(std::string(bound_name)) &&
+        !var_names_map.count(std::string(var_name))) {
       var_name = bound_name;
       // go back to before the second field is read
       pos = pos_after_first_field;
       end = end_after_first_field;
     }
-
-    if (var_name[0] == '$') return;
   }
+  mps_parser_expects(!var_name.empty() && !var_name.starts_with('$'),
+                     error_type_t::ValidationError,
+                     "Missing variable name in BOUNDS! line=%s",
+                     std::string(line).c_str());
 
   auto itr = var_names_map.find(std::string(var_name));
   // Define a var in bounds
@@ -1382,17 +1630,26 @@ void mps_parser_t<i_t, f_t>::parse_bounds(std::string_view line)
     c_values.emplace_back(f_t(0));
     variable_lower_bounds.emplace_back(0);
     variable_upper_bounds.emplace_back(+std::numeric_limits<f_t>::infinity());
-    var_types.resize(var_types.size() + 1);
+    var_types.emplace_back('C');
     itr = var_names_map.find(std::string(var_name));
   }
   i_t var_id = itr->second;
 
+  const i_t value_start = end;
   read_bound_and_value(line, type, var_id, end);
+  const bool value_read = end != value_start;
   bounds_defined_for_var_id.insert(var_id);
+  if (fixed_mps_format) {
+    expect_record_end(line, fixed_single_value_record_end);
+  } else {
+    expect_record_end(line, end, value_read);
+  }
 }
 
 template <typename i_t, typename f_t>
-i_t mps_parser_t<i_t, f_t>::insert_range_value(std::string_view line, bool skip_range)
+i_t mps_parser_t<i_t, f_t>::insert_range_value(std::string_view line,
+                                               bool optional_pair,
+                                               bool skip_range)
 {
   std::string_view row_name;
   f_t value;
@@ -1403,18 +1660,20 @@ i_t mps_parser_t<i_t, f_t>::insert_range_value(std::string_view line, bool skip_
     // RANGES name is ignored
     // range_name = trim(line.substr(4, 8)); // max of 8 chars allowed
     row_name = trim(line.substr(14, 8));  // max of 8 chars allowed
-    if (row_name[0] == '$') return -1;
-    end   = 24;  // Value position
-    value = get_numerical_bound<true>(line, end);
-    end   = 39;  // Start of potential next section
+    end      = 24;                        // Value position
   } else {
-    pos = line.find_first_not_of(" \t");                   // Skip initial space
-    if (skip_range) pos = line.find_first_of(" \t", pos);  // Skip inital RANGES name
+    pos = line.find_first_not_of(" \t\r");                   // Skip initial space
+    if (skip_range) pos = line.find_first_of(" \t\r", pos);  // Skip inital RANGES name
     end      = pos;
     row_name = get_next_string(line, pos, end);
-    if (row_name[0] == '$') return -1;
-    value = get_numerical_bound<true>(line, end);
   }
+  if (optional_pair && row_name.starts_with('$')) return -1;
+  mps_parser_expects(!row_name.empty() && !row_name.starts_with('$'),
+                     error_type_t::ValidationError,
+                     "Missing row name in RANGES! line=%s",
+                     std::string(line).c_str());
+  value = get_numerical_bound<true>(line, end);
+  if (fixed_mps_format) { end = 39; }  // Start of potential next section
 
   auto itr = row_names_map.find(std::string(row_name));
   mps_parser_expects(itr != row_names_map.end(),
@@ -1422,7 +1681,12 @@ i_t mps_parser_t<i_t, f_t>::insert_range_value(std::string_view line, bool skip_
                      "Bad row name found '%s' in RANGES! line=%s",
                      std::string(row_name).c_str(),
                      std::string(line).c_str());
-  auto row_id           = itr->second;
+  auto row_id = itr->second;
+  mps_parser_expects(ranges_values[row_id] == unset_range_value,
+                     error_type_t::ValidationError,
+                     "Duplicate RANGES entry for row '%s'! line=%s",
+                     std::string(row_name).c_str(),
+                     std::string(line).c_str());
   ranges_values[row_id] = value;
 
   return end;
@@ -1442,16 +1706,25 @@ void mps_parser_t<i_t, f_t>::parse_ranges(std::string_view line)
                        std::string(line).c_str());
   }
 
-  i_t end = insert_range_value(line);
+  i_t end = insert_range_value(line, false);
   if (end == -1) return;
 
-  if (line.find_last_not_of(" \t") > end) {
-    if (fixed_mps_format)
-      insert_range_value(
-        std::string_view(line.data() + length_first_section, line.size() - length_first_section));
-    else  // false to not skip RANGE as it's only appears in first section
-      insert_range_value(std::string_view(line.data() + end, line.size() - end), false);
+  if (line.find_last_not_of(" \t\r") > end) {
+    if (fixed_mps_format) {
+      if (insert_range_value(std::string_view(line.data() + length_first_section,
+                                              line.size() - length_first_section),
+                             true) == -1) {
+        return;
+      }
+      end = fixed_two_pair_record_end;
+    } else {  // false to not skip RANGE as it's only appears in first section
+      const i_t second_end =
+        insert_range_value(std::string_view(line.data() + end, line.size() - end), true, false);
+      if (second_end == -1) { return; }
+      end += second_end;
+    }
   }
+  expect_record_end(line, end, false);
 }
 
 template <typename i_t, typename f_t>
@@ -1469,12 +1742,22 @@ void mps_parser_t<i_t, f_t>::parse_objsense(std::string_view line)
     // One-liner OBJSENSE
     if (line.find("OBJSENSE", 0, 8) == 0) ss >> read_type;
     ss >> read_type;
+    std::string extra;
+    mps_parser_expects(!(ss >> extra),
+                       error_type_t::ValidationError,
+                       "Unexpected trailing field! line=%s, field=%s",
+                       std::string(line).c_str(),
+                       extra.c_str());
     type = static_cast<ObjSenseType>(convert_to_obj_sense(read_type));
     if (type == ObjSenseType::Minimize)
       maximize = false;
     else if (type == ObjSenseType::Maximize)
       maximize = true;
   }
+
+  // only one objsense entry allowed, error out if there's another one on the next line by saying
+  // we're not longer in objsense
+  inside_objsense_ = false;
 }
 
 template <typename i_t, typename f_t>
@@ -1491,6 +1774,12 @@ void mps_parser_t<i_t, f_t>::parse_objname(std::string_view line)
     // One-liner OBJNAME, skip OBJNAME
     if (line.find("OBJNAME", 0, 7) == 0) ss >> name;
     ss >> name;
+    std::string extra;
+    mps_parser_expects(!(ss >> extra),
+                       error_type_t::ValidationError,
+                       "Unexpected trailing field! line=%s, field=%s",
+                       std::string(line).c_str(),
+                       extra.c_str());
     if (!objective_name.empty()) {
       mps_parser_expects(
         false, error_type_t::ValidationError, "OBJNAME section should appear before ROWS section");
@@ -1549,6 +1838,11 @@ void mps_parser_t<i_t, f_t>::parse_qcmatrix_header(std::string_view line)
                        error_type_t::ValidationError,
                        "QCMATRIX missing constraint row name! line=%s",
                        std::string(line).c_str());
+    std::string trailing;
+    mps_parser_expects(!(ss >> trailing),
+                       error_type_t::ValidationError,
+                       "Unexpected data after QCMATRIX row name! line=%s",
+                       std::string(line).c_str());
   }
 
   auto row_it = row_names_map.find(row_name);
@@ -1580,10 +1874,14 @@ void mps_parser_t<i_t, f_t>::parse_qcmatrix_data(std::string_view line)
 
     var1_name = std::string(trim(line.substr(4, 8)));
     var2_name = std::string(trim(line.substr(14, 8)));
-    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+    mps_parser_expects(!var1_name.empty() && !var2_name.empty() && !var2_name.starts_with('$'),
+                       error_type_t::ValidationError,
+                       "QCMATRIX data line missing variable name! line=%s",
+                       std::string(line).c_str());
 
     i_t pos = 24;
     value   = get_numerical_bound<false>(line, pos);
+    expect_record_end(line, fixed_single_value_record_end);
   } else {
     i_t pos                        = 0;
     i_t end                        = 0;
@@ -1592,14 +1890,13 @@ void mps_parser_t<i_t, f_t>::parse_qcmatrix_data(std::string_view line)
                        error_type_t::ValidationError,
                        "QCMATRIX data line missing first variable name! line=%s",
                        std::string(line).c_str());
-    if (var1_sv[0] == '$') return;
     const std::string_view var2_sv = get_next_string(line, pos, end);
-    mps_parser_expects(!var2_sv.empty(),
+    mps_parser_expects(!var2_sv.empty() && !var2_sv.starts_with('$'),
                        error_type_t::ValidationError,
                        "QCMATRIX data line missing second variable name! line=%s",
                        std::string(line).c_str());
-    if (var2_sv[0] == '$') return;
-    value     = get_numerical_bound<false>(line, end);
+    value = get_numerical_bound<false>(line, end);
+    expect_record_end(line, end);
     var1_name = std::string(var1_sv);
     var2_name = std::string(var2_sv);
   }
@@ -1638,10 +1935,14 @@ void mps_parser_t<i_t, f_t>::parse_quad(std::string_view line, bool is_quadobj)
 
     var1_name = std::string(trim(line.substr(4, 8)));   // max of 8 chars allowed
     var2_name = std::string(trim(line.substr(14, 8)));  // max of 8 chars allowed
-    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+    mps_parser_expects(!var1_name.empty() && !var2_name.empty() && !var2_name.starts_with('$'),
+                       error_type_t::ValidationError,
+                       "QUADOBJ/QMATRIX data line missing variable name! line=%s",
+                       std::string(line).c_str());
 
     i_t pos = 24;
     value   = get_numerical_bound<false>(line, pos);
+    expect_record_end(line, fixed_single_value_record_end);
   } else {
     i_t pos                        = 0;
     i_t end                        = 0;
@@ -1650,14 +1951,13 @@ void mps_parser_t<i_t, f_t>::parse_quad(std::string_view line, bool is_quadobj)
                        error_type_t::ValidationError,
                        "QUADOBJ/QMATRIX data line missing first variable name! line=%s",
                        std::string(line).c_str());
-    if (var1_sv[0] == '$') return;
     const std::string_view var2_sv = get_next_string(line, pos, end);
-    mps_parser_expects(!var2_sv.empty(),
+    mps_parser_expects(!var2_sv.empty() && !var2_sv.starts_with('$'),
                        error_type_t::ValidationError,
                        "QUADOBJ/QMATRIX data line missing second variable name! line=%s",
                        std::string(line).c_str());
-    if (var2_sv[0] == '$') return;
-    value     = get_numerical_bound<false>(line, end);
+    value = get_numerical_bound<false>(line, end);
+    expect_record_end(line, end);
     var1_name = std::string(var1_sv);
     var2_name = std::string(var2_sv);
   }
@@ -1703,102 +2003,150 @@ f_t mps_parser_t<i_t, f_t>::get_numerical_bound(std::string_view line, i_t& star
     num = get_next_string(line, pos, start);
   }
   if constexpr (bounds_or_ranges) {
-    mps_parser_no_except(
-      if constexpr (std::is_same_v<f_t, float>) {
-        val = std::stof(std::string(num));
-      } else if constexpr (std::is_same_v<f_t, double>) { val = std::stod(std::string(num)); },
-      error_type_t::ValidationError,
-      "Bad value found in RANGES! line=%s",
-      std::string(line).c_str());
+    mps_parser_no_except(val = parse_mps_number(num);,
+                                                     error_type_t::ValidationError,
+                                                     "Bad value found in RANGES! line=%s",
+                                                     std::string(line).c_str());
   } else {
-    mps_parser_no_except(
-      if constexpr (std::is_same_v<f_t, float>) {
-        val = std::stof(std::string(num));
-      } else if constexpr (std::is_same_v<f_t, double>) { val = std::stod(std::string(num)); },
-      error_type_t::ValidationError,
-      "Bad value found in BOUNDS! line=%s",
-      std::string(line).c_str());
+    mps_parser_no_except(val = parse_mps_number(num);,
+                                                     error_type_t::ValidationError,
+                                                     "Bad value found in BOUNDS! line=%s",
+                                                     std::string(line).c_str());
   }
   return val;
+}
+
+template <typename i_t, typename f_t>
+void mps_parser_t<i_t, f_t>::skip_ignored_bound_value(std::string_view line,
+                                                      const char* bound_type,
+                                                      i_t& start)
+{
+  if (!has_bound_value(line, start)) { return; }
+  get_numerical_bound(line, start);
+  if (bound_warning_count++ < 10) {
+    std::fprintf(stderr,
+                 "WARNING: Value field for %s bound is ignored! line=%s\n",
+                 bound_type,
+                 std::string(line).c_str());
+  }
 }
 
 template <typename i_t, typename f_t>
 void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
                                                   BoundType bound_type,
                                                   i_t var_id,
-                                                  i_t start)
+                                                  i_t& start)
 {
+  auto try_set_bound =
+    [&](std::unordered_set<i_t>& defined_for_var_id, std::vector<f_t>& bounds, f_t value) {
+      if (!defined_for_var_id.insert(var_id).second) {
+        if (bound_warning_count++ < 10) {
+          std::fprintf(stderr,
+                       "WARNING: Duplicate bound for %s ignored! line=%s\n",
+                       var_names[var_id].c_str(),
+                       std::string(line).c_str());
+        }
+        return;
+      }
+      bounds[var_id] = value;
+    };
   switch (bound_type) {
     case LowerBound: {
-      variable_lower_bounds[var_id] = get_numerical_bound(line, start);
-      lower_bounds_defined_for_var_id.insert(var_id);
+      try_set_bound(
+        lower_bounds_defined_for_var_id, variable_lower_bounds, get_numerical_bound(line, start));
       break;
     }
     case UpperBound: {
-      variable_upper_bounds[var_id] = get_numerical_bound(line, start);
+      const f_t val = get_numerical_bound(line, start);
+      try_set_bound(upper_bounds_defined_for_var_id, variable_upper_bounds, val);
       // From CPLEX MPS reference:
       // > If an upper bound of less than 0 is specified and no
       // > other bound is specified, the lower bound is automatically set to -∞
-      if (!bounds_defined_for_var_id.count(var_id) && variable_upper_bounds[var_id] < f_t(0)) {
+      if (!bounds_defined_for_var_id.count(var_id) && val < f_t(0)) {
         variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
       }
       break;
     }
     case Fixed: {
-      const f_t val                 = get_numerical_bound(line, start);
-      variable_lower_bounds[var_id] = val;
-      variable_upper_bounds[var_id] = val;
-      lower_bounds_defined_for_var_id.insert(var_id);
+      const f_t val = get_numerical_bound(line, start);
+      try_set_bound(lower_bounds_defined_for_var_id, variable_lower_bounds, val);
+      try_set_bound(upper_bounds_defined_for_var_id, variable_upper_bounds, val);
       break;
     }
     case Free: {
-      variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
-      variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
-      lower_bounds_defined_for_var_id.insert(var_id);
+      skip_ignored_bound_value(line, "FR", start);
+      try_set_bound(lower_bounds_defined_for_var_id,
+                    variable_lower_bounds,
+                    -std::numeric_limits<f_t>::infinity());
+      try_set_bound(upper_bounds_defined_for_var_id,
+                    variable_upper_bounds,
+                    +std::numeric_limits<f_t>::infinity());
       break;
     }
     case LowerBoundNegInf:
-      variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
-      lower_bounds_defined_for_var_id.insert(var_id);
+      skip_ignored_bound_value(line, "MI", start);
+      try_set_bound(lower_bounds_defined_for_var_id,
+                    variable_lower_bounds,
+                    -std::numeric_limits<f_t>::infinity());
       break;
     case UpperBoundInf:
-      variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
+      skip_ignored_bound_value(line, "PL", start);
+      try_set_bound(upper_bounds_defined_for_var_id,
+                    variable_upper_bounds,
+                    +std::numeric_limits<f_t>::infinity());
       return;
     case BinaryVariable:
-      variable_lower_bounds[var_id] = 0;
-      variable_upper_bounds[var_id] = 1;
-      var_types[var_id]             = 'I';
-      lower_bounds_defined_for_var_id.insert(var_id);
+      // mps spec says either blank or 1.0
+      if (has_bound_value(line, start)) {
+        mps_parser_expects(get_numerical_bound(line, start) == f_t(1),
+                           error_type_t::ValidationError,
+                           "BV bound value must be 1 or blank! Line=%s",
+                           std::string(line).c_str());
+      }
+      try_set_bound(lower_bounds_defined_for_var_id, variable_lower_bounds, f_t(0));
+      try_set_bound(upper_bounds_defined_for_var_id, variable_upper_bounds, f_t(1));
+      var_types[var_id] = 'I';
       break;
-    case LowerBoundIntegerVariable:
+    case LowerBoundIntegerVariable: {
       // CPLEX MPS file references seems to imply that integer variables default to an upper bound
       // of +inf when only the lower bound is defined
       if (!bounds_defined_for_var_id.count(var_id)) {
         variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
       }
-      variable_lower_bounds[var_id] = get_numerical_bound(line, start);
-      var_types[var_id]             = 'I';
-      lower_bounds_defined_for_var_id.insert(var_id);
+      const f_t val = get_numerical_bound(line, start);
+      mps_parser_expects(std::trunc(val) == val,
+                         error_type_t::ValidationError,
+                         "LI bound value must be an integer! Line=%s",
+                         std::string(line).c_str());
+      try_set_bound(lower_bounds_defined_for_var_id, variable_lower_bounds, val);
+      var_types[var_id] = 'I';
       break;
-    case UpperBoundIntegerVariable:
-      variable_upper_bounds[var_id] = get_numerical_bound(line, start);
+    }
+    case UpperBoundIntegerVariable: {
+      const f_t val = get_numerical_bound(line, start);
+      mps_parser_expects(std::trunc(val) == val,
+                         error_type_t::ValidationError,
+                         "UI bound value must be an integer! Line=%s",
+                         std::string(line).c_str());
+      try_set_bound(upper_bounds_defined_for_var_id, variable_upper_bounds, val);
       // From CPLEX MPS reference:
       // > If an upper bound of less than 0 is specified and no
       // > other bound is specified, the lower bound is automatically set to -∞
-      if (!bounds_defined_for_var_id.count(var_id) && variable_upper_bounds[var_id] < f_t(0)) {
+      if (!bounds_defined_for_var_id.count(var_id) && val < f_t(0)) {
         variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
       }
       var_types[var_id] = 'I';
       break;
+    }
     case SemiContinuousVariable:
       // SC bound type: value is the upper bound U.
-      mps_parser_expects(start >= 0 && static_cast<size_t>(start) < line.size() &&
-                           !trim(line.substr(static_cast<size_t>(start))).empty(),
+      mps_parser_expects(has_bound_value(line, start),
                          error_type_t::ValidationError,
                          "SC bound requires an upper bound value! Line=%s",
                          std::string(line).c_str());
-      variable_upper_bounds[var_id] = get_numerical_bound(line, start);
-      var_types[var_id]             = 'S';
+      try_set_bound(
+        upper_bounds_defined_for_var_id, variable_upper_bounds, get_numerical_bound(line, start));
+      var_types[var_id] = 'S';
       break;
     default:
       mps_parser_expects(false,
