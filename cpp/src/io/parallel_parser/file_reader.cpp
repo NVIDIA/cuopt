@@ -100,7 +100,7 @@ std::size_t get_file_size(const std::string& path)
   int fd = ::open(path.c_str(), O_RDONLY);
   if (fd < 0) {
     mps_parser_fail(error_type_t::RuntimeError,
-                    "Failed to open file '%s': %s",
+                    "Error opening input file! Given path: %s (%s)",
                     path.c_str(),
                     std::strerror(errno));
   }
@@ -152,7 +152,7 @@ raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
   });
   if (buffered_fd < 0) {
     mps_parser_fail(error_type_t::RuntimeError,
-                    "Failed to open raw MPS file '%s': %s",
+                    "Error opening input file! Given path: %s (%s)",
                     path.c_str(),
                     std::strerror(errno));
   }

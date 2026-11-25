@@ -138,7 +138,7 @@ int open_lz4_fd(const std::string& path)
   int fd = ::open(path.c_str(), O_RDONLY);
   if (fd < 0) {
     mps_parser_fail(error_type_t::RuntimeError,
-                    "Failed to open LZ4 file '%s': %s",
+                    "Error opening input file! Given path: %s (%s)",
                     path.c_str(),
                     std::strerror(errno));
   }

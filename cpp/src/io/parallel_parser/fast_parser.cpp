@@ -3270,7 +3270,7 @@ static void materialize_problem_names(parse_state_t<i_t, f_t>& state)
   }
 
   if (state.problem.objective_name_.empty()) {
-    mps_parser_fail(error_type_t::RuntimeError, "No objective name found");
+    mps_parser_fail(error_type_t::ValidationError, "No objective found!");
   }
 
   {
@@ -3500,6 +3500,15 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
         MPS_NVTX_RANGE(producer_task_name, nvtx::colors::io);
         try {
           stream.run_decode_tasks();
+          mps_parser_expects(input.registry->ready(mps_phase_kind::rows),
+                             error_type_t::ValidationError,
+                             "ROWS section is missing");
+          mps_parser_expects(input.registry->ready(mps_phase_kind::columns),
+                             error_type_t::ValidationError,
+                             "COLUMNS section is missing");
+          mps_parser_expects(input.registry->ready(mps_phase_kind::rhs),
+                             error_type_t::ValidationError,
+                             "RHS section is missing");
           for (auto p : {mps_phase_kind::header,
                          mps_phase_kind::rows,
                          mps_phase_kind::columns,
@@ -3508,9 +3517,9 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
                          mps_phase_kind::ranges,
                          mps_phase_kind::quadratic,
                          mps_phase_kind::lazycons}) {
-            if (!input.registry->ready(p)) {
-              throw std::logic_error("MPS: missing or misplaced section");
-            }
+            mps_parser_expects(input.registry->ready(p),
+                               error_type_t::ValidationError,
+                               "MPS: missing or misplaced section");
           }
         } catch (...) {
           parser_tasks.capture(std::current_exception());

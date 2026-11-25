@@ -102,7 +102,7 @@ std::vector<char> bz2_file_to_string(const std::string& file)
 
   std::unique_ptr<FILE, FcloseDeleter> fp{fopen(file.c_str(), "rb")};
   mps_parser_expects(fp != nullptr,
-                     error_type_t::ValidationError,
+                     error_type_t::RuntimeError,
                      "Error opening input file! Given path: %s",
                      file.c_str());
   int bzerror = BZ_OK;
@@ -191,7 +191,7 @@ std::vector<char> zlib_file_to_string(const std::string& file)
     gzopen(file.c_str(), "rb"),
     {gzclose_r}};  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
   mps_parser_expects(gzfp != nullptr,
-                     error_type_t::ValidationError,
+                     error_type_t::RuntimeError,
                      "Error opening compressed input file! Given path: %s",
                      file.c_str());
   int zlib_status = gzbuffer(gzfp.get(), 1 << 20);  // 1 MiB  // NOSONAR: mps_parser_expects/LZ4F
@@ -312,7 +312,7 @@ std::vector<char> lz4_file_to_string(const std::string& file)
 
   std::unique_ptr<FILE, FcloseDeleter> fp{fopen(file.c_str(), "rb")};
   mps_parser_expects(fp != nullptr,
-                     error_type_t::ValidationError,
+                     error_type_t::RuntimeError,
                      "Error opening input file! Given path: %s",
                      file.c_str());
   mps_parser_expects(fseek(fp.get(), 0L, SEEK_END) == 0,
@@ -422,7 +422,7 @@ std::vector<char> file_to_string(const std::string& file)
   // Faster than using C++ I/O
   std::unique_ptr<FILE, FcloseDeleter> fp{fopen(file.c_str(), "r")};
   mps_parser_expects(fp != nullptr,
-                     error_type_t::ValidationError,
+                     error_type_t::RuntimeError,
                      "Error opening input file! Given path: %s",
                      file.c_str());
 
