@@ -13,9 +13,9 @@
 #include <branch_and_bound/branch_and_bound.hpp>
 #include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/diversity/diversity_manager.cuh>
-#include <mip_heuristics/lns/cpufj.cuh>
-#include <mip_heuristics/lns/thread_budget.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
+#include <mip_heuristics/ruin-repair-lns/cpufj.cuh>
+#include <mip_heuristics/ruin-repair-lns/thread_budget.hpp>
 #include <mip_heuristics/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
