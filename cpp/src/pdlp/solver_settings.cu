@@ -24,6 +24,27 @@
 
 namespace cuopt::mathematical_optimization {
 
+namespace {
+// Shrinks `v` to `mapping.size()` elements: new[mapping[i]] = old[i] for i in [0, mapping.size()).
+// The input range is sized by the mapping (never read past its end), and the output is a separate
+// buffer: an in-place thrust::scatter breaks Thrust's no-overlap precondition and races.
+template <typename i_t, typename f_t>
+void scatter_and_shrink(rmm::device_uvector<f_t>& v, const rmm::device_uvector<i_t>& mapping)
+{
+  cuopt_expects(mapping.size() <= v.size(),
+                error_type_t::ValidationError,
+                "Warm start mapping cannot be longer than the vector it reorders");
+  auto stream = mapping.stream();
+  rmm::device_uvector<f_t> shrunk(mapping.size(), stream);
+  thrust::scatter(rmm::exec_policy(stream),
+                  v.begin(),
+                  v.begin() + mapping.size(),
+                  mapping.begin(),
+                  shrunk.begin());
+  v = std::move(shrunk);
+}
+}  // namespace
+
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_optimality_tolerance(f_t eps_optimal)
 {
@@ -104,40 +125,12 @@ void pdlp_solver_settings_t<i_t, f_t>::set_pdlp_warm_start_data(
     // related vectors
     if (var_mapping.size() <
         pdlp_warm_start_data_.last_restart_duality_gap_primal_solution_.size()) {
-      thrust::scatter(rmm::exec_policy(var_mapping.stream()),
-                      pdlp_warm_start_data_.current_primal_solution_.begin(),
-                      pdlp_warm_start_data_.current_primal_solution_.end(),
-                      var_mapping.begin(),
-                      pdlp_warm_start_data_.current_primal_solution_.begin());
-      thrust::scatter(rmm::exec_policy(var_mapping.stream()),
-                      pdlp_warm_start_data_.initial_primal_average_.begin(),
-                      pdlp_warm_start_data_.initial_primal_average_.end(),
-                      var_mapping.begin(),
-                      pdlp_warm_start_data_.initial_primal_average_.begin());
-      thrust::scatter(rmm::exec_policy(var_mapping.stream()),
-                      pdlp_warm_start_data_.current_ATY_.begin(),
-                      pdlp_warm_start_data_.current_ATY_.end(),
-                      var_mapping.begin(),
-                      pdlp_warm_start_data_.current_ATY_.begin());
-      thrust::scatter(rmm::exec_policy(var_mapping.stream()),
-                      pdlp_warm_start_data_.sum_primal_solutions_.begin(),
-                      pdlp_warm_start_data_.sum_primal_solutions_.end(),
-                      var_mapping.begin(),
-                      pdlp_warm_start_data_.sum_primal_solutions_.begin());
-      thrust::scatter(rmm::exec_policy(var_mapping.stream()),
-                      pdlp_warm_start_data_.last_restart_duality_gap_primal_solution_.begin(),
-                      pdlp_warm_start_data_.last_restart_duality_gap_primal_solution_.end(),
-                      var_mapping.begin(),
-                      pdlp_warm_start_data_.last_restart_duality_gap_primal_solution_.begin());
-
-      pdlp_warm_start_data_.current_primal_solution_.resize(var_mapping.size(),
-                                                            var_mapping.stream());
-      pdlp_warm_start_data_.initial_primal_average_.resize(var_mapping.size(),
-                                                           var_mapping.stream());
-      pdlp_warm_start_data_.current_ATY_.resize(var_mapping.size(), var_mapping.stream());
-      pdlp_warm_start_data_.sum_primal_solutions_.resize(var_mapping.size(), var_mapping.stream());
-      pdlp_warm_start_data_.last_restart_duality_gap_primal_solution_.resize(var_mapping.size(),
-                                                                             var_mapping.stream());
+      scatter_and_shrink(pdlp_warm_start_data_.current_primal_solution_, var_mapping);
+      scatter_and_shrink(pdlp_warm_start_data_.initial_primal_average_, var_mapping);
+      scatter_and_shrink(pdlp_warm_start_data_.current_ATY_, var_mapping);
+      scatter_and_shrink(pdlp_warm_start_data_.sum_primal_solutions_, var_mapping);
+      scatter_and_shrink(pdlp_warm_start_data_.last_restart_duality_gap_primal_solution_,
+                         var_mapping);
     } else if (var_mapping.size() >
                pdlp_warm_start_data_.last_restart_duality_gap_primal_solution_.size()) {
       const auto previous_size =
@@ -183,35 +176,11 @@ void pdlp_solver_settings_t<i_t, f_t>::set_pdlp_warm_start_data(
     // vectors
     if (constraint_mapping.size() <
         pdlp_warm_start_data_.last_restart_duality_gap_dual_solution_.size()) {
-      thrust::scatter(rmm::exec_policy(constraint_mapping.stream()),
-                      pdlp_warm_start_data_.current_dual_solution_.begin(),
-                      pdlp_warm_start_data_.current_dual_solution_.end(),
-                      constraint_mapping.begin(),
-                      pdlp_warm_start_data_.current_dual_solution_.begin());
-      thrust::scatter(rmm::exec_policy(constraint_mapping.stream()),
-                      pdlp_warm_start_data_.initial_dual_average_.begin(),
-                      pdlp_warm_start_data_.initial_dual_average_.end(),
-                      constraint_mapping.begin(),
-                      pdlp_warm_start_data_.initial_dual_average_.begin());
-      thrust::scatter(rmm::exec_policy(constraint_mapping.stream()),
-                      pdlp_warm_start_data_.sum_dual_solutions_.begin(),
-                      pdlp_warm_start_data_.sum_dual_solutions_.end(),
-                      constraint_mapping.begin(),
-                      pdlp_warm_start_data_.sum_dual_solutions_.begin());
-      thrust::scatter(rmm::exec_policy(constraint_mapping.stream()),
-                      pdlp_warm_start_data_.last_restart_duality_gap_dual_solution_.begin(),
-                      pdlp_warm_start_data_.last_restart_duality_gap_dual_solution_.end(),
-                      constraint_mapping.begin(),
-                      pdlp_warm_start_data_.last_restart_duality_gap_dual_solution_.begin());
-
-      pdlp_warm_start_data_.current_dual_solution_.resize(constraint_mapping.size(),
-                                                          constraint_mapping.stream());
-      pdlp_warm_start_data_.initial_dual_average_.resize(constraint_mapping.size(),
-                                                         constraint_mapping.stream());
-      pdlp_warm_start_data_.sum_dual_solutions_.resize(constraint_mapping.size(),
-                                                       constraint_mapping.stream());
-      pdlp_warm_start_data_.last_restart_duality_gap_dual_solution_.resize(
-        constraint_mapping.size(), constraint_mapping.stream());
+      scatter_and_shrink(pdlp_warm_start_data_.current_dual_solution_, constraint_mapping);
+      scatter_and_shrink(pdlp_warm_start_data_.initial_dual_average_, constraint_mapping);
+      scatter_and_shrink(pdlp_warm_start_data_.sum_dual_solutions_, constraint_mapping);
+      scatter_and_shrink(pdlp_warm_start_data_.last_restart_duality_gap_dual_solution_,
+                         constraint_mapping);
     } else if (constraint_mapping.size() >
                pdlp_warm_start_data_.last_restart_duality_gap_dual_solution_.size()) {
       const auto previous_size =

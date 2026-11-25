@@ -1120,8 +1120,13 @@ static bool csr_matrices_equivalent_with_permutation(const rmm::device_uvector<i
       return r - 1;
     });
 
-  thrust::gather(
-    policy, other_rows.begin(), other_rows.end(), d_row_perm_inv.begin(), other_rows.begin());
+  // Map rows through the inverse permutation. Not an in-place thrust::gather: its map and output
+  // ranges must not overlap. An in-place transform is allowed.
+  thrust::transform(policy,
+                    other_rows.begin(),
+                    other_rows.end(),
+                    other_rows.begin(),
+                    [perm = d_row_perm_inv.data()] __device__(i_t r) { return perm[r]; });
 
   thrust::gather(
     policy, other_indices.begin(), other_indices.end(), d_col_perm_inv.begin(), other_cols.begin());
