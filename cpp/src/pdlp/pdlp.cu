@@ -2666,19 +2666,12 @@ void pdlp_solver_t<i_t, f_t>::project_initial_primal_transform()
 }
 template <typename f_t>
 struct ordinary_graph_batch_t {
-  ordinary_graph_batch_t(cuda::stream_ref stream, int requested_iterations_per_graph, bool eligible)
+  ordinary_graph_batch_t(cuda::stream_ref stream, int iterations_per_graph)
     : stream{stream},
-      iterations_per_graph{eligible ? requested_iterations_per_graph : 1},
-      halpern_weights{static_cast<size_t>(eligible && requested_iterations_per_graph > 1
-                                            ? requested_iterations_per_graph
-                                            : 0),
+      iterations_per_graph{iterations_per_graph},
+      halpern_weights{static_cast<size_t>(iterations_per_graph > 1 ? iterations_per_graph : 0),
                       stream}
   {
-    if (iterations_per_graph > 1) {
-      CUOPT_LOG_INFO("PDLP graph batching: requested=%d effective=%d",
-                     requested_iterations_per_graph,
-                     iterations_per_graph);
-    }
   }
   ~ordinary_graph_batch_t()
   {
@@ -3051,8 +3044,13 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     requested_iterations_per_graph <= graph_hyper.major_iteration - 2 &&
     requested_iterations_per_graph < conditional_major<i_t>(std::numeric_limits<i_t>::max()) &&
     requested_iterations_per_graph <= settings_.iteration_limit;
-  ordinary_graph_batch_t<f_t> ordinary_batch{
-    stream_view_, requested_iterations_per_graph, graph_batch_eligible};
+  const int iterations_per_graph = graph_batch_eligible ? requested_iterations_per_graph : 1;
+  ordinary_graph_batch_t<f_t> ordinary_batch{stream_view_, iterations_per_graph};
+  if (iterations_per_graph > 1) {
+    CUOPT_LOG_INFO("PDLP graph batching: requested=%d effective=%d",
+                   requested_iterations_per_graph,
+                   iterations_per_graph);
+  }
 
   while (true) {
     PDLP_DEBUG_LOG("Step", total_pdlp_iterations_);
