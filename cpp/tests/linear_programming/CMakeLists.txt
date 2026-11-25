@@ -34,7 +34,7 @@ ConfigureTest(MPS_FAST_PARSER_TEST
     STATIC_LIB)
 target_include_directories(MPS_FAST_PARSER_TEST
     PRIVATE
-    "${CUOPT_TEST_DIR}/../src/io/experimental_mps_fast"
+    "${CUOPT_TEST_DIR}/../src/io/parallel_parser"
 )
 target_link_libraries(MPS_FAST_PARSER_TEST PRIVATE simde::simde)
 

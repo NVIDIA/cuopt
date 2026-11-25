@@ -4,10 +4,10 @@
 # cmake-format: on
 
 set(MPS_FAST_SRC_FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_parser.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/file_reader.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/lz4_file_reader.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/mps_section_scanner.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/parallel_parser/fast_parser.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/parallel_parser/file_reader.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/parallel_parser/lz4_file_reader.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/parallel_parser/mps_section_scanner.cpp
 )
 
 set(PARSERS_SRC_FILES
@@ -16,7 +16,7 @@ set(PARSERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/lp_parser.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/lp_writer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mps_data_model.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/mps_parser.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/serial_parser/mps_parser.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mps_writer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/parser.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/writer.cpp

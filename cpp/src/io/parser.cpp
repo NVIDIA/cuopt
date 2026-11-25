@@ -8,8 +8,8 @@
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 
-#include <experimental_mps_fast/fast_parser.hpp>
 #include <mps_parser_internal.hpp>
+#include <parallel_parser/fast_parser.hpp>
 
 #include <utilities/logger.hpp>
 
