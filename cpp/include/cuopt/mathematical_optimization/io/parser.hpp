@@ -24,10 +24,10 @@ namespace io {
 /**
  * @brief Selects which MPS reader implementation should be used by dispatching entry points.
  *
- * The experimental fast reader is intentionally opt-in. It supports the same free-format
+ * The parallel reader is intentionally opt-in. It supports the same free-format
  * MPS/QPS scope as read_mps(): LP, MIP, QP (QUADOBJ/QMATRIX), and QCQP/SOCP (QCMATRIX).
  */
-enum class mps_reader_type_t { default_reader, fast_experimental };
+enum class mps_reader_type_t { default_reader, parallel_reader };
 
 /**
  * @brief Reads the equation from an MPS or QPS file.
@@ -56,7 +56,7 @@ mps_data_model_t<i_t, f_t> read_mps(const std::string& mps_file_path,
                                     bool fixed_mps_format = false);
 
 /**
- * @brief Reads an MPS/QPS problem with the experimental SIMD-optimized reader.
+ * @brief Reads an MPS/QPS problem with the parallel SIMD-optimized reader.
  *
  * Supports the same free-format LP/MIP/QP/QCQP (SOCP-relevant QCMATRIX) scope as read_mps().
  * Fixed MPS format forcing is not supported. Accepts .mps/.qps and their .gz/.bz2/.lz4 variants
@@ -66,7 +66,7 @@ mps_data_model_t<i_t, f_t> read_mps(const std::string& mps_file_path,
  * @return mps_data_model_t A fully formed LP/MIP/QP problem which represents the given file.
  */
 template <typename i_t, typename f_t>
-mps_data_model_t<i_t, f_t> read_mps_fast_experimental(const std::string& mps_file_path);
+mps_data_model_t<i_t, f_t> read_mps_parallel(const std::string& mps_file_path);
 
 /**
  * @brief Reads an MPS problem from in-memory file contents.
@@ -138,8 +138,8 @@ mps_data_model_t<i_t, f_t> read_lp_from_string(std::string_view lp_contents);
  *
  * Routing (case-insensitive extensions):
  *   - .mps, .mps.gz, .mps.bz2, .mps.lz4, .qps, .qps.gz, .qps.bz2, .qps.lz4
- *     → read_mps() when mps_reader == default_reader, or read_mps_fast_experimental()
- *       when mps_reader == fast_experimental (fixed_mps_format must be false)
+ *     → read_mps() when mps_reader == default_reader, or read_mps_parallel()
+ *       when mps_reader == parallel_reader (fixed_mps_format must be false)
  *   - .lp,  .lp.gz,  .lp.bz2, .lp.lz4 → read_lp()
  *   - anything else → std::logic_error
  *
@@ -168,12 +168,11 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path,
     }
   }
   if (lower.ends_with(".mps") || lower.ends_with(".qps") || lower.ends_with(".sif")) {
-    if (mps_reader == mps_reader_type_t::fast_experimental) {
+    if (mps_reader == mps_reader_type_t::parallel_reader) {
       if (fixed_mps_format) {
-        throw std::logic_error(
-          "experimental fast MPS reader does not support fixed MPS format forcing");
+        throw std::logic_error("parallel MPS reader does not support fixed MPS format forcing");
       }
-      return read_mps_fast_experimental<i_t, f_t>(path);
+      return read_mps_parallel<i_t, f_t>(path);
     }
     return read_mps<i_t, f_t>(path, fixed_mps_format);
   }

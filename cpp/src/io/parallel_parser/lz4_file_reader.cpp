@@ -116,7 +116,7 @@ int lz4_decompress_safe_runtime([[maybe_unused]] const char* src,
 #else
   mps_parser_fail(
     error_type_t::RuntimeError,
-    "Experimental fast MPS parser was built without LZ4 decompression support. "
+    "Parallel MPS parser was built without LZ4 decompression support. "
     "Reconfigure with CUOPT_PARSER_WITH_LZ4=ON or decompress the .lz4 file manually.");
 #endif
 }
@@ -128,7 +128,7 @@ void ensure_lz4_runtime_available()
 #else
   mps_parser_fail(
     error_type_t::RuntimeError,
-    "Experimental fast MPS parser was built without LZ4 decompression support. "
+    "Parallel MPS parser was built without LZ4 decompression support. "
     "Reconfigure with CUOPT_PARSER_WITH_LZ4=ON or decompress the .lz4 file manually.");
 #endif
 }

@@ -67,8 +67,8 @@ struct mps_reader_param_t {
 
 constexpr mps_reader_param_t default_mps_reader_param{"default_reader",
                                                       mps_reader_type_t::default_reader};
-constexpr mps_reader_param_t fast_mps_reader_param{"fast_experimental",
-                                                   mps_reader_type_t::fast_experimental};
+constexpr mps_reader_param_t fast_mps_reader_param{"parallel_reader",
+                                                   mps_reader_type_t::parallel_reader};
 
 std::string mps_reader_param_name(const ::testing::TestParamInfo<mps_reader_param_t>& info)
 {
@@ -2804,14 +2804,14 @@ TEST_P(read_test, qps_extension_dispatches_to_mps_parser)
   EXPECT_EQ(m.get_variable_names()[0], "x");
 }
 
-TEST(read, qps_extension_dispatches_to_fast_experimental_reader)
+TEST(read, qps_extension_dispatches_to_parallel_reader)
 {
   temp_file_t tmp(".qps");
   {
     std::ofstream out(tmp.string());
     out << kTrivialMps;
   }
-  auto m = read<int, double>(tmp.string(), mps_reader_type_t::fast_experimental);
+  auto m = read<int, double>(tmp.string(), mps_reader_type_t::parallel_reader);
   ASSERT_EQ(m.get_variable_names().size(), 1u);
   EXPECT_EQ(m.get_variable_names()[0], "x");
   EXPECT_NEAR(m.get_variable_upper_bounds()[0], 10.0, tolerance);
