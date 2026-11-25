@@ -300,6 +300,8 @@ bool domain_propagation_t<i_t, f_t>::propagate_implications(
     for (i_t p = offsets[j]; p < offsets[j + 1]; ++p) {
       const i_t k = variables[p];
       if (k == j || k >= lp.num_cols) { continue; }
+      const f_t lb = lp.lower[k];
+      const f_t ub = lp.upper[k];
       if (!tighten_bounds(k,
                           lower[p],
                           upper[p],
@@ -308,6 +310,9 @@ bool domain_propagation_t<i_t, f_t>::propagate_implications(
                           settings,
                           lp)) {
         return false;
+      }
+      if (lp.lower[k] != lb || lp.upper[k] != ub) {
+        queue_variable(k, var_types, lp, settings.primal_tol);
       }
     }
   }
@@ -327,9 +332,14 @@ bool domain_propagation_t<i_t, f_t>::propagate_implications(
     const i_t k         = v < n ? v : v - n;
     const f_t new_lower = v < n ? lp.lower[k] : 1.0;
     const f_t new_upper = v < n ? 0.0 : lp.upper[k];
+    const f_t lb        = lp.lower[k];
+    const f_t ub        = lp.upper[k];
     if (!tighten_bounds(
           k, new_lower, new_upper, bound_change_origin_t::CLIQUE, var_types, settings, lp)) {
       return false;
+    }
+    if (lp.lower[k] != lb || lp.upper[k] != ub) {
+      queue_variable(k, var_types, lp, settings.primal_tol);
     }
   }
 
