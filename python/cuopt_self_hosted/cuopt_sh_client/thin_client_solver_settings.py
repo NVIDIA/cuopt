@@ -122,7 +122,8 @@ class ThinClientSolverSettings:
         -----
         For the available parameters, their defaults and ranges, see
         ``convex-settings.rst`` and ``mip-settings.rst`` in the cuOpt
-        documentation. Names are the ``CUOPT_*`` constants in lower case.
+        documentation. Names are the string values of the ``CUOPT_*``
+        constants; for example, ``CUOPT_TIME_LIMIT`` is ``"time_limit"``.
         """
         self.parameter_dict[name] = value
 
@@ -144,7 +145,8 @@ class ThinClientSolverSettings:
         -----
         For the available parameters, their defaults and ranges, see
         ``convex-settings.rst`` and ``mip-settings.rst`` in the cuOpt
-        documentation. Names are the ``CUOPT_*`` constants in lower case.
+        documentation. Names are the string values of the ``CUOPT_*``
+        constants; for example, ``CUOPT_TIME_LIMIT`` is ``"time_limit"``.
         """
         if name in self.parameter_dict:
             return self.parameter_dict[name]
