@@ -6,9 +6,12 @@
 #include "fast_fp64_parser.hpp"
 #include "source_location.hpp"
 
+#include <cmath>
+#include <concepts>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdio>
+#include <limits>
 #include <utility>
 
 #include <simde/x86/avx2.h>
@@ -366,13 +369,27 @@ static inline void expect_section(cursor_t& cursor, const char* section)
   expect_eol(cursor);
 }
 
-static inline double expect_number(cursor_t& cursor)
+template <typename f_t>
+static inline fp64::fp64_status check_fp_range(fp64::fp64_status status, double value)
+{
+  if constexpr (!std::same_as<f_t, double>) {
+    if (status == fp64::fp64_status::ok && std::isfinite(value) &&
+        std::abs(value) > (double)std::numeric_limits<f_t>::max()) {
+      return fp64::fp64_status::out_of_range;
+    }
+  }
+  return status;
+}
+
+template <typename f_t>
+static inline f_t expect_number(cursor_t& cursor)
 {
   auto num = cursor.read_field();
   if (num.empty()) { cursor.error("expected number, got empty field"); }
   const char* p = num.data();
   double value;
-  const fp64::fp64_status status = fp64::try_parse_fp64_advance(p, p + num.size(), value);
+  const fp64::fp64_status status =
+    check_fp_range<f_t>(fp64::try_parse_fp64_advance(p, p + num.size(), value), value);
   if (UNLIKELY(status != fp64::fp64_status::ok)) {
     cursor.ptr = num.data();
     cursor.error("%s '%.*s'", fp64::fp64_status_message(status), (int)num.size(), num.data());
@@ -380,11 +397,13 @@ static inline double expect_number(cursor_t& cursor)
   return value;
 }
 
-static inline double expect_fp64_advance(cursor_t& cursor)
+template <typename f_t>
+static inline f_t expect_fp64_advance(cursor_t& cursor)
 {
   const char* token = cursor.ptr;
   double value;
-  const fp64::fp64_status status = fp64::try_parse_fp64_advance(cursor.ptr, cursor.end, value);
+  const fp64::fp64_status status =
+    check_fp_range<f_t>(fp64::try_parse_fp64_advance(cursor.ptr, cursor.end, value), value);
   if (UNLIKELY(status != fp64::fp64_status::ok)) {
     const int len = (int)(cursor.ptr - token);
     cursor.ptr    = token;
@@ -393,7 +412,8 @@ static inline double expect_fp64_advance(cursor_t& cursor)
   return value;
 }
 
-static inline bool try_number_fast_pm_one(cursor_t& cursor, double& value)
+template <typename f_t>
+static inline bool try_number_fast_pm_one(cursor_t& cursor, f_t& value)
 {
   const char* p = cursor.ptr;
   if (cursor.end - p >= 3 && p[0] == '-' && p[1] == '1' && p[2] <= ' ') {
@@ -410,18 +430,28 @@ static inline bool try_number_fast_pm_one(cursor_t& cursor, double& value)
   }
   auto num      = cursor.read_field();
   const char* q = num.data();
+  double parsed;
   if (num.empty() ||
-      fp64::try_parse_fp64_advance(q, q + num.size(), value) != fp64::fp64_status::ok) {
+      fp64::try_parse_fp64_advance(q, q + num.size(), parsed) != fp64::fp64_status::ok) {
     cursor.ptr = p;
     return false;
   }
+  if (UNLIKELY(check_fp_range<f_t>(fp64::fp64_status::ok, parsed) != fp64::fp64_status::ok)) {
+    cursor.ptr = num.data();
+    cursor.error("%s '%.*s'",
+                 fp64::fp64_status_message(fp64::fp64_status::out_of_range),
+                 (int)num.size(),
+                 num.data());
+  }
+  value = parsed;
   return true;
 }
 
-static inline double expect_number_fast_pm_one(cursor_t& cursor)
+template <typename f_t>
+static inline f_t expect_number_fast_pm_one(cursor_t& cursor)
 {
-  double value;
-  if (UNLIKELY(!try_number_fast_pm_one(cursor, value))) { return expect_number(cursor); }
+  f_t value;
+  if (UNLIKELY(!try_number_fast_pm_one(cursor, value))) { return expect_number<f_t>(cursor); }
   return value;
 }
 

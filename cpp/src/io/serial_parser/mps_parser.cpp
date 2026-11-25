@@ -316,7 +316,8 @@ std::string_view trim(std::string_view str)
 
 constexpr size_t max_numeric_token_length = 63;
 
-static double parse_mps_number(std::string_view num)
+template <typename f_t>
+static f_t parse_mps_number(std::string_view num)
 {
   std::string s(trim(num));
   if (s.size() > max_numeric_token_length) { throw std::invalid_argument(s); }
@@ -328,23 +329,27 @@ static double parse_mps_number(std::string_view num)
   // ERANGE may flag underflow or subnormal results; only overflow (±inf) throws
   if (errno == ERANGE && std::isinf(value)) { throw std::out_of_range(s); }
   if (std::isnan(value)) { throw std::invalid_argument(s); }
+  if (std::isfinite(value) && std::abs(value) > std::numeric_limits<f_t>::max()) {
+    throw std::out_of_range(s);
+  }
   return value;
 }
 
-template <typename i_t>
+template <typename i_t, typename f_t>
 static void parse_multiobj_fields(
-  std::string_view line, i_t& end, int& priority, double& weight, double& reltol, double& abstol)
+  std::string_view line, i_t& end, int& priority, f_t& weight, f_t& reltol, f_t& abstol)
 {
   i_t pos;
   double fields[4];
-  for (double& field : fields) {
+  for (size_t k = 0; k < std::size(fields); ++k) {
     const std::string_view num = get_next_string(line, pos, end);
-    mps_parser_no_except(field = parse_mps_number(num);
-                         ,
-                         error_type_t::ValidationError,
-                         "Bad multi-objective value in ROWS! line=%s, num=%s",
-                         std::string(line).c_str(),
-                         std::string(num).c_str());
+    mps_parser_no_except(
+      fields[k] = k == 0 ? parse_mps_number<double>(num) : parse_mps_number<f_t>(num);
+      ,
+      error_type_t::ValidationError,
+      "Bad multi-objective value in ROWS! line=%s, num=%s",
+      std::string(line).c_str(),
+      std::string(num).c_str());
   }
   mps_parser_expects(
     fields[0] == std::trunc(fields[0]) && std::abs(fields[0]) <= std::numeric_limits<int>::max(),
@@ -1242,9 +1247,9 @@ void mps_parser_t<i_t, f_t>::parse_rows(std::string_view line)
     ss >> name;
     ss >> std::ws;
     if (type == Objective && ss.peek() != EOF && ss.peek() != '$') {
-      i_t end       = (i_t)ss.tellg();
-      int priority  = 0;
-      double weight = 0, reltol = 0, abstol = 0;
+      i_t end      = (i_t)ss.tellg();
+      int priority = 0;
+      f_t weight = 0, reltol = 0, abstol = 0;
       parse_multiobj_fields(line, end, priority, weight, reltol, abstol);
       ss.seekg(end < 0 ? (i_t)line.size() : end);
       if (multiobj_row_count++ == 0) {
@@ -1438,7 +1443,7 @@ void mps_parser_t<i_t, f_t>::insert_row_name_and_value(std::string_view line,
                 "f_t must be float or double");
 
   f_t val;
-  mps_parser_no_except(val = parse_mps_number(num);
+  mps_parser_no_except(val = parse_mps_number<f_t>(num);
                        ,
                        error_type_t::ValidationError,
                        "Bad value found for row=%s in COLUMNS! line=%s. Num is %s",
@@ -1549,7 +1554,7 @@ i_t mps_parser_t<i_t, f_t>::read_rhs_row_and_value(std::string_view line,
                      std::string(line).c_str());
 
   f_t val;
-  mps_parser_no_except(val = parse_mps_number(num);
+  mps_parser_no_except(val = parse_mps_number<f_t>(num);
                        ,
                        error_type_t::ValidationError,
                        "Bad value found for row=%s in RHS! line=%s, num=%s",
@@ -2003,15 +2008,15 @@ f_t mps_parser_t<i_t, f_t>::get_numerical_bound(std::string_view line, i_t& star
     num = get_next_string(line, pos, start);
   }
   if constexpr (bounds_or_ranges) {
-    mps_parser_no_except(val = parse_mps_number(num);,
-                                                     error_type_t::ValidationError,
-                                                     "Bad value found in RANGES! line=%s",
-                                                     std::string(line).c_str());
+    mps_parser_no_except(val = parse_mps_number<f_t>(num);,
+                                                          error_type_t::ValidationError,
+                                                          "Bad value found in RANGES! line=%s",
+                                                          std::string(line).c_str());
   } else {
-    mps_parser_no_except(val = parse_mps_number(num);,
-                                                     error_type_t::ValidationError,
-                                                     "Bad value found in BOUNDS! line=%s",
-                                                     std::string(line).c_str());
+    mps_parser_no_except(val = parse_mps_number<f_t>(num);,
+                                                          error_type_t::ValidationError,
+                                                          "Bad value found in BOUNDS! line=%s",
+                                                          std::string(line).c_str());
   }
   return val;
 }

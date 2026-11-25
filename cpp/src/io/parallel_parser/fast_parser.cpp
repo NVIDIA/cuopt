@@ -456,9 +456,6 @@ static inline void observe_dense_name(bool& candidate,
 // explains most of the paired/dual code paths throughout this file.
 template <typename i_t, typename f_t>
 struct parse_state_t {
-  // FP32 support should be easy: mostly range checks in the float parsing routines
-  static_assert(std::same_as<f_t, double>);
-
   mps_data_model_t<i_t, f_t>& problem;
   cursor_t& cursor;
 
@@ -859,27 +856,29 @@ static bool parse_rows_line_fast(const char*& p,
 }
 
 // not supported yet
+template <typename f_t>
 static void parse_multiobj_fields(
-  cursor_t& cursor, int& priority, double& weight, double& reltol, double& abstol)
+  cursor_t& cursor, int& priority, f_t& weight, f_t& reltol, f_t& abstol)
 {
-  const double priority_value = expect_number(cursor);
+  const double priority_value = expect_number<double>(cursor);
   if (priority_value != std::trunc(priority_value) || std::abs(priority_value) > INT_MAX) {
     cursor.error("multi-objective priority must be an integer, got %g", priority_value);
   }
   priority = (int)priority_value;
-  weight   = expect_number(cursor);
-  reltol   = expect_number(cursor);
-  abstol   = expect_number(cursor);
+  weight   = expect_number<f_t>(cursor);
+  reltol   = expect_number<f_t>(cursor);
+  abstol   = expect_number<f_t>(cursor);
 }
 
 // slow, but not much of a concern since multiobj rows are rare and cold-path
+template <typename f_t>
 static bool parse_rows_line_multiobj(const char*& p,
                                      const char* end,
                                      std::string_view& row_name,
                                      int& priority,
-                                     double& weight,
-                                     double& reltol,
-                                     double& abstol)
+                                     f_t& weight,
+                                     f_t& reltol,
+                                     f_t& abstol)
 {
   cursor_t line(p, (size_t)(end - p));
   try {
@@ -955,8 +954,8 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
         if (!parse_rows_line_fast(p, end, row_type, row_name)) {
           if (p == before) {
             // this may be a multiobj line. Attempt to parse it as such
-            int priority  = 0;
-            double weight = 0, reltol = 0, abstol = 0;
+            int priority = 0;
+            f_t weight = 0, reltol = 0, abstol = 0;
             if (row_type == 'N' &&
                 parse_rows_line_multiobj(p, end, row_name, priority, weight, reltol, abstol)) {
               assert(!row_name.empty());
@@ -1135,8 +1134,8 @@ static void parse_rows_section_serial_impl(parse_state_t<i_t, f_t>& state, const
     auto row_name = state.cursor.read_field();
     if (row_name.empty()) { state.cursor.error("empty row name found in ROWS"); }
     if (row_type == 'N' && !state.cursor.eol() && *state.cursor.ptr != '$') {
-      int priority  = 0;
-      double weight = 0, reltol = 0, abstol = 0;
+      int priority = 0;
+      f_t weight = 0, reltol = 0, abstol = 0;
       parse_multiobj_fields(state.cursor, priority, weight, reltol, abstol);
       if (state.multiobj_row_count.fetch_add(1, std::memory_order_relaxed) == 0)
         state.cursor.warn("Multi-objective rows are not supported yet");
@@ -1545,7 +1544,7 @@ static chunk_result_t parse_columns_chunk(const char* chunk_start,
       // frankly not a great workaround. should profile if this one step forward one step back
       // juggling hurts
       if (sign == -1.0) cursor.rewind(1);
-      value = expect_fp64_advance(cursor);
+      value = expect_fp64_advance<f_t>(cursor);
     }
     // usually EOL directly follows
     if (UNLIKELY(!cursor.eol())) { cursor.skip_ws(); }
@@ -1589,7 +1588,7 @@ static chunk_result_t parse_columns_chunk(const char* chunk_start,
         expect_eol(cursor);
         continue;
       }
-      double value2 = expect_fp64_advance(cursor);
+      double value2 = expect_fp64_advance<f_t>(cursor);
       cursor.skip_ws();
 
       if (row_name2.empty()) { cursor.error("empty row field in COLUMNS"); }
@@ -2149,16 +2148,16 @@ static void parse_rhs_line_no_rhs_field(parse_state_t<i_t, f_t>& state,
 
   const char* row_pair_start = cursor.ptr;
   size_t row_idx             = state.read_row_lookup(cursor);
-  auto value                 = expect_number_fast_pm_one(cursor);
-  apply_rhs(state, cursor, row_pair_start, row_idx, (f_t)value);
+  auto value                 = expect_number_fast_pm_one<f_t>(cursor);
+  apply_rhs(state, cursor, row_pair_start, row_idx, value);
 
   accept_comment(cursor);
   // Optional second entry
   if (!cursor.eol()) {
     const char* row_pair_start2 = cursor.ptr;
     size_t row_idx2             = state.read_row_lookup(cursor);
-    auto value2                 = expect_number_fast_pm_one(cursor);
-    apply_rhs(state, cursor, row_pair_start2, row_idx2, (f_t)value2);
+    auto value2                 = expect_number_fast_pm_one<f_t>(cursor);
+    apply_rhs(state, cursor, row_pair_start2, row_idx2, value2);
   }
   expect_eol(cursor);
 }
@@ -2184,7 +2183,7 @@ static void parse_rhs_section(parse_state_t<i_t, f_t>& state, cursor_t& cursor)
       parse_rhs_line_no_rhs_field(state, cursor, line_start);
       continue;
     }
-    double value;
+    f_t value;
     if (UNLIKELY(!try_number_fast_pm_one(cursor, value))) {
       parse_rhs_line_no_rhs_field(state, cursor, line_start);
       continue;
@@ -2200,11 +2199,11 @@ static void parse_rhs_section(parse_state_t<i_t, f_t>& state, cursor_t& cursor)
         parse_rhs_line_no_rhs_field(state, cursor, line_start);
         continue;
       }
-      auto value2 = expect_number_fast_pm_one(cursor);
-      apply_rhs(state, cursor, row_pair_start, row_idx, (f_t)value);
-      apply_rhs(state, cursor, row_pair_start2, row_idx2, (f_t)value2);
+      auto value2 = expect_number_fast_pm_one<f_t>(cursor);
+      apply_rhs(state, cursor, row_pair_start, row_idx, value);
+      apply_rhs(state, cursor, row_pair_start2, row_idx2, value2);
     } else {
-      apply_rhs(state, cursor, row_pair_start, row_idx, (f_t)value);
+      apply_rhs(state, cursor, row_pair_start, row_idx, value);
     }
     expect_eol(cursor);
   }
@@ -2456,7 +2455,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
           f_t value      = 0;
           bool has_value = false;
           if (!cursor.eol()) {
-            value     = (f_t)expect_number_fast_pm_one(cursor);
+            value     = expect_number_fast_pm_one<f_t>(cursor);
             has_value = true;
             accept_comment(cursor);
           }
@@ -2673,7 +2672,7 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
       f_t value      = 0;
       bool has_value = false;
       if (!cursor.eol()) {
-        value     = (f_t)expect_number(cursor);
+        value     = expect_number<f_t>(cursor);
         has_value = true;
         accept_comment(cursor);
       }
@@ -2805,7 +2804,7 @@ static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& curso
     if (UNLIKELY(row_name.empty() || row_name[0] == '$')) {
       cursor.error("missing row name in RANGES");
     }
-    auto value = (f_t)expect_number(cursor);
+    auto value = expect_number<f_t>(cursor);
     apply_range(row_name, value);
 
     accept_comment(cursor);
@@ -2816,7 +2815,7 @@ static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& curso
         expect_eol(cursor);
         continue;
       }
-      auto value2 = (f_t)expect_number(cursor);
+      auto value2 = expect_number<f_t>(cursor);
       apply_range(row_name2, value2);
     }
     expect_eol(cursor);
@@ -2974,7 +2973,7 @@ static void parse_quadratic_sections(parse_state_t<i_t, f_t>& state, cursor_t& c
     if (UNLIKELY(var2.empty() || var2[0] == '$')) {
       cursor.error("missing second variable name in quadratic section");
     }
-    f_t value = (f_t)expect_number(cursor);
+    f_t value = expect_number<f_t>(cursor);
     add_entry(var1, var2, value);
     accept_comment(cursor);
     expect_eol(cursor);
@@ -3384,7 +3383,6 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
                                                         const char* total_timer_name,
                                                         const char* producer_task_name)
 {
-  static_assert(std::same_as<f_t, double>);
   omp_max_active_levels_guard_t omp_active_levels(2);
 
   input_stream_view_t input = stream.view();
@@ -3691,8 +3689,12 @@ mps_data_model_t<i_t, f_t> parse_mps_fast_file(const std::string& path, FileRead
   __builtin_unreachable();
 }
 
+template mps_data_model_t<int, float> parse_mps_fast_file(const std::string& path,
+                                                          FileReadMethod read_method);
 template mps_data_model_t<int, double> parse_mps_fast_file(const std::string& path,
                                                            FileReadMethod read_method);
+template mps_data_model_t<int64_t, float> parse_mps_fast_file(const std::string& path,
+                                                              FileReadMethod read_method);
 template mps_data_model_t<int64_t, double> parse_mps_fast_file(const std::string& path,
                                                                FileReadMethod read_method);
 
@@ -3705,8 +3707,12 @@ mps_data_model_t<i_t, f_t> parse_mps_fast_buffer(std::vector<char> buffer, std::
     stream, "parse_mps_fast_buffer (total)", "task_memory_scan");
 }
 
+template mps_data_model_t<int, float> parse_mps_fast_buffer(std::vector<char> buffer,
+                                                            std::size_t input_size);
 template mps_data_model_t<int, double> parse_mps_fast_buffer(std::vector<char> buffer,
                                                              std::size_t input_size);
+template mps_data_model_t<int64_t, float> parse_mps_fast_buffer(std::vector<char> buffer,
+                                                                std::size_t input_size);
 template mps_data_model_t<int64_t, double> parse_mps_fast_buffer(std::vector<char> buffer,
                                                                  std::size_t input_size);
 

@@ -52,7 +52,11 @@ mps_data_model_t<i_t, f_t> read_mps_parallel(const std::string& mps_file_path)
   return detail::parse_mps_fast_file<i_t, f_t>(mps_file_path);
 }
 
+template CUOPT_EXPORT mps_data_model_t<int, float> read_mps_parallel(
+  const std::string& mps_file_path);
 template CUOPT_EXPORT mps_data_model_t<int, double> read_mps_parallel(
+  const std::string& mps_file_path);
+template CUOPT_EXPORT mps_data_model_t<int64_t, float> read_mps_parallel(
   const std::string& mps_file_path);
 template CUOPT_EXPORT mps_data_model_t<int64_t, double> read_mps_parallel(
   const std::string& mps_file_path);
