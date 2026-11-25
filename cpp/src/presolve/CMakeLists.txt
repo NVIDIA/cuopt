@@ -22,6 +22,7 @@ set(PRESOLVE_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/conditional_bound_strengthening.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/multi_probe.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/probing_cache.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/probing_implied_bound.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/trivial_presolve.cu
 )
 

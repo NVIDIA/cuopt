@@ -23,11 +23,15 @@ class worker_pool_t {
             const csr_matrix_t<i_t, f_t>& Arow,
             const std::vector<simplex::variable_type_t>& var_type,
             mip_symmetry_t<i_t, f_t>* symmetry,
+            const probing_implied_bound_t<i_t, f_t>* implied_bounds,
+            const clique_table_t<i_t, f_t>* clique_table,
             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
             pseudo_costs_t<i_t, f_t>& pc,
             const std::vector<f_t>& root_solution,
             const std::vector<f_t>& root_edge_norm,
             const std::vector<i_t>& new_slacks,
+            f_t work_estimate,
+            branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr,
             splitmix64_t& seed_gen)
   {
     assert(!is_initialized_);
@@ -46,11 +50,15 @@ class worker_pool_t {
                                                  root_solution,
                                                  root_edge_norm,
                                                  new_slacks,
+                                                 branch_and_bound_ptr,
                                                  seed_gen);
       idle_workers_.push_back(i);
       // Propagate the (possibly null) symmetry pointer; workers lazily build
       // their orbital_fixing/lexical_reduction state via ensure_orbital_fixing().
-      workers_[i]->symmetry_ptr = symmetry;
+      workers_[i]->symmetry_ptr                      = symmetry;
+      workers_[i]->domain_propagation.implied_bounds = implied_bounds;
+      workers_[i]->domain_propagation.clique_table   = clique_table;
+      workers_[i]->work_estimate                     = work_estimate;
     }
 
     is_initialized_.store(true, std::memory_order::release);
@@ -75,7 +83,7 @@ class worker_pool_t {
   void return_worker_to_pool(WorkerType* worker)
   {
     assert(worker != nullptr);
-    worker->set_inactive();
+    worker->cleanup();
     assert(!worker->is_active.load(std::memory_order::relaxed));
 
     if (!is_initialized()) return;
@@ -119,8 +127,5 @@ class worker_pool_t {
 
 template <typename i_t, typename f_t>
 using bfs_worker_pool_t = worker_pool_t<bfs_worker_t<i_t, f_t>>;
-
-template <typename i_t, typename f_t>
-using diving_worker_pool_t = worker_pool_t<diving_worker_t<i_t, f_t>>;
 
 }  // namespace cuopt::mathematical_optimization::mip

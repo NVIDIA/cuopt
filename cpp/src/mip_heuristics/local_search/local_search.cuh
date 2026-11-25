@@ -9,9 +9,9 @@
 
 #include <mip_heuristics/diversity/population.cuh>
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
-#include <mip_heuristics/lns/population_feed.cuh>
 #include <mip_heuristics/local_search/feasibility_pump/feasibility_pump.cuh>
 #include <mip_heuristics/local_search/line_segment_search/line_segment_search.cuh>
+#include <mip_heuristics/ruin-repair-lns/population_feed.cuh>
 #include <mip_heuristics/solver.cuh>
 #include <utilities/omp_helpers.hpp>
 #include <utilities/timer.hpp>
