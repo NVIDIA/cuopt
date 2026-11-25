@@ -412,8 +412,7 @@ dependencies:
       - output_types: [requirements, constraints, pyproject]
         packages:
           - *rapids_build_backend
-          - setuptools>=77.0.0
-          - wheel
+          - &setuptools setuptools>=77.0.0
   build_common:
     common:
       - output_types: [conda, requirements, constraints, pyproject]
@@ -478,8 +477,7 @@ dependencies:
     common:
       - output_types: [requirements, constraints, pyproject]
         packages:
-          - wheel
-          - setuptools>=77.0.0
+          - *setuptools
   run_common:
     common:
       - output_types: [conda, requirements, constraints, pyproject]
