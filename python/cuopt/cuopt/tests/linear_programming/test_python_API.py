@@ -200,10 +200,10 @@ def test_variable_type_normalized_from_mps(tmp_path):
     prob.setObjective(x + y, sense=MAXIMIZE)
 
     path = str(tmp_path / "mip.mps")
-    prob.writeMPS(path)
+    prob.write(path)
 
     loaded = Problem.read(path)
-    # writeMPS emits integer columns inside INTORG/INTEND markers, so the
+    # The MPS writer emits integer columns inside INTORG/INTEND markers, so the
     # column order is not preserved; key by name. `is` rather than `==`
     # because VType subclasses str: "I" == VType.INTEGER.
     types = {
@@ -222,7 +222,7 @@ def test_write_mps_with_empty_constraint_row(tmp_path):
     problem.setObjective(x)
 
     path = tmp_path / "empty-row.mps"
-    problem.writeMPS(str(path))
+    problem.write(str(path))
 
     assert problem.model.get_constraint_matrix_offsets().tolist() == [0, 0]
     assert " L  empty\n" in path.read_text()
@@ -394,7 +394,7 @@ def test_read_write_mps_and_relaxation():
     m.addConstraint(x1 + x2 + x3 + x4 + x5 >= 5, name="c5")
 
     # Write MPS
-    m.writeMPS("small_mip.mps")
+    m.write("small_mip.mps")
 
     # Read MPS and solve
     prob = Problem.readMPS("small_mip.mps")

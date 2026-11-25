@@ -9,6 +9,7 @@
 #include <routing/utilities/check_input.hpp>
 
 #include <thrust/count.h>
+#include <thrust/extrema.h>
 #include <thrust/fill.h>
 #include <thrust/find.h>
 #include <thrust/iterator/discard_iterator.h>

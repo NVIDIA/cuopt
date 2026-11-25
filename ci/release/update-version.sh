@@ -145,8 +145,8 @@ done
 
 sed_runner 's|<version>[0-9.]*-SNAPSHOT</version>|<version>'${NEXT_FULL_JAVA_TAG}'</version>|' docs/cuopt/source/cuopt-java/quick-start.rst
 
-# Update README.md version badge
-sed_runner 's/badge\/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/badge\/version-'${NEXT_FULL_TAG}'-blue/g' README.md
+# Update README.md dev version badge
+sed_runner 's/badge\/dev-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/badge\/dev-'${NEXT_FULL_TAG}'-blue/g' README.md
 
 # Update nightly
 sed_runner 's/'"cuopt_version: \"[0-9][0-9].[0-9][0-9]\""'/'"cuopt_version: \"${NEXT_SHORT_TAG}\""'/g' .github/workflows/nightly.yaml

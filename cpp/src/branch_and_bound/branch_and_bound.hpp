@@ -29,13 +29,14 @@
 #include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
 #include <utilities/producer_sync.hpp>
+#include <utilities/splitmix64.hpp>
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/root_heuristics.hpp>
+#include <presolve/third_party_presolve.hpp>
 
 #include <omp.h>
 
@@ -45,6 +46,7 @@
 #include <limits>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -113,6 +115,11 @@ class branch_and_bound_t {
   }
 
   // Set the root solution found by PDLP
+  // A valid lower bound on the root LP (solver space) from a root solver still running (PDLP dual
+  // iterate, dual simplex). Keeps the best one; reported while no node bound exists yet. PDLP
+  // improvements are logged; dual simplex shows its progress in its own log.
+  void set_root_lower_bound(f_t lower_bound, bool from_pdlp);
+
   void set_root_relaxation_solution(const std::vector<f_t>& primal,
                                     const std::vector<f_t>& dual,
                                     const std::vector<f_t>& reduced_costs,
@@ -135,7 +142,7 @@ class branch_and_bound_t {
   }
 
   // Set a solution based on the user problem during the course of the solve
-  bool set_solution_from_heuristics(const std::vector<f_t>& solution, heuristics_origin_t origin);
+  bool set_solution_from_heuristics(const std::vector<f_t>& solution, char symbol);
 
   // Apply a solution found by a CPU FJ worker.
   void set_solution_from_cpu_fj(f_t obj, const std::vector<f_t>& assignment, double work_units);
@@ -157,7 +164,7 @@ class branch_and_bound_t {
   void set_initial_pseudocost(const pseudo_costs_t<i_t, f_t>& parent_pc,
                               const std::vector<i_t>& reduced_to_original);
 
-  f_t get_upper_bound() const { return upper_bound_.load(); }
+  f_t get_upper_bound() const { return upper_bound_.load(std::memory_order::relaxed); }
   bool has_solver_space_incumbent() const { return incumbent_.has_incumbent; }
 
   // Repair a low-quality solution from the heuristics.
@@ -251,11 +258,14 @@ class branch_and_bound_t {
   std::atomic<bool> root_crossover_solution_set_{false};
   omp_atomic_t<f_t> root_lp_current_lower_bound_;
   omp_atomic_t<bool> solving_root_relaxation_{false};
+  std::mutex root_lower_bound_mutex_;
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
   std::atomic<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
   bool has_initial_pseudocost_{false};
+
+  splitmix64_t seed_generator_;
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
@@ -293,7 +303,7 @@ class branch_and_bound_t {
   std::function<void(f_t)> user_bound_callback_;
 
   void print_table_header();
-  void report_heuristic(f_t obj, heuristics_origin_t origin);
+  void report_heuristic(f_t obj, char symbol);
   void report(const simplex::lp_problem_t<i_t, f_t>& lp,
               char symbol,
               f_t obj,
@@ -360,6 +370,9 @@ class branch_and_bound_t {
                        mip_node_t<i_t, f_t>* node_ptr,
                        f_t leaf_obj);
 
+  f_t compute_node_cutoff(const simplex::lp_problem_t<i_t, f_t>& lp, f_t upper_bound) const;
+  bool accept_new_incumbent(f_t obj);
+
   // Launch a new best-first worker from a given bfs worker.
   void launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker);
 
@@ -384,6 +397,7 @@ class branch_and_bound_t {
   void set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 const std::vector<f_t>& solution,
                                 const third_party_presolve_t<i_t, f_t>& presolver,
+                                search_strategy_t type,
                                 submip_stats_t& submip_stats,
                                 f_t fixrate,
                                 std::string_view log_prefix);

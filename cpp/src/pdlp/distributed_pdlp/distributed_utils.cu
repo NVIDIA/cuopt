@@ -7,24 +7,27 @@
 
 #include <cuopt/error.hpp>
 
+#include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <unordered_set>
 #include <utility>
 
 namespace cuopt::mathematical_optimization::pdlp {
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename index_t, typename f_t>
 std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
-  const std::vector<i_t>& parts,
-  const std::vector<i_t>& A_row_offsets,
-  const std::vector<i_t>& A_col_indices,
+  const std::vector<int>& parts,
+  const std::vector<index_t>& A_row_offsets,
+  const std::vector<index_t>& A_col_indices,
   const std::vector<f_t>& A_values,
-  const std::vector<i_t>& A_t_row_offsets,
-  const std::vector<i_t>& A_t_col_indices,
+  const std::vector<index_t>& A_t_row_offsets,
+  const std::vector<index_t>& A_t_col_indices,
   const std::vector<f_t>& A_t_values,
-  i_t nb_parts,
+  int nb_parts,
   i_t nb_cstr,
   i_t nb_vars,
-  i_t nnz)
+  index_t nnz)
 {
   std::vector<rank_data_t<i_t, f_t>> rank_data(nb_parts, rank_data_t<i_t, f_t>(nb_parts));
   cuopt_expects(static_cast<i_t>(parts.size()) == nb_cstr + nb_vars,
@@ -37,8 +40,8 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
 
   std::vector<i_t> owned_cstr_counts(nb_parts, 0);
   std::vector<i_t> owned_var_counts(nb_parts, 0);
-  std::vector<i_t> owned_A_nnz(nb_parts, 0);
-  std::vector<i_t> owned_A_t_nnz(nb_parts, 0);
+  std::vector<index_t> owned_A_nnz(nb_parts, 0);
+  std::vector<index_t> owned_A_t_nnz(nb_parts, 0);
 
   // Pre-count ownership and nnz to reserve exact capacities and avoid
   // repeated growth/reallocation across huge vectors.
@@ -52,6 +55,13 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
     ++owned_var_counts[owner];
     owned_A_t_nnz[owner] += (A_t_row_offsets[j + 1] - A_t_row_offsets[j]);
   }
+
+  constexpr index_t max_i_t = static_cast<index_t>(std::numeric_limits<i_t>::max());
+  const auto overflows      = [max_i_t](index_t nnz) { return nnz > max_i_t; };
+  cuopt_expects(std::none_of(owned_A_nnz.begin(), owned_A_nnz.end(), overflows) &&
+                  std::none_of(owned_A_t_nnz.begin(), owned_A_t_nnz.end(), overflows),
+                error_type_t::ValidationError,
+                "A shard holds too many nonzeros for a 32-bit local index; increase num_gpus");
   // Reserve exact capacities
   for (i_t rank = 0; rank < nb_parts; ++rank) {
     rank_data[rank].owned_cstr_indices.reserve(owned_cstr_counts[rank]);
@@ -86,8 +96,8 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
     // For each owned constraint, add associated matrix row to local A
     // Keep the same indices here but re-order later
     for (auto owned_cstr : rd.owned_cstr_indices) {
-      i_t cstr_len  = A_row_offsets[owned_cstr + 1] - A_row_offsets[owned_cstr];
-      i_t row_start = A_row_offsets[owned_cstr];
+      i_t cstr_len      = A_row_offsets[owned_cstr + 1] - A_row_offsets[owned_cstr];
+      index_t row_start = A_row_offsets[owned_cstr];
       local_A_col_indices.insert(local_A_col_indices.end(),
                                  A_col_indices.begin() + row_start,
                                  A_col_indices.begin() + row_start + cstr_len);
@@ -136,8 +146,8 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
     local_A_t_row_offsets.push_back(local_A_t_nnz);
 
     for (auto owned_var : rd.owned_var_indices) {
-      i_t var_len   = A_t_row_offsets[owned_var + 1] - A_t_row_offsets[owned_var];
-      i_t row_start = A_t_row_offsets[owned_var];
+      i_t var_len       = A_t_row_offsets[owned_var + 1] - A_t_row_offsets[owned_var];
+      index_t row_start = A_t_row_offsets[owned_var];
       local_A_t_col_indices.insert(local_A_t_col_indices.end(),
                                    A_t_col_indices.begin() + row_start,
                                    A_t_col_indices.begin() + row_start + var_len);
@@ -247,7 +257,7 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
   return rank_data;
 }
 
-template std::vector<rank_data_t<int, double>> create_rank_data_from_parts<int, double>(
+template std::vector<rank_data_t<int, double>> create_rank_data_from_parts<int, int, double>(
   const std::vector<int>& parts,
   const std::vector<int>& A_row_offsets,
   const std::vector<int>& A_col_indices,
@@ -259,5 +269,18 @@ template std::vector<rank_data_t<int, double>> create_rank_data_from_parts<int, 
   int nb_cstr,
   int nb_vars,
   int nnz);
+
+template std::vector<rank_data_t<int, double>> create_rank_data_from_parts<int, int64_t, double>(
+  const std::vector<int>& parts,
+  const std::vector<int64_t>& A_row_offsets,
+  const std::vector<int64_t>& A_col_indices,
+  const std::vector<double>& A_values,
+  const std::vector<int64_t>& A_t_row_offsets,
+  const std::vector<int64_t>& A_t_col_indices,
+  const std::vector<double>& A_t_values,
+  int nb_parts,
+  int nb_cstr,
+  int nb_vars,
+  int64_t nnz);
 
 }  // namespace cuopt::mathematical_optimization::pdlp

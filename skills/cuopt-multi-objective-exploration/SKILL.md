@@ -3,7 +3,6 @@ name: cuopt-multi-objective-exploration
 version: "26.12.00"
 description: Trace, complete, and interpret the Pareto frontier across competing objectives using repeated single-objective cuOpt solves (weighted-sum and ε-constraint).
 license: Apache-2.0
-origin: cuopt-skill-evolution
 metadata:
   author: NVIDIA cuOpt Team
   tags:
@@ -21,7 +20,7 @@ metadata:
 
 cuOpt optimizes **one** objective per solve. Many real problems have several objectives that pull against each other — cost vs. service level, return vs. risk, makespan vs. overtime, distance vs. vehicle count. A single solve answers "what's optimal *for one particular weighting*," but it hides the tradeoff the user actually needs to see.
 
-This skill turns a sequence of single-objective cuOpt solves into a **Pareto frontier** — the set of solutions where you can't improve one objective without giving up another — and gives the discipline to read it. It adds no solver features; it orchestrates the LP / MILP / QP solves already covered by the formulation and API skills.
+This skill turns a sequence of single-objective cuOpt solves into a **Pareto frontier** — the set of solutions where you can't improve one objective without giving up another — and gives the discipline to read it. It adds no solver features; it orchestrates the LP / MILP / QP solves covered in the cuOpt documentation.
 
 ## When this applies
 
@@ -41,11 +40,11 @@ A solution **A dominates** B when A is at least as good on every objective and s
 
 Do not collapse a multi-objective problem to a single weighted number and report its optimum as "the answer" — that silently makes the tradeoff decision *for* the user. Trace the frontier and let them choose.
 
-Objectives and constraints are interchangeable. A requirement currently treated as fixed — a coverage floor, a fairness cap, a budget — is often a latent objective: its level was assumed, not given. Promoting such a constraint to a parametric ε-constraint and sweeping it reveals a tradeoff you'd otherwise hide, so read a single-objective model's hard constraints as candidate objectives, not just limits — but only when the level was an assumption. A genuinely fixed, non-negotiable limit (a hard budget cap, a regulatory minimum) stays a constraint; don't manufacture a tradeoff that isn't there. Express any promoted quantity linearly so it can serve as an ε-constraint (see `cuopt-numerical-optimization-formulation`).
+Objectives and constraints are interchangeable. A requirement currently treated as fixed — a coverage floor, a fairness cap, a budget — is often a latent objective: its level was assumed, not given. Promoting such a constraint to a parametric ε-constraint and sweeping it reveals a tradeoff you'd otherwise hide, so read a single-objective model's hard constraints as candidate objectives, not just limits — but only when the level was an assumption. A genuinely fixed, non-negotiable limit (a hard budget cap, a regulatory minimum) stays a constraint; don't manufacture a tradeoff that isn't there. Express any promoted quantity linearly so it can serve as an ε-constraint (see the [cuOpt user guide](https://docs.nvidia.com/cuopt/user-guide/latest/)).
 
 ## Step 1 — define the objectives
 
-An informative frontier needs objectives that genuinely conflict: if they don't pull against each other, it collapses to a single point with nothing to trade off. And each objective has to be formulated correctly, since a wrong form, sense, or scale distorts the tradeoff and shifts where the knee falls. Formulate each one with `cuopt-numerical-optimization-formulation` before sweeping.
+An informative frontier needs objectives that genuinely conflict: if they don't pull against each other, it collapses to a single point with nothing to trade off. And each objective has to be formulated correctly, since a wrong form, sense, or scale distorts the tradeoff and shifts where the knee falls. Formulate each one correctly before sweeping; see the [cuOpt user guide](https://docs.nvidia.com/cuopt/user-guide/latest/).
 
 ## Step 2 — build a payoff table (anchor each objective)
 
@@ -116,8 +115,8 @@ sort the survivors to form the frontier
 
 Practical notes:
 
-- **Warm-start LP sweeps.** For an LP frontier, carry the previous solve's PDLP warmstart data into the next to cut solve time. Per cuOpt this is **LP-only**: a MILP solve doesn't take a PDLP warmstart (you can optionally seed a MIP start instead). See `cuopt-numerical-optimization-api` for the calls.
-- **Cap each MILP solve.** Set a per-solve time limit on MILP sweeps (see `cuopt-numerical-optimization-api`) — a sweep is many solves, and branch-and-bound can over-spend certifying optimality past a tiny gap, while cuOpt sets no limit by default and won't warn. Report the points as optimal *to the gap you set*, not certified optimal.
+- **Warm-start LP sweeps.** For an LP frontier, carry the previous solve's PDLP warmstart data into the next to cut solve time. Per cuOpt this is **LP-only**: a MILP solve doesn't take a PDLP warmstart (you can optionally seed a MIP start instead). See the [Python API docs](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/) for the calls.
+- **Cap each MILP solve.** Set a per-solve time limit on MILP sweeps (see the [MILP settings docs](https://docs.nvidia.com/cuopt/user-guide/latest/mip-settings.html)) — a sweep is many solves, and branch-and-bound can over-spend certifying optimality past a tiny gap, while cuOpt sets no limit by default and won't warn. Report the points as optimal *to the gap you set*, not certified optimal.
 - **Filter dominated points.** A correct sweep can still emit dominated points (especially weighted-sum near the hull, or MILP). Drop them; they are not part of the frontier.
 - **Resolution is a budget.** Curve fidelity trades against solve count. Start coarse to see the shape, then refine the grid only where the curve bends.
 - **Spend the budget where the slope changes (LP/QP).** Because the ε-constraint dual is the frontier's local slope, compare it across solved points: where it barely changes, the curve is nearly straight — interpolate rather than add solves; where it jumps by more than the solve tolerance, the frontier bends between those points — refine there (smaller differences are solver noise, not curvature). This concentrates solves where the curve actually bends instead of spreading them over a uniform grid. On MILP, judge where to refine from the gaps between primal objective values instead.
@@ -163,7 +162,7 @@ State the counts with the frontier ("14 points, 11 exact, 3 approximate near the
 
 ## Interfaces
 
-This skill is solver- and interface-agnostic. The per-solve mechanics — building the objective, adding the ε constraints, passing a warm start, reading status — live in the API skills:
+This skill is solver- and interface-agnostic. The per-solve mechanics — building the objective, adding the ε constraints, passing a warm start, reading status — are in the cuOpt documentation:
 
-- `cuopt-numerical-optimization-api` — LP, MILP, QP solves (Python, C, CLI).
-- `cuopt-routing-api-python` — the same frontier workflow applies to routing tradeoffs (distance vs. vehicles vs. time).
+- [cuOpt Python API](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/) — LP, MILP, QP solves.
+- [cuOpt routing docs](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/routing/) — the same frontier workflow applies to routing tradeoffs (distance vs. vehicles vs. time).

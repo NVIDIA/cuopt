@@ -1058,4 +1058,46 @@ End
   EXPECT_NEAR(solution.get_objective_value(), -0.5, 1e-4);
 }
 
+// Test: verify that the solver returns a solution of the correct size when hitting time or
+// iteration limits.
+TEST(general_quadratic, socp_limits_return_model_sized_primal)
+{
+  raft::handle_t handle{};
+  auto problem = io::read_lp_from_string<i_t, f_t>(R"LP(
+Minimize
+  - x + impact + [ 2 x ^2 ] / 2
+Subject To
+  abs_hi: x - absolute <= 0.5
+  abs_lo: x + absolute >= 0.5
+  q_root: - absolute + [ root ^2 ] <= 0
+  q_impact: [ absolute ^2 - impact * root ] <= 0
+Bounds
+  0 <= x <= 1
+End
+)LP");
+  const i_t n  = problem.get_n_variables();
+
+  auto expect_model_sized = [&](pdlp_solver_settings_t<i_t, f_t> settings,
+                                pdlp_termination_status_t expected_status) {
+    settings.method = method_t::Barrier;
+    auto solution   = solve_lp(&handle, problem, settings);
+    EXPECT_EQ(solution.get_termination_status(), expected_status);
+    EXPECT_EQ(solution.get_primal_solution().size(), n);
+    EXPECT_EQ(solution.get_reduced_cost().size(), n);
+  };
+
+  {
+    SCOPED_TRACE("time limit");
+    pdlp_solver_settings_t<i_t, f_t> settings;
+    settings.time_limit = 0.0;
+    expect_model_sized(settings, pdlp_termination_status_t::TimeLimit);
+  }
+  {
+    SCOPED_TRACE("iteration limit");
+    pdlp_solver_settings_t<i_t, f_t> settings;
+    settings.iteration_limit = 3;
+    expect_model_sized(settings, pdlp_termination_status_t::IterationLimit);
+  }
+}
+
 }  // namespace cuopt::mathematical_optimization::barrier::test

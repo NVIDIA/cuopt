@@ -1,0 +1,2368 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * @file grpc_mathopt_integration_test.cpp
+ * @brief Integration tests for gRPC client-server communication
+ *
+ * Tests are organized into shared-server fixtures to minimize server startup overhead.
+ * Total target runtime: ~3 minutes.
+ *
+ * Fixture layout:
+ *   NoServerTests          - Tests that don't need a server
+ *   DefaultServerTests     - Shared server with default config (~22 tests)
+ *   ChunkedUploadTests     - Shared server with --max-message-mb 256 (4 tests)
+ *   PathSelectionTests     - Shared server with --max-message-bytes 12288 --verbose (4 tests)
+ *   ErrorRecoveryTests     - Per-test server lifecycle (GPU health + respawn timeout)
+ *   TlsServerTests         - Shared TLS server (2 tests)
+ *   MtlsServerTests        - Shared mTLS server (2 tests)
+ *
+ * Environment variables:
+ *   CUOPT_GRPC_SERVER_PATH - Path to cuopt_grpc_server binary
+ *   CUOPT_TEST_PORT_BASE   - Base port for test servers (default: 19000)
+ *   RAPIDS_DATASET_ROOT_DIR - Path to test datasets
+ */
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include <atomic>
+#include <cerrno>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <mutex>
+#include <sstream>
+
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
+#include "grpc_client.hpp"
+
+#include "utilities/grpc/grpc_integration_fixture.hpp"
+#include "utilities/grpc/grpc_test_log_capture.hpp"
+
+#include <cuopt_remote_service.grpc.pb.h>
+#include <grpcpp/generic/generic_stub.h>
+#include <grpcpp/grpcpp.h>
+#include <grpcpp/support/byte_buffer.h>
+
+#include "grpc_service_mapper.hpp"
+
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/prctl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <chrono>
+#include <cstdlib>
+#include <future>
+#include <iostream>
+#include <random>
+#include <string>
+#include <thread>
+
+using namespace cuopt::mathematical_optimization;
+using cuopt::mathematical_optimization::testing::GrpcTestLogCapture;
+using namespace grpc_integration_fixture;
+
+namespace {
+
+// =============================================================================
+// No-Server Tests
+// =============================================================================
+
+class NoServerTests : public GrpcIntegrationTestBase {
+ protected:
+  void SetUp() override { port_ = get_test_port(); }
+};
+
+TEST_F(NoServerTests, ConnectToNonexistentServer)
+{
+  grpc_client_config_t config;
+  config.server_address = "localhost:" + std::to_string(port_);
+
+  GrpcTestLogCapture log_capture;
+  config.debug_log_callback = log_capture.client_callback();
+
+  grpc_client_t client(config);
+  EXPECT_FALSE(client.connect());
+  EXPECT_FALSE(client.get_last_error().empty());
+
+  EXPECT_TRUE(log_capture.client_log_contains("Connection failed"))
+    << "Expected failure log. Captured logs:\n"
+    << log_capture.get_client_logs();
+}
+
+TEST_F(NoServerTests, LogCaptureInfrastructure)
+{
+  GrpcTestLogCapture log_capture;
+
+  // -- client_log_count --
+  log_capture.add_client_log("Test message 1");
+  log_capture.add_client_log("Test message 2");
+  log_capture.add_client_log("Another test");
+  log_capture.add_client_log("Test message 3");
+
+  EXPECT_EQ(log_capture.client_log_count("Test message"), 3);
+  EXPECT_EQ(log_capture.client_log_count("Another"), 1);
+  EXPECT_EQ(log_capture.client_log_count("Not found"), 0);
+
+  // -- mark_test_start isolation with server log file --
+  std::string tmp_log = "/tmp/cuopt_test_log_infra_" + std::to_string(getpid()) + ".log";
+  {
+    std::ofstream f(tmp_log);
+    f << "[Phase1] Before mark\n";
+    f.flush();
+  }
+
+  log_capture.set_server_log_path(tmp_log);
+  log_capture.mark_test_start();
+
+  // Logs written before the mark should be invisible
+  EXPECT_FALSE(log_capture.server_log_contains("[Phase1]"))
+    << "Should NOT see logs from before mark_test_start()";
+
+  // Append new content after the mark
+  {
+    std::ofstream f(tmp_log, std::ios::app);
+    f << "[Phase2] After mark\n";
+    f.flush();
+  }
+
+  EXPECT_TRUE(log_capture.server_log_contains("[Phase2]"))
+    << "Should see logs from after mark_test_start()";
+
+  // get_all_server_logs bypasses the mark
+  std::string all = log_capture.get_all_server_logs();
+  EXPECT_TRUE(all.find("[Phase1]") != std::string::npos);
+  EXPECT_TRUE(all.find("[Phase2]") != std::string::npos);
+
+  // -- wait_for_server_log (content already present -> immediate return) --
+  EXPECT_TRUE(log_capture.wait_for_server_log("[Phase2]", 500));
+  EXPECT_FALSE(log_capture.wait_for_server_log("never_appears", 200));
+
+  // Clean up
+  std::filesystem::remove(tmp_log);
+}
+
+// =============================================================================
+// Default Server Tests (shared server, default config)
+// =============================================================================
+
+class DefaultServerTests : public GrpcIntegrationTestBase {
+ protected:
+  static void SetUpTestSuite()
+  {
+    s_port_   = get_test_port();
+    s_server_ = std::make_unique<ServerProcess>();
+    ASSERT_TRUE(s_server_->start(s_port_, {}))
+      << "Failed to start shared default server on port " << s_port_;
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
+    s_server_.reset();
+  }
+
+  void SetUp() override
+  {
+    ASSERT_NE(s_server_, nullptr) << "Shared server not running";
+    port_ = s_port_;
+  }
+
+  std::string server_log_path() const { return s_server_->log_path(); }
+
+  static std::unique_ptr<ServerProcess> s_server_;
+  static int s_port_;
+};
+
+std::unique_ptr<ServerProcess> DefaultServerTests::s_server_;
+int DefaultServerTests::s_port_ = 0;
+
+// -- Connectivity --
+
+TEST_F(DefaultServerTests, ServerAcceptsConnections)
+{
+  ASSERT_TRUE(s_server_->is_running());
+
+  GrpcTestLogCapture log_capture;
+  grpc_client_config_t config;
+  config.debug_log_callback = log_capture.client_callback();
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr) << "Failed to connect to server";
+  EXPECT_TRUE(client->is_connected());
+
+  EXPECT_TRUE(log_capture.client_log_contains("Connecting to"))
+    << "Expected connection log. Logs:\n"
+    << log_capture.get_client_logs();
+  EXPECT_TRUE(log_capture.client_log_contains("Connected successfully"))
+    << "Expected success log. Logs:\n"
+    << log_capture.get_client_logs();
+}
+
+// Kubelet grpc probes call grpc.health.v1.Health/Check with an empty service
+// name. The request has to be a real empty buffer: a default ByteBuffer is
+// null, and the health service rejects that as "could not parse request".
+// HealthCheckResponse{status: SERVING} is field 1, varint 1.
+TEST_F(DefaultServerTests, StandardHealthCheckServing)
+{
+  auto channel =
+    grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+  grpc::GenericStub stub(channel);
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  grpc::Slice empty_request;
+  grpc::ByteBuffer request(&empty_request, 1);
+  grpc::ByteBuffer response;
+  grpc::Status status;
+  grpc::CompletionQueue cq;
+  auto call = stub.PrepareUnaryCall(&ctx, "/grpc.health.v1.Health/Check", request, &cq);
+  ASSERT_NE(call, nullptr);
+  call->StartCall();
+  call->Finish(&response, &status, reinterpret_cast<void*>(1));
+  void* tag = nullptr;
+  bool ok   = false;
+  ASSERT_TRUE(cq.Next(&tag, &ok));
+  EXPECT_TRUE(ok);
+  EXPECT_EQ(tag, reinterpret_cast<void*>(1));
+  EXPECT_TRUE(status.ok()) << status.error_code() << " " << status.error_message();
+
+  std::vector<grpc::Slice> slices;
+  ASSERT_TRUE(response.Dump(&slices).ok());
+  std::string payload;
+  for (const auto& slice : slices) {
+    payload.append(reinterpret_cast<const char*>(slice.begin()), slice.size());
+  }
+  EXPECT_EQ(payload, std::string("\x08\x01", 2));
+}
+
+// -- Status / Cancel / Delete on nonexistent jobs --
+
+TEST_F(DefaultServerTests, CheckStatusNotFound)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  auto status = client->check_status("nonexistent-job-id");
+  EXPECT_TRUE(status.success);
+  EXPECT_EQ(status.status, job_status_t::NOT_FOUND);
+}
+
+TEST_F(DefaultServerTests, CancelNonexistentJob)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+  auto result = client->cancel_job("nonexistent-job-id");
+  EXPECT_EQ(result.job_status, job_status_t::NOT_FOUND);
+}
+
+TEST_F(DefaultServerTests, DeleteNonexistentJob)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+  bool deleted = client->delete_job("nonexistent-job-id");
+  EXPECT_FALSE(deleted);
+  EXPECT_FALSE(client->get_last_error().empty());
+}
+
+TEST_F(DefaultServerTests, StreamLogsNotFound)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  bool callback_called = false;
+  bool result =
+    client->stream_logs("nonexistent-job-id", 0, [&callback_called](const std::string&, bool) {
+      callback_called = true;
+      return true;
+    });
+
+  EXPECT_FALSE(callback_called);
+  EXPECT_FALSE(result);
+}
+
+TEST_F(DefaultServerTests, GetResultNonexistentJob)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+  auto result = client->get_lp_result<int32_t, double>("nonexistent-job-12345");
+  EXPECT_FALSE(result.success);
+}
+
+// -- LP Solves --
+
+TEST_F(DefaultServerTests, SolveLPPolling)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto submit_result = client->submit_lp(problem, settings);
+  ASSERT_TRUE(submit_result.success) << submit_result.error_message;
+  EXPECT_FALSE(submit_result.job_id.empty());
+
+  job_status_t final_status = job_status_t::QUEUED;
+  for (int i = 0; i < 60; ++i) {
+    auto status = client->check_status(submit_result.job_id);
+    ASSERT_TRUE(status.success) << status.error_message;
+    final_status = status.status;
+    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
+
+  EXPECT_EQ(final_status, job_status_t::COMPLETED)
+    << "Status: " << job_status_to_string(final_status);
+
+  auto result = client->get_lp_result<int32_t, double>(submit_result.job_id);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+}
+
+TEST_F(DefaultServerTests, SolveLPWaitRPC)
+{
+  grpc_client_config_t config;
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+}
+
+TEST_F(DefaultServerTests, SolveInfeasibleLP)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  cpu_optimization_problem_t<int32_t, double> problem;
+  std::vector<double> var_lb   = {1.0};
+  std::vector<double> var_ub   = {0.0};
+  std::vector<double> obj      = {1.0};
+  std::vector<int32_t> offsets = {0};
+
+  problem.set_variable_lower_bounds(var_lb.data(), 1);
+  problem.set_variable_upper_bounds(var_ub.data(), 1);
+  problem.set_objective_coefficients(obj.data(), 1);
+  problem.set_maximize(false);
+  problem.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, offsets.data(), 1);
+  problem.set_constraint_lower_bounds(nullptr, 0);
+  problem.set_constraint_upper_bounds(nullptr, 0);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_lp(problem, settings);
+  ASSERT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  auto status = result.solution->get_termination_status();
+  EXPECT_NE(status, pdlp_termination_status_t::Optimal)
+    << "Expected non-optimal termination for infeasible problem";
+}
+
+// A bad parameter map fails that job. The worker then completes a normal job.
+TEST_F(DefaultServerTests, BadParameterFailsJobAndWorkerContinues)
+{
+  cpu_optimization_problem_t<int32_t, double> problem;
+  std::vector<double> var_lb   = {0.0};
+  std::vector<double> var_ub   = {1.0};
+  std::vector<double> obj      = {1.0};
+  std::vector<int32_t> offsets = {0};
+  problem.set_variable_lower_bounds(var_lb.data(), 1);
+  problem.set_variable_upper_bounds(var_ub.data(), 1);
+  problem.set_objective_coefficients(obj.data(), 1);
+  problem.set_maximize(false);
+  problem.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, offsets.data(), 1);
+  problem.set_constraint_lower_bounds(nullptr, 0);
+  problem.set_constraint_upper_bounds(nullptr, 0);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto request = build_lp_submit_request(problem, settings);
+  (*request.mutable_lp_request()->mutable_settings()->mutable_parameters())["not_a_parameter"] =
+    "1";
+
+  auto channel =
+    grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+  auto stub = cuopt::remote::CuOptRemoteService::NewStub(channel);
+  cuopt::remote::SubmitJobResponse response;
+  {
+    grpc::ClientContext context;
+    auto rpc = stub->SubmitJob(&context, request, &response);
+    ASSERT_TRUE(rpc.ok()) << rpc.error_message();
+  }
+  ASSERT_FALSE(response.job_id().empty());
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  job_status_t final_status = job_status_t::QUEUED;
+  std::string message;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(response.job_id());
+    ASSERT_TRUE(status.success) << status.error_message;
+    final_status = status.status;
+    message      = status.message;
+    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED ||
+        final_status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  EXPECT_EQ(final_status, job_status_t::FAILED) << message;
+  EXPECT_NE(message.find("Invalid solver parameter"), std::string::npos) << message;
+
+  auto good = client->solve_lp(problem, settings);
+  EXPECT_TRUE(good.success) << good.error_message;
+  ASSERT_NE(good.solution, nullptr);
+}
+
+// -- MIP Solve --
+
+TEST_F(DefaultServerTests, SolveMIPBlocking)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+  auto problem = create_simple_mip();
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto result = client->solve_mip(problem, settings, false);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  EXPECT_EQ(result.solution->get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(result.solution->get_objective_value(), 1.0, 0.01);
+}
+
+// -- Explicit Async LP Flow (submit/poll/get/delete) --
+
+TEST_F(DefaultServerTests, ExplicitAsyncLPFlow)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto submit_result = client->submit_lp(problem, settings);
+  ASSERT_TRUE(submit_result.success) << submit_result.error_message;
+  ASSERT_FALSE(submit_result.job_id.empty());
+  std::string job_id = submit_result.job_id;
+
+  wait_for_job_done(client.get(), job_id, 30);
+
+  auto result = client->get_lp_result<int32_t, double>(job_id);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+
+  bool deleted = client->delete_job(job_id);
+  EXPECT_TRUE(deleted);
+}
+
+// -- Log Verification --
+
+TEST_F(DefaultServerTests, ServerLogsJobProcessing)
+{
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(server_log_path());
+  log_capture.mark_test_start();
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  auto problem = create_simple_mip();
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+  auto result = client->solve_mip(problem, settings, false);
+  EXPECT_TRUE(result.success) << result.error_message;
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  EXPECT_TRUE(log_capture.server_log_contains("[Worker"))
+    << "Expected worker logs. Server log: " << server_log_path();
+}
+
+TEST_F(DefaultServerTests, ClientDebugLogsSubmission)
+{
+  GrpcTestLogCapture log_capture;
+  grpc_client_config_t config;
+  config.debug_log_callback = log_capture.client_callback();
+  auto client               = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+
+  EXPECT_TRUE(log_capture.client_log_contains("submit")) << "Expected submit log. Logs:\n"
+                                                         << log_capture.get_client_logs();
+  EXPECT_TRUE(log_capture.client_log_contains_pattern("job_id=[a-f0-9-]+"))
+    << "Expected job_id pattern. Logs:\n"
+    << log_capture.get_client_logs();
+}
+
+// -- Multiple & Concurrent Solves --
+
+TEST_F(DefaultServerTests, MultipleSequentialSolves)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  for (int i = 0; i < 3; ++i) {
+    std::string mps_path = get_test_lp_path("afiro_original.mps");
+    auto problem         = load_problem_from_file(mps_path);
+    solver_settings_t<int32_t, double> settings;
+    settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+    auto result = client->solve_lp(problem, settings);
+    EXPECT_TRUE(result.success) << "Solve #" << i << " failed: " << result.error_message;
+    ASSERT_NE(result.solution, nullptr);
+    EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+  }
+}
+
+TEST_F(DefaultServerTests, ConcurrentJobSubmission)
+{
+  auto client1 = create_client();
+  auto client2 = create_client();
+  ASSERT_NE(client1, nullptr);
+  ASSERT_NE(client2, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  std::vector<std::pair<grpc_client_t*, std::string>> jobs;
+
+  auto s1 = client1->submit_lp(problem, settings);
+  ASSERT_TRUE(s1.success);
+  jobs.push_back({client1.get(), s1.job_id});
+
+  auto s2 = client2->submit_lp(problem, settings);
+  ASSERT_TRUE(s2.success);
+  jobs.push_back({client2.get(), s2.job_id});
+
+  auto s3 = client1->submit_lp(problem, settings);
+  ASSERT_TRUE(s3.success);
+  jobs.push_back({client1.get(), s3.job_id});
+
+  std::vector<bool> completed(3, false);
+  int completed_count = 0;
+
+  for (int poll = 0; poll < 120 && completed_count < 3; ++poll) {
+    for (size_t i = 0; i < jobs.size(); ++i) {
+      if (completed[i]) continue;
+      auto status = jobs[i].first->check_status(jobs[i].second);
+      ASSERT_TRUE(status.success);
+      if (status.status == job_status_t::COMPLETED) {
+        completed[i] = true;
+        completed_count++;
+      } else if (status.status == job_status_t::FAILED) {
+        FAIL() << "Job " << i << " failed: " << status.message;
+      }
+    }
+    if (completed_count < 3) { std::this_thread::sleep_for(std::chrono::milliseconds(500)); }
+  }
+
+  ASSERT_EQ(completed_count, 3) << "Not all jobs completed in time";
+
+  for (size_t i = 0; i < jobs.size(); ++i) {
+    auto result = jobs[i].first->get_lp_result<int32_t, double>(jobs[i].second);
+    EXPECT_TRUE(result.success);
+    ASSERT_NE(result.solution, nullptr);
+    EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+    jobs[i].first->delete_job(jobs[i].second);
+  }
+}
+
+// -- Unary Path Verification --
+
+TEST_F(DefaultServerTests, VerifyUnaryUploadSmallProblem)
+{
+  GrpcTestLogCapture log_capture;
+  grpc_client_config_t config;
+  config.debug_log_callback = log_capture.client_callback();
+  auto client               = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+
+  EXPECT_TRUE(log_capture.client_log_contains("Unary submit succeeded"))
+    << "Logs:\n"
+    << log_capture.get_client_logs();
+  EXPECT_FALSE(log_capture.client_log_contains("Starting streaming upload"))
+    << "Logs:\n"
+    << log_capture.get_client_logs();
+}
+
+TEST_F(DefaultServerTests, VerifyUnaryDownloadSmallResult)
+{
+  GrpcTestLogCapture log_capture;
+  grpc_client_config_t config;
+  config.debug_log_callback = log_capture.client_callback();
+  auto client               = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+
+  EXPECT_TRUE(log_capture.client_log_contains("Attempting unary GetResult"))
+    << "Logs:\n"
+    << log_capture.get_client_logs();
+  EXPECT_TRUE(log_capture.client_log_contains("Unary GetResult succeeded"))
+    << "Logs:\n"
+    << log_capture.get_client_logs();
+}
+
+TEST_F(DefaultServerTests, SolveLPReturnsWarmStartData)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+
+  EXPECT_TRUE(result.solution->has_warm_start_data())
+    << "LP solution should contain PDLP warm start data";
+
+  const auto& ws = result.solution->get_cpu_pdlp_warm_start_data();
+
+  EXPECT_FALSE(ws.current_primal_solution_.empty())
+    << "current_primal_solution should be populated";
+  EXPECT_FALSE(ws.current_dual_solution_.empty()) << "current_dual_solution should be populated";
+  EXPECT_FALSE(ws.initial_primal_average_.empty()) << "initial_primal_average should be populated";
+  EXPECT_FALSE(ws.initial_dual_average_.empty()) << "initial_dual_average should be populated";
+  EXPECT_FALSE(ws.current_ATY_.empty()) << "current_ATY should be populated";
+  EXPECT_FALSE(ws.sum_primal_solutions_.empty()) << "sum_primal_solutions should be populated";
+  EXPECT_FALSE(ws.sum_dual_solutions_.empty()) << "sum_dual_solutions should be populated";
+  EXPECT_FALSE(ws.last_restart_duality_gap_primal_solution_.empty())
+    << "last_restart_duality_gap_primal_solution should be populated";
+  EXPECT_FALSE(ws.last_restart_duality_gap_dual_solution_.empty())
+    << "last_restart_duality_gap_dual_solution should be populated";
+
+  EXPECT_GT(ws.initial_primal_weight_, 0.0) << "initial_primal_weight should be positive";
+  EXPECT_GT(ws.initial_step_size_, 0.0) << "initial_step_size should be positive";
+  EXPECT_GE(ws.total_pdlp_iterations_, 0) << "total_pdlp_iterations should be non-negative";
+  EXPECT_GE(ws.total_pdhg_iterations_, 0) << "total_pdhg_iterations should be non-negative";
+}
+
+// A one-step cap makes a resumed solve and a cold solve disagree. PDLP copies
+// total_pdlp_iterations_ out of the supplied warm start, and the solution's
+// warm-start blob reports that live counter. get_num_iterations() is only the
+// steps taken in this run, so it stays near 1 for both and is not the signal.
+// Stable2 is required; the default Stable3 rejects warm start. Presolve stays
+// off so the vectors match the original problem: a later solve skips presolve
+// whenever total_pdlp_iterations_ != -1.
+TEST_F(DefaultServerTests, SolveLPWarmStartIsApplied)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  // solver_settings_t is neither copyable nor movable, so each solve fills its
+  // own object. Shared names go through set_parameter so the LP and MIP
+  // registrations stay equal.
+  auto configure = [](solver_settings_t<int32_t, double>& settings) {
+    settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+    settings.set_parameter(CUOPT_METHOD, CUOPT_METHOD_PDLP);
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, CUOPT_PDLP_SOLVER_MODE_STABLE2);
+    settings.set_parameter(CUOPT_PRESOLVE, CUOPT_PRESOLVE_OFF);
+  };
+
+  solver_settings_t<int32_t, double> full_settings;
+  configure(full_settings);
+  auto full = client->solve_lp(problem, full_settings);
+  ASSERT_TRUE(full.success) << full.error_message;
+  ASSERT_NE(full.solution, nullptr);
+  ASSERT_TRUE(full.solution->has_warm_start_data());
+  const auto seeded_iterations =
+    full.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+  ASSERT_GT(seeded_iterations, 1) << "full solve must take more than one PDLP iteration so a "
+                                     "one-step cap can tell the runs apart";
+  const auto full_objective = full.solution->get_objective_value();
+
+  solver_settings_t<int32_t, double> warm_settings;
+  configure(warm_settings);
+  warm_settings.get_pdlp_settings().iteration_limit = 1;
+  warm_settings.get_pdlp_settings().get_cpu_pdlp_warm_start_data() =
+    full.solution->get_cpu_pdlp_warm_start_data();
+  auto warm = client->solve_lp(problem, warm_settings);
+  ASSERT_TRUE(warm.success) << warm.error_message;
+  ASSERT_NE(warm.solution, nullptr);
+  ASSERT_TRUE(warm.solution->has_warm_start_data());
+  const auto warm_iterations = warm.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  solver_settings_t<int32_t, double> cold_settings;
+  configure(cold_settings);
+  cold_settings.get_pdlp_settings().iteration_limit = 1;
+  auto cold                                         = client->solve_lp(problem, cold_settings);
+  ASSERT_TRUE(cold.success) << cold.error_message;
+  ASSERT_NE(cold.solution, nullptr);
+  ASSERT_TRUE(cold.solution->has_warm_start_data());
+  const auto cold_iterations = cold.solution->get_cpu_pdlp_warm_start_data().total_pdlp_iterations_;
+
+  EXPECT_GE(warm_iterations, seeded_iterations)
+    << "resumed solve should keep the seeded PDLP iteration counter";
+  EXPECT_LT(cold_iterations, seeded_iterations)
+    << "one-step cold solve should not reach the full-solve iteration count";
+
+  const auto warm_obj_gap = std::abs(warm.solution->get_objective_value() - full_objective);
+  const auto cold_obj_gap = std::abs(cold.solution->get_objective_value() - full_objective);
+  EXPECT_LT(warm_obj_gap, cold_obj_gap)
+    << "warm objective " << warm.solution->get_objective_value() << " cold objective "
+    << cold.solution->get_objective_value() << " full objective " << full_objective;
+}
+
+// -- MIP Log Callback --
+
+TEST_F(DefaultServerTests, SolveMIPWithLogCallback)
+{
+  std::vector<std::string> received_logs;
+  std::mutex log_mutex;
+
+  grpc_client_config_t config;
+  config.timeout_seconds = 30;
+  config.stream_logs     = true;
+  config.log_callback    = [&](const std::string& line) {
+    std::lock_guard<std::mutex> lock(log_mutex);
+    received_logs.push_back(line);
+  };
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("bb_optimality.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+  settings.get_mip_settings().log_to_console = true;
+
+  auto result = client->solve_mip(problem, settings, false);
+  EXPECT_TRUE(result.success) << result.error_message;
+}
+
+// -- Incumbent Callbacks --
+
+TEST_F(DefaultServerTests, IncumbentCallbacksMIP)
+{
+  std::vector<double> incumbent_objectives;
+  std::mutex incumbent_mutex;
+
+  grpc_client_config_t config;
+  config.timeout_seconds    = 30;
+  config.incumbent_callback = [&](int64_t, double objective, const std::vector<double>&) {
+    std::lock_guard<std::mutex> lock(incumbent_mutex);
+    incumbent_objectives.push_back(objective);
+    return true;
+  };
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_mip(problem, settings, true);
+  EXPECT_TRUE(result.success) << result.error_message;
+
+  if (incumbent_objectives.size() > 1) {
+    for (size_t i = 1; i < incumbent_objectives.size(); ++i) {
+      EXPECT_LE(incumbent_objectives[i], incumbent_objectives[i - 1] + 1e-6);
+    }
+  }
+}
+
+TEST_F(DefaultServerTests, IncumbentSetFlagReachesUnaryWorker)
+{
+  grpc_client_config_t config;
+  config.chunked_array_threshold_bytes = 100 * 1024 * 1024;
+  expect_incumbent_set_callback_registered(config, server_log_path());
+}
+
+TEST_F(DefaultServerTests, IncumbentCallbackCancelsSolve)
+{
+  int callback_count = 0;
+
+  grpc_client_config_t config;
+  config.timeout_seconds    = 30;
+  config.incumbent_callback = [&](int64_t, double, const std::vector<double>&) {
+    return ++callback_count < 2;
+  };
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto start  = std::chrono::steady_clock::now();
+  auto result = client->solve_mip(problem, settings, true);
+  auto elapsed =
+    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start);
+
+  EXPECT_LT(elapsed.count(), 25) << "Solve should have cancelled early";
+}
+
+// -- Cancel Running Job --
+
+TEST_F(DefaultServerTests, CancelRunningJob)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+  std::string job_id = submit_result.job_id;
+
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  auto cancel_result = client->cancel_job(job_id);
+  EXPECT_TRUE(cancel_result.job_status == job_status_t::CANCELLED ||
+              cancel_result.job_status == job_status_t::COMPLETED ||
+              cancel_result.job_status == job_status_t::PROCESSING ||
+              cancel_result.job_status == job_status_t::FAILED)
+    << "Unexpected job_status=" << static_cast<int>(cancel_result.job_status)
+    << " message=" << cancel_result.message;
+
+  // Cancel marks the job CANCELLED as soon as the worker is signaled, which is
+  // before the replacement worker finishes CUDA and RMM init. Warm up here so
+  // the next test inherits a worker that has already completed a job (#1814).
+  wait_for_job_done(client.get(), job_id, 15);
+  client->delete_job(job_id);
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
+}
+
+// -- Delete should cancel queued / running jobs --
+
+TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
+
+  // Occupy the single worker with a long solve. Poll for PROCESSING rather than
+  // a fixed sleep: a plain delay doesn't guarantee the worker claimed this job
+  // before the next one is submitted, which would let the queued-status check
+  // below pass even if both jobs were merely queued behind each other.
+  auto running = client->submit_mip(problem, settings);
+  ASSERT_TRUE(running.success);
+  bool running_processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(running.job_id);
+    ASSERT_TRUE(status.success) << status.error_message;
+    if (status.status == job_status_t::PROCESSING) {
+      running_processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(running_processing) << "First job never reached PROCESSING";
+
+  auto queued = client->submit_mip(problem, settings);
+  ASSERT_TRUE(queued.success);
+
+  auto queued_status = client->check_status(queued.job_id);
+  ASSERT_TRUE(queued_status.success);
+  EXPECT_EQ(queued_status.status, job_status_t::QUEUED)
+    << "Second job should still be queued behind the running solve";
+
+  EXPECT_TRUE(client->delete_job(queued.job_id));
+
+  auto after_delete = client->check_status(queued.job_id);
+  EXPECT_EQ(after_delete.status, job_status_t::NOT_FOUND);
+
+  // Prove the worker is still usable and was not consumed by the deleted job:
+  // free it (cancel the long solve) and require a probe job to run to
+  // completion. If the deleted job were still occupying the queue/worker, the
+  // single worker could not pick up and finish the probe. With one worker we
+  // cannot observe the ghost's status once its tracker entry is gone, so we
+  // assert the worker stays functional instead.
+  client->cancel_job(running.job_id);
+
+  solver_settings_t<int32_t, double> probe_settings;
+  probe_settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+  auto probe = client->submit_mip(problem, probe_settings);
+  ASSERT_TRUE(probe.success);
+
+  // 90s: this probe follows a worker respawn (SIGKILL above), which pays for a fresh CUDA
+  // context init on top of the solve -- can exceed 60s on contended CI runners (#1814).
+  wait_for_job_done(client.get(), probe.job_id, 90);
+  auto probe_status = client->check_status(probe.job_id);
+  EXPECT_EQ(probe_status.status, job_status_t::COMPLETED)
+    << "Worker should be free to process a new job after the queued job was deleted";
+
+  client->delete_job(probe.job_id);
+  client->delete_job(running.job_id);
+}
+
+TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+  std::string job_id = submit_result.job_id;
+
+  // Wait until the worker has claimed the job. ~30s, not the usual ~10s: the shared worker
+  // may still be mid-respawn from the previous test's SIGKILL (#1814).
+  bool processing = false;
+  for (int i = 0; i < 120; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before delete";
+
+  // Measure only the delete latency: killing the worker must return promptly,
+  // not block until the 120s solve finishes.
+  auto delete_start = std::chrono::steady_clock::now();
+  EXPECT_TRUE(client->delete_job(job_id));
+  auto delete_elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+    std::chrono::steady_clock::now() - delete_start);
+  EXPECT_LT(delete_elapsed.count(), 15) << "Delete of a running job should return promptly";
+
+  auto after_delete = client->check_status(job_id);
+  EXPECT_EQ(after_delete.status, job_status_t::NOT_FOUND);
+
+  // Prove the killed worker was actually replaced: a probe job must be picked
+  // up (reach PROCESSING) and run to completion within a bounded interval.
+  solver_settings_t<int32_t, double> probe_settings;
+  probe_settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+  auto probe = client->submit_mip(problem, probe_settings);
+  ASSERT_TRUE(probe.success);
+
+  bool probe_started = false;
+  for (int i = 0; i < 120; ++i) {  // up to ~30s for the replacement worker
+    auto status = client->check_status(probe.job_id);
+    if (status.status == job_status_t::PROCESSING || status.status == job_status_t::COMPLETED) {
+      probe_started = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  EXPECT_TRUE(probe_started) << "Replacement worker never picked up the probe job";
+
+  wait_for_job_done(client.get(), probe.job_id, 60);
+  auto probe_status = client->check_status(probe.job_id);
+  EXPECT_EQ(probe_status.status, job_status_t::COMPLETED)
+    << "Replacement worker should process a new job to completion";
+
+  client->delete_job(probe.job_id);
+}
+
+// =============================================================================
+// Chunked Upload Tests (--max-message-mb 256)
+// =============================================================================
+
+class ChunkedUploadTests : public GrpcIntegrationTestBase {
+ protected:
+  static void SetUpTestSuite()
+  {
+    s_port_   = get_test_port();
+    s_server_ = std::make_unique<ServerProcess>();
+    ASSERT_TRUE(s_server_->start(s_port_, {"--max-message-mb", "256"}))
+      << "Failed to start chunked upload server";
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
+    s_server_.reset();
+  }
+
+  void SetUp() override
+  {
+    ASSERT_NE(s_server_, nullptr);
+    port_ = s_port_;
+  }
+
+  std::string server_log_path() const { return s_server_->log_path(); }
+
+  void TearDown() override
+  {
+    if (HasFailure() && s_server_) {
+      std::string log_file = s_server_->log_path();
+      if (!log_file.empty()) {
+        std::ifstream f(log_file);
+        if (f) {
+          std::cerr << "\n=== Server log (" << log_file << ") ===\n"
+                    << f.rdbuf() << "\n=== End server log ===\n";
+        }
+      }
+    }
+  }
+
+  static std::unique_ptr<ServerProcess> s_server_;
+  static int s_port_;
+};
+
+std::unique_ptr<ServerProcess> ChunkedUploadTests::s_server_;
+int ChunkedUploadTests::s_port_ = 0;
+
+TEST_F(ChunkedUploadTests, ChunkedUploadLP)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunk_size_bytes              = 8 * 1024;
+  config.chunked_array_threshold_bytes = 0;  // Force chunked upload
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+}
+
+TEST_F(ChunkedUploadTests, ChunkedUploadMIP)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunk_size_bytes              = 4 * 1024;
+  config.chunked_array_threshold_bytes = 0;  // Force chunked upload
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("sudoku.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_mip(problem, settings, false);
+  EXPECT_TRUE(result.success) << result.error_message;
+}
+
+TEST_F(ChunkedUploadTests, IncumbentSetFlagReachesChunkedWorker)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunk_size_bytes              = 4 * 1024;
+  config.chunked_array_threshold_bytes = 0;
+  expect_incumbent_set_callback_registered(config, server_log_path());
+}
+
+TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
+{
+  const int num_clients = 3;
+  std::vector<std::unique_ptr<grpc_client_t>> clients;
+
+  for (int i = 0; i < num_clients; ++i) {
+    grpc_client_config_t config;
+    config.timeout_seconds               = 60;
+    config.chunk_size_bytes              = 4 * 1024;
+    config.chunked_array_threshold_bytes = 0;
+    auto client                          = create_client(config);
+    ASSERT_NE(client, nullptr);
+    clients.push_back(std::move(client));
+  }
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  std::atomic<int> success_count{0};
+
+  auto solve_task = [&](int idx) -> bool {
+    auto result = clients[idx]->solve_lp(problem, settings);
+    if (result.success && result.solution &&
+        std::abs(result.solution->get_objective_value() - (-464.753)) < 1.0) {
+      success_count++;
+      return true;
+    }
+    return false;
+  };
+
+  std::vector<std::future<bool>> futures;
+  for (int i = 0; i < num_clients; ++i) {
+    futures.push_back(std::async(std::launch::async, solve_task, i));
+  }
+
+  for (int i = 0; i < num_clients; ++i) {
+    EXPECT_TRUE(futures[i].get()) << "Client " << i << " failed";
+  }
+
+  EXPECT_EQ(success_count.load(), num_clients);
+}
+
+// =============================================================================
+// QCQP transport + solve integration tests.
+//
+// These tests submit problems with quadratic constraints end-to-end through
+// gRPC to verify two layers:
+//
+//   1. Wire transport — the container-chunk path (proto, server validation,
+//      pipe wire format, worker reassembly).  Both QC_Test_1 (rhs != 0,
+//      SOC-incompatible) and QC_Test_2 (rhs = 0, SOC-friendly) exercise this
+//      layer; SOC compatibility is irrelevant for transport.
+//
+//   2. End-to-end SOCP correctness — solve_lp dispatches QCQP problems to
+//      solve_qcqp, which converts each QC to a second-order cone and runs
+//      barrier.  The QC_Test_2 test asserts the returned solution matches
+//      the closed-form optimum, catching solver and SOC-conversion
+//      regressions in addition to transport.
+//
+// Note on error propagation: solve_lp / solve_qcqp catch cuopt::logic_error
+// internally and stash it in optimization_problem_solution_t::error_status_
+// instead of throwing (long-standing solver-API contract; see solve.cu).
+// run_lp_solve in grpc_worker.cpp inspects error_status_ after solve_lp
+// returns and forwards non-Success errors as sr.error_message, so the
+// QC_Test_1 test below can rely on result.success being false with a
+// validation message rather than getting a zero-filled "successful"
+// response.
+// =============================================================================
+
+// Submit QC_Test_1 on the unary path.  rhs != 0 on its QC rows so SOC
+// conversion rejects the problem, but the *transport* layer (proto encoding,
+// unary SubmitJob path) must still round-trip the wire format cleanly and
+// the worker must surface the SOC validator's ValidationError back to the
+// client.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsUnaryNonZeroRhs)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds = 60;
+  // Generous threshold ensures the small QC problem stays on the unary path.
+  config.chunked_array_threshold_bytes = 100 * 1024 * 1024;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_data_path("qcqp", "QC_Test_1.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  EXPECT_EQ(problem.get_quadratic_constraints().size(), 2u);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_lp(problem, settings);
+  // QC_Test_1 has rhs = 5 / rhs = 10. The general convex quadratic path
+  // handles nonzero RHS, so the problem should be accepted and solved.
+  // This proves the QCQP wire format made it intact through the unary submit path.
+  EXPECT_TRUE(result.success);
+}
+
+// Force the chunked upload path with both a zero-byte threshold (every array
+// goes via SendArrayChunk) and a deliberately tiny chunk_size_bytes so each
+// per-row QC array is split across multiple ArrayChunks.  This exercises:
+//   * Client: chunk_container_typed_array emitting cfn/ci-stamped chunks.
+//   * Server: SendArrayChunk routing container chunks into
+//             container_field_meta and validating against
+//             array_field_element_size(cfn, fid).
+//   * Pipe:   the new container_arrays wire section with multi-chunk
+//             stitching inside write_chunked_request_to_pipe.
+//   * Worker: read_chunked_request_from_pipe + map_chunked_arrays_to_problem
+//             reconstructing QC entries from header scalars + container bytes.
+//
+// QC_Test_1 is again SOC-incompatible (rhs != 0); we assert the same
+// validator-rejection error message as the unary case so a transport bug
+// that drops or duplicates QC array bytes would manifest as a *different*
+// failure mode (typically a malformed-problem error or a successful solve
+// of a tampered problem) rather than the expected rhs=0 rejection.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedNonZeroRhs)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds = 60;
+  // Tiny chunk size forces multiple chunks per container array even for
+  // QC_Test_1's small linear/quadratic vectors (8 bytes / double, 4 / int).
+  config.chunk_size_bytes              = 8;
+  config.chunked_array_threshold_bytes = 0;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_data_path("qcqp", "QC_Test_1.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_lp(problem, settings);
+  // QC_Test_1 has nonzero RHS, now handled by the general convex quadratic path.
+  // This proves the chunked wire format correctly transmits QC data.
+  EXPECT_TRUE(result.success);
+}
+
+// End-to-end SOCP correctness via gRPC: QC_Test_2 is a small convex QCQP
+// authored in LP format (rather than MPS) so the file's algebraic content
+// is human-readable at review time — a reviewer can see `[ -2 x*y + z^2 ]
+// <= 0` directly and check it against the comment, instead of decoding
+// QCMATRIX triples.  It exercises the same wire-format aspects as
+// QC_Test_1 (multiple QCs, off-diagonal cross-terms, linear-in-QC-row
+// terms, normal LP constraint alongside QCs) while being SOC-friendly:
+// rhs = 0 on every QC, each QC's structure matches one of the SOC
+// validator's accepted shapes (rotated SOC for QC0, affine SOC for QC1).
+//
+// The problem has a closed-form optimum derived in the file's header
+// comment: x = y = 1/sqrt(2), z = 1, objective = -(1 + sqrt(2)).  Asserting
+// these values via gRPC verifies that QC encoding, chunked transport,
+// SOC conversion, barrier solve, and result decoding are all wired together
+// correctly.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsEndToEndSocp)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds = 60;
+  // Force the chunked path so this test also covers chunked transport of a
+  // SOC-compatible problem (the rejection tests above only prove the chunked
+  // path delivers bytes intact for an *infeasible-for-SOC* problem; here we
+  // additionally prove a chunked SOC-friendly problem solves correctly).
+  config.chunk_size_bytes              = 8;
+  config.chunked_array_threshold_bytes = 0;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string lp_path = get_test_data_path("qcqp", "QC_Test_2.lp");
+  auto problem        = load_problem_from_file(lp_path);
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  EXPECT_EQ(problem.get_quadratic_constraints().size(), 2u);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto result = client->solve_lp(problem, settings);
+  ASSERT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+
+  EXPECT_EQ(result.solution->get_termination_status(), pdlp_termination_status_t::Optimal);
+
+  const double sqrt2   = std::sqrt(2.0);
+  const double opt_obj = -(1.0 + sqrt2);
+  const double opt_x_y = 1.0 / sqrt2;
+  const double opt_z   = 1.0;
+  // Barrier converges to ~1e-6; allow 1e-3 to absorb tolerance settings and
+  // future numeric drift without masking real regressions.
+  constexpr double kTol = 1e-3;
+  EXPECT_NEAR(result.solution->get_objective_value(), opt_obj, kTol);
+
+  const auto primal = result.solution->get_primal_solution_host();
+  ASSERT_GE(primal.size(), 3u);
+  EXPECT_NEAR(primal[0], opt_x_y, kTol);
+  EXPECT_NEAR(primal[1], opt_x_y, kTol);
+  EXPECT_NEAR(primal[2], opt_z, kTol);
+}
+
+TEST_F(ChunkedUploadTests, UnaryFallbackSmallProblem)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunked_array_threshold_bytes = 100 * 1024 * 1024;  // 100 MiB, well above afiro size
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+}
+
+// =============================================================================
+// Path Selection Tests (unary vs chunked IPC and result retrieval)
+//
+// Uses --max-message-bytes so small problems exercise both unary and chunked
+// paths, and --verbose so the server emits IPC path tags we can verify.
+// 12288 is above a submit that carries the full parameter map (afiro unary
+// is about 7 KB) and below the 50v-10 solution array (2013 doubles, 16104
+// bytes), so uploads are accepted and that result still downloads in chunks.
+// =============================================================================
+
+class PathSelectionTests : public GrpcIntegrationTestBase {
+ protected:
+  static void SetUpTestSuite()
+  {
+    s_port_   = get_test_port();
+    s_server_ = std::make_unique<ServerProcess>();
+    ASSERT_TRUE(s_server_->start(s_port_, {"--max-message-bytes", "12288", "--verbose"}))
+      << "Failed to start path-selection server";
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
+    s_server_.reset();
+  }
+
+  void SetUp() override
+  {
+    ASSERT_NE(s_server_, nullptr);
+    port_ = s_port_;
+  }
+
+  std::string server_log_path() const { return s_server_->log_path(); }
+
+  static std::unique_ptr<ServerProcess> s_server_;
+  static int s_port_;
+};
+
+std::unique_ptr<ServerProcess> PathSelectionTests::s_server_;
+int PathSelectionTests::s_port_ = 0;
+
+// Unary upload for a small LP (afiro). The result is small enough that
+// the server returns it via unary GetResult. We verify the upload and
+// result paths in the server logs but don't assert the download method
+// since the result size may or may not exceed the message limit.
+TEST_F(PathSelectionTests, UnaryUploadLPWithPathLogging)
+{
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(server_log_path());
+  log_capture.mark_test_start();
+
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunked_array_threshold_bytes = 100 * 1024 * 1024;  // high threshold => unary upload
+  config.debug_log_callback            = log_capture.client_callback();
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  // Worker should have received via the UNARY path
+  EXPECT_TRUE(log_capture.wait_for_server_log("[Worker] IPC path: UNARY LP", 5000))
+    << "Expected UNARY LP path in server log.\nServer log:\n"
+    << log_capture.get_server_logs();
+
+  // Worker should have serialized the result
+  EXPECT_TRUE(log_capture.server_log_contains("[Worker] Result path: LP solution"))
+    << "Expected LP result path in server log.\nServer log:\n"
+    << log_capture.get_server_logs();
+}
+
+// Chunked upload, verify server receives via CHUNKED path
+TEST_F(PathSelectionTests, ChunkedUploadLPWithPathLogging)
+{
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(server_log_path());
+  log_capture.mark_test_start();
+
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunk_size_bytes              = 4 * 1024;
+  config.chunked_array_threshold_bytes = 0;  // force chunked upload
+  config.debug_log_callback            = log_capture.client_callback();
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  // Worker should have received via the CHUNKED path
+  EXPECT_TRUE(log_capture.wait_for_server_log("[Worker] IPC path: CHUNKED", 5000))
+    << "Expected CHUNKED path in server log.\nServer log:\n"
+    << log_capture.get_server_logs();
+
+  // Server main process should have logged FinishChunkedUpload
+  EXPECT_TRUE(log_capture.server_log_contains("FinishChunkedUpload: CHUNKED path"))
+    << "Expected FinishChunkedUpload log.\nServer log:\n"
+    << log_capture.get_server_logs();
+}
+
+// Chunked upload + chunked result download for MIP.
+// 50v-10-free-bound.mps has 2013 variables, so the solution array is 16104
+// bytes and exceeds the 12288-byte message limit.
+TEST_F(PathSelectionTests, ChunkedUploadAndChunkedDownloadMIP)
+{
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(server_log_path());
+  log_capture.mark_test_start();
+
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunk_size_bytes              = 4 * 1024;
+  config.chunked_array_threshold_bytes = 0;  // force chunked upload
+  config.debug_log_callback            = log_capture.client_callback();
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("50v-10-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
+
+  auto result = client->solve_mip(problem, settings, false);
+  EXPECT_TRUE(result.success) << result.error_message;
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  // Upload should have gone through the CHUNKED path
+  EXPECT_TRUE(log_capture.wait_for_server_log("[Worker] IPC path: CHUNKED", 5000))
+    << "Expected CHUNKED upload path in server log.\nServer log:\n"
+    << log_capture.get_server_logs();
+
+  // Client should have used chunked download (result > 12288 bytes)
+  EXPECT_TRUE(log_capture.client_log_contains("chunked download") ||
+              log_capture.client_log_contains("ChunkedDownload"))
+    << "Expected chunked download in client log.\nClient log:\n"
+    << log_capture.get_client_logs();
+
+  // Server should log CHUNKED response
+  EXPECT_TRUE(log_capture.wait_for_server_log("StartChunkedDownloadV2: CHUNKED response", 5000))
+    << "Expected chunked download path in server log.\nServer log:\n"
+    << log_capture.get_server_logs();
+}
+
+// MIP path: unary upload, verify UNARY MIP tag
+TEST_F(PathSelectionTests, UnaryUploadMIPWithPathLogging)
+{
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(server_log_path());
+  log_capture.mark_test_start();
+
+  grpc_client_config_t config;
+  config.timeout_seconds    = 60;
+  config.debug_log_callback = log_capture.client_callback();
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("bb_optimality.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_mip(problem, settings, false);
+  EXPECT_TRUE(result.success) << result.error_message;
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  EXPECT_TRUE(log_capture.wait_for_server_log("[Worker] IPC path: UNARY MIP", 5000))
+    << "Expected UNARY MIP path in server log.\nServer log:\n"
+    << log_capture.get_server_logs();
+
+  EXPECT_TRUE(log_capture.server_log_contains("[Worker] Result path: MIP solution"))
+    << "Expected MIP result path in server log.\nServer log:\n"
+    << log_capture.get_server_logs();
+}
+
+// =============================================================================
+// Error Recovery Tests (per-test server lifecycle)
+// =============================================================================
+
+class ErrorRecoveryTests : public GrpcIntegrationTestBase {
+ protected:
+  void SetUp() override { port_ = get_test_port(); }
+  void TearDown() override { EXPECT_TRUE(server_.stop()); }
+
+  bool start_server(const std::vector<std::string>& extra_args                                = {},
+                    const std::vector<std::pair<std::string, std::string>>& extra_environment = {})
+  {
+    return server_.start(port_, extra_args, extra_environment);
+  }
+
+  ServerProcess server_;
+};
+
+TEST_F(ErrorRecoveryTests, PreJobGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server({}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "before-job"}}));
+  const std::string log_path = server_.log_path();
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 5.0);
+  auto submitted = client->submit_mip(create_simple_mip(), settings);
+  ASSERT_TRUE(submitted.success);
+
+  // start_server() returns when the parent accepts RPCs, not when the worker
+  // finishes CUDA/RMM init. That init can exceed 60s on a busy runner;
+  // warm_up_worker() allows 180s for it. The injected failure is logged only
+  // after init, and the server logger flushes on info. The 15s budget is
+  // shutdown only.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(
+    log_capture.wait_for_server_log("Injected before-job GPU liveness probe failure", 180000))
+    << "Injected pre-job GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the pre-job GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during pre-job probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+TEST_F(ErrorRecoveryTests, IdleGpuHealthFailureShutsDownWithoutRespawn)
+{
+  ASSERT_TRUE(start_server(
+    {}, {{"CUOPT_GRPC_TEST_GPU_FAILURE", "idle"}, {"CUOPT_GRPC_TEST_GPU_IDLE_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  // Same split as the pre-job test: 180s covers CUDA/RMM init plus the 3s idle
+  // interval. The 15s budget starts only after the injected failure is logged.
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("Injected idle GPU liveness probe failure", 180000))
+    << "Injected idle GPU failure was not logged within the init budget\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the idle GPU health failure\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("GPU unhealthy during idle probe"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+// Original worker never publishes ready. Short ready timeout forces the same
+// fatal shutdown as a hung replacement, without waiting for a respawn.
+TEST_F(ErrorRecoveryTests, InitialWorkerReadyTimeoutShutsDown)
+{
+  ASSERT_TRUE(start_server({},
+                           {{"CUOPT_GRPC_TEST_WORKER_READY_HANG", "initial"},
+                            {"CUOPT_GRPC_TEST_INITIAL_READY_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("never became ready", 30000))
+    << "Initial ready-timeout shutdown was not logged\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after the initial ready timeout\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("never became ready"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("Restarted worker"), std::string::npos) << logs;
+}
+
+// Replacement never publishes ready: SIGKILL the warm worker, then hang the
+// respawn after init/probe. The short timeout applies only to the replacement;
+// the original worker keeps the 180s budget so CUDA init can finish.
+TEST_F(ErrorRecoveryTests, RespawnedWorkerReadyTimeoutShutsDown)
+{
+  ASSERT_TRUE(start_server({},
+                           {{"CUOPT_GRPC_TEST_WORKER_READY_HANG", "respawn"},
+                            {"CUOPT_GRPC_TEST_RESPAWN_READY_MS", "3000"}}));
+  const std::string log_path = server_.log_path();
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  // Initial worker must finish CUDA/RMM init before we kill it; hang applies
+  // only to replacements.
+  auto warmup = warm_up_worker(client.get(), log_path);
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success) << submit_result.error_message;
+  const std::string job_id = submit_result.job_id;
+
+  bool processing = false;
+  for (int i = 0; i < 120; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.success && status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before worker kill";
+
+  // delete of a PROCESSING job SIGKILLs the worker and triggers respawn.
+  ASSERT_TRUE(client->delete_job(job_id));
+
+  GrpcTestLogCapture log_capture;
+  log_capture.set_server_log_path(log_path);
+  ASSERT_TRUE(log_capture.wait_for_server_log("Restarted worker", 30000))
+    << "Monitor did not respawn after SIGKILL\n"
+    << log_capture.get_server_logs();
+
+  // READY_MS=3000 starts at Restarted worker. Replacement may still be in
+  // CUDA init; either hang-after-probe or mid-init timeout both log this.
+  ASSERT_TRUE(log_capture.wait_for_server_log("never became ready", 30000))
+    << "Ready-timeout shutdown was not logged\n"
+    << log_capture.get_server_logs();
+
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not exit after replacement ready timeout\n"
+    << log_capture.get_server_logs();
+  EXPECT_EQ(server_.exit_code(), 1);
+
+  const std::string logs = read_file_contents(log_path);
+  EXPECT_NE(logs.find("Restarted worker"), std::string::npos) << logs;
+  EXPECT_NE(logs.find("never became ready"), std::string::npos) << logs;
+}
+
+TEST_F(ErrorRecoveryTests, ClientReconnectsAfterServerRestart)
+{
+  ASSERT_TRUE(start_server());
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  auto status_before = client->check_status("test-job");
+  EXPECT_TRUE(status_before.success);
+
+  ASSERT_TRUE(server_.stop());
+  EXPECT_FALSE(server_.is_running());
+
+  auto status_down = client->check_status("test-job");
+  EXPECT_FALSE(status_down.success);
+
+  ASSERT_TRUE(start_server());
+
+  auto status_after = client->check_status("test-job");
+  EXPECT_TRUE(status_after.success) << "Should auto-reconnect: " << status_after.error_message;
+}
+
+TEST_F(ErrorRecoveryTests, ClientHandlesServerCrashDuringSolve)
+{
+  ASSERT_TRUE(start_server());
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  EXPECT_TRUE(server_.stop());
+
+  auto status_result = client->check_status(submit_result.job_id);
+  EXPECT_FALSE(status_result.success);
+  EXPECT_FALSE(status_result.error_message.empty());
+}
+
+TEST_F(ErrorRecoveryTests, SigintDuringRunningJobShutsDownPromptly)
+{
+  ASSERT_TRUE(start_server());
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 120.0);
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+  std::string job_id = submit_result.job_id;
+
+  // Wait until a worker has claimed the job so SIGINT interrupts an active solve.
+  bool processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before SIGINT";
+  ASSERT_TRUE(server_.is_running());
+
+  auto start = std::chrono::steady_clock::now();
+  ASSERT_EQ(kill(server_.pid(), SIGINT), 0);
+
+  // Server must exit well before the solve time_limit; previously Ctrl-C could
+  // hang until the mid-solve worker finished. Use waitpid-based polling so a
+  // zombie parent is not mistaken for a still-running process.
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not shut down promptly after SIGINT during a running job";
+
+  auto elapsed =
+    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start);
+  EXPECT_LT(elapsed.count(), 15);
+}
+
+TEST_F(ErrorRecoveryTests, ClientTimeoutConfiguration)
+{
+  ASSERT_TRUE(start_server());
+
+  grpc_client_config_t config;
+  config.timeout_seconds  = 1;
+  config.poll_interval_ms = 100;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 60.0);
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+
+  auto start     = std::chrono::steady_clock::now();
+  bool completed = false;
+  while (!completed) {
+    auto elapsed =
+      std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start);
+    if (elapsed.count() >= config.timeout_seconds) break;
+    auto status = client->check_status(submit_result.job_id);
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED) {
+      completed = true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+
+  EXPECT_FALSE(completed) << "Complex MIP should not complete in 1 second";
+  client->cancel_job(submit_result.job_id);
+}
+
+TEST_F(ErrorRecoveryTests, ChunkedUploadAfterServerRestart)
+{
+  ASSERT_TRUE(start_server({"--max-message-mb", "256"}));
+
+  grpc_client_config_t config;
+  config.timeout_seconds               = 30;
+  config.chunk_size_bytes              = 4 * 1024;
+  config.chunked_array_threshold_bytes = 0;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("sudoku.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result1 = client->solve_mip(problem, settings, false);
+  EXPECT_TRUE(result1.success) << result1.error_message;
+
+  ASSERT_TRUE(server_.stop());
+  ASSERT_TRUE(start_server({"--max-message-mb", "256"}));
+
+  auto client2 = create_client(config);
+  ASSERT_NE(client2, nullptr);
+
+  auto result2 = client2->solve_mip(problem, settings, false);
+  EXPECT_TRUE(result2.success) << result2.error_message;
+}
+
+// =============================================================================
+// TLS Tests
+// =============================================================================
+
+class TlsServerTests : public GrpcIntegrationTestBase {
+ protected:
+  static void SetUpTestSuite()
+  {
+    if (!ensure_test_certs()) {
+      s_certs_available_ = false;
+      return;
+    }
+
+    s_certs_available_ = std::filesystem::exists(g_tls_certs_dir + "/server.crt") &&
+                         std::filesystem::exists(g_tls_certs_dir + "/server.key") &&
+                         std::filesystem::exists(g_tls_certs_dir + "/ca.crt");
+
+    if (!s_certs_available_) return;
+
+    s_port_   = get_test_port();
+    s_server_ = std::make_unique<ServerProcess>();
+
+    std::string root_certs = read_file_contents(g_tls_certs_dir + "/ca.crt");
+    s_server_->set_tls_config(root_certs);
+
+    std::vector<std::string> args = {"--tls",
+                                     "--tls-cert",
+                                     g_tls_certs_dir + "/server.crt",
+                                     "--tls-key",
+                                     g_tls_certs_dir + "/server.key",
+                                     "--tls-root",
+                                     g_tls_certs_dir + "/ca.crt"};
+
+    if (!s_server_->start(s_port_, args)) {
+      s_server_.reset();
+      s_certs_available_ = false;
+    }
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
+    s_server_.reset();
+  }
+
+  void SetUp() override
+  {
+    if (!s_certs_available_) { GTEST_SKIP() << "TLS certificates not available"; }
+    ASSERT_NE(s_server_, nullptr) << "TLS server not running";
+    port_ = s_port_;
+  }
+
+  std::unique_ptr<grpc_client_t> create_tls_client()
+  {
+    grpc_client_config_t config;
+    config.server_address  = "localhost:" + std::to_string(port_);
+    config.timeout_seconds = 30;
+    config.enable_tls      = true;
+    config.tls_root_certs  = read_file_contents(g_tls_certs_dir + "/ca.crt");
+
+    auto client = std::make_unique<grpc_client_t>(config);
+    if (!client->connect()) return nullptr;
+    return client;
+  }
+
+  static std::unique_ptr<ServerProcess> s_server_;
+  static int s_port_;
+  static bool s_certs_available_;
+};
+
+std::unique_ptr<ServerProcess> TlsServerTests::s_server_;
+int TlsServerTests::s_port_             = 0;
+bool TlsServerTests::s_certs_available_ = false;
+
+TEST_F(TlsServerTests, BasicConnection)
+{
+  auto client = create_tls_client();
+  ASSERT_NE(client, nullptr) << "Failed to connect with TLS";
+  EXPECT_TRUE(client->is_connected());
+}
+
+TEST_F(TlsServerTests, SolveLP)
+{
+  auto client = create_tls_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_lp_path("afiro_original.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+  EXPECT_NEAR(result.solution->get_objective_value(), -464.753, 1.0);
+}
+
+// =============================================================================
+// mTLS Tests
+// =============================================================================
+
+class MtlsServerTests : public GrpcIntegrationTestBase {
+ protected:
+  static void SetUpTestSuite()
+  {
+    if (!ensure_test_certs()) {
+      s_certs_available_ = false;
+      return;
+    }
+
+    s_certs_available_ = std::filesystem::exists(g_tls_certs_dir + "/client.crt") &&
+                         std::filesystem::exists(g_tls_certs_dir + "/client.key") &&
+                         std::filesystem::exists(g_tls_certs_dir + "/server.crt") &&
+                         std::filesystem::exists(g_tls_certs_dir + "/ca.crt");
+
+    if (!s_certs_available_) return;
+
+    s_port_   = get_test_port();
+    s_server_ = std::make_unique<ServerProcess>();
+
+    std::string root_certs  = read_file_contents(g_tls_certs_dir + "/ca.crt");
+    std::string client_cert = read_file_contents(g_tls_certs_dir + "/client.crt");
+    std::string client_key  = read_file_contents(g_tls_certs_dir + "/client.key");
+    s_server_->set_tls_config(root_certs, client_cert, client_key);
+
+    std::vector<std::string> args = {"--tls",
+                                     "--tls-cert",
+                                     g_tls_certs_dir + "/server.crt",
+                                     "--tls-key",
+                                     g_tls_certs_dir + "/server.key",
+                                     "--tls-root",
+                                     g_tls_certs_dir + "/ca.crt",
+                                     "--require-client-cert"};
+
+    if (!s_server_->start(s_port_, args)) {
+      s_server_.reset();
+      s_certs_available_ = false;
+    }
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
+    s_server_.reset();
+  }
+
+  void SetUp() override
+  {
+    if (!s_certs_available_) { GTEST_SKIP() << "mTLS certificates not available"; }
+    ASSERT_NE(s_server_, nullptr) << "mTLS server not running";
+    port_ = s_port_;
+  }
+
+  std::unique_ptr<grpc_client_t> create_mtls_client(bool with_client_cert = true)
+  {
+    grpc_client_config_t config;
+    config.server_address  = "localhost:" + std::to_string(port_);
+    config.timeout_seconds = 30;
+    config.enable_tls      = true;
+    config.tls_root_certs  = read_file_contents(g_tls_certs_dir + "/ca.crt");
+
+    if (with_client_cert) {
+      config.tls_client_cert = read_file_contents(g_tls_certs_dir + "/client.crt");
+      config.tls_client_key  = read_file_contents(g_tls_certs_dir + "/client.key");
+    }
+
+    auto client = std::make_unique<grpc_client_t>(config);
+    if (!client->connect()) return nullptr;
+    return client;
+  }
+
+  static std::unique_ptr<ServerProcess> s_server_;
+  static int s_port_;
+  static bool s_certs_available_;
+};
+
+std::unique_ptr<ServerProcess> MtlsServerTests::s_server_;
+int MtlsServerTests::s_port_             = 0;
+bool MtlsServerTests::s_certs_available_ = false;
+
+TEST_F(MtlsServerTests, ConnectionWithClientCert)
+{
+  auto client = create_mtls_client(true);
+  ASSERT_NE(client, nullptr) << "Failed to connect with mTLS";
+  EXPECT_TRUE(client->is_connected());
+}
+
+TEST_F(MtlsServerTests, RejectsClientWithoutCert)
+{
+  auto client = create_mtls_client(false);
+  EXPECT_EQ(client, nullptr) << "Server should reject client without certificate";
+}
+
+// =============================================================================
+// Chunk Validation Tests
+//
+// Uses a raw gRPC stub to send malformed chunk requests and verify the server
+// rejects them with appropriate error codes. Exercises items 1-8 from the
+// chunked transfer hardening work.
+// =============================================================================
+
+class ChunkValidationTests : public GrpcIntegrationTestBase {
+ protected:
+  static void SetUpTestSuite()
+  {
+    s_port_   = get_test_port();
+    s_server_ = std::make_unique<ServerProcess>();
+    ASSERT_TRUE(s_server_->start(s_port_, {"--verbose"}))
+      << "Failed to start chunk validation server";
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
+    s_server_.reset();
+  }
+
+  void SetUp() override
+  {
+    ASSERT_NE(s_server_, nullptr);
+    port_ = s_port_;
+
+    auto channel =
+      grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+    stub_ = cuopt::remote::CuOptRemoteService::NewStub(channel);
+  }
+
+  std::string start_upload()
+  {
+    grpc::ClientContext ctx;
+    cuopt::remote::StartChunkedUploadRequest req;
+    auto* hdr = req.mutable_problem_header()->mutable_header();
+    hdr->set_version(1);
+    hdr->set_problem_category(cuopt::remote::LP);
+    cuopt::remote::StartChunkedUploadResponse resp;
+    auto status = stub_->StartChunkedUpload(&ctx, req, &resp);
+    EXPECT_TRUE(status.ok()) << status.error_message();
+    return resp.upload_id();
+  }
+
+  grpc::Status send_chunk(const std::string& upload_id,
+                          cuopt::remote::ArrayFieldId field_id,
+                          int64_t element_offset,
+                          int64_t total_elements,
+                          const std::string& data)
+  {
+    grpc::ClientContext ctx;
+    cuopt::remote::SendArrayChunkRequest req;
+    req.set_upload_id(upload_id);
+    auto* ac = req.mutable_chunk();
+    ac->set_field_id(field_id);
+    ac->set_element_offset(element_offset);
+    ac->set_total_elements(total_elements);
+    ac->set_data(data);
+    cuopt::remote::SendArrayChunkResponse resp;
+    return stub_->SendArrayChunk(&ctx, req, &resp);
+  }
+
+  std::unique_ptr<cuopt::remote::CuOptRemoteService::Stub> stub_;
+  static std::unique_ptr<ServerProcess> s_server_;
+  static int s_port_;
+};
+
+std::unique_ptr<ServerProcess> ChunkValidationTests::s_server_;
+int ChunkValidationTests::s_port_ = 0;
+
+TEST_F(ChunkValidationTests, RejectsNegativeElementOffset)
+{
+  auto uid = start_upload();
+  std::string data(8, '\0');  // 1 double
+  auto status = send_chunk(uid, cuopt::remote::FIELD_C, -1, 10, data);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("non-negative"));
+}
+
+TEST_F(ChunkValidationTests, RejectsNegativeTotalElements)
+{
+  auto uid = start_upload();
+  std::string data(8, '\0');
+  auto status = send_chunk(uid, cuopt::remote::FIELD_C, 0, -5, data);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("non-negative"));
+}
+
+TEST_F(ChunkValidationTests, RejectsHugeTotalElements)
+{
+  auto uid = start_upload();
+  std::string data(8, '\0');
+  auto status = send_chunk(uid, cuopt::remote::FIELD_C, 0, int64_t(1) << 60, data);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::RESOURCE_EXHAUSTED);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("too large"));
+}
+
+TEST_F(ChunkValidationTests, RejectsInvalidFieldId)
+{
+  auto uid = start_upload();
+  std::string data(8, '\0');
+  auto status = send_chunk(uid, static_cast<cuopt::remote::ArrayFieldId>(999), 0, 10, data);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("field_id"));
+}
+
+TEST_F(ChunkValidationTests, RejectsUnalignedChunkData)
+{
+  auto uid = start_upload();
+  // First chunk to allocate the array (doubles, elem_size=8)
+  std::string good_data(80, '\0');  // 10 doubles
+  auto s1 = send_chunk(uid, cuopt::remote::FIELD_C, 0, 10, good_data);
+  EXPECT_TRUE(s1.ok()) << s1.error_message();
+
+  // Send a misaligned chunk (7 bytes, not a multiple of 8)
+  std::string bad_data(7, '\0');
+  auto s2 = send_chunk(uid, cuopt::remote::FIELD_C, 0, 10, bad_data);
+  EXPECT_FALSE(s2.ok());
+  EXPECT_EQ(s2.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(s2.error_message(), ::testing::HasSubstr("aligned"));
+}
+
+TEST_F(ChunkValidationTests, RejectsOffsetBeyondArraySize)
+{
+  auto uid = start_upload();
+  // Allocate array of 10 doubles
+  std::string data(80, '\0');
+  auto s1 = send_chunk(uid, cuopt::remote::FIELD_C, 0, 10, data);
+  EXPECT_TRUE(s1.ok()) << s1.error_message();
+
+  // Offset 100 is way past the 10-element array
+  std::string small_data(8, '\0');
+  auto s2 = send_chunk(uid, cuopt::remote::FIELD_C, 100, 10, small_data);
+  EXPECT_FALSE(s2.ok());
+  EXPECT_EQ(s2.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, RejectsChunkOverflow)
+{
+  auto uid = start_upload();
+  // Allocate array of 4 doubles (32 bytes)
+  std::string init_data(32, '\0');
+  auto s1 = send_chunk(uid, cuopt::remote::FIELD_C, 0, 4, init_data);
+  EXPECT_TRUE(s1.ok()) << s1.error_message();
+
+  // Offset 3 + 2 doubles = writes past end
+  std::string over_data(16, '\0');  // 2 doubles
+  auto s2 = send_chunk(uid, cuopt::remote::FIELD_C, 3, 4, over_data);
+  EXPECT_FALSE(s2.ok());
+  EXPECT_EQ(s2.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, RejectsUnknownUploadId)
+{
+  std::string data(8, '\0');
+  auto status = send_chunk("nonexistent-upload-id", cuopt::remote::FIELD_C, 0, 10, data);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::NOT_FOUND);
+}
+
+// container_field_num and container_index target a single array inside a
+// repeated nested message and are meaningless individually.  If only one is
+// set we would otherwise either route to container_index=0 silently (when
+// container_field_num is set alone) or strip the container_index off a
+// top-level chunk (when container_index is set alone).  Both must be flagged.
+TEST_F(ChunkValidationTests, RejectsContainerFieldNumWithoutContainerIndex)
+{
+  auto uid = start_upload();
+  grpc::ClientContext ctx;
+  cuopt::remote::SendArrayChunkRequest req;
+  req.set_upload_id(uid);
+  auto* ac = req.mutable_chunk();
+  ac->set_field_id(0);
+  ac->set_element_offset(0);
+  ac->set_total_elements(1);
+  ac->set_data(std::string(8, '\0'));
+  ac->set_container_field_num(25);
+  cuopt::remote::SendArrayChunkResponse resp;
+  auto status = stub_->SendArrayChunk(&ctx, req, &resp);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("container_field_num"));
+}
+
+TEST_F(ChunkValidationTests, RejectsContainerIndexWithoutContainerFieldNum)
+{
+  auto uid = start_upload();
+  grpc::ClientContext ctx;
+  cuopt::remote::SendArrayChunkRequest req;
+  req.set_upload_id(uid);
+  auto* ac = req.mutable_chunk();
+  ac->set_field_id(0);
+  ac->set_element_offset(0);
+  ac->set_total_elements(1);
+  ac->set_data(std::string(8, '\0'));
+  ac->set_container_index(0);
+  cuopt::remote::SendArrayChunkResponse resp;
+  auto status = stub_->SendArrayChunk(&ctx, req, &resp);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("container_index"));
+}
+
+TEST_F(ChunkValidationTests, AcceptsValidChunk)
+{
+  auto uid = start_upload();
+  // 10 doubles = 80 bytes
+  std::string data(80, '\x42');
+  auto status = send_chunk(uid, cuopt::remote::FIELD_C, 0, 10, data);
+  EXPECT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(ChunkValidationTests, LegacyUploadRejectsVrp)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadRequest req;
+  req.mutable_problem_header()->mutable_header()->set_problem_category(cuopt::remote::VRP);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUpload(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsMissingProblem)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsNonemptyLpArray)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_lp_request()->mutable_problem()->add_c(1.0);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2RejectsNonemptyVrpMatrix)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_vrp_request()->mutable_problem()->add_cost_matrices()->add_values(
+    1.0f);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ChunkValidationTests, V2AcceptsEmptyLpHeader)
+{
+  grpc::ClientContext ctx;
+  cuopt::remote::StartChunkedUploadV2Request req;
+  req.mutable_job()->mutable_lp_request()->mutable_header()->set_problem_category(
+    cuopt::remote::LP);
+  cuopt::remote::StartChunkedUploadResponse resp;
+  auto status = stub_->StartChunkedUploadV2(&ctx, req, &resp);
+  EXPECT_TRUE(status.ok()) << status.error_message();
+  EXPECT_FALSE(resp.upload_id().empty());
+}
+
+}  // anonymous namespace
+
+// =============================================================================
+// Main
+// =============================================================================
+
+int main(int argc, char** argv)
+{
+  ::testing::InitGoogleTest(&argc, argv);
+  const int rc = RUN_ALL_TESTS();
+  // Skip C++ static / atexit destructors. gRPC / Abseil / protobuf can
+  // intermittently double-free during process-exit teardown after a fully
+  // green run (CI sees SIGABRT / "double free or corruption (fasttop)" after
+  // "[  PASSED  ]"). Shared ServerProcess instances are already stopped in
+  // each suite's TearDownTestSuite, so skipping global dtors is safe here.
+  std::_Exit(rc);
+}

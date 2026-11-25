@@ -22,6 +22,7 @@
 #include <thrust/gather.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/logical.h>
+#include <thrust/sequence.h>
 #include <thrust/sort.h>
 #include <thrust/tuple.h>
 
@@ -345,6 +346,8 @@ __global__ void kernel_convert_greater_to_less(raft::device_span<f_t> coefficien
   for (i_t tid = threadIdx.x; tid < row_size; tid += blockDim.x) {
     coefficients[row_start + tid] = -coefficients[row_start + tid];
   }
+
+  __syncthreads();
 
   if (threadIdx.x == 0) {
     constraint_lower_bounds[constraint_id] = -ub;

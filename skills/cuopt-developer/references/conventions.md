@@ -29,7 +29,7 @@ This applies to all comment types: inline comments, block comments, suppression 
 |---------|------------|---------|
 | Variables | `snake_case` | `num_locations` |
 | Functions | `snake_case` | `solve_problem()` |
-| Classes | `snake_case` | `data_model` |
+| Classes / structs | `snake_case_t` | `solver_settings_t` |
 | Test cases | `PascalCase` | `SolverTest` |
 | Device data | `d_` prefix | `d_locations_` |
 | Host data | `h_` prefix | `h_data_` |
@@ -67,6 +67,8 @@ This applies to all comment types: inline comments, block comments, suppression 
   or non-trivial control flow), extract it as a named free function, file-local helper in an
   anonymous namespace, or private method. Large local lambdas obscure control flow, hide reuse,
   and make work/time accounting harder to reason about.
+- **Do not define a struct or class inside a function body.** Declare it at namespace scope
+  (in an anonymous namespace if it is file-local) so it can be named, reused and tested.
 - Prefer direct loops or named helpers for performance-critical traversal logic. Reserve
   in-function lambdas for short predicates and callbacks only.
 - Keep work-estimate and time-limit checks at phase or outer-loop boundaries. Accumulate the work

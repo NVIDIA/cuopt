@@ -3,6 +3,11 @@
 
 import os
 import time
+import warnings
+
+import numpy as np
+
+from cuopt.utilities import InputValidationError
 
 from . import data_model_wrapper
 from .utilities import catch_cuopt_exception
@@ -109,9 +114,8 @@ class DataModel(data_model_wrapper.DataModel):
     >>>
     >>> data_model.set_csr_constraint_matrix(A_values, A_indices, A_offsets)
     >>>
-    >>> # Set the constraint bounds (b / right-hand side) array
+    >>> # The constraint bounds (b / right-hand side) array
     >>> b = np.array([5.4, 4.9], dtype=np.float64)
-    >>> data_model.set_constraint_bounds(b)
     >>>
     >>> # Set the objective coefficient (c) array.
     >>> c = np.array([0.2, 0.1], dtype=np.float64)
@@ -120,18 +124,18 @@ class DataModel(data_model_wrapper.DataModel):
     >>> # Set the constraints/rows equalities, either using the row_type format
     >>> # or by directly setting the bounds
     >>>
-    >>> # Method 0: constraints/rows type
+    >>> # Method 0: constraints/rows type. Sets b and the row types together
     >>> # Set both constraints/rows to less-than (<=)
     >>> row_types = np.array(['L', 'L'])
-    >>> data_model.set_row_types(row_types)
+    >>> data_model.set_constraint_rows_from_rhs(b, row_types)
     >>>
-    >>> # Method 1: directly set bounds
+    >>> # Method 1: directly set bounds. Sets both bounds together
     >>> # Set lower bounds to -infinity and upper bounds to b
     >>> constraint_lower_bounds = np.array([-np.inf, -np.inf],
     >>>                                       dtype=np.float64)
     >>> constraint_upper_bounds = np.array(b, dtype=np.float64)
-    >>> data_model.set_constraint_lower_bounds(constraint_lower_bounds)
-    >>> data_model.set_constraint_upper_bounds(constraint_upper_bounds)
+    >>> data_model.set_constraint_rows_from_bounds(
+    >>>     constraint_lower_bounds, constraint_upper_bounds)
     >>>
     >>>
     >>> # Set variable lower and upper bounds
@@ -205,7 +209,13 @@ class DataModel(data_model_wrapper.DataModel):
 
         Notes
         -----
-        Setting before calling the solver is mandatory.
+        Before solving, the constraints need either this right-hand side
+        (together with ``set_row_types``) or lower and upper bounds.
+
+        .. deprecated:: 26.12
+            Use :meth:`set_constraint_rows_from_rhs`, which sets the
+            right-hand side and row types together and clears any
+            lower/upper bounds. This setter still works and does not warn.
 
         """
         super().set_constraint_bounds(b)
@@ -467,6 +477,9 @@ class DataModel(data_model_wrapper.DataModel):
         Setting before calling the solver is optional if you set the row type,
         else it's mandatory along with the upper bounds.
 
+        Prefer ``set_constraint_rows_from_bounds``, which sets both bounds
+        together and clears any right-hand side and row types.
+
         """
         super().set_constraint_lower_bounds(constraint_lower_bounds)
 
@@ -484,6 +497,9 @@ class DataModel(data_model_wrapper.DataModel):
         -----
         Setting before calling the solver is optional if you set the row type,
         else it's mandatory along with the lower bounds.
+
+        Prefer ``set_constraint_rows_from_bounds``, which sets both bounds
+        together and clears any right-hand side and row types.
 
         """
         super().set_constraint_upper_bounds(constraint_upper_bounds)
@@ -521,12 +537,107 @@ class DataModel(data_model_wrapper.DataModel):
         lower and upper bounds, else it's mandatory. If both are set,
         priority goes to set_constraint_lower/upper_bounds.
 
+        .. deprecated:: 26.12
+            Use :meth:`set_constraint_rows_from_rhs`, which sets the
+            right-hand side and row types together and clears any
+            lower/upper bounds. This setter still works and does not warn.
+
         Examples
         --------
         >>> row_types = np.array(['L', 'L'])
         >>> data_model.set_row_types(row_types)
         """
         super().set_row_types(row_types)
+
+    def set_constraint_rows_from_bounds(
+        self, constraint_lower_bounds, constraint_upper_bounds
+    ):
+        """
+        Describe every constraint row by its lower and upper bounds.
+
+        Both arrays are set together and any right-hand side and row types
+        already stored are cleared, so the rows have a single representation.
+        Prefer this over calling ``set_constraint_lower_bounds`` and
+        ``set_constraint_upper_bounds`` separately.
+
+        Parameters
+        ----------
+        constraint_lower_bounds : np.array dtype - float64
+            Lower bound of each row (``-np.inf`` for none).
+        constraint_upper_bounds : np.array dtype - float64
+            Upper bound of each row (``np.inf`` for none).
+
+        Raises
+        ------
+        InputValidationError
+            If the two arrays do not have the same length.
+
+        Examples
+        --------
+        >>> lower = np.array([-np.inf, 1.0])
+        >>> upper = np.array([5.4, 1.0])
+        >>> data_model.set_constraint_rows_from_bounds(lower, upper)
+        """
+        n_lower = len(constraint_lower_bounds)
+        n_upper = len(constraint_upper_bounds)
+        if n_lower != n_upper:
+            raise InputValidationError(
+                "constraint lower and upper bounds must have the same "
+                f"length, got {n_lower} and {n_upper}"
+            )
+        # Convert first so invalid input raises before the model changes.
+        constraint_lower_bounds = np.asarray(
+            constraint_lower_bounds, dtype=np.float64
+        )
+        constraint_upper_bounds = np.asarray(
+            constraint_upper_bounds, dtype=np.float64
+        )
+        self.set_constraint_lower_bounds(constraint_lower_bounds)
+        self.set_constraint_upper_bounds(constraint_upper_bounds)
+        self.set_constraint_bounds(np.array([], dtype=np.float64))
+        self.set_row_types(np.array([], dtype="U1"))
+
+    def set_constraint_rows_from_rhs(self, rhs, row_types):
+        """
+        Describe every constraint row by its right-hand side and row type.
+
+        Both arrays are set together and any constraint lower and upper
+        bounds already stored are cleared, so the rows have a single
+        representation. Prefer this over calling ``set_constraint_bounds`` and
+        ``set_row_types`` separately.
+
+        Parameters
+        ----------
+        rhs : np.array dtype - float64
+            Right-hand side (b) of each row.
+        row_types : np.array dtype - unicode string (<U1) or str
+            'L', 'G' or 'E' for each row, see ``set_row_types``.
+
+        Raises
+        ------
+        InputValidationError
+            If the two arrays do not have the same length.
+
+        Examples
+        --------
+        >>> rhs = np.array([5.4, 4.9])
+        >>> data_model.set_constraint_rows_from_rhs(rhs, np.array(['L', 'G']))
+        """
+        n_rhs = len(rhs)
+        n_types = len(row_types)
+        if n_rhs != n_types:
+            raise InputValidationError(
+                "constraint rhs and row types must have the same length, "
+                f"got {n_rhs} and {n_types}"
+            )
+        # Convert first so invalid input raises before the model changes.
+        rhs = np.asarray(rhs, dtype=np.float64)
+        for row_type in row_types:
+            ord(row_type)
+        self.set_constraint_bounds(rhs)
+        self.set_row_types(row_types)
+        self.set_constraint_lower_bounds(np.array([], dtype=np.float64))
+        self.set_constraint_upper_bounds(np.array([], dtype=np.float64))
 
     @catch_cuopt_exception
     def set_variable_names(self, variables_names):
@@ -808,5 +919,59 @@ class DataModel(data_model_wrapper.DataModel):
         return super().get_problem_name()
 
     @catch_cuopt_exception
-    def writeMPS(self, user_problem_file):
+    def _write_mps(self, user_problem_file):
         return super().writeMPS(user_problem_file)
+
+    @catch_cuopt_exception
+    def _write_lp(self, user_problem_file):
+        return super()._write_lp(user_problem_file)
+
+    @catch_cuopt_exception
+    def write(self, user_problem_file: str) -> None:
+        """Write the problem to a file, dispatching on extension.
+
+        Dispatches to the MPS/QPS or LP writer based on the filename suffix
+        (case-insensitive), matching :func:`cuopt.linear_programming.io.Read`:
+
+        - ``.mps``, ``.qps`` → MPS writer
+        - ``.lp`` → LP writer
+
+        Compressed output is not supported.
+
+        Parameters
+        ----------
+        user_problem_file : str
+            Path to an uncompressed MPS, QPS, or LP output file.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            If the file extension is not one of the supported suffixes.
+        Exception
+            Propagates validation or I/O failures from the underlying writer.
+        """
+        lower = user_problem_file.lower()
+        if lower.endswith(".lp"):
+            self._write_lp(user_problem_file)
+        elif lower.endswith((".mps", ".qps")):
+            self._write_mps(user_problem_file)
+        else:
+            raise RuntimeError(
+                "write: unrecognized output file extension. Supported "
+                "(case-insensitive): .mps, .qps, .lp. Compressed output is "
+                f"not supported. Given path: {user_problem_file}"
+            )
+
+    @catch_cuopt_exception
+    def writeMPS(self, user_problem_file: str) -> None:
+        warnings.warn(
+            "DataModel.writeMPS is deprecated and will be removed in a future "
+            "release. Use DataModel.write instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._write_mps(user_problem_file)

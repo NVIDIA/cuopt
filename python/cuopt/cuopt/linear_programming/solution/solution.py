@@ -5,6 +5,7 @@ from cuopt.linear_programming.solver_settings.solver_settings import (
     SolverMethod,
 )
 from cuopt.linear_programming.solver.solver_wrapper import (
+    ErrorStatus,
     LPTerminationStatus,
     MILPTerminationStatus,
     ProblemCategory,
@@ -228,6 +229,22 @@ class Solution:
             "num_simplex_iterations": num_simplex_iterations,
         }
 
+    def __repr__(self) -> str:
+        if self.error_status != ErrorStatus.Success:
+            text = (
+                f"Solution(status={self.termination_status.name}, "
+                f"error={ErrorStatus(self.error_status).name})"
+            )
+            if self.error_message:
+                text += f"\n{self.error_message}"
+            return text
+        return (
+            f"Solution(status={self.termination_status.name}, "
+            f"objective={self.primal_objective})"
+        )
+
+    __str__ = __repr__
+
     def _set_termination_status(self, ts):
         if self.problem_category == ProblemCategory.LP:
             self.termination_status = LPTerminationStatus(ts)
@@ -278,6 +295,8 @@ class Solution:
         * ``<=``: ``rhs - lhs`` (slack; non-negative if feasible)
         * ``>=``: ``lhs - rhs`` (surplus; non-negative if feasible)
         * ``==``: ``rhs - lhs`` (residual; near zero if feasible)
+        * ranged (two different finite bounds): distance to the nearer bound
+          (non-negative if feasible)
 
         Quadratic constraints are not included. Returns None when the values
         could not be computed, for example when the solver returned no primal

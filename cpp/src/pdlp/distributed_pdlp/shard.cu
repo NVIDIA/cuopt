@@ -13,6 +13,7 @@
 #include <raft/core/device_setter.hpp>
 
 #include <cassert>
+#include <cstdint>
 #include <limits>
 
 namespace cuopt::mathematical_optimization::pdlp {
@@ -23,10 +24,11 @@ template <typename i_t, typename f_t>
 pdlp_shard_t<i_t, f_t>::~pdlp_shard_t() = default;
 
 template <typename i_t, typename f_t>
+template <typename index_t>
 pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
                                      rank_data_t<i_t, f_t>&& rd,
                                      nccl_comm_unique_ptr_t&& comm,
-                                     io::mps_data_model_t<i_t, f_t> const& mps,
+                                     io::mps_data_model_t<index_t, f_t> const& mps,
                                      pdlp_solver_settings_t<i_t, f_t> const& settings)
   : device_id(device_id),
     stream(),
@@ -162,5 +164,23 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
 
 template struct pdlp_shard_t<int, double>;
 template struct pdlp_shard_t<int, float>;
+
+// The ctor is a member template, so the class instantiations above do not cover it.
+// One per mps index type the distributed solver can be handed; int64 is double-only.
+template pdlp_shard_t<int, double>::pdlp_shard_t(int,
+                                                 rank_data_t<int, double>&&,
+                                                 nccl_comm_unique_ptr_t&&,
+                                                 io::mps_data_model_t<int, double> const&,
+                                                 pdlp_solver_settings_t<int, double> const&);
+template pdlp_shard_t<int, double>::pdlp_shard_t(int,
+                                                 rank_data_t<int, double>&&,
+                                                 nccl_comm_unique_ptr_t&&,
+                                                 io::mps_data_model_t<int64_t, double> const&,
+                                                 pdlp_solver_settings_t<int, double> const&);
+template pdlp_shard_t<int, float>::pdlp_shard_t(int,
+                                                rank_data_t<int, float>&&,
+                                                nccl_comm_unique_ptr_t&&,
+                                                io::mps_data_model_t<int, float> const&,
+                                                pdlp_solver_settings_t<int, float> const&);
 
 }  // namespace cuopt::mathematical_optimization::pdlp

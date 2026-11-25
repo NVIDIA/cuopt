@@ -318,19 +318,6 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
 // Small utility helpers
 // ---------------------------------------------------------------------------
 
-// Reset every field in a job slot so it can be reused by the next submission.
-static void reset_job_slot(JobQueueEntry& job)
-{
-  job.worker_pid     = 0;
-  job.worker_index   = -1;
-  job.data_sent      = false;
-  job.is_chunked     = false;
-  job.unified_header = false;
-  job.ready          = false;
-  job.claimed        = false;
-  job.cancelled      = false;
-}
-
 // Log pipe throughput when config.verbose is enabled.
 static void log_pipe_throughput(const char* phase,
                                 int64_t total_bytes,
@@ -412,21 +399,10 @@ static void store_simple_result(const std::string& job_id,
 // Stage functions called from the worker_process main loop
 // ---------------------------------------------------------------------------
 
-// Atomically claim the first ready-but-unclaimed job slot, stamping it with
-// this worker's PID and index.  Returns the slot index, or -1 if none found.
+// Atomically claim the oldest ready-but-unclaimed job by enqueue_seq.
 static int claim_job_slot(int worker_id)
 {
-  for (size_t i = 0; i < MAX_JOBS; ++i) {
-    if (job_queue[i].ready && !job_queue[i].claimed) {
-      bool expected = false;
-      if (job_queue[i].claimed.compare_exchange_strong(expected, true)) {
-        job_queue[i].worker_pid   = getpid();
-        job_queue[i].worker_index = worker_id;
-        return static_cast<int>(i);
-      }
-    }
-  }
-  return -1;
+  return claim_ready_job_slot(job_queue, MAX_JOBS, worker_id, getpid());
 }
 
 // Unified chunked upload: the pipe header is a SubmitJobRequest with numeric

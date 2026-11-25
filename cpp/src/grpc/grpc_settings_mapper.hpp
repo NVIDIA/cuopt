@@ -5,10 +5,12 @@
 
 #pragma once
 
+#include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt_remote.pb.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace cuopt::mathematical_optimization {
 
@@ -132,10 +134,21 @@ void append_solver_parameters(const solver_settings_t<i_t, f_t>& settings,
  * An empty map changes nothing. An unknown name or an out-of-range value
  * throws std::invalid_argument. A map with more entries than twice the number
  * of registered parameter slots throws std::invalid_argument as well. That
- * limit follows the parameter tables.
+ * limit follows the parameter tables. log_file, solution_file,
+ * user_problem_file, and presolve_file are replaced with an empty string:
+ * those values are paths the solver would open on this host. The names are
+ * listed explicitly, so a later string parameter that is not a path is
+ * applied as sent.
  */
 template <typename i_t, typename f_t>
 void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,
                                const google::protobuf::Map<std::string, std::string>& parameters);
+
+// True for the solver parameters whose values are filesystem paths.
+inline bool is_remote_file_path_parameter(const std::string& name)
+{
+  return name == CUOPT_LOG_FILE || name == CUOPT_SOLUTION_FILE || name == CUOPT_USER_PROBLEM_FILE ||
+         name == CUOPT_PRESOLVE_FILE;
+}
 
 }  // namespace cuopt::mathematical_optimization

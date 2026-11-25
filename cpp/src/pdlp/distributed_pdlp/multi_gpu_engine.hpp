@@ -88,8 +88,9 @@ template <typename i_t, typename f_t>
 struct multi_gpu_engine_t {
   // Constructs shards from rank_data. The global (unpartitioned) problem is
   // read straight from `mps`; each shard slices out the entries it owns.
+  template <typename index_t>
   multi_gpu_engine_t(std::vector<rank_data_t<i_t, f_t>>&& rank_data,
-                     io::mps_data_model_t<i_t, f_t> const& mps,
+                     io::mps_data_model_t<index_t, f_t> const& mps,
                      pdlp_solver_settings_t<i_t, f_t> const& sub_solver_settings);
 
   multi_gpu_engine_t(const multi_gpu_engine_t&)            = delete;

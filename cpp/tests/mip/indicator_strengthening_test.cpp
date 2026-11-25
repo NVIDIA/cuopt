@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <mip_heuristics/presolve/indicator_strengthening.hpp>
+#include <presolve/indicator_strengthening.hpp>
 
 #include <papilo/core/ProblemBuilder.hpp>
 

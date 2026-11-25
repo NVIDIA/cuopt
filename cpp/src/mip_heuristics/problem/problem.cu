@@ -22,9 +22,9 @@
 #include <cuts/objective_step.hpp>
 #include <cuts/rational.hpp>
 #include <math_optimization/tic_toc.hpp>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
-#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <presolve/third_party_presolve.hpp>
+#include <presolve/trivial_presolve.cuh>
 #include <utilities/hashing.hpp>
 
 #include <cub/device/device_segmented_reduce.cuh>
@@ -37,6 +37,7 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
+#include <thrust/sequence.h>
 #include <thrust/set_operations.h>
 #include <thrust/sort.h>
 #include <thrust/tabulate.h>
@@ -1566,27 +1567,60 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
   sort_rows_by_variables(handle_ptr);
   // now remove the duplicate substituted variables by summing their coefficients on one and
   // assigning a dummy variable on another
-  thrust::for_each(handle_ptr->get_thrust_policy(),
-                   thrust::make_counting_iterator(0),
-                   thrust::make_counting_iterator(n_constraints),
-                   [variables              = make_span(variables),
-                    coefficients           = make_span(coefficients),
-                    offsets                = make_span(offsets),
-                    objective_coefficients = make_span(objective_coefficients),
-                    dummy_substituted_variable] __device__(i_t cstr_idx) {
-                     i_t offset_begin = offsets[cstr_idx];
-                     i_t offset_end   = offsets[cstr_idx + 1];
-                     i_t run_start    = offset_begin;
-                     for (i_t j = offset_begin + 1; j < offset_end; ++j) {
-                       if (variables[j] == variables[run_start]) {
-                         coefficients[run_start] += coefficients[j];
-                         variables[j]    = dummy_substituted_variable;
-                         coefficients[j] = 0.;
-                       } else {
-                         run_start = j;
-                       }
-                     }
-                   });
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(n_constraints),
+    [variables       = make_span(variables),
+     coefficients    = make_span(coefficients),
+     offsets         = make_span(offsets),
+     variable_bounds = make_span(variable_bounds),
+     lower_bounds    = make_span(constraint_lower_bounds),
+     upper_bounds    = make_span(constraint_upper_bounds),
+     tolerance       = tolerances.presolve_absolute_tolerance,
+     dummy_substituted_variable] __device__(i_t cstr_idx) {
+      i_t offset_begin = offsets[cstr_idx];
+      i_t offset_end   = offsets[cstr_idx + 1];
+      i_t run_start    = offset_begin;
+      for (i_t j = offset_begin + 1; j < offset_end; ++j) {
+        if (variables[j] == variables[run_start]) {
+          coefficients[run_start] += coefficients[j];
+          variables[j]    = dummy_substituted_variable;
+          coefficients[j] = 0.;
+        } else {
+          run_start = j;
+        }
+      }
+
+      // Rounded probing substitutions can leave a tiny residual in a redundant row. For example:
+      //   original row: x - 1.4419880250174197*z = -6.2758387909538564
+      //   substitute:   x = -6.2758387909538556 + 1.4419880250174186*z
+      //   merged row:   -1.1102230246251565e-15*z = -8.8817841970012523e-16
+      // Both binary values of z satisfy this row within tolerance 1e-6. However, dividing by
+      // the tiny coefficient gives z=0.8; rounding the integer bounds to [1, 0] falsely reports
+      // infeasibility. Check for this only when all entries merged into one column: the merge
+      // already zeroed every entry after offset_begin, so no additional row traversal is needed.
+      if (offset_end - offset_begin < 2 || run_start != offset_begin) { return; }
+      const f_t coeff   = coefficients[offset_begin];
+      const auto bounds = variable_bounds[variables[offset_begin]];
+      const f_t activity =
+        coeff == f_t{0} ? f_t{0} : abs(coeff) * max(abs(get_lower(bounds)), abs(get_upper(bounds)));
+      // activity bounds |coeff*z| over the full variable domain. Require it to be small and
+      // [-activity, activity] to lie within the row bounds expanded by tolerance. This proves
+      // every allowed z satisfies the row; a tiny coefficient alone is insufficient when z
+      // has a large or unbounded domain.
+      if (!isfinite(activity) || activity > tolerance ||
+          -activity < lower_bounds[cstr_idx] - tolerance ||
+          activity > upper_bounds[cstr_idx] + tolerance) {
+        return;
+      }
+
+      // Replace the numerically redundant row with 0=0 before bound propagation can amplify
+      // the residual by division. trivial_presolve can then remove this empty, feasible row.
+      coefficients[offset_begin] = f_t{0};
+      lower_bounds[cstr_idx]     = f_t{0};
+      upper_bounds[cstr_idx]     = f_t{0};
+    });
   // in case we use this function in context other than propagation, it is possible that substituted
   // var doesn't exist in the constraint(they are not detected by duplicate detection). so we need
   // to take care of that.
