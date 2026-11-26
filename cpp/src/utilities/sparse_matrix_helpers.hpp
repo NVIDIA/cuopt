@@ -157,4 +157,39 @@ void symmetrize_csr(const std::vector<f_t>& in_values,
                  out_offsets);
 }
 
+/**
+ * @brief Sort the column indices of each row of a symmetric CSR matrix
+ *
+ * Since H = H^T, one transpose by bucket sort yields H with sorted rows in O(nnz + n_rows).
+ *
+ * @tparam i_t Integer type for indices
+ * @tparam f_t Floating point type for values
+ *
+ * @param[in] offsets      CSR row offsets
+ * @param[in,out] indices  CSR column indices
+ * @param[in,out] values   CSR values
+ */
+template <typename i_t, typename f_t>
+void sort_symmetric_csr_rows(const std::vector<i_t>& offsets,
+                             std::vector<i_t>& indices,
+                             std::vector<f_t>& values)
+{
+  if (offsets.size() <= 1) { return; }
+  const i_t n_rows = static_cast<i_t>(offsets.size()) - 1;
+
+  // H^T has the same row offsets as H
+  std::vector<i_t> next(offsets.begin(), offsets.end() - 1);
+  std::vector<i_t> sorted_indices(indices.size());
+  std::vector<f_t> sorted_values(values.size());
+  for (i_t i = 0; i < n_rows; ++i) {
+    for (i_t p = offsets[i]; p < offsets[i + 1]; ++p) {
+      const i_t q       = next[indices[p]]++;
+      sorted_indices[q] = i;
+      sorted_values[q]  = values[p];
+    }
+  }
+  indices.swap(sorted_indices);
+  values.swap(sorted_values);
+}
+
 }  // namespace cuopt

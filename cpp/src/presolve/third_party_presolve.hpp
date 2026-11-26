@@ -30,6 +30,11 @@ template <typename T>
 class Problem;
 }  // namespace papilo
 
+namespace cuopt::mathematical_optimization {
+template <typename i_t, typename f_t>
+class optimization_problem_solution_t;
+}  // namespace cuopt::mathematical_optimization
+
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename f_t>
@@ -144,6 +149,30 @@ class third_party_presolve_t {
             problem_category_t category,
             bool status_to_skip,
             bool dual_postsolve);
+
+  // Postsolve a solution of the reduced problem back to op_problem's variables and rows.
+  void postsolve_to_original_problem(optimization_problem_t<i_t, f_t> const& op_problem,
+                                     bool dual_postsolve,
+                                     optimization_problem_solution_t<i_t, f_t>& solution);
+
+  // Solution of op_problem when presolve removed every row and column.
+  optimization_problem_solution_t<i_t, f_t> solution_from_empty_reduced_problem(
+    f_t objective_offset,
+    double presolve_time,
+    optimization_problem_t<i_t, f_t> const& op_problem,
+    bool dual_postsolve);
+
+  // Wrap the "presolve completely solved the problem" outcome (reduced problem
+  // has zero vars and zero constraints) into an optimization_problem_solution_t.
+  static optimization_problem_solution_t<i_t, f_t> build_presolve_optimal_solution(
+    rmm::device_uvector<f_t>& primal_uv,
+    rmm::device_uvector<f_t>& dual_uv,
+    rmm::device_uvector<f_t>& rc_uv,
+    f_t objective_offset,
+    double presolve_time,
+    std::string const& objective_name,
+    std::vector<std::string> const& variable_names,
+    std::vector<std::string> const& row_names);
 
   void uncrush_primal_solution(const std::vector<f_t>& reduced_primal,
                                std::vector<f_t>& full_primal,

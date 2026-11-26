@@ -2016,6 +2016,55 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
   }
 }
 
+// Map a "presolve concluded a terminal status" outcome to the corresponding
+// LP-solution object. Returns nullopt when presolve did not conclude
+// (i.e. produced a reduced problem to be solved). Used by both the single-GPU
+// (op_problem-driven) and multi-GPU (mps-driven) presolve paths.
+template <typename i_t, typename f_t>
+static std::optional<optimization_problem_solution_t<i_t, f_t>>
+terminal_solution_from_presolve_status(mip::third_party_presolve_status_t status,
+                                       cuda::stream_ref stream)
+{
+  switch (status) {
+    case mip::third_party_presolve_status_t::INFEASIBLE:
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
+                                                       stream);
+    case mip::third_party_presolve_status_t::UNBNDORINFEAS:
+      return optimization_problem_solution_t<i_t, f_t>(
+        pdlp_termination_status_t::UnboundedOrInfeasible, stream);
+    case mip::third_party_presolve_status_t::UNBOUNDED:
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::DualInfeasible,
+                                                       stream);
+    default: return std::nullopt;
+  }
+}
+
+// Presolve time limit: 10% of the remaining time, clamped to [1, 60] seconds. The 1 second floor
+// avoids early timeouts that trigger known crashes.
+static double presolve_time_limit(const cuopt::timer_t& timer)
+{
+  return std::max(1.0, std::min(0.1 * timer.remaining_time(), 60.0));
+}
+
+// Run settings.presolver on an LP or QP, sorting the CSR rows of op_problem first.
+template <typename i_t, typename f_t>
+static mip::third_party_presolve_device_result_t<i_t, f_t> apply_third_party_presolve(
+  mip::third_party_presolve_t<i_t, f_t>& presolver,
+  optimization_problem_t<i_t, f_t>& op_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  const cuopt::timer_t& timer)
+{
+  sort_csr(op_problem);
+  return presolver.apply_presolve_from_op_problem(
+    op_problem,
+    cuopt::mathematical_optimization::problem_category_t::LP,
+    settings.presolver,
+    settings.dual_postsolve,
+    settings.tolerances.absolute_primal_tolerance,
+    settings.tolerances.relative_primal_tolerance,
+    presolve_time_limit(timer));
+}
+
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_qcqp(
   optimization_problem_t<i_t, f_t>& op_problem,
@@ -2081,14 +2130,59 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       op_problem.write_to_file(settings.user_problem_file,
                                dump_file_format_from_path(settings.user_problem_file));
     }
+
+    // Only PSLP presolves a QP, and only when selected explicitly.
+    std::unique_ptr<mip::third_party_presolve_t<i_t, f_t>> presolver;
+    std::optional<mip::third_party_presolve_device_result_t<i_t, f_t>> presolve_result;
+    bool run_presolve = settings.presolver == presolver_t::PSLP;
+    if (run_presolve) {
+      const char* skip_reason = nullptr;
+      if (has_qc) {
+        skip_reason = "quadratic constraints are not supported";
+      } else if (!std::is_same_v<f_t, double>) {
+        skip_reason = "PSLP only supports double precision";
+      } else if (settings.sequence_solve || settings.barrier_cache != nullptr) {
+        skip_reason = "a barrier cache or sequence solve reuses the unreduced problem";
+      }
+      if (skip_reason != nullptr) {
+        CUOPT_LOG_INFO("Skipping presolve: %s", skip_reason);
+        run_presolve = false;
+      } else {
+        presolver       = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
+        presolve_result = apply_third_party_presolve(*presolver, op_problem, settings, qcqp_timer);
+        if (auto terminal = terminal_solution_from_presolve_status<i_t, f_t>(
+              presolve_result->status, op_problem.get_handle_ptr()->get_stream())) {
+          return std::move(*terminal);
+        }
+        const double presolve_time = qcqp_timer.elapsed_time();
+        CUOPT_LOG_INFO("PSLP presolve time: %.2fs", presolve_time);
+
+        // Checked before the barrier conversion, which does not accept an empty problem.
+        auto& reduced = presolve_result->reduced_problem;
+        if (reduced.get_n_variables() == 0 && reduced.get_n_constraints() == 0) {
+          return presolver->solution_from_empty_reduced_problem(
+            reduced.get_objective_offset(), presolve_time, op_problem, settings.dual_postsolve);
+        }
+        if (settings.presolve_file != "") {
+          CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
+          reduced.write_to_file(settings.presolve_file,
+                                dump_file_format_from_path(settings.presolve_file));
+        }
+      }
+    }
+
+    optimization_problem_t<i_t, f_t>& reduced_problem =
+      run_presolve ? presolve_result->reduced_problem : op_problem;
+
     simplex::user_problem_t<i_t, f_t> dual_simplex_problem(op_problem.get_handle_ptr());
     if (reuse_from_cache) {
       dual_simplex_problem = user_problem_from_transform(
         op_problem.get_handle_ptr(), op_problem, *settings.barrier_cache->transform());
     } else {
       dual_simplex_problem = cuopt_optimization_problem_to_user_problem<i_t, f_t>(
-        op_problem.get_handle_ptr(), op_problem);
+        op_problem.get_handle_ptr(), reduced_problem);
     }
+
     auto sol_dual_simplex = run_barrier(dual_simplex_problem,
                                         settings,
                                         qcqp_timer,
@@ -2104,13 +2198,17 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       cache->transform()->num_quadratic_constraints =
         static_cast<i_t>(op_problem.get_quadratic_constraints().size());
     }
-    auto solution = convert_dual_simplex_sol(op_problem,
+    auto solution = convert_dual_simplex_sol(reduced_problem,
                                              std::get<0>(sol_dual_simplex),
                                              std::get<1>(sol_dual_simplex),
                                              std::get<2>(sol_dual_simplex),
                                              std::get<3>(sol_dual_simplex),
                                              std::get<4>(sol_dual_simplex),
                                              method_t::Barrier);
+
+    if (run_presolve) {
+      presolver->postsolve_to_original_problem(op_problem, settings.dual_postsolve, solution);
+    }
 
     if (has_qc) {
       CUOPT_LOG_INFO("Dual variables for problems with quadratic constraints not returned.");
@@ -2146,68 +2244,6 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
       op_problem.get_handle_ptr()->get_stream()};
   }
-}
-
-// Map a "presolve concluded a terminal status" outcome to the corresponding
-// LP-solution object. Returns nullopt when presolve did not conclude
-// (i.e. produced a reduced problem to be solved). Used by both the single-GPU
-// (op_problem-driven) and multi-GPU (mps-driven) presolve paths.
-template <typename i_t, typename f_t>
-static std::optional<optimization_problem_solution_t<i_t, f_t>>
-terminal_solution_from_presolve_status(mip::third_party_presolve_status_t status,
-                                       cuda::stream_ref stream)
-{
-  switch (status) {
-    case mip::third_party_presolve_status_t::INFEASIBLE:
-      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
-                                                       stream);
-    case mip::third_party_presolve_status_t::UNBNDORINFEAS:
-      return optimization_problem_solution_t<i_t, f_t>(
-        pdlp_termination_status_t::UnboundedOrInfeasible, stream);
-    case mip::third_party_presolve_status_t::UNBOUNDED:
-      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::DualInfeasible,
-                                                       stream);
-    default: return std::nullopt;
-  }
-}
-
-// Wrap the "presolve completely solved the problem" outcome (reduced problem
-// has zero vars and zero constraints) into an optimization_problem_solution_t.
-template <typename i_t, typename f_t>
-static optimization_problem_solution_t<i_t, f_t> build_presolve_optimal_solution(
-  rmm::device_uvector<f_t>& primal_uv,
-  rmm::device_uvector<f_t>& dual_uv,
-  rmm::device_uvector<f_t>& rc_uv,
-  f_t objective_offset,
-  double presolve_time,
-  std::string const& objective_name,
-  std::vector<std::string> const& variable_names,
-  std::vector<std::string> const& row_names)
-{
-  typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
-    term_info;
-  term_info.primal_objective      = objective_offset;
-  term_info.dual_objective        = objective_offset;
-  term_info.number_of_steps_taken = 0;
-  term_info.solve_time            = presolve_time;
-  term_info.l2_primal_residual    = 0.0;
-  term_info.l2_dual_residual      = 0.0;
-  term_info.gap                   = 0.0;
-
-  std::vector<
-    typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
-    term_vec{term_info};
-  std::vector<pdlp_termination_status_t> status_vec{pdlp_termination_status_t::Optimal};
-
-  CUOPT_LOG_INFO("Status: Optimal  Objective: %f", term_info.primal_objective);
-  return optimization_problem_solution_t<i_t, f_t>(primal_uv,
-                                                   dual_uv,
-                                                   rc_uv,
-                                                   objective_name,
-                                                   variable_names,
-                                                   row_names,
-                                                   std::move(term_vec),
-                                                   std::move(status_vec));
 }
 
 // A user's initial primal is often a previous PDLP solution, which (after postsolve) can sit
@@ -2373,21 +2409,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     std::optional<mip::third_party_presolve_device_result_t<i_t, f_t>> result;
 
     if (run_presolve) {
-      sort_csr(op_problem);
-      // allocate no more than 10% of the time limit to presolve.
-      // Note that this is not the presolve time, but the time limit for presolve.
-      // But no less than 1 second, to avoid early timeout triggering known crashes
-      const double presolve_time_limit =
-        std::max(1.0, std::min(0.1 * lp_timer.remaining_time(), 60.0));
       presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
-      result    = presolver->apply_presolve_from_op_problem(
-        op_problem,
-        cuopt::mathematical_optimization::problem_category_t::LP,
-        settings.presolver,
-        settings.dual_postsolve,
-        settings.tolerances.absolute_primal_tolerance,
-        settings.tolerances.relative_primal_tolerance,
-        presolve_time_limit);
+      result    = apply_third_party_presolve(*presolver, op_problem, settings, lp_timer);
       if (auto terminal = terminal_solution_from_presolve_status<i_t, f_t>(
             result->status, op_problem.get_handle_ptr()->get_stream())) {
         return std::move(*terminal);
@@ -2397,33 +2420,15 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       // Must check before constructing problem_t since it fails on empty problems
       if (result->reduced_problem.get_n_variables() == 0 &&
           result->reduced_problem.get_n_constraints() == 0) {
-        CUOPT_LOG_INFO("Presolve completely solved the problem");
         presolve_time = lp_timer.elapsed_time();
         CUOPT_LOG_INFO("%s presolve time: %.2fs",
                        settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
                        presolve_time);
-
-        // Postsolve stays fully on device on the single-GPU path.
-        rmm::device_uvector<f_t> empty_primal(0, op_problem.get_handle_ptr()->get_stream());
-        rmm::device_uvector<f_t> empty_dual(0, op_problem.get_handle_ptr()->get_stream());
-        rmm::device_uvector<f_t> empty_reduced_costs(0, op_problem.get_handle_ptr()->get_stream());
-        presolver->undo_from_device(empty_primal,
-                                    empty_dual,
-                                    empty_reduced_costs,
-                                    cuopt::mathematical_optimization::problem_category_t::LP,
-                                    false,  // status_to_skip
-                                    settings.dual_postsolve,
-                                    op_problem.get_handle_ptr()->get_stream());
-
-        return build_presolve_optimal_solution<i_t, f_t>(
-          empty_primal,
-          empty_dual,
-          empty_reduced_costs,
+        return presolver->solution_from_empty_reduced_problem(
           result->reduced_problem.get_objective_offset(),
           presolve_time,
-          op_problem.get_objective_name(),
-          op_problem.get_variable_names(),
-          op_problem.get_row_names());
+          op_problem,
+          settings.dual_postsolve);
       }
 
       if (map_initial_solution) {
@@ -2492,38 +2497,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     auto solution = solve_lp_with_method(*problem, settings, lp_timer, is_batch_mode);
 
     if (run_presolve) {
-      auto primal_solution = cuopt::device_copy(solution.get_primal_solution(),
-                                                op_problem.get_handle_ptr()->get_stream());
-      auto dual_solution =
-        cuopt::device_copy(solution.get_dual_solution(), op_problem.get_handle_ptr()->get_stream());
-      auto reduced_costs =
-        cuopt::device_copy(solution.get_reduced_cost(), op_problem.get_handle_ptr()->get_stream());
-      bool status_to_skip = false;
-
-      presolver->undo_from_device(primal_solution,
-                                  dual_solution,
-                                  reduced_costs,
-                                  cuopt::mathematical_optimization::problem_category_t::LP,
-                                  status_to_skip,
-                                  settings.dual_postsolve,
-                                  op_problem.get_handle_ptr()->get_stream());
-
-      std::vector<
-        typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
-        term_vec = solution.get_additional_termination_informations();
-      std::vector<pdlp_termination_status_t> status_vec = solution.get_terminations_status();
-
-      // Create a new solution with the full problem solution
-      solution =
-        optimization_problem_solution_t<i_t, f_t>(primal_solution,
-                                                  dual_solution,
-                                                  reduced_costs,
-                                                  std::move(solution.get_pdlp_warm_start_data()),
-                                                  op_problem.get_objective_name(),
-                                                  op_problem.get_variable_names(),
-                                                  op_problem.get_row_names(),
-                                                  std::move(term_vec),
-                                                  std::move(status_vec));
+      presolver->postsolve_to_original_problem(op_problem, settings.dual_postsolve, solution);
     }
 
     if (settings.sol_file != "") {
@@ -2742,6 +2716,17 @@ cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_m
     mps.set_variable_types(h_var_types_char);
   }
 
+  // op_problem stores H = Q + Q^T while mps_data_model stores Q, so halve H.
+  if (op_problem.has_quadratic_objective()) {
+    std::vector<f_t> h_Q_values(op_problem.get_quadratic_objective_values());
+    for (auto& q : h_Q_values) {
+      q *= 0.5;
+    }
+    mps.set_quadratic_objective_matrix(h_Q_values,
+                                       op_problem.get_quadratic_objective_indices(),
+                                       op_problem.get_quadratic_objective_offsets());
+  }
+
   return mps;
 }
 
@@ -2904,10 +2889,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     // 64-bit index model cannot be presolved. Refuse rather than silently skipping presolve.
     if constexpr (std::is_same_v<index_t, i_t>) {
       if (run_presolve) {
-        // mirroring single-GPU solve.cu
-        const double presolve_time_limit =
-          std::max(1.0, std::min(0.1 * lp_timer.remaining_time(), 60.0));
-
         presolver_ptr = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
         host_res      = presolver_ptr->apply_presolve_from_mps_data(
           model,
@@ -2916,7 +2897,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
           settings_resolved.dual_postsolve,
           settings_resolved.tolerances.absolute_primal_tolerance,
           settings_resolved.tolerances.relative_primal_tolerance,
-          presolve_time_limit);
+          presolve_time_limit(lp_timer));
 
         if (auto terminal = terminal_solution_from_presolve_status<i_t, f_t>(
               host_res->status, handle_ptr->get_stream())) {
@@ -2946,7 +2927,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
           auto rc_uv     = cuopt::device_copy(h_rc, handle_ptr->get_stream());
           handle_ptr->sync_stream();
 
-          return build_presolve_optimal_solution<i_t, f_t>(
+          return mip::third_party_presolve_t<i_t, f_t>::build_presolve_optimal_solution(
             primal_uv,
             dual_uv,
             rc_uv,

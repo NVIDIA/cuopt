@@ -440,7 +440,7 @@ Linear Programming FAQs
 
 .. dropdown:: Does cuOpt implement presolve reductions?
 
-    cuOpt supports presolve reductions using PSLP or Papilo for linear programming (LP) problems, and Papilo for mixed-integer programming (MIP) problems. For MIP problems, Papilo presolve is always enabled by default. For LP problems, PSLP presolve is always enabled by default. Presolve is controlled by the ``CUOPT_PRESOLVE`` setting.
+    cuOpt supports presolve reductions using PSLP or Papilo for linear programming (LP) problems, PSLP for quadratic programming (QP) problems, and Papilo for mixed-integer programming (MIP) problems. For MIP problems, Papilo presolve is always enabled by default. For LP problems, PSLP presolve is always enabled by default. For QP problems, presolve is off by default; set ``CUOPT_PRESOLVE=2`` to enable PSLP presolve. Problems with quadratic constraints are not presolved. Presolve is controlled by the ``CUOPT_PRESOLVE`` setting.
 
 .. dropdown:: How do I use warm start with PDLP?
 
