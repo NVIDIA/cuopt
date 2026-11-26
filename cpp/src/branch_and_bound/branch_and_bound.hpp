@@ -312,12 +312,6 @@ class branch_and_bound_t {
               i_t node_int_infeas,
               double work_time = -1);
 
-  bool received_halt_signal()
-  {
-    return settings_.concurrent_halt ? settings_.concurrent_halt->load(std::memory_order_acquire)
-                                     : false;
-  }
-
   void halt_solver();
 
   enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };

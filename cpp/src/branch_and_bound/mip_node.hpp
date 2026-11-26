@@ -8,6 +8,7 @@
 #pragma once
 
 #include <branch_and_bound/constants.hpp>
+#include <branch_and_bound/domain_propagation.hpp>
 
 #include <dual_simplex/initial_basis.hpp>
 #include <math_optimization/types.hpp>
@@ -131,42 +132,30 @@ class mip_node_t {
     num_children     = 0;
   }
 
-  void get_variable_bounds(std::vector<f_t>& lower,
-                           std::vector<f_t>& upper,
-                           std::vector<bool>& bounds_changed) const
+  std::vector<const mip_node_t*> get_path_to_root() const
   {
-    update_branched_variable_bounds(lower, upper, bounds_changed);
-
-    mip_node_t* parent_ptr = parent;
-    while (parent_ptr != nullptr && parent_ptr->node_id != 0) {
-      parent_ptr->update_branched_variable_bounds(lower, upper, bounds_changed);
-      parent_ptr = parent_ptr->parent;
+    std::vector<const mip_node_t*> path;
+    path.reserve(depth);
+    const mip_node_t* node = this;
+    while (node != nullptr && node->node_id != 0) {
+      path.push_back(node);
+      node = node->parent;
     }
+    return path;
   }
 
-  // Here we assume that we are traversing from the deepest node to the
-  // root of the tree
-  void update_branched_variable_bounds(std::vector<f_t>& lower,
-                                       std::vector<f_t>& upper,
-                                       std::vector<bool>& bounds_changed) const
+  bound_change_t<i_t, f_t> get_bound_change() const
   {
-    // We in the root node and the lower/upper are already set to their starting value
-    if (parent == nullptr) return;
+    bound_change_t<i_t, f_t> bound_change;
+    bound_change.var    = branch_var;
+    bound_change.origin = bound_change_origin_t::BRANCH;
 
-    assert(branch_var >= 0);
-    assert(lower.size() > branch_var);
-    assert(upper.size() > branch_var);
-    assert(bounds_changed.size() > branch_var);
+    if (branch_var >= 0) {
+      bound_change.new_lower = branch_var_lower;
+      bound_change.new_upper = branch_var_upper;
+    }
 
-    // If the bounds have already been updated on another node,
-    // skip this node as it contains looser bounds, since we
-    // are traversing up the tree toward the root
-    if (bounds_changed[branch_var]) { return; }
-
-    // Apply the bounds at the current node
-    lower[branch_var]          = branch_var_lower;
-    upper[branch_var]          = branch_var_upper;
-    bounds_changed[branch_var] = true;
+    return bound_change;
   }
 
   mip_node_t* get_down_child() const { return children[0].get(); }

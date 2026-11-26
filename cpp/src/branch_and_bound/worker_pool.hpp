@@ -75,7 +75,7 @@ class worker_pool_t {
   void return_worker_to_pool(WorkerType* worker)
   {
     assert(worker != nullptr);
-    worker->set_inactive();
+    worker->cleanup();
     assert(!worker->is_active.load(std::memory_order::relaxed));
 
     if (!is_initialized()) return;
