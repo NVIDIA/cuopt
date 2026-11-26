@@ -353,9 +353,9 @@ class deterministic_diving_worker_t
     dive_queue_entry_t<i_t, f_t> entry;
     entry.resolved_lower = original_lp.lower;
     entry.resolved_upper = original_lp.upper;
-    domain_propagation_t<i_t, f_t> path;
-    node->rebuild_variable_bounds(path);
-    path.apply_stack(entry.resolved_lower, entry.resolved_upper);
+    domain_propagation_t<i_t, f_t> domain_propagation;
+    domain_propagation.rebuild_variable_bounds(node->get_path_to_root());
+    domain_propagation.apply_stack(entry.resolved_lower, entry.resolved_upper);
     entry.node = node->detach_copy();
     dive_queue.push_back(std::move(entry));
   }

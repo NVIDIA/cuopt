@@ -1782,7 +1782,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   // The branching of the start node itself is applied when its LP is solved.
   if (start_node->parent != nullptr) {
-    start_node->parent->rebuild_variable_bounds(worker->domain_propagation);
+    worker->domain_propagation.rebuild_variable_bounds(start_node->parent->get_path_to_root());
   } else {
     worker->domain_propagation.clear();
   }
@@ -1868,7 +1868,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       }
     }
 
-    if (received_halt_signal()) {
+    if (settings_.received_halt_signal()) {
       solver_status_        = mip_status_t::HALT;
       node_concurrent_halt_ = true;
       stack.push_front(node_ptr);
@@ -2103,7 +2103,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       }
     }
 
-    if (received_halt_signal()) {
+    if (settings_.received_halt_signal()) {
       solver_status_        = mip_status_t::HALT;
       node_concurrent_halt_ = true;
       break;
@@ -2619,7 +2619,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                                                   : user_upper > submip_lower_bound;
       bool is_solver_running =
         this->solver_status_ == mip_status_t::UNSET && this->is_running_ && !node_concurrent_halt_;
-      return is_cutoff || !is_solver_running || this->received_halt_signal();
+      return is_cutoff || !is_solver_running || this->settings_.received_halt_signal();
     });
   }
 
@@ -2937,7 +2937,7 @@ void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
   get_unfixed_integer_variables(
     lower, upper, worker->var_types, submip_settings.fixed_tol, integer_list);
   worker->rng.shuffle(integer_list);
-  worker->domain_propagation.compute_activities(worker->Arow, worker->leaf_problem);
+  worker->domain_propagation.compute_activities(worker->leaf_problem, worker->Arow);
 
   f_t target_fixrate =
     submip_get_max_fixrate(mutation_stats_, submip_settings.mip_hyper_params, worker->rng);
@@ -3022,7 +3022,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
   std::vector<f_t>& lower       = worker->leaf_problem.lower;
   std::vector<f_t>& upper       = worker->leaf_problem.upper;
   std::vector<f_t>& current_sol = worker->leaf_solution.x;
-  worker->domain_propagation.compute_activities(worker->Arow, worker->leaf_problem);
+  worker->domain_propagation.compute_activities(worker->leaf_problem, worker->Arow);
 
   std::vector<i_t> fractional;
   i_t num_frac = fractional_variables(submip_settings, current_sol, worker->var_types, fractional);
@@ -3515,7 +3515,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
   while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
          *get_root_concurrent_halt() == 0) {
-    if (received_halt_signal()) {
+    if (settings_.received_halt_signal()) {
       root_concurrent_halt_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : root_status)
       return lp_status_t::CONCURRENT_LIMIT;
@@ -3757,7 +3757,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                      fractional);
     lp_settings.log.log = saved_logging;
   }
-  if (received_halt_signal()) {
+  if (settings_.received_halt_signal()) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
@@ -4429,11 +4429,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     lp_settings.log.log = saved_logging;
   }
 
-  if (received_halt_signal()) {
+  if (settings_.received_halt_signal()) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
     return solver_status_;
   }
+
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, root_objective_);
@@ -4627,7 +4628,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                pc_);
   }
 
-  if (received_halt_signal()) {
+  if (settings_.received_halt_signal()) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
     return solver_status_;
@@ -5361,7 +5362,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   if (node_ptr->parent == worker.last_solved_node) {
     feasible = worker.update_variable_bounds(node_ptr, settings_);
   } else {
-    node_ptr->rebuild_variable_bounds(worker.domain_propagation);
+    worker.domain_propagation.rebuild_variable_bounds(node_ptr->get_path_to_root());
     feasible = worker.rebuild_bounds_from_stack(original_lp_, settings_);
   }
 
