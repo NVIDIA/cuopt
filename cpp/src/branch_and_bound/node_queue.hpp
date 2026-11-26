@@ -117,7 +117,7 @@ class node_queue_t {
     if (!node) return false;
 
     start_node = node->detach_copy();
-    node->rebuild_variable_bounds(domain_propagation);
+    domain_propagation.rebuild_variable_bounds(node->get_path_to_root());
     return true;
   }
 

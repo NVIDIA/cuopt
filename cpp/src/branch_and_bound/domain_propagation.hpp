@@ -8,14 +8,16 @@
 #pragma once
 
 #include <dual_simplex/presolve.hpp>
-#include <utilities/circular_deque.hpp>
 
-#include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
 
+template <typename i_t, typename f_t>
+class mip_node_t;
 template <typename i_t, typename f_t>
 struct probing_implied_bound_t;
 template <typename i_t, typename f_t>
@@ -78,17 +80,64 @@ struct row_activity_t {
   bool recompute = false;
 };
 
+// FIFO container where each entry is unique.
+template <typename i_t>
+struct domain_propagation_queue_t {
+  void resize(i_t m)
+  {
+    is_queued.assign(m, 0);
+    queue.resize(m);
+    head = 0;
+    tail = 0;
+    size = 0;
+  }
+
+  bool empty() const { return size == 0; }
+
+  void push(i_t i)
+  {
+    assert(!is_queued[i]);
+    queue[tail] = i;
+    if (++tail == queue.size()) { tail = 0; }
+    ++size;
+    is_queued[i] = 1;
+  }
+
+  i_t pop()
+  {
+    assert(size > 0);
+    const i_t i = queue[head];
+    if (++head == queue.size()) { head = 0; }
+    --size;
+    is_queued[i] = 0;
+    return i;
+  }
+
+  void clear()
+  {
+    while (size > 0) {
+      pop();
+    }
+  }
+
+  std::vector<uint8_t> is_queued;
+  std::vector<i_t> queue;
+  size_t head = 0;
+  size_t tail = 0;
+  size_t size = 0;
+};
+
 // This object stores the row activities over the LP bounds as well as the stack of bound changes
 // that produced those bounds, in the order they were applied.
 // This is used for bound propagation and backtracking. Every row is treated as an equality
-// a x = rhs; inequalities must carry a slack column.
+// a^T x = rhs; inequalities must carry a slack column.
 template <typename i_t, typename f_t>
 class domain_propagation_t {
  public:
   domain_propagation_t() = default;
 
   // Records a bound change on the stack without applying it or updating the activities.
-  void push(const bound_change_t<i_t, f_t>& bound_change)
+  void record_bound_change(const bound_change_t<i_t, f_t>& bound_change)
   {
     bound_changes_.push_back(bound_change);
   }
@@ -110,7 +159,7 @@ class domain_propagation_t {
     lp.lower[bound_change.var] = bound_change.new_lower;
     lp.upper[bound_change.var] = bound_change.new_upper;
 
-    push(bound_change);
+    record_bound_change(bound_change);
     update_activities(lp, bound_change);
     return true;
   }
@@ -136,13 +185,23 @@ class domain_propagation_t {
     }
   }
 
+  // Rebuild the variable bounds from the tree, traversing from this node
+  // to the root node.
+  void rebuild_variable_bounds(const std::vector<mip_node_t<i_t, f_t>*>& path)
+  {
+    bound_changes_.clear();
+    for (auto it = path.rbegin(); it != path.rend(); ++it) {
+      record_bound_change((*it)->get_bound_change());
+    }
+  }
+
   // Pops the changes back to and including the last branching, restoring their bounds in lp and
   // reverting their activities.
   void backtrack_to_parent(simplex::lp_problem_t<i_t, f_t>& lp);
 
   // Computes the activities of all rows from the bounds in lp.
-  void compute_activities(const csr_matrix_t<i_t, f_t>& Arow,
-                          const simplex::lp_problem_t<i_t, f_t>& lp);
+  void compute_activities(const simplex::lp_problem_t<i_t, f_t>& lp,
+                          const csr_matrix_t<i_t, f_t>& Arow);
 
   // Incrementally updates the activities of every row containing bound_change.var after its bounds
   // changed from [old_lower, old_upper] to [new_lower, new_upper].
@@ -161,8 +220,8 @@ class domain_propagation_t {
   bool propagate_from_variables(const csr_matrix_t<i_t, f_t>& Arow,
                                 const std::vector<simplex::variable_type_t>& var_types,
                                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                                simplex::lp_problem_t<i_t, f_t>& lp,
-                                const std::vector<i_t>& vars);
+                                const std::vector<i_t>& vars,
+                                simplex::lp_problem_t<i_t, f_t>& lp);
 
   // Propagates from the rows containing the variables of the bound changes from start onwards. The
   // activities must already include these changes, as apply does. Returns false if the propagation
@@ -192,20 +251,10 @@ class domain_propagation_t {
 
  private:
   // Contributions with |a_ij x_j| >= huge_value are counted as infinite.
-  static constexpr f_t huge_value = 1e15;
+  static constexpr f_t huge_value = 1e20;
 
   // An activity is recomputed once its peak exceeds it by this factor.
   static constexpr f_t recompute_factor = 1e6;
-
-  // A continuous bound must shrink the domain by at least this fraction.
-  static constexpr f_t min_relative_improvement = 0.3;
-
-  // Relative to the primal_tol. The smallest absolute change accepted for a continuous bound and
-  // the smallest change relative to its magnitude accepted for an integer bound.
-  static constexpr f_t min_improvement_factor = 1e3;
-
-  // The maximum number a given variable can be tightened in a single propagation call.
-  static constexpr i_t max_var_tightenings_per_call = 50;
 
   // Stack position of the last tightening of each variable. An entry is stale unless it points
   // at a change of that variable recorded since propagation_start_.
@@ -215,25 +264,23 @@ class domain_propagation_t {
   size_t propagation_start_{0};
 
   std::vector<row_activity_t<i_t, f_t>> row_activities_;
-  std::vector<uint8_t> row_queued_;
-  circular_deque_t<i_t> row_queue_;
+  domain_propagation_queue_t<i_t> constraint_row_queue_;
 
-  std::vector<uint8_t> var_queued_;
-  circular_deque_t<i_t> var_queue_;
+  domain_propagation_queue_t<i_t> var_queue_;
 
   std::vector<bound_change_t<i_t, f_t>> bound_changes_;
 
   size_t nnz_processed_{0};
 
   // Queues the rows containing x_j and any implications of fixing x_j to 0 or 1.
-  void queue_variable(i_t j,
-                      const std::vector<simplex::variable_type_t>& var_types,
+  void queue_variable(const std::vector<simplex::variable_type_t>& var_types,
                       const simplex::lp_problem_t<i_t, f_t>& lp,
+                      i_t j,
                       f_t tol);
 
   // Queues row i unless it is already queued or neither of its sides can tighten a bound. A row
   // awaiting recomputation is always queued.
-  void queue_row(i_t i, const simplex::lp_problem_t<i_t, f_t>& lp, f_t tol);
+  void queue_row(const simplex::lp_problem_t<i_t, f_t>& lp, i_t i, f_t tol);
 
   // Applies the probing and clique implications of x_j at its fixed value.
   bool propagate_implications(i_t j,

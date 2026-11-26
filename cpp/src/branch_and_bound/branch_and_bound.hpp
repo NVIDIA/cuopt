@@ -305,8 +305,6 @@ class branch_and_bound_t {
               i_t node_int_infeas,
               double work_time = -1);
 
-  bool received_halt_signal() { return settings_.received_halt_signal(); }
-
   void halt_solver();
 
   enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };

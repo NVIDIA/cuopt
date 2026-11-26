@@ -76,14 +76,12 @@ void domain_propagation_t<i_t, f_t>::compute_row_activity(i_t i,
 }
 
 template <typename i_t, typename f_t>
-void domain_propagation_t<i_t, f_t>::compute_activities(const csr_matrix_t<i_t, f_t>& Arow,
-                                                        const lp_problem_t<i_t, f_t>& lp)
+void domain_propagation_t<i_t, f_t>::compute_activities(const lp_problem_t<i_t, f_t>& lp,
+                                                        const csr_matrix_t<i_t, f_t>& Arow)
 {
   row_activities_.resize(Arow.m);
-  row_queued_.resize(Arow.m, false);
-  row_queue_.clear_resize(std::max(Arow.m, 1));
-  var_queued_.resize(lp.num_cols, false);
-  var_queue_.clear_resize(std::max(lp.num_cols, 1));
+  constraint_row_queue_.resize(Arow.m);
+  var_queue_.resize(lp.num_cols);
   last_change_.resize(lp.num_cols, 0);
 
   for (i_t i = 0; i < Arow.m; ++i) {
@@ -147,9 +145,9 @@ void domain_propagation_t<i_t, f_t>::update_activities(const lp_problem_t<i_t, f
 }
 
 template <typename i_t, typename f_t>
-void domain_propagation_t<i_t, f_t>::queue_row(i_t i, const lp_problem_t<i_t, f_t>& lp, f_t tol)
+void domain_propagation_t<i_t, f_t>::queue_row(const lp_problem_t<i_t, f_t>& lp, i_t i, f_t tol)
 {
-  if (row_queued_[i]) { return; }
+  if (constraint_row_queue_.is_queued[i]) { return; }
 
   const row_activity_t<i_t, f_t>& activity = row_activities_[i];
   if (!activity.recompute) {
@@ -170,29 +168,27 @@ void domain_propagation_t<i_t, f_t>::queue_row(i_t i, const lp_problem_t<i_t, f_
     if (!propagate_upper && !propagate_lower) { return; }
   }
 
-  row_queue_.push_back(i);
-  row_queued_[i] = true;
+  constraint_row_queue_.push(i);
 }
 
 template <typename i_t, typename f_t>
-void domain_propagation_t<i_t, f_t>::queue_variable(i_t j,
-                                                    const std::vector<variable_type_t>& var_types,
+void domain_propagation_t<i_t, f_t>::queue_variable(const std::vector<variable_type_t>& var_types,
                                                     const lp_problem_t<i_t, f_t>& lp,
+                                                    i_t j,
                                                     f_t tol)
 {
   const i_t col_start = lp.A.col_start[j];
   const i_t col_end   = lp.A.col_start[j + 1];
   nnz_processed_ += col_end - col_start;
   for (i_t p = col_start; p < col_end; ++p) {
-    queue_row(lp.A.i[p], lp, tol);
+    queue_row(lp, lp.A.i[p], tol);
   }
 
   if (implied_bounds == nullptr && clique_table == nullptr) { return; }
   const f_t value = lp.lower[j];
-  if (!var_queued_[j] && var_types[j] == variable_type_t::INTEGER && value == lp.upper[j] &&
-      (value == 0 || value == 1)) {
-    var_queue_.push_back(j);
-    var_queued_[j] = true;
+  if (!var_queue_.is_queued[j] && var_types[j] == variable_type_t::INTEGER &&
+      value == lp.upper[j] && (value == 0 || value == 1)) {
+    var_queue_.push(j);
   }
 }
 
@@ -206,10 +202,13 @@ bool domain_propagation_t<i_t, f_t>::tighten_bounds(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   lp_problem_t<i_t, f_t>& lp)
 {
-  const f_t tol             = settings.primal_tol;
-  const f_t min_improvement = min_improvement_factor * tol;
-  const f_t lb              = lp.lower[j];
-  const f_t ub              = lp.upper[j];
+  const auto& params             = settings.mip_hyper_params;
+  const f_t tol                  = settings.primal_tol;
+  const f_t min_step             = params.bound_prop_min_abs_step_factor * tol;
+  const f_t min_rel_integer_step = params.bound_prop_min_rel_integer_step;
+  const f_t min_domain_reduction = params.bound_prop_min_domain_reduction;
+  const f_t lb                   = lp.lower[j];
+  const f_t ub                   = lp.upper[j];
 
   bool tighten_lb = false;
   bool tighten_ub = false;
@@ -220,9 +219,9 @@ bool domain_propagation_t<i_t, f_t>::tighten_bounds(
     // The step must also be a fraction of the bound magnitude, so that a cycle of small steps
     // cannot tighten an integer bound forever.
     tighten_lb =
-      new_lower - lb > std::max(settings.integer_tol, min_improvement * std::abs(new_lower));
+      new_lower - lb > std::max(settings.integer_tol, min_rel_integer_step * std::abs(new_lower));
     tighten_ub =
-      ub - new_upper > std::max(settings.integer_tol, min_improvement * std::abs(new_upper));
+      ub - new_upper > std::max(settings.integer_tol, min_rel_integer_step * std::abs(new_upper));
   } else if (lp.A.col_start[j + 1] - lp.A.col_start[j] == 1) {
     // A continuous column singleton (e.g., a slack) is only bounded, never tightened: its
     // finite bounds are implied by its only row and only make the LP harder to solve.
@@ -231,10 +230,10 @@ bool domain_propagation_t<i_t, f_t>::tighten_bounds(
   } else {
     const f_t lb_range = ub < inf ? ub - lb : std::max(std::abs(lb), std::abs(new_lower));
     const f_t ub_range = lb > -inf ? ub - lb : std::max(std::abs(ub), std::abs(new_upper));
-    tighten_lb         = new_lower - min_improvement > lb &&
-                 (lb == -inf || new_lower - lb >= min_relative_improvement * lb_range);
-    tighten_ub = new_upper + min_improvement < ub &&
-                 (ub == inf || ub - new_upper >= min_relative_improvement * ub_range);
+    tighten_lb         = new_lower - min_step > lb &&
+                 (lb == -inf || new_lower - lb >= min_domain_reduction * lb_range);
+    tighten_ub =
+      new_upper + min_step < ub && (ub == inf || ub - new_upper >= min_domain_reduction * ub_range);
   }
 
   if (!tighten_lb && !tighten_ub) { return true; }
@@ -265,7 +264,7 @@ bool domain_propagation_t<i_t, f_t>::tighten_bounds(
 
   // If it surpasses the maximum allowed, then do not queue this variable again.
   // This prevents the bound propagation to enter into a cycle.
-  if (count > max_var_tightenings_per_call) { return true; }
+  if (count > params.bound_prop_max_tightenings_per_var) { return true; }
 
   if (apply(lp,
             {.var       = j,
@@ -312,7 +311,7 @@ bool domain_propagation_t<i_t, f_t>::propagate_implications(
         return false;
       }
       if (lp.lower[k] != lb || lp.upper[k] != ub) {
-        queue_variable(k, var_types, lp, settings.primal_tol);
+        queue_variable(var_types, lp, k, settings.primal_tol);
       }
     }
   }
@@ -339,7 +338,7 @@ bool domain_propagation_t<i_t, f_t>::propagate_implications(
       return false;
     }
     if (lp.lower[k] != lb || lp.upper[k] != ub) {
-      queue_variable(k, var_types, lp, settings.primal_tol);
+      queue_variable(var_types, lp, k, settings.primal_tol);
     }
   }
 
@@ -353,9 +352,9 @@ bool domain_propagation_t<i_t, f_t>::propagate_full(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   lp_problem_t<i_t, f_t>& lp)
 {
-  compute_activities(Arow, lp);
+  compute_activities(lp, Arow);
   for (i_t i = 0; i < lp.A.m; ++i) {
-    queue_row(i, lp, settings.primal_tol);
+    queue_row(lp, i, settings.primal_tol);
   }
   return run_bound_propagation(Arow, var_types, settings, lp);
 }
@@ -365,12 +364,12 @@ bool domain_propagation_t<i_t, f_t>::propagate_from_variables(
   const csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<variable_type_t>& var_types,
   const simplex_solver_settings_t<i_t, f_t>& settings,
-  lp_problem_t<i_t, f_t>& lp,
-  const std::vector<i_t>& vars)
+  const std::vector<i_t>& vars,
+  lp_problem_t<i_t, f_t>& lp)
 {
-  compute_activities(Arow, lp);
+  compute_activities(lp, Arow);
   for (i_t j : vars) {
-    queue_variable(j, var_types, lp, settings.primal_tol);
+    queue_variable(var_types, lp, j, settings.primal_tol);
   }
   return run_bound_propagation(Arow, var_types, settings, lp);
 }
@@ -384,7 +383,7 @@ bool domain_propagation_t<i_t, f_t>::propagate_from_stack(
   i_t start)
 {
   for (size_t k = start; k < bound_changes_.size(); ++k) {
-    queue_variable(bound_changes_[k].var, var_types, lp, settings.primal_tol);
+    queue_variable(var_types, lp, bound_changes_[k].var, settings.primal_tol);
   }
 
   return run_bound_propagation(Arow, var_types, settings, lp);
@@ -404,7 +403,7 @@ bool domain_propagation_t<i_t, f_t>::apply_and_propagate(
     return true;
   }
 
-  queue_variable(bound_change.var, var_types, lp, settings.primal_tol);
+  queue_variable(var_types, lp, bound_change.var, settings.primal_tol);
   return run_bound_propagation(Arow, var_types, settings, lp);
 }
 
@@ -454,16 +453,14 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
   bool feasible      = true;
   i_t iter           = 0;
   propagation_start_ = bound_changes_.size();
-  while (feasible && (!row_queue_.empty() || !var_queue_.empty())) {
+  while (feasible && (!constraint_row_queue_.empty() || !var_queue_.empty())) {
     // Apply the implications of the fixed variables before propagating the rows.
     if (!var_queue_.empty()) {
-      const i_t j    = var_queue_.pop_front();
-      var_queued_[j] = false;
-      feasible       = propagate_implications(j, var_types, settings, lp);
+      const i_t j = var_queue_.pop();
+      feasible    = propagate_implications(j, var_types, settings, lp);
       continue;
     }
-    i_t i          = row_queue_.pop_front();
-    row_queued_[i] = false;
+    i_t i = constraint_row_queue_.pop();
     ++iter;
 
     if (row_activities_[i].recompute) { compute_row_activity(i, Arow, lp.lower, lp.upper); }
@@ -473,7 +470,7 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
     f_t max_tol     = settings.primal_tol * std::max({1.0, std::abs(max_a), std::abs(lp.rhs[i])});
     f_t min_tol     = settings.primal_tol * std::max({1.0, std::abs(min_a), std::abs(lp.rhs[i])});
 
-    // a x = rhs is infeasible if rhs lies outside [min_a, max_a] beyond the tolerance.
+    // a^T x = rhs is infeasible if rhs lies outside [min_a, max_a] beyond the tolerance.
     if ((activity.max_activity.num_infinite_bounds == 0 && lp.rhs[i] - max_a > max_tol) ||
         (activity.min_activity.num_infinite_bounds == 0 && min_a - lp.rhs[i] > min_tol)) {
       settings.log.debug(
@@ -489,13 +486,13 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
       break;
     }
 
-    // Smallest absolute change for which a new bound is accepted.
-    const f_t tol             = settings.primal_tol;
-    const f_t min_improvement = min_improvement_factor * tol;
-    const f_t rhs             = lp.rhs[i];
+    // Smallest absolute change for which a new continuous bound is accepted.
+    const f_t tol      = settings.primal_tol;
+    const f_t min_step = settings.mip_hyper_params.bound_prop_min_abs_step_factor * tol;
+    const f_t rhs      = lp.rhs[i];
 
-    // A side of the row (a x <= rhs or a x >= rhs) is propagated only if it is not redundant and
-    // either a single infinite contribution can be bounded or its slack is within the capacity
+    // A side of the row (a^T x <= rhs or a^T x >= rhs) is propagated only if it is not redundant
+    // and either a single infinite contribution can be bounded or its slack is within the capacity
     // threshold.
     const bool propagate_upper =
       (activity.max_activity.num_infinite_bounds != 0 || max_a > rhs + tol) &&
@@ -523,7 +520,7 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
       // A fixed variable cannot be tightened.
       const f_t lb = lp.lower[j];
       const f_t ub = lp.upper[j];
-      if (lb == ub) { continue; }
+      if (std::abs(ub - lb) < settings.integer_tol) { continue; }
 
       // Largest slack for which x_j can still receive an accepted bound.
       if (!std::isfinite(ub) || !std::isfinite(lb)) {
@@ -534,7 +531,8 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
         if (var_types[j] == variable_type_t::INTEGER) {
           slack -= settings.integer_tol;
         } else {
-          slack -= std::max(min_relative_improvement * slack, min_improvement);
+          slack -=
+            std::max(settings.mip_hyper_params.bound_prop_min_domain_reduction * slack, min_step);
         }
 
         threshold = std::max({threshold, std::abs(a_ij) * slack, tol});
@@ -586,7 +584,7 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
       feasible = tighten_bounds(
         j, new_lb, new_ub, bound_change_origin_t::BOUND_PROPAGATION, var_types, settings, lp);
       if (!feasible) { break; }
-      if (lp.lower[j] != lb || lp.upper[j] != ub) { queue_variable(j, var_types, lp, tol); }
+      if (lp.lower[j] != lb || lp.upper[j] != ub) { queue_variable(var_types, lp, j, tol); }
     }
 
     // An infeasible scan stops early and only saw part of the row.
@@ -594,12 +592,8 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
   }
 
   // Clear pending work when infeasibility stops propagation early.
-  while (!row_queue_.empty()) {
-    row_queued_[row_queue_.pop_front()] = false;
-  }
-  while (!var_queue_.empty()) {
-    var_queued_[var_queue_.pop_front()] = false;
-  }
+  constraint_row_queue_.clear();
+  var_queue_.clear();
 
   last_nnz_processed = nnz_processed_;
   nnz_processed_     = 0;

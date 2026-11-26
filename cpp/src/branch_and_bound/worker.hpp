@@ -152,7 +152,7 @@ class branch_and_bound_worker_t {
       return true;
     }
     return domain_propagation.apply_and_propagate(
-      Arow, var_types, settings, node_ptr->update_variable_bounds(), leaf_problem);
+      Arow, var_types, settings, node_ptr->get_bound_change(), leaf_problem);
   }
 
   // Set variable bounds based on the bound changes stack.
@@ -167,7 +167,7 @@ class branch_and_bound_worker_t {
       domain_propagation.apply_stack(leaf_problem.lower, leaf_problem.upper);
     }
 
-    domain_propagation.compute_activities(Arow, leaf_problem);
+    domain_propagation.compute_activities(leaf_problem, Arow);
     return domain_propagation.propagate_from_stack(Arow, var_types, settings, leaf_problem);
   }
 
