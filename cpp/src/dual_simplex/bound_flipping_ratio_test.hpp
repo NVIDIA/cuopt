@@ -7,7 +7,9 @@
 #pragma once
 
 #include <dual_simplex/initial_basis.hpp>
+#include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
+#include <linear_algebra/sparse_vector.hpp>
 #include <math_optimization/types.hpp>
 
 #include <vector>
@@ -18,6 +20,7 @@ namespace cuopt::mathematical_optimization::simplex {
 #define RATIO_TEST_CONCURRENT_LIMIT     CONCURRENT_HALT_RETURN  // -2
 #define RATIO_TEST_TIME_LIMIT           -3
 #define RATIO_TEST_NUMERICAL_ISSUES     -4
+#define RATIO_TEST_PRIMAL_INFEASIBLE    -5
 
 template <typename i_t, typename f_t>
 class bound_flipping_ratio_test_t {
@@ -35,7 +38,9 @@ class bound_flipping_ratio_test_t {
                               const std::vector<f_t>& z,
                               const std::vector<f_t>& delta_z,
                               const std::vector<i_t>& delta_z_indices,
-                              const std::vector<i_t>& nonbasic_mark)
+                              const std::vector<i_t>& nonbasic_mark,
+                              const lp_problem_t<i_t, f_t>& lp,
+                              const sparse_vector_t<i_t, f_t>& delta_y)
     : settings_(settings),
       start_time_(start_time),
       m_(m),
@@ -49,7 +54,9 @@ class bound_flipping_ratio_test_t {
       z_(z),
       delta_z_(delta_z),
       delta_z_indices_(delta_z_indices),
-      nonbasic_mark_(nonbasic_mark)
+      nonbasic_mark_(nonbasic_mark),
+      lp_(lp),
+      delta_y_(delta_y)
   {
   }
 
@@ -84,6 +91,8 @@ class bound_flipping_ratio_test_t {
   const std::vector<f_t>& delta_z_;
   const std::vector<i_t>& delta_z_indices_;
   const std::vector<i_t>& nonbasic_mark_;
+  const lp_problem_t<i_t, f_t>& lp_;
+  const sparse_vector_t<i_t, f_t>& delta_y_;
 
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 
