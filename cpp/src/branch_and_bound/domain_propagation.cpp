@@ -88,6 +88,12 @@ void domain_propagation_t<i_t, f_t>::compute_activities(const lp_problem_t<i_t, 
   for (i_t i = 0; i < Arow.m; ++i) {
     compute_row_activity(i, Arow, lp.lower, lp.upper);
   }
+
+  objective_vars_.clear();
+  objective_vars_.reserve(lp.num_cols);
+  for (i_t j = 0; j < lp.num_cols; ++j) {
+    if (lp.objective[j] != 0) { objective_vars_.push_back(j); }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -409,6 +415,96 @@ bool domain_propagation_t<i_t, f_t>::apply_and_propagate(
 }
 
 template <typename i_t, typename f_t>
+bool domain_propagation_t<i_t, f_t>::propagate_objective(
+  const csr_matrix_t<i_t, f_t>& Arow,
+  const std::vector<variable_type_t>& var_types,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  lp_problem_t<i_t, f_t>& lp,
+  f_t cutoff)
+{
+  if (!std::isfinite(cutoff) || objective_vars_.empty()) { return true; }
+
+  // The work is added to the one of the preceding propagation, so the callers record both.
+  const size_t prior_nnz = last_nnz_processed;
+  size_t work            = 0;
+  const f_t rhs          = cutoff + settings.primal_tol * std::max<f_t>(1.0, std::abs(cutoff));
+  bool feasible          = true;
+
+  for (i_t round = 0; round < max_objective_rounds; ++round) {
+    // Minimum objective over the bounds in lp, with the infinite contributions flagged as in
+    // compute_row_activity.
+    f_t min     = 0;
+    f_t min_err = 0;
+    i_t min_inf = 0;
+    for (i_t j : objective_vars_) {
+      const f_t c_j       = lp.objective[j];
+      const f_t bound_min = c_j < 0 ? lp.upper[j] : lp.lower[j];
+      const f_t alpha_min = c_j * bound_min;
+      if (std::isfinite(alpha_min) && std::abs(alpha_min) < huge_value) {
+        dot2_add(c_j, bound_min, min, min_err);
+      } else {
+        ++min_inf;
+      }
+    }
+    work += objective_vars_.size();
+
+    if (min_inf == 0 && min + min_err > rhs) {
+      feasible = false;
+      break;
+    }
+    if (min_inf > 1) { break; }
+
+    const size_t num_changes = bound_changes_.size();
+    for (i_t j : objective_vars_) {
+      const f_t lb = lp.lower[j];
+      const f_t ub = lp.upper[j];
+      if (lb == ub) { continue; }
+
+      const f_t c_j            = lp.objective[j];
+      const f_t bound_min      = c_j < 0 ? ub : lb;
+      const f_t alpha_min      = c_j * bound_min;
+      const bool alpha_min_inf = !std::isfinite(alpha_min) || std::abs(alpha_min) >= huge_value;
+
+      // With a single infinite contribution, only its variable can be bounded.
+      if (min_inf == 1 && !alpha_min_inf) { continue; }
+
+      // c_j x_j <= rhs - (minimum objective of the other variables): an upper bound if c_j > 0, a
+      // lower bound otherwise. The slack is formed with Dot2, as in the row propagation.
+      f_t slack     = rhs;
+      f_t slack_err = -min_err;
+      dot2_add(-1.0, min, slack, slack_err);
+      if (min_inf == 0) { dot2_add(c_j, bound_min, slack, slack_err); }
+      const f_t gamma     = (slack + slack_err) / c_j;
+      const f_t new_lower = c_j > 0 ? lb : gamma;
+      const f_t new_upper = c_j > 0 ? gamma : ub;
+      if (!tighten_bounds(
+            j, new_lower, new_upper, bound_change_origin_t::OBJECTIVE, var_types, settings, lp)) {
+        feasible = false;
+        break;
+      }
+      if (lp.lower[j] != lb || lp.upper[j] != ub) {
+        queue_variable(var_types, lp, j, settings.primal_tol);
+      }
+    }
+    work += objective_vars_.size();
+
+    if (!feasible || bound_changes_.size() == num_changes) { break; }
+
+    // Propagate the rows of the tightened variables, which may raise the minimum objective.
+    feasible = run_bound_propagation(Arow, var_types, settings, lp);
+    work += last_nnz_processed;
+    if (!feasible) { break; }
+  }
+
+  if (!feasible) { clear_queues(); }
+
+  work += nnz_processed_;
+  nnz_processed_     = 0;
+  last_nnz_processed = prior_nnz + work;
+  return feasible;
+}
+
+template <typename i_t, typename f_t>
 void domain_propagation_t<i_t, f_t>::backtrack_to_parent(lp_problem_t<i_t, f_t>& lp)
 {
   bool popped_branch = false;
@@ -603,12 +699,18 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
   }
 
   // Clear pending work when infeasibility stops propagation early.
-  constraint_row_queue_.clear();
-  var_queue_.clear();
+  clear_queues();
 
   last_nnz_processed = nnz_processed_;
   nnz_processed_     = 0;
   return feasible;
+}
+
+template <typename i_t, typename f_t>
+void domain_propagation_t<i_t, f_t>::clear_queues()
+{
+  constraint_row_queue_.clear();
+  var_queue_.clear();
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
