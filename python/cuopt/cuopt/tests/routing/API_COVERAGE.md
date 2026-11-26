@@ -20,7 +20,7 @@ Summary of which APIs from `assignment.py` and `vehicle_routing.py` are exercise
 | `get_error_message()` | Yes | test_vehicle_properties (test_vehicle_max_times_fail) |
 | `get_infeasible_orders()` | Yes | test_solver (test_pdptw) |
 | `get_accepted_solutions()` | Yes | test_solver (test_pdptw) |
-| `display_routes()` | Yes | test_vehicle_properties (test_vehicle_fixed_costs) |
+| `display_routes()` | Yes | test_vehicle_properties (test_display_routes) |
 
 ---
 

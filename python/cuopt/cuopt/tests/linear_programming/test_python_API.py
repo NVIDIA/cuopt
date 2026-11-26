@@ -6,7 +6,10 @@ import os
 
 import pytest
 
-from cuopt.linear_programming import SolverSettings
+from cuopt.linear_programming import SolverSettings, Solution
+
+from cuopt.linear_programming.solver.solver_wrapper import ProblemCategory
+
 from cuopt.linear_programming.internals import (
     GetSolutionCallback,
     SetSolutionCallback,
@@ -34,6 +37,7 @@ from cuopt.linear_programming.solver_settings import (
     PDLPSolverMode,
     SolverMethod,
 )
+
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
@@ -963,3 +967,111 @@ def test_linear_expression_unary_ops():
     # Ensure abs() is not supported on LinearExpression
     with pytest.raises(TypeError):
         abs(e)
+
+
+def test_variable_camelcase_setters():
+    problem = Problem("Variable setters")
+
+    variable = problem.addVariable(lb=-10, ub=10, name="original")
+
+    variable.setObjectiveCoefficient(3.14)
+    variable.setLowerBound(-5.0)
+    variable.setUpperBound(5.0)
+    variable.setVariableName("othername")
+
+    assert variable.getObjectiveCoefficient() == 3.14
+    assert variable.getLowerBound() == -5.0
+    assert variable.getUpperBound() == 5.0
+    assert variable.getVariableName() == "othername"
+
+
+def test_linear_expression_zip_var_coefficients():
+    problem = Problem("Expression pairs")
+
+    x = problem.addVariable(name="x")
+    y = problem.addVariable(name="y")
+    expression = LinearExpression([x, y], [10.0, 5.0], 1.0)
+
+    pairs = list(expression.zipVarCoefficients())
+
+    assert len(pairs) == 2
+
+    assert pairs[0][0] is x
+    assert pairs[0][1] == 10.0
+    assert pairs[1][0] is y
+    assert pairs[1][1] == 5.0
+
+    assert expression.getConstant() == 1.0
+
+
+def test_problem_obj_linear():
+    problem = Problem("Linear objective")
+
+    x = problem.addVariable(name="x")
+    y = problem.addVariable(name="y")
+    problem.setObjective(10.0 * x + 5.0 * y + 1.0, sense=MINIMIZE)
+
+    objective = problem.Obj
+
+    assert isinstance(objective, LinearExpression)
+    variables = objective.getVariables()
+
+    assert len(variables) == 2
+
+    assert variables[0] is x
+    assert variables[1] is y
+
+    assert objective.getCoefficients() == [10.0, 5.0]
+    assert objective.getConstant() == 1.0
+
+
+def test_problem_obj_quadratic():
+    problem = Problem("Quadratic objective")
+
+    x = problem.addVariable(name="x")
+    problem.setObjective(10.0 * x * x + 5.0 * x + 1.0, sense=MINIMIZE)
+
+    objective = problem.Obj
+
+    assert isinstance(objective, QuadraticExpression)
+
+    pairs = objective.getVariables()
+    assert len(pairs) == 1
+
+    assert pairs[0][0] is x
+    assert pairs[0][1] is x
+
+    assert objective.getCoefficients() == [10.0]
+
+    linear = objective.getLinearExpression()
+    variables = linear.getVariables()
+
+    assert len(variables) == 1
+    assert variables[0] is x
+    assert linear.getCoefficients() == [5.0]
+    assert linear.getConstant() == 1.0
+
+
+def test_lp_solution_type_guards():
+    solution = Solution(problem_category=ProblemCategory.LP, vars={})
+
+    with pytest.raises(
+        AttributeError,
+        match="Attribute lp_attr is not supported for lp solution",
+    ):
+        solution.raise_if_lp_solution("lp_attr")
+
+    solution.raise_if_milp_solution("lp_attr")
+
+
+@pytest.mark.parametrize("category", [ProblemCategory.MIP, ProblemCategory.IP])
+def test_milp_solution_type_guards(category):
+    solution = Solution(problem_category=category, vars={})
+
+    with pytest.raises(
+        AttributeError,
+        match="Attribute milp_attr is not supported for milp solution",
+    ):
+        solution.raise_if_milp_solution("milp_attr")
+
+    solution.raise_if_lp_solution("milp_attr")
