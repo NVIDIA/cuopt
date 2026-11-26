@@ -36,9 +36,11 @@ struct pdlp_hyper_params_t {
   double initial_primal_weight_c_scaling            = 1.0;
   double initial_primal_weight_b_scaling            = 1.0;
   int major_iteration                               = 200;
-  int min_iteration_restart                         = 0;
-  int restart_strategy                              = 3;
-  bool never_restart_to_average                     = true;
+  // Ordinary PDLP iterations per CUDA graph; values <= 1 disable grouping.
+  int iterations_per_graph      = 24;
+  int min_iteration_restart     = 0;
+  int restart_strategy          = 3;
+  bool never_restart_to_average = true;
 
   double reduction_exponent               = 0.3;
   double growth_exponent                  = 0.6;

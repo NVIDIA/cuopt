@@ -34,6 +34,8 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <thrust/universal_vector.h>
+
 #include <optional>
 #include <unordered_set>
 
@@ -220,6 +222,14 @@ class pdlp_solver_t {
   rmm::device_uvector<f_t> primal_weight_;
   rmm::device_uvector<f_t> best_primal_weight_;
   rmm::device_uvector<f_t> step_size_;
+  struct fixed_error_inputs_t {
+    f_t norm_squared_delta_primal;
+    f_t norm_squared_delta_dual;
+    f_t primal_weight;
+    f_t step_size;
+    f_t interaction;
+  };
+  thrust::universal_host_pinned_vector<fixed_error_inputs_t> h_fixed_error_inputs_;
 
   // Step size strategy
   pdlp::adaptive_step_size_strategy_t<i_t, f_t> step_size_strategy_;

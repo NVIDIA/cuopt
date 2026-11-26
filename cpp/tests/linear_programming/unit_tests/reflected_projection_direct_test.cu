@@ -1,0 +1,227 @@
+/* clang-format off */
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/* clang-format on */
+
+#include <pdlp/reflected_projection_direct.cuh>
+
+#include <thrust/iterator/zip_iterator.h>
+#include <cub/device/device_transform.cuh>
+#include <raft/core/handle.hpp>
+#include <rmm/device_uvector.hpp>
+
+#include <gtest/gtest.h>
+
+#include <array>
+#include <bit>
+#include <cstdint>
+#include <limits>
+#include <vector>
+
+namespace cuopt::mathematical_optimization::pdlp::test {
+namespace {
+
+template <typename t>
+void upload(rmm::device_uvector<t>& target, const std::vector<t>& source, cuda::stream_ref stream)
+{
+  RAFT_CUDA_TRY(cudaMemcpyAsync(
+    target.data(), source.data(), source.size() * sizeof(t), cudaMemcpyHostToDevice, stream.get()));
+}
+
+void expect_same_bits(const rmm::device_uvector<double>& reference,
+                      const rmm::device_uvector<double>& actual,
+                      cuda::stream_ref stream)
+{
+  std::vector<double> expected(reference.size()), observed(actual.size());
+  RAFT_CUDA_TRY(cudaMemcpyAsync(expected.data(),
+                                reference.data(),
+                                reference.size() * sizeof(double),
+                                cudaMemcpyDeviceToHost,
+                                stream.get()));
+  RAFT_CUDA_TRY(cudaMemcpyAsync(observed.data(),
+                                actual.data(),
+                                actual.size() * sizeof(double),
+                                cudaMemcpyDeviceToHost,
+                                stream.get()));
+  stream.sync();
+  ASSERT_EQ(expected.size(), observed.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(std::bit_cast<uint64_t>(expected[i]), std::bit_cast<uint64_t>(observed[i])) << i;
+  }
+}
+
+template <template <typename> class projection_t, typename bounds_t>
+void compare_with_cub(size_t count,
+                      const std::vector<bounds_t>& variable_or_upper_bounds,
+                      double reflection,
+                      bool capture_graph)
+{
+  raft::handle_t handle;
+  cuda::stream_ref stream{handle.get_stream()};
+  const size_t storage = count + 2;  // Guard the tail, including the empty-input case.
+  std::vector<double> current(storage), initial(storage), objective_or_primal_product(storage),
+    dual_product_or_lower_bounds(storage);
+  for (size_t i = 0; i < storage; ++i) {
+    const int centered              = static_cast<int>(i % 17) - 8;
+    current[i]                      = i % 11 == 0 ? -0.0 : 0.37 * centered;
+    initial[i]                      = -0.19 * centered;
+    objective_or_primal_product[i]  = 0.23 * (static_cast<int>(i % 7) - 3);
+    dual_product_or_lower_bounds[i] = 0.31 * (static_cast<int>(i % 13) - 6);
+  }
+  rmm::device_uvector<double> reference(storage, stream), actual(storage, stream);
+  rmm::device_uvector<double> reflected_reference(storage, stream),
+    reflected_actual(storage, stream);
+  rmm::device_uvector<double> d_initial(storage, stream),
+    d_objective_or_primal_product(storage, stream), d_dual_product_or_lower_bounds(storage, stream),
+    parameters(2, stream);
+  rmm::device_uvector<bounds_t> d_variable_or_upper_bounds(storage, stream);
+  upload(reference, current, stream);
+  upload(actual, current, stream);
+  upload(reflected_reference, initial, stream);
+  upload(reflected_actual, initial, stream);
+  upload(d_initial, initial, stream);
+  upload(d_objective_or_primal_product, objective_or_primal_product, stream);
+  upload(d_dual_product_or_lower_bounds, dual_product_or_lower_bounds, stream);
+  upload(d_variable_or_upper_bounds, variable_or_upper_bounds, stream);
+  const std::vector<double> initial_parameters{0.125, 0.5};
+  upload(parameters, initial_parameters, stream);
+  stream.sync();
+  auto projection = projection_t<double>(parameters.data(), parameters.data() + 1, reflection);
+
+  auto launch_both = [&]() {
+    if (count != 0) {
+      RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(reference.data(),
+                              d_initial.data(),
+                              d_objective_or_primal_product.data(),
+                              d_dual_product_or_lower_bounds.data(),
+                              d_variable_or_upper_bounds.data()),
+        thrust::make_zip_iterator(reflected_reference.data(), reference.data()),
+        count,
+        projection,
+        stream.get()));
+    }
+    detail::launch_direct_reflected_projection(actual.data(),
+                                               d_initial.data(),
+                                               d_objective_or_primal_product.data(),
+                                               d_dual_product_or_lower_bounds.data(),
+                                               d_variable_or_upper_bounds.data(),
+                                               reflected_actual.data(),
+                                               count,
+                                               projection,
+                                               stream);
+  };
+  launch_both();
+  expect_same_bits(reference, actual, stream);
+  expect_same_bits(reflected_reference, reflected_actual, stream);
+
+  if (capture_graph) {
+    cudaGraph_t graph{};
+    cudaGraphExec_t executable{};
+    RAFT_CUDA_TRY(cudaStreamBeginCapture(stream.get(), cudaStreamCaptureModeThreadLocal));
+    for (int step = 0; step < 24; ++step) {
+      launch_both();
+    }
+    RAFT_CUDA_TRY(cudaStreamEndCapture(stream.get(), &graph));
+    RAFT_CUDA_TRY(cudaGraphInstantiateWithFlags(&executable, graph, 0));
+    for (const auto& values :
+         std::array<std::array<double, 2>, 3>{{{1.3, 0.0}, {0.7, 0.999999}, {0.125, 0.5}}}) {
+      RAFT_CUDA_TRY(cudaMemcpyAsync(parameters.data(),
+                                    values.data(),
+                                    2 * sizeof(double),
+                                    cudaMemcpyHostToDevice,
+                                    stream.get()));
+      RAFT_CUDA_TRY(cudaGraphLaunch(executable, stream.get()));
+      expect_same_bits(reference, actual, stream);
+      expect_same_bits(reflected_reference, reflected_actual, stream);
+    }
+    RAFT_CUDA_TRY(cudaGraphExecDestroy(executable));
+    RAFT_CUDA_TRY(cudaGraphDestroy(graph));
+  }
+}
+
+std::vector<double2> primal_bounds(size_t count)
+{
+  const double infinity = std::numeric_limits<double>::infinity();
+  const std::array<double2, 5> cases{
+    {{-infinity, infinity}, {0.0, infinity}, {-infinity, 0.0}, {-0.5, 0.75}, {0.25, 0.25}}};
+  std::vector<double2> bounds(count + 2);
+  for (size_t i = 0; i < bounds.size(); ++i) {
+    bounds[i] = cases[i % cases.size()];
+  }
+  return bounds;
+}
+
+TEST(DirectReflectedProjection, PrimalMatchesCubBitsAndPreservesTail)
+{
+  for (size_t count : {0, 1, 255, 256, 257, 1025}) {
+    for (double reflection : {0.0, 1.0, 1.5}) {
+      SCOPED_TRACE(count);
+      SCOPED_TRACE(reflection);
+      compare_with_cub<primal_reflected_projection>(count, primal_bounds(count), reflection, false);
+    }
+  }
+}
+
+TEST(DirectReflectedProjection, DualMatchesCubBitsAndPreservesTail)
+{
+  for (size_t count : {0, 1, 255, 256, 257, 1025}) {
+    std::vector<double> upper(count + 2);
+    for (size_t i = 0; i < upper.size(); ++i) {
+      upper[i] = i % 3 == 0 ? std::numeric_limits<double>::infinity() : 3.0;
+    }
+    for (double reflection : {0.0, 1.0, 1.5}) {
+      SCOPED_TRACE(count);
+      SCOPED_TRACE(reflection);
+      compare_with_cub<dual_reflected_projection>(count, upper, reflection, false);
+    }
+  }
+}
+
+TEST(DirectReflectedProjection, CapturedBatchReadsLiveScalarParameters)
+{
+  constexpr size_t count = 257;
+  compare_with_cub<primal_reflected_projection>(count, primal_bounds(count), 1.0, true);
+  compare_with_cub<dual_reflected_projection>(
+    count, std::vector<double>(count + 2, 3.0), 1.0, true);
+}
+
+TEST(DirectReflectedProjection, UnsupportedTypeAndEmptyInputDoNotLaunch)
+{
+  raft::handle_t handle;
+  cuda::stream_ref stream{handle.get_stream()};
+  cudaGraph_t graph{};
+  // Capture detects accidental launches without executing the deliberately null inputs.
+  RAFT_CUDA_TRY(cudaStreamBeginCapture(stream.get(), cudaStreamCaptureModeThreadLocal));
+  detail::launch_direct_reflected_projection(
+    static_cast<float*>(nullptr),
+    static_cast<const float*>(nullptr),
+    static_cast<const float*>(nullptr),
+    static_cast<const float*>(nullptr),
+    static_cast<const float2*>(nullptr),
+    static_cast<float*>(nullptr),
+    257,
+    primal_reflected_projection<float>(nullptr, nullptr, 1.0f),
+    stream);
+  detail::launch_direct_reflected_projection(
+    static_cast<double*>(nullptr),
+    static_cast<const double*>(nullptr),
+    static_cast<const double*>(nullptr),
+    static_cast<const double*>(nullptr),
+    static_cast<const double2*>(nullptr),
+    static_cast<double*>(nullptr),
+    0,
+    primal_reflected_projection<double>(nullptr, nullptr, 1.0),
+    stream);
+  RAFT_CUDA_TRY(cudaStreamEndCapture(stream.get(), &graph));
+  size_t node_count = 0;
+  RAFT_CUDA_TRY(cudaGraphGetNodes(graph, nullptr, &node_count));
+  EXPECT_EQ(node_count, 0);
+  RAFT_CUDA_TRY(cudaGraphDestroy(graph));
+  stream.sync();
+}
+
+}  // namespace
+}  // namespace cuopt::mathematical_optimization::pdlp::test
