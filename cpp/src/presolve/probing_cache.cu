@@ -208,13 +208,14 @@ void inline insert_current_probing_to_cache(i_t var_idx,
 }
 
 template <typename i_t, typename f_t>
-__global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t pb,
-                                          raft::device_span<f_t> min_activity,
-                                          raft::device_span<f_t> max_activity,
-                                          raft::device_span<f_t> var_slack,
-                                          raft::device_span<bool> different_coefficient,
-                                          raft::device_span<f_t> max_excess_per_var,
-                                          raft::device_span<i_t> max_n_violated_per_constraint)
+__global__ void compute_min_slack_per_var(
+  typename problem_t<i_t, f_t>::view_t pb,
+  raft::device_span<typename type_2<f_t>::type> min_activity,
+  raft::device_span<typename type_2<f_t>::type> max_activity,
+  raft::device_span<f_t> var_slack,
+  raft::device_span<bool> different_coefficient,
+  raft::device_span<f_t> max_excess_per_var,
+  raft::device_span<i_t> max_n_violated_per_constraint)
 {
   i_t var_idx           = pb.integer_indices[blockIdx.x];
   i_t var_offset        = pb.reverse_offsets[var_idx];
@@ -229,8 +230,8 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
     auto a = pb.reverse_coefficients[var_offset + i];
     if (std::signbit(a) != std::signbit(first_coeff)) { different_coeff = true; }
     auto cnst_idx = pb.reverse_constraints[var_offset + i];
-    auto min_a    = min_activity[cnst_idx];
-    auto max_a    = max_activity[cnst_idx];
+    auto min_a    = min_activity_value(min_activity[cnst_idx]);
+    auto max_a    = max_activity_value(max_activity[cnst_idx]);
     auto cnstr_ub = pb.constraint_upper_bounds[cnst_idx];
     auto cnstr_lb = pb.constraint_lower_bounds[cnst_idx];
     min_a -= (a < 0) ? a * ub : a * lb;
@@ -267,8 +268,8 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
     auto a        = pb.reverse_coefficients[var_offset + i];
     auto cnst_idx = pb.reverse_constraints[var_offset + i];
-    auto min_a    = min_activity[cnst_idx];
-    auto max_a    = max_activity[cnst_idx];
+    auto min_a    = min_activity_value(min_activity[cnst_idx]);
+    auto max_a    = max_activity_value(max_activity[cnst_idx]);
     auto cnstr_ub = pb.constraint_upper_bounds[cnst_idx];
     auto cnstr_lb = pb.constraint_lower_bounds[cnst_idx];
     min_a -= (a < 0) ? a * ub : a * lb;

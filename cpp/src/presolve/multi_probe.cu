@@ -37,13 +37,14 @@ namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct detect_infeas_redun_t {
+  using f_t2 = typename type_2<f_t>::type;
   __device__ __forceinline__ thrust::tuple<i_t, i_t, i_t, i_t> operator()(
-    thrust::tuple<f_t, f_t, f_t, f_t, f_t, f_t> t) const
+    thrust::tuple<f_t2, f_t2, f_t2, f_t2, f_t, f_t> t) const
   {
-    auto min_act_0 = thrust::get<0>(t);
-    auto max_act_0 = thrust::get<1>(t);
-    auto min_act_1 = thrust::get<2>(t);
-    auto max_act_1 = thrust::get<3>(t);
+    auto min_act_0 = min_activity_value(thrust::get<0>(t));
+    auto max_act_0 = max_activity_value(thrust::get<1>(t));
+    auto min_act_1 = min_activity_value(thrust::get<2>(t));
+    auto max_act_1 = max_activity_value(thrust::get<3>(t));
     auto cnst_ub   = thrust::get<4>(t);
     auto cnst_lb   = thrust::get<5>(t);
     f_t eps        = get_cstr_tolerance<i_t, f_t>(
