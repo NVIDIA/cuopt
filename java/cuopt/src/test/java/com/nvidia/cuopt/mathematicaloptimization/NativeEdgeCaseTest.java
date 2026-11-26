@@ -410,7 +410,6 @@ final class NativeEdgeCaseTest {
   }
 
   @Test
-  @Disabled("objectiveCoefficients() ignores Variable coefficients once an objective is set")
   void aVariableCoefficientChangedAfterSettingTheObjectiveChangesTheSolve() {
     Problem problem = new Problem("late-coefficient");
     Variable x = problem.addVariable(0, 4, 0.0, VariableType.CONTINUOUS, "x");
@@ -426,7 +425,6 @@ final class NativeEdgeCaseTest {
   }
 
   @Test
-  @Disabled("objectiveCoefficients() ignores the coefficient of a variable added after setObjective")
   void aVariableAddedAfterSettingTheObjectiveKeepsItsCoefficient() {
     Problem problem = new Problem("late-variable");
     Variable x = problem.addVariable(0, 4, 1.0, VariableType.CONTINUOUS, "x");
