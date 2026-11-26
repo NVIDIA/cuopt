@@ -167,6 +167,13 @@
 #define CUOPT_MIP_HYPER_BNB_MAX_STEAL_ATTEMPTS   "mip_hyper_bnb_max_steal_attempts"
 #define CUOPT_MIP_HYPER_BNB_ROOT_HEURISTICS      "mip_hyper_bnb_root_heuristics"
 
+/* @brief Bound propagation hyper-parameters */
+#define CUOPT_MIP_HYPER_BOUND_PROP_MIN_DOMAIN_REDUCTION "mip_hyper_bound_prop_min_domain_reduction"
+#define CUOPT_MIP_HYPER_BOUND_PROP_MIN_ABS_STEP_FACTOR  "mip_hyper_bound_prop_min_abs_step_factor"
+#define CUOPT_MIP_HYPER_BOUND_PROP_MIN_REL_INTEGER_STEP "mip_hyper_bound_prop_min_rel_integer_step"
+#define CUOPT_MIP_HYPER_BOUND_PROP_MAX_TIGHTENINGS_PER_VAR \
+  "mip_hyper_bound_prop_max_tightenings_per_var"
+
 /* @brief Block bounded-variable-elimination step of cuOpt's internal MIP presolve */
 #define CUOPT_MIP_HYPER_BLOCK_BVE "mip_hyper_block_bve"
 

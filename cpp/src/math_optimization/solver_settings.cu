@@ -169,6 +169,10 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_BNB_DIVING_WORKERS_RATIO, &mip_settings.mip_hyper_params.bnb_diving_workers_ratio, f_t(0.0), f_t(1.0), f_t(0.5), "diving workers as a fraction of the B&B threads (at least 1)"},
     {CUOPT_MIP_HYPER_BNB_SUBMIP_WORKERS_RATIO, &mip_settings.mip_hyper_params.bnb_submip_workers_ratio, f_t(0.0), f_t(1.0), f_t(0.125), "sub-MIP workers as a fraction of the B&B threads (at least 1)"},
     {CUOPT_MIP_HYPER_BNB_STEAL_CHANCE, &mip_settings.mip_hyper_params.bnb_steal_chance, f_t(0.0), f_t(1.0), f_t(0.05), "probability that a best-first worker steals nodes from another worker"},
+    // Bound propagation hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_BOUND_PROP_MIN_DOMAIN_REDUCTION, &mip_settings.mip_hyper_params.bound_prop_min_domain_reduction, f_t(0.0), f_t(1.0), f_t(0.3), "fraction of the domain a new continuous bound must cut off"},
+    {CUOPT_MIP_HYPER_BOUND_PROP_MIN_ABS_STEP_FACTOR, &mip_settings.mip_hyper_params.bound_prop_min_abs_step_factor, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(1e3), "smallest change accepted for a continuous bound, in units of the primal tolerance"},
+    {CUOPT_MIP_HYPER_BOUND_PROP_MIN_REL_INTEGER_STEP, &mip_settings.mip_hyper_params.bound_prop_min_rel_integer_step, f_t(0.0), f_t(1.0), f_t(1e-3), "smallest change accepted for an integer bound, relative to the bound's magnitude"},
    };
 
   // Int parameters
@@ -252,6 +256,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_BNB_NODES_PER_STEAL, &mip_settings.mip_hyper_params.bnb_nodes_per_steal, 1, std::numeric_limits<i_t>::max(), 10, "nodes taken from the victim in each steal attempt"},
     {CUOPT_MIP_HYPER_BNB_MAX_STEAL_ATTEMPTS, &mip_settings.mip_hyper_params.bnb_max_steal_attempts, 0, std::numeric_limits<i_t>::max(), 3, "steal attempts before giving up"},
     {CUOPT_MIP_HYPER_BNB_ROOT_HEURISTICS, &mip_settings.mip_hyper_params.bnb_root_heuristics, -1, 1, -1, "root heuristics toggle: -1 automatic, 0 disabled, 1 enabled"},
+    // Bound propagation hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_BOUND_PROP_MAX_TIGHTENINGS_PER_VAR, &mip_settings.mip_hyper_params.bound_prop_max_tightenings_per_var, 1, std::numeric_limits<i_t>::max(), 50, "tightenings of one variable in a propagation call before it is no longer queued"},
     {CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES, &pdlp_settings.barrier_presolve_bound_free_variables, -1, 1, -1, "Bound free variables during barrier presolve: -1 automatic (default behavior), 0 disabled, 1 enabled"},
     {CUOPT_BARRIER_ADAPTIVE_REGULARIZATION, &pdlp_settings.barrier_adaptive_regularization, -1, 1, -1, "Adaptive regularization for barrier method: -1 automatic (default behavior), 0 disabled, 1 enabled"},
     // QCQP (barrier) scaling hyper-parameter

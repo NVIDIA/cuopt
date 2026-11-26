@@ -93,7 +93,7 @@ std::vector<f_t> call_host_bounds_strengthening(const optimization_problem_t<i_t
 
   domain_propagation_t<i_t, f_t> domain_propagation;
   if (!domain_propagation.propagate_from_variables(
-        Arow, var_types, simplex_settings, lp_problem, sc_indices)) {
+        Arow, var_types, simplex_settings, sc_indices, lp_problem)) {
     return op_problem.get_variable_upper_bounds_host();
   }
 

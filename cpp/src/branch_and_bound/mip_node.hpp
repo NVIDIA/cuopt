@@ -132,24 +132,19 @@ class mip_node_t {
     num_children     = 0;
   }
 
-  // Rebuild the variable bounds from the tree, traversing from this node
-  // to the root node.
-  void rebuild_variable_bounds(domain_propagation_t<i_t, f_t>& domain_propagation) const
+  std::vector<const mip_node_t*> get_path_to_root() const
   {
-    domain_propagation.clear();
-
     std::vector<const mip_node_t*> path;
     path.reserve(depth);
-    for (const mip_node_t* node = this; node != nullptr && node->node_id != 0;
-         node                   = node->parent) {
+    const mip_node_t* node = this;
+    while (node != nullptr && node->node_id != 0) {
       path.push_back(node);
+      node = node->parent;
     }
-    for (auto it = path.rbegin(); it != path.rend(); ++it) {
-      domain_propagation.push((*it)->update_variable_bounds());
-    }
+    return path;
   }
 
-  bound_change_t<i_t, f_t> update_variable_bounds() const
+  bound_change_t<i_t, f_t> get_bound_change() const
   {
     bound_change_t<i_t, f_t> bound_change;
     bound_change.var    = branch_var;

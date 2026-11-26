@@ -104,7 +104,7 @@ TEST_F(domain_propagation, propagate_from_variables)
   ASSERT_TRUE(local_domain.propagate_full(Arow, var_types, settings, lp));
 
   lp.lower[0] = 3.0;
-  ASSERT_TRUE(local_domain.propagate_from_variables(Arow, var_types, settings, lp, {0}));
+  ASSERT_TRUE(local_domain.propagate_from_variables(Arow, var_types, settings, {0}, lp));
   EXPECT_EQ(lp.lower, (std::vector<double>{3.0, 1.0, 0.0, 0.0}));
   EXPECT_EQ(lp.upper, (std::vector<double>{3.0, 1.0, 4.0, 6.0}));
 }

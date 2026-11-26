@@ -183,6 +183,22 @@ struct mip_hyper_params_t {
 
   // Run CPU FJ over the sub-MIP
   bool submip_enable_cpufj = true;
+
+  // ---------------------------------------------------------------------------------------------
+  // Bound Propagation
+  // ---------------------------------------------------------------------------------------------
+
+  // A continuous bound must cut off at least this fraction of the variable's domain.
+  f_t bound_prop_min_domain_reduction = 0.3;
+
+  // Smallest absolute change accepted for a continuous bound, in units of primal_tol.
+  f_t bound_prop_min_abs_step_factor = 1e3;
+
+  // Smallest change accepted for an integer bound, relative to the bound's magnitude.
+  f_t bound_prop_min_rel_integer_step = 1e-3;
+
+  // A variable tightened more than this many times in one propagation call is not queued again.
+  i_t bound_prop_max_tightenings_per_var = 50;
 };
 
 }  // namespace cuopt::mathematical_optimization::mip
