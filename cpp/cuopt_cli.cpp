@@ -408,11 +408,11 @@ int main(int argc, char* argv[])
 
   program.add_argument("--mps-reader")
     .help(
-      "MPS reader implementation: default uses the production parser; experimental-fast uses the "
-      "experimental SIMD parser for free-format LP/MIP/QP/QCQP (SOCP) .mps/.qps files and their "
-      ".gz/.bz2/.lz4 compressed variants")
-    .default_value(std::string("default"))
-    .choices("default", "experimental-fast");
+      "MPS reader implementation: parallel uses the SIMD parser for free-format "
+      "LP/MIP/QP/QCQP (SOCP) .mps/.qps files and their .gz/.bz2/.lz4 compressed variants; "
+      "serial uses the single-threaded parser")
+    .default_value(std::string("parallel"))
+    .choices("serial", "parallel");
 
   program.add_argument("--mps-index-64bit")
     .help(
@@ -524,9 +524,9 @@ int main(int argc, char* argv[])
   const auto mps_reader_arg        = program.get<std::string>("--mps-reader");
   const auto index_64bit           = program.get<bool>("--mps-index-64bit");
 
-  auto mps_reader = cuopt::mathematical_optimization::io::mps_reader_type_t::default_reader;
-  if (mps_reader_arg == "experimental-fast") {
-    mps_reader = cuopt::mathematical_optimization::io::mps_reader_type_t::fast_experimental;
+  auto mps_reader = cuopt::mathematical_optimization::io::mps_reader_type_t::parallel_reader;
+  if (mps_reader_arg == "serial") {
+    mps_reader = cuopt::mathematical_optimization::io::mps_reader_type_t::serial_reader;
   }
 
   cuopt::mathematical_optimization::solver_settings_t<int, double> settings;

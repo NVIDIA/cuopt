@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 // Input layer for the fast MPS parser: turns on-disk bytes (plain or .lz4) into one
@@ -28,8 +28,10 @@
 #include "mmap_region.hpp"
 #include "mps_section_scanner.hpp"
 #include "nvtx_ranges.hpp"
+#include "source_location.hpp"
 
 #include <atomic>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -185,11 +187,12 @@ void parallel_for_indexed(std::size_t count,
 }
 
 struct input_stream_view_t {
-  const char* data               = nullptr;
-  char* mutable_data             = nullptr;
-  std::size_t size               = 0;
-  std::size_t compressed_size    = 0;
-  mps_phase_registry_t* registry = nullptr;
+  const char* data                = nullptr;
+  char* mutable_data              = nullptr;
+  std::size_t size                = 0;
+  std::size_t compressed_size     = 0;
+  mps_phase_registry_t* registry  = nullptr;
+  const source_location_t* source = nullptr;
 };
 
 /**
@@ -204,11 +207,17 @@ class input_stream_base_t {
   input_stream_view_t view() noexcept
   {
     auto* self = static_cast<Derived*>(this);
-    return {self->data(), self->mutable_data(), self->size(), self->compressed_size(), &registry_};
+    return {self->data(),
+            self->mutable_data(),
+            self->size(),
+            self->compressed_size(),
+            &registry_,
+            source_location_.get()};
   }
 
  protected:
   mps_phase_registry_t registry_;
+  std::unique_ptr<source_location_t> source_location_;
 };
 
 // Handles lz4 compressed files (useful since lz4 is very fast, works well for MPS, and makes
@@ -313,6 +322,8 @@ class memory_input_stream_t : public input_stream_base_t<memory_input_stream_t> 
   std::vector<char> buffer_;
   std::size_t input_size_      = 0;
   std::size_t compressed_size_ = 0;
+  std::size_t block_bytes_     = 0;
+  std::size_t block_count_     = 1;
   std::unique_ptr<mps_section_block_scanner_t> section_scanner_;
 };
 

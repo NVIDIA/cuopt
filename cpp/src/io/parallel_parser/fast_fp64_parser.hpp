@@ -313,14 +313,28 @@ static inline bool parse_decimal_advance(const char*& p, const char* end, parsed
   return true;
 }
 
-// fallback to stdlib for edge case or ambiguous roundings (very rare)
-static inline double fallback_strtod(std::string_view s)
+enum class fp64_status : uint8_t { ok, too_long, invalid_chars, out_of_range };
+
+static inline const char* fp64_status_message(fp64_status status)
 {
-  char stack_buf[32];
-  // The MPS specs mandate that numeric tokens are not longer than 25 characters
-  if (s.size() >= sizeof(stack_buf)) {
-    mps_parser_fail(error_type_t::ValidationError, "MPS numeric token exceeds supported length");
+  switch (status) {
+    case fp64_status::too_long: return "MPS numeric token exceeds supported length";
+    case fp64_status::invalid_chars: return "Invalid MPS numeric token";
+    case fp64_status::out_of_range: return "Out-of-range MPS numeric token";
+    default: return "";
   }
+}
+
+constexpr size_t max_numeric_token_length = 63;
+
+// fallback to stdlib for edge case or ambiguous roundings (very rare)
+static inline fp64_status fallback_strtod(std::string_view s, double& value)
+{
+  if (s.empty()) { return fp64_status::invalid_chars; }
+
+  // The MPS specs mandate that numeric tokens are not longer than 25 characters
+  if (s.size() > max_numeric_token_length) { return fp64_status::too_long; }
+  char stack_buf[max_numeric_token_length + 1];
   std::memcpy(stack_buf, s.data(), s.size());
   stack_buf[s.size()] = '\0';
   for (size_t i = 0; i < s.size(); ++i) {
@@ -329,11 +343,12 @@ static inline double fallback_strtod(std::string_view s)
 
   char* parse_end = nullptr;
   errno           = 0;
-  double value    = std::strtod(stack_buf, &parse_end);
-  if (parse_end != stack_buf + s.size() || errno == ERANGE) {
-    mps_parser_fail(error_type_t::ValidationError, "Invalid or out-of-range MPS numeric token");
-  }
-  return value;
+  value           = std::strtod(stack_buf, &parse_end);
+  if (parse_end != stack_buf + s.size()) { return fp64_status::invalid_chars; }
+  // ERANGE may flag underflow or subnormal results; only overflow (±inf) is rejected
+  if (errno == ERANGE && std::isinf(value)) { return fp64_status::out_of_range; }
+  if (std::isnan(value)) { return fp64_status::invalid_chars; }
+  return fp64_status::ok;
 }
 
 // see Daniel Lemire, Number Parsing at a Gigabyte per Second, Software: Practice and Experience 51
@@ -415,22 +430,35 @@ static inline double assemble_fp64(const parsed_decimal_t& dec)
   return std::numeric_limits<double>::quiet_NaN();
 }
 
-static inline double parse_fp64_advance(const char*& p, const char* end)
+static inline fp64_status try_parse_fp64_advance(const char*& p, const char* end, double& value)
 {
   const char* start = p;
   parsed_decimal_t dec;
-  if (!parse_decimal_advance(p, end, dec)) {
-    return fallback_strtod(std::string_view(start, (size_t)(p - start)));
+  // parsed fine by the fastpath? (pointer is at the end of the buffer/hit whitespace)
+  if (parse_decimal_advance(p, end, dec) && (p == end || (unsigned char)*p <= 32) &&
+      (size_t)(p - start) <= max_numeric_token_length) {
+    value = assemble_fp64(dec);
+    if (!std::isnan(value)) { return fp64_status::ok; }
   }
+  while (p < end && (unsigned char)*p > 32) {
+    ++p;
+  }
+  return fallback_strtod(std::string_view(start, (size_t)(p - start)), value);
+}
 
-  double v = assemble_fp64(dec);
-  if (!std::isnan(v)) {
-    if (p < end && (unsigned char)*p > 32) {
-      mps_parser_fail(error_type_t::ValidationError, "Invalid or out-of-range MPS numeric token");
-    }
-    return v;
+static inline double parse_fp64_advance(const char*& p, const char* end)
+{
+  const char* start = p;
+  double value;
+  const fp64_status status = try_parse_fp64_advance(p, end, value);
+  if (status != fp64_status::ok) {
+    mps_parser_fail(error_type_t::ValidationError,
+                    "%s '%.*s'",
+                    fp64_status_message(status),
+                    (int)(p - start),
+                    start);
   }
-  return fallback_strtod(std::string_view(start, (size_t)(p - start)));
+  return value;
 }
 
 }  // namespace fp64

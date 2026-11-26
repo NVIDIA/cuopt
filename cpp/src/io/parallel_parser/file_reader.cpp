@@ -1,13 +1,12 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #include "file_reader.hpp"
 #include "nvtx_ranges.hpp"
+#include "parser_parameters.hpp"
 
 #include <utilities/error.hpp>
 #include <utilities/scope_guard.hpp>
-
-#include <cuda/cmath>
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -39,8 +38,6 @@ using cuopt::mathematical_optimization::io::mps_parser_fail;
 
 namespace {
 
-constexpr std::size_t raw_input_window_bytes              = 64ull * 1024ull * 1024ull;
-constexpr std::size_t raw_input_max_read_threads          = 8;
 constexpr std::size_t raw_input_direct_io_threshold_bytes = 1ull * 1024ull * 1024ull * 1024ull;
 constexpr long nfs_super_magic                            = 0x6969;
 
@@ -103,7 +100,7 @@ std::size_t get_file_size(const std::string& path)
   int fd = ::open(path.c_str(), O_RDONLY);
   if (fd < 0) {
     mps_parser_fail(error_type_t::RuntimeError,
-                    "Failed to open file '%s': %s",
+                    "Error opening input file! Given path: %s (%s)",
                     path.c_str(),
                     std::strerror(errno));
   }
@@ -112,7 +109,6 @@ std::size_t get_file_size(const std::string& path)
   });
 
   std::size_t size = get_file_size(fd, path);
-  ::close(fd);
   return size;
 }
 
@@ -155,7 +151,7 @@ raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
   });
   if (buffered_fd < 0) {
     mps_parser_fail(error_type_t::RuntimeError,
-                    "Failed to open raw MPS file '%s': %s",
+                    "Error opening input file! Given path: %s (%s)",
                     path.c_str(),
                     std::strerror(errno));
   }
@@ -180,21 +176,24 @@ raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
     }
 #endif
   }
-  window_bytes_ = raw_input_window_bytes;
+  window_bytes_ = std::max<std::size_t>(4096, g_parser_parameters.raw_input_window_bytes);
   window_count_ = std::max<std::size_t>(1, (file_size_ + window_bytes_ - 1) / window_bytes_);
 #ifdef MPS_FAST_TIMERS
   read_window_ms_.assign(window_count_, 0);
 #endif
 
-  output_mapped_size_ =
-    cuda::round_up(std::max<std::size_t>(add_input_padding(file_size_), 1), system_page_size());
-  output_region_ = mmap_region_t::anonymous(
+  const std::size_t page   = system_page_size();
+  const std::size_t padded = std::max<std::size_t>(add_input_padding(file_size_), 1);
+  output_mapped_size_      = (padded + page - 1) / page * page;
+  output_region_           = mmap_region_t::anonymous(
     output_mapped_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE, "raw input buffer");
   output_data_ = output_region_.char_data();
   output_region_.advise(MADV_HUGEPAGE);
 
-  section_scanner_ =
-    std::make_unique<mps_section_block_scanner_t>(output_data_, window_count_, registry_);
+  source_location_ =
+    std::make_unique<source_location_t>(output_data_, output_mapped_size_, window_count_, path_);
+  section_scanner_ = std::make_unique<mps_section_block_scanner_t>(
+    output_data_, window_count_, registry_, *source_location_);
 
   buffered_fd_ = buffered_fd;
   buffered_fd  = -1;
@@ -234,14 +233,15 @@ void raw_input_stream_t::run_decode_tasks()
   MPS_NVTX_RANGE("raw_input_run_read_tasks", nvtx::colors::io);
   if (file_size_ == 0) {
     output_view_size_ = 0;
-    section_scanner_->publish_ready(0);
+    section_scanner_->publish_final();
     return;
   }
 
   std::size_t hw_threads =
     std::max<std::size_t>(1, (std::size_t)std::thread::hardware_concurrency());
-  std::size_t thread_count = std::min(raw_input_max_read_threads, hw_threads);
-  thread_count             = std::max<std::size_t>(1, std::min(thread_count, window_count_));
+  std::size_t thread_count = std::min<std::size_t>(
+    std::max<std::size_t>(1, g_parser_parameters.raw_input_max_read_threads), hw_threads);
+  thread_count = std::max<std::size_t>(1, std::min(thread_count, window_count_));
 
   // Each window is read independently and handed to the scanner, which owns the
   // contiguous decoded-byte frontier and the parallel section publication.
@@ -307,7 +307,7 @@ void raw_input_stream_t::run_decode_tasks()
 #endif
 
   output_view_size_ = section_scanner_->ready_bytes();
-  section_scanner_->publish_ready(output_view_size_);
+  section_scanner_->publish_final();
 }
 
 memory_input_stream_t::memory_input_stream_t(std::vector<char> buffer,
@@ -316,7 +316,13 @@ memory_input_stream_t::memory_input_stream_t(std::vector<char> buffer,
   : buffer_(std::move(buffer)), input_size_(input_size), compressed_size_(compressed_size)
 {
   ensure_input_buffer_padding(buffer_, input_size_);
-  section_scanner_ = std::make_unique<mps_section_block_scanner_t>(buffer_.data(), 1, registry_);
+  block_bytes_ = g_parser_parameters.memory_input_block_bytes;
+  block_count_ =
+    (block_bytes_ == 0 || input_size_ == 0) ? 1 : (input_size_ + block_bytes_ - 1) / block_bytes_;
+  source_location_ =
+    std::make_unique<source_location_t>(buffer_.data(), input_size_, block_count_, "<memory>");
+  section_scanner_ = std::make_unique<mps_section_block_scanner_t>(
+    buffer_.data(), block_count_, registry_, *source_location_);
 }
 
 const char* memory_input_stream_t::data() const noexcept { return buffer_.data(); }
@@ -328,8 +334,28 @@ std::size_t memory_input_stream_t::reserve_size_hint() const noexcept { return i
 void memory_input_stream_t::run_decode_tasks()
 {
   MPS_NVTX_RANGE("memory_input_scan", nvtx::colors::io);
-  // Single block: observe_block advances the frontier and publishes.
-  section_scanner_->observe_block(0, buffer_.data(), buffer_.data() + input_size_);
+  if (block_count_ == 1) {
+    section_scanner_->observe_block(0, buffer_.data(), buffer_.data() + input_size_);
+    section_scanner_->publish_final();
+    return;
+  }
+
+  std::size_t hw_threads =
+    std::max<std::size_t>(1, (std::size_t)std::thread::hardware_concurrency());
+  std::size_t thread_count = std::min<std::size_t>(
+    std::max<std::size_t>(1, g_parser_parameters.raw_input_max_read_threads), hw_threads);
+  thread_count = std::max<std::size_t>(1, std::min(thread_count, block_count_));
+
+  parallel_error_latch_t latch;
+  parallel_for_indexed(
+    block_count_, thread_count, latch, "memory-input-scan-", [&](std::size_t index) {
+      std::size_t offset = index * block_bytes_;
+      std::size_t size   = std::min(block_bytes_, input_size_ - offset);
+      section_scanner_->observe_block(
+        index, buffer_.data() + offset, buffer_.data() + offset + size);
+    });
+  latch.rethrow_if_error();
+  section_scanner_->publish_final();
 }
 
 bool has_lz4_extension(const std::string& path) noexcept { return path_has_suffix(path, ".lz4"); }

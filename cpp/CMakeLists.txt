@@ -230,7 +230,7 @@ message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 # MPS/QPS parser supports compressed inputs via bzip2, zlib and lz4
 option(CUOPT_PARSER_WITH_BZIP2 "Build MPS parser with bzip2 decompression" ON)
 option(CUOPT_PARSER_WITH_ZLIB "Build MPS parser with zlib decompression" ON)
-option(CUOPT_PARSER_WITH_LZ4 "Build experimental fast MPS parser with LZ4 decompression" ON)
+option(CUOPT_PARSER_WITH_LZ4 "Build parallel MPS parser with LZ4 decompression" ON)
 if (CUOPT_PARSER_WITH_BZIP2)
     find_package(BZip2 REQUIRED)
     add_compile_definitions(MPS_PARSER_WITH_BZIP2)
@@ -240,7 +240,7 @@ if (CUOPT_PARSER_WITH_ZLIB)
     add_compile_definitions(MPS_PARSER_WITH_ZLIB)
 endif ()
 if (CUOPT_PARSER_WITH_LZ4)
-    # No headers or link target needed; the experimental reader loads one liblz4 symbol at runtime.
+    # No headers or link target needed; the parallel reader loads one liblz4 symbol at runtime.
     add_compile_definitions(MPS_PARSER_WITH_LZ4)
 endif ()
 

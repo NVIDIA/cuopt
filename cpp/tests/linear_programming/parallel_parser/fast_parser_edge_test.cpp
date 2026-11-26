@@ -261,12 +261,12 @@ TEST(FastMpsParserEdgeTest, ScannerFindsSectionSplitAcrossBlocks)
   const size_t split = columns_pos + 3;
 
   mps_phase_registry_t registry;
-  mps_section_block_scanner_t scanner(mps.data(), 2, registry);
+  source_location_t source(mps.data(), mps.size(), 2, "<memory>");
+  mps_section_block_scanner_t scanner(mps.data(), 2, registry, source);
 
   scanner.observe_block(1, mps.data() + split, mps.data() + mps.size());
-  scanner.publish_ready(0);
   scanner.observe_block(0, mps.data(), mps.data() + split);
-  scanner.publish_ready(mps.size());
+  scanner.publish_final();
 
   EXPECT_TRUE(registry.ready(mps_phase_kind::header)) << "header not ready";
   EXPECT_TRUE(registry.ready(mps_phase_kind::rows)) << "rows not ready";
@@ -291,11 +291,12 @@ TEST(FastMpsParserEdgeTest, ScannerFindsHeadersSplitAtEveryByte)
     for (size_t offset = 1; offset < header.size(); ++offset) {
       const size_t split = pos + offset;
       mps_phase_registry_t registry;
-      mps_section_block_scanner_t scanner(mps.data(), 2, registry);
+      source_location_t source(mps.data(), mps.size(), 2, "<memory>");
+      mps_section_block_scanner_t scanner(mps.data(), 2, registry, source);
 
       scanner.observe_block(1, mps.data() + split, mps.data() + mps.size());
       scanner.observe_block(0, mps.data(), mps.data() + split);
-      scanner.publish_ready(mps.size());
+      scanner.publish_final();
 
       EXPECT_TRUE(registry.ready(mps_phase_kind::rows)) << "rows not ready after split";
       EXPECT_TRUE(registry.ready(mps_phase_kind::columns)) << "columns not ready after split";
@@ -321,9 +322,10 @@ TEST(FastMpsParserEdgeTest, ScannerRejectsUnknownColumnOneRecordsAfterRows)
   EXPECT_THROW(
     {
       mps_phase_registry_t registry;
-      mps_section_block_scanner_t scanner(mps.data(), 1, registry);
+      source_location_t source(mps.data(), mps.size(), 1, "<memory>");
+      mps_section_block_scanner_t scanner(mps.data(), 1, registry, source);
       scanner.observe_block(0, mps.data(), mps.data() + mps.size());
-      scanner.publish_ready(mps.size());
+      scanner.publish_final();
     },
     std::logic_error);
 }
@@ -376,7 +378,7 @@ TEST(FastMpsParserEdgeTest, BoundsDefaultsAndTypesMatchReference)
                          "ENDATA\n");
 }
 
-TEST(FastMpsParserEdgeTest, DuplicateBoundsLastStatementWins)
+TEST(FastMpsParserEdgeTest, DuplicateBoundsFirstWinsPerSide)
 {
   const std::string contents =
     "NAME BOUNDS_DUP\n"
@@ -384,22 +386,69 @@ TEST(FastMpsParserEdgeTest, DuplicateBoundsLastStatementWins)
     " N OBJ\n"
     " L rowA\n"
     "COLUMNS\n"
-    " X1 rowA 1\n"
+    " LO_LO rowA 1\n"
+    " UP_UP rowA 1\n"
+    " FX_LO rowA 1\n"
+    " LO_FX rowA 1\n"
+    " FX_BV rowA 1\n"
+    " BV_FX rowA 1\n"
+    " UP_SC rowA 1\n"
+    " SC_UP rowA 1\n"
+    " UI_LI rowA 1\n"
     "RHS\n"
     " RHS1 rowA 10\n"
     "BOUNDS\n"
-    " LO BND X1 0\n"
-    " UP BND X1 5\n"
-    " UP BND X1 3\n"
-    " LO BND X1 2\n"
+    " LO BND LO_LO 1\n"
+    " LO BND LO_LO 2\n"
+    " UP BND UP_UP 5\n"
+    " UP BND UP_UP 7\n"
+    " FX BND FX_LO 3\n"
+    " LO BND FX_LO 1\n"
+    " LO BND LO_FX 1\n"
+    " FX BND LO_FX 3\n"
+    " FX BND FX_BV 3\n"
+    " BV BND FX_BV\n"
+    " BV BND BV_FX\n"
+    " FX BND BV_FX 3\n"
+    " UP BND UP_SC 5\n"
+    " SC BND UP_SC 10\n"
+    " SC BND SC_UP 10\n"
+    " UP BND SC_UP 5\n"
+    " UI BND UI_LI 3\n"
+    " LI BND UI_LI 1\n"
     "ENDATA\n";
 
-  verify_fixture_bitwise("duplicate_bounds_last_statement_wins", contents);
+  struct expected_bounds_t {
+    const char* name;
+    double lower;
+    double upper;
+    char type;
+  };
+  const double inf                   = std::numeric_limits<double>::infinity();
+  const expected_bounds_t expected[] = {
+    {"LO_LO", 1.0, inf, 'C'},
+    {"UP_UP", 0.0, 5.0, 'C'},
+    {"FX_LO", 3.0, 3.0, 'C'},
+    {"LO_FX", 1.0, 3.0, 'C'},
+    {"FX_BV", 3.0, 3.0, 'I'},
+    {"BV_FX", 0.0, 1.0, 'I'},
+    {"UP_SC", 0.0, 5.0, 'S'},
+    {"SC_UP", 0.0, 10.0, 'S'},
+    {"UI_LI", 1.0, 3.0, 'I'},
+  };
+
+  verify_fixture_bitwise("duplicate_bounds_first_wins_per_side", contents);
   TempMpsFile file(contents);
   auto model = parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read);
-  EXPECT_EQ(1, model.n_vars_) << "n_vars";
-  EXPECT_EQ(2.0, model.variable_lower_bounds_.at(0)) << "duplicate lower bound";
-  EXPECT_EQ(3.0, model.variable_upper_bounds_.at(0)) << "duplicate upper bound";
+  EXPECT_EQ(9, model.n_vars_) << "n_vars";
+  for (const auto& e : expected) {
+    SCOPED_TRACE(e.name);
+    const int var = find_var_index(model, e.name);
+    ASSERT_GE(var, 0);
+    EXPECT_EQ(e.lower, model.variable_lower_bounds_.at(var)) << "lower bound";
+    EXPECT_EQ(e.upper, model.variable_upper_bounds_.at(var)) << "upper bound";
+    EXPECT_EQ(e.type, model.var_types_.at(var)) << "type";
+  }
 }
 
 TEST(FastMpsParserEdgeTest, NondenseRowAndColumnNamesUseHashPath)
@@ -439,50 +488,11 @@ TEST(FastMpsParserEdgeTest, MissingOptionalBoundsFastPath)
     "ENDATA\n");
 
   auto model = parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read);
+  check_models_match_reference_bitwise(model, parse_reference_model(file.path), "missing optional");
   EXPECT_EQ(1, model.n_vars_) << "missing optional n_vars";
   EXPECT_EQ(1, model.n_constraints_) << "missing optional n_constraints";
   EXPECT_EQ(0.0, model.variable_lower_bounds_.at(0)) << "missing BOUNDS lower default";
   EXPECT_EQ(std::numeric_limits<double>::infinity(), model.variable_upper_bounds_.at(0));
-}
-
-TEST(FastMpsParserEdgeTest, BoundsOnlyVariablesAreAppendedDeterministically)
-{
-  TempMpsFile file(
-    "NAME BOUNDS_ONLY\n"
-    "ROWS\n"
-    " N OBJ\n"
-    " L R1\n"
-    "COLUMNS\n"
-    " XMAIN OBJ 1 R1 2\n"
-    "RHS\n"
-    " RHS1 R1 0\n"
-    "BOUNDS\n"
-    " UP B AUX_Z 9\n"
-    " LO B AUX_Z -3\n"
-    " BV B AUX_A\n"
-    " SC B AUX_S 5\n"
-    "ENDATA\n");
-
-  auto model = parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read);
-  check_model_shapes(model, 1, 4, 1, "bounds-only");
-  EXPECT_EQ(std::string("XMAIN"), model.var_names_.at(0)) << "main var name";
-  EXPECT_EQ(std::string("AUX_A"), model.var_names_.at(1)) << "bounds-only sorted name 1";
-  EXPECT_EQ(std::string("AUX_S"), model.var_names_.at(2)) << "bounds-only sorted name 2";
-  EXPECT_EQ(std::string("AUX_Z"), model.var_names_.at(3)) << "bounds-only sorted name 3";
-
-  const int aux_a = find_var_index(model, "AUX_A");
-  const int aux_s = find_var_index(model, "AUX_S");
-  const int aux_z = find_var_index(model, "AUX_Z");
-  ASSERT_GE(aux_a, 0);
-  ASSERT_GE(aux_s, 0);
-  ASSERT_GE(aux_z, 0);
-  EXPECT_EQ('I', model.var_types_.at(aux_a)) << "bounds-only BV type";
-  EXPECT_EQ(0.0, model.variable_lower_bounds_.at(aux_a)) << "bounds-only BV lb";
-  EXPECT_EQ(1.0, model.variable_upper_bounds_.at(aux_a)) << "bounds-only BV ub";
-  EXPECT_EQ('S', model.var_types_.at(aux_s)) << "bounds-only SC type";
-  EXPECT_EQ(5.0, model.variable_upper_bounds_.at(aux_s)) << "bounds-only SC ub";
-  EXPECT_EQ(-3.0, model.variable_lower_bounds_.at(aux_z)) << "bounds-only duplicate lb";
-  EXPECT_EQ(9.0, model.variable_upper_bounds_.at(aux_z)) << "bounds-only duplicate ub";
 }
 
 TEST(FastMpsParserEdgeTest, IntegerMarkersAssignTypesAndDefaultBounds)
@@ -505,6 +515,7 @@ TEST(FastMpsParserEdgeTest, IntegerMarkersAssignTypesAndDefaultBounds)
     "ENDATA\n");
 
   auto model = parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read);
+  check_models_match_reference_bitwise(model, parse_reference_model(file.path), "integer markers");
   check_model_shapes(model, 1, 3, 3, "integer markers");
   const int xint  = find_var_index(model, "XINT");
   const int xcont = find_var_index(model, "XCONT");
@@ -569,27 +580,82 @@ TEST(FastMpsParserEdgeTest, CommentPlacementSupportedCasesMatchReferenceBitwise)
 {
   verify_fixture_bitwise("comment_placement_supported_cases",
                          "* leading star comment\n"
-                         "$ leading dollar comment\n"
                          "NAME COMMENTS\n"
-                         "$ comment between NAME and ROWS\n"
                          "ROWS\n"
                          "* comment after ROWS header\n"
                          " N OBJ $ row objective comment\n"
-                         "$ comment between ROW records\n"
                          " L R1 $ row constraint comment\n"
                          "COLUMNS\n"
                          "* comment after COLUMNS header\n"
-                         " X1 OBJ 1 R1 2 $ inline column comment\n"
-                         "$ comment before next column\n"
+                         " X1 OBJ 1 $ inline column comment\n"
+                         " X1 R1 2\n"
                          " X2 OBJ -1 R1 3\n"
                          "RHS\n"
-                         "$ comment after RHS header\n"
                          " RHS1 R1 5 $ inline rhs comment\n"
                          "BOUNDS\n"
                          "* comment after BOUNDS header\n"
                          " LO B X1 0 $ inline bound comment\n"
-                         "$ comment before ENDATA\n"
                          "ENDATA\n");
+}
+
+TEST(FastMpsParserEdgeTest, DollarFieldFiveAndIdentifiersMatchReferenceBitwise)
+{
+  verify_fixture_bitwise("dollar_field_five_and_identifiers",
+                         "NAME DOLLAR\n"
+                         "ROWS\n"
+                         " N OBJ\n"
+                         " L R$1\n"
+                         " L R2\n"
+                         "COLUMNS\n"
+                         " X$1 OBJ 1 $ comment\n"
+                         " X$1 R$1 2 R2 3\n"
+                         " X2 OBJ 1 R2 4\n"
+                         "RHS\n"
+                         " RHS$ R$1 1 $ comment\n"
+                         " RHS$ R2 2\n"
+                         "RANGES\n"
+                         " RNG R$1 1 $ comment\n"
+                         "BOUNDS\n"
+                         " UP B X$1 5 $ comment\n"
+                         "QUADOBJ\n"
+                         " X$1 X$1 1 $ comment\n"
+                         "ENDATA\n");
+}
+
+TEST(FastMpsParserEdgeTest, DollarFieldThreeAndAfterFieldSixRejected)
+{
+  const std::string head =
+    "NAME DOLLAR\n"
+    "ROWS\n"
+    " N OBJ\n"
+    " L R1\n"
+    " L R2\n"
+    "COLUMNS\n";
+  const std::string columns =
+    " X1 OBJ 1 R1 2\n"
+    " X2 OBJ 1 R2 3\n";
+  const std::string rhs =
+    "RHS\n"
+    " RHS1 R1 1 R2 2\n";
+
+  const std::vector<std::string> cases = {
+    head + " X1 $R1 2\n" + rhs + "ENDATA\n",
+    head + " X1 OBJ 1 R1 2 $ comment\n" + rhs + "ENDATA\n",
+    head + columns + "RHS\n RHS1 $R1 1\nENDATA\n",
+    head + columns + "RHS\n RHS1 R1 1 R2 2 $ comment\nENDATA\n",
+    head + columns + rhs + "RANGES\n RNG $R1 1\nENDATA\n",
+    head + columns + rhs + "RANGES\n RNG R1 1 R2 2 $ comment\nENDATA\n",
+    head + columns + rhs + "BOUNDS\n UP B $X1 1\nENDATA\n",
+    head + columns + rhs + "QUADOBJ\n $X1 X1 1\nENDATA\n",
+    head + columns + rhs + "QUADOBJ\n X1 $X1 1\nENDATA\n"};
+
+  for (const auto& mps : cases) {
+    TempMpsFile file(mps);
+    EXPECT_THROW(((void)parse_reference_model(file.path)), std::exception) << mps;
+    EXPECT_THROW(((void)parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read)),
+                 std::exception)
+      << mps;
+  }
 }
 
 TEST(FastMpsParserEdgeTest, ObjectiveMetadataSelectsNamedObjective)
@@ -722,6 +788,7 @@ TEST(FastMpsParserEdgeTest, LargeColumnsRepeatedColumnChunkBoundary)
 
   TempMpsFile file(std::move(mps));
   auto model = parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read);
+  check_models_match_reference_bitwise(model, parse_reference_model(file.path), "large columns");
   check_model_shapes(
     model, static_cast<int>(row_count), 2, static_cast<int>(row_count + 1), "large columns");
   EXPECT_EQ(std::string("XBIG"), model.var_names_.at(0)) << "large repeated column name";
@@ -744,9 +811,9 @@ TEST(FastMpsParserEdgeTest, LargeBoundsRepeatedVarStaysOrdered)
 
   TempMpsFile file(std::move(mps));
   auto model = parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read);
+  check_models_match_reference_bitwise(model, parse_reference_model(file.path), "large bounds");
   check_model_shapes(model, 1, 1, 1, "large bounds");
-  EXPECT_EQ(static_cast<double>((repeat_count - 1) % 1000), model.variable_upper_bounds_.at(0))
-    << "large repeated bounds last value";
+  EXPECT_EQ(0.0, model.variable_upper_bounds_.at(0)) << "large repeated bounds first value";
 }
 
 TEST(FastMpsParserEdgeTest, Lz4AndRawPathsMatchOnMultiblockInput)

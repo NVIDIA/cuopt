@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace cuopt::mathematical_optimization::io::detail {
 
@@ -18,5 +19,8 @@ using parser_model_t = mps_data_model_t<i_t, f_t>;
 template <typename i_t, typename f_t>
 parser_model_t<i_t, f_t> parse_mps_fast_file(const std::string& path,
                                              FileReadMethod read_method = FileReadMethod::Read);
+
+template <typename i_t, typename f_t>
+parser_model_t<i_t, f_t> parse_mps_fast_buffer(std::vector<char> buffer, std::size_t input_size);
 
 }  // namespace cuopt::mathematical_optimization::io::detail

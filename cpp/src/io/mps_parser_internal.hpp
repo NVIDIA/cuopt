@@ -234,7 +234,10 @@ class mps_parser_t {
   std::unordered_map<std::string, i_t> var_names_map{};
   std::unordered_set<std::string> ignored_objective_names{};
   std::unordered_set<i_t> bounds_defined_for_var_id{};
+  i_t multiobj_row_count{0};
+  i_t bound_warning_count{0};
   std::unordered_set<i_t> lower_bounds_defined_for_var_id{};
+  std::unordered_set<i_t> upper_bounds_defined_for_var_id{};
   static constexpr f_t unset_range_value = std::numeric_limits<f_t>::infinity();
 
   void fill_problem(mps_data_model_t<i_t, f_t>& problem);
@@ -249,17 +252,18 @@ class mps_parser_t {
                                  std::string_view num,
                                  i_t var_id);
   void parse_column_row_and_value(std::string_view line, i_t pos);
-  i_t read_row_and_value(std::string_view line, i_t start, i_t var_id);
+  i_t read_row_and_value(std::string_view line, i_t start, i_t var_id, bool optional_pair);
   void parse_rhs(std::string_view line);
   template <bool bounds_or_ranges = false, int fixed_length = 12>
   f_t get_numerical_bound(std::string_view line, i_t& start);
-  i_t read_rhs_row_and_value(std::string_view line, i_t start);
+  void skip_ignored_bound_value(std::string_view line, const char* bound_type, i_t& start);
+  i_t read_rhs_row_and_value(std::string_view line, i_t start, bool optional_pair);
   void parse_bounds(std::string_view line);
   void parse_objsense(std::string_view line);
   void parse_objname(std::string_view line);
-  void read_bound_and_value(std::string_view line, BoundType type, i_t var_id, i_t start);
+  void read_bound_and_value(std::string_view line, BoundType type, i_t var_id, i_t& start);
   void parse_ranges(std::string_view line);
-  i_t insert_range_value(std::string_view line, bool skip_range = true);
+  i_t insert_range_value(std::string_view line, bool optional_pair, bool skip_range = true);
 
   // QPS-specific parsing methods
   void parse_quad(std::string_view line, bool is_quadobj);

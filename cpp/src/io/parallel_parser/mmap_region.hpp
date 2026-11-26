@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #pragma once
@@ -6,7 +6,7 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 
-#include <cuda/cmath>
+#include <bit>
 
 #include <cerrno>
 #include <cstddef>
@@ -86,7 +86,7 @@ class mmap_region_t {
   static mmap_region_t anonymous_aligned(
     std::size_t size, std::size_t alignment, int prot, int flags, const char* context)
   {
-    if (!cuda::is_power_of_two(alignment)) {
+    if (!std::has_single_bit(alignment)) {
       mps_parser_fail(error_type_t::RuntimeError,
                       "mmap aligned allocation requires power-of-two alignment");
     }
