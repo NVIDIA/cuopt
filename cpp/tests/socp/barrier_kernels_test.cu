@@ -278,10 +278,17 @@ TEST(barrier, shared_reductions_reuse_storage_and_preserve_async_outputs)
   EXPECT_DOUBLE_EQ((device_custom_vector_norm_inf<int, double>(squares, 0, stream)), 0.0);
   EXPECT_DOUBLE_EQ(vector_norm_inf(empty), 0.0);
 
+  const auto sum_squares = [&](const rmm::device_uvector<double>& x) {
+    vector_sum_squares_async(raft::device_span<const double>(x.data(), x.size()),
+                             raft::device_span<double>(reductions.out.data(), 1),
+                             reductions,
+                             stream);
+    return reductions.out.value(stream);
+  };
   EXPECT_DOUBLE_EQ(vector_norm_inf(values, reductions), 4.0);
-  EXPECT_DOUBLE_EQ(vector_norm2(values, reductions), 5.0);
+  EXPECT_DOUBLE_EQ(sum_squares(values), 25.0);
   EXPECT_DOUBLE_EQ(vector_norm_inf(empty, reductions), 0.0);
-  EXPECT_DOUBLE_EQ(vector_norm2(empty, reductions), 0.0);
+  EXPECT_DOUBLE_EQ(sum_squares(empty), 0.0);
 
   std::vector<double> results(2);
   const void* scratch = nullptr;

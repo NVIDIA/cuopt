@@ -11,6 +11,7 @@
 
 #include <cub/device/device_reduce.cuh>
 
+#include <cuda/std/type_traits>
 #include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/core/error.hpp>
@@ -41,13 +42,17 @@ struct reduction_workspace_t {
   {
   }
 
-  template <typename InputIteratorT, typename ReductionOpT, typename TransformOpT, typename i_t>
+  template <typename InputIteratorT,
+            typename ReductionOpT,
+            typename TransformOpT,
+            typename i_t,
+            typename T>
   void transform_reduce_async(InputIteratorT input,
                               ReductionOpT reduce_op,
                               TransformOpT transform_op,
-                              f_t init,
+                              cuda::std::type_identity_t<T> init,
                               i_t size,
-                              raft::device_span<f_t> output,
+                              raft::device_span<T> output,
                               cuda::stream_ref stream_view)
   {
     RAFT_EXPECTS(output.size() == 1, "Reduction output must contain exactly one element");
@@ -70,24 +75,6 @@ struct reduction_workspace_t {
                                                      transform_op,
                                                      init,
                                                      stream_view.get()));
-  }
-
-  template <typename InputIteratorT, typename ReductionOpT, typename TransformOpT, typename i_t>
-  f_t transform_reduce(InputIteratorT input,
-                       ReductionOpT reduce_op,
-                       TransformOpT transform_op,
-                       f_t init,
-                       i_t size,
-                       cuda::stream_ref stream_view)
-  {
-    transform_reduce_async(input,
-                           reduce_op,
-                           transform_op,
-                           init,
-                           size,
-                           raft::device_span<f_t>(out.data(), 1),
-                           stream_view);
-    return out.value(stream_view);
   }
 };
 
@@ -116,6 +103,22 @@ void vector_norm_inf_async(raft::device_span<const f_t> input,
                            cuda::stream_ref stream_view)
 {
   vector_norm_inf_async(input.data(), input.size(), output, reductions, stream_view);
+}
+
+template <typename f_t>
+void vector_sum_squares_async(raft::device_span<const f_t> input,
+                              raft::device_span<f_t> output,
+                              reduction_workspace_t<f_t>& reductions,
+                              cuda::stream_ref stream_view)
+{
+  reductions.transform_reduce_async(
+    input.data(),
+    thrust::plus<f_t>{},
+    [] __host__ __device__(f_t val) { return val * val; },
+    f_t(0),
+    input.size(),
+    output,
+    stream_view);
 }
 
 template <typename i_t, typename f_t, typename InputIteratorT>
@@ -158,18 +161,6 @@ f_t vector_norm_inf(const rmm::device_uvector<f_t>& x)
 {
   reduction_workspace_t<f_t> reductions(x.stream());
   return vector_norm_inf(x, reductions);
-}
-
-template <typename f_t>
-f_t vector_norm2(const rmm::device_uvector<f_t>& x, reduction_workspace_t<f_t>& reductions)
-{
-  return std::sqrt(reductions.transform_reduce(
-    x.data(),
-    thrust::plus<f_t>{},
-    [] __host__ __device__(f_t val) { return val * val; },
-    f_t(0),
-    x.size(),
-    x.stream()));
 }
 
 template <typename f_t>
