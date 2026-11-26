@@ -87,7 +87,7 @@ struct branch_and_bound_solution_helper_t {
 
 // Extract probing cache into CPU-only CSR struct for implied bounds cuts
 template <typename i_t, typename f_t>
-void extract_probing_implied_bounds(const problem_t<i_t, f_t>& op_problem,
+void extract_probing_implied_bounds(const std::vector<i_t>& reverse_original_ids,
                                     const user_problem_t<i_t, f_t>& branch_and_bound_problem,
                                     const probing_cache_t<i_t, f_t>& probing_cache,
                                     mip::probing_implied_bound_t<i_t, f_t>& probing_implied_bound)
@@ -99,7 +99,7 @@ void extract_probing_implied_bounds(const problem_t<i_t, f_t>& op_problem,
 
   // First pass: count entries per binary variable
   // Probing cache indices are in pre-trivial-presolve space; remap to post-presolve (B&B) space
-  auto& rev_ids = op_problem.reverse_original_ids;
+  auto& rev_ids = reverse_original_ids;
   i_t rev_size  = static_cast<i_t>(rev_ids.size());
   auto remap    = [&](i_t raw_idx) -> i_t {
     if (rev_size == 0) return raw_idx;
@@ -114,22 +114,26 @@ void extract_probing_implied_bounds(const problem_t<i_t, f_t>& op_problem,
            b_lb <= branch_and_bound_problem.upper[i] + 1e-6;
   };
   for (auto& [var_idx, entries] : pc) {
-    if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
     i_t j = remap(var_idx);
     if (j < 0 || j >= num_cols) { continue; }
     if (!is_bb_binary(j)) { continue; }
 
-    for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
-      i_t i = remap(imp_var);
-      if (i < 0 || i >= num_cols) { continue; }
-      if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
-      probing_implied_bound.zero_offsets[j + 1]++;
-    }
-    for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
-      i_t i = remap(imp_var);
-      if (i < 0 || i >= num_cols) { continue; }
-      if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
-      probing_implied_bound.one_offsets[j + 1]++;
+    // The probed interval, not the slot, decides the value of x_j it covers: {0} or (-inf, 0] for
+    // x_j = 0, {1} or [1, inf) for x_j = 1.
+    for (auto& entry : entries) {
+      if (entry.var_to_cached_bound_map.empty()) { continue; }
+      const auto& probe = entry.val_interval;
+      const bool zero   = probe.interval_type != interval_type_t::GEQ && probe.val == 0;
+      const bool one    = probe.interval_type != interval_type_t::LEQ && probe.val == 1;
+      if (!zero && !one) { continue; }
+      auto& offsets = zero ? probing_implied_bound.zero_offsets : probing_implied_bound.one_offsets;
+
+      for (auto& [imp_var, bound] : entry.var_to_cached_bound_map) {
+        i_t i = remap(imp_var);
+        if (i < 0 || i >= num_cols) { continue; }
+        if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
+        offsets[j + 1]++;
+      }
     }
   }
 
@@ -154,28 +158,33 @@ void extract_probing_implied_bounds(const problem_t<i_t, f_t>& op_problem,
   std::vector<i_t> one_cursor(probing_implied_bound.one_offsets);
 
   for (auto& [var_idx, entries] : pc) {
-    if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
     i_t j = remap(var_idx);
     if (j < 0 || j >= num_cols) { continue; }
     if (!is_bb_binary(j)) { continue; }
 
-    for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
-      i_t i = remap(imp_var);
-      if (i < 0 || i >= num_cols) { continue; }
-      if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
-      i_t p                                     = zero_cursor[j]++;
-      probing_implied_bound.zero_variables[p]   = i;
-      probing_implied_bound.zero_lower_bound[p] = bound.lb;
-      probing_implied_bound.zero_upper_bound[p] = bound.ub;
-    }
-    for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
-      i_t i = remap(imp_var);
-      if (i < 0 || i >= num_cols) { continue; }
-      if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
-      i_t p                                    = one_cursor[j]++;
-      probing_implied_bound.one_variables[p]   = i;
-      probing_implied_bound.one_lower_bound[p] = bound.lb;
-      probing_implied_bound.one_upper_bound[p] = bound.ub;
+    for (auto& entry : entries) {
+      if (entry.var_to_cached_bound_map.empty()) { continue; }
+      const auto& probe = entry.val_interval;
+      const bool zero   = probe.interval_type != interval_type_t::GEQ && probe.val == 0;
+      const bool one    = probe.interval_type != interval_type_t::LEQ && probe.val == 1;
+      if (!zero && !one) { continue; }
+      auto& cursor = zero ? zero_cursor : one_cursor;
+      auto& variables =
+        zero ? probing_implied_bound.zero_variables : probing_implied_bound.one_variables;
+      auto& lower =
+        zero ? probing_implied_bound.zero_lower_bound : probing_implied_bound.one_lower_bound;
+      auto& upper =
+        zero ? probing_implied_bound.zero_upper_bound : probing_implied_bound.one_upper_bound;
+
+      for (auto& [imp_var, bound] : entry.var_to_cached_bound_map) {
+        i_t i = remap(imp_var);
+        if (i < 0 || i >= num_cols) { continue; }
+        if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
+        i_t p        = cursor[j]++;
+        variables[p] = i;
+        lower[p]     = bound.lb;
+        upper[p]     = bound.ub;
+      }
     }
   }
 
@@ -366,7 +375,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   // Resize the solution now that we know the number of columns/variables
   branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
 
-  extract_probing_implied_bounds(op_problem_,
+  extract_probing_implied_bounds(op_problem_.reverse_original_ids,
                                  branch_and_bound_problem,
                                  dm.ls.constraint_prop.bounds_update.probing_cache,
                                  probing_implied_bound);
@@ -578,10 +587,18 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 // Original feasibility jump has only double
 #if MIP_INSTANTIATE_FLOAT
 template class mip_solver_t<int, float>;
+template void extract_probing_implied_bounds<int, float>(const std::vector<int>&,
+                                                         const user_problem_t<int, float>&,
+                                                         const probing_cache_t<int, float>&,
+                                                         probing_implied_bound_t<int, float>&);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template class mip_solver_t<int, double>;
+template void extract_probing_implied_bounds<int, double>(const std::vector<int>&,
+                                                          const user_problem_t<int, double>&,
+                                                          const probing_cache_t<int, double>&,
+                                                          probing_implied_bound_t<int, double>&);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip
