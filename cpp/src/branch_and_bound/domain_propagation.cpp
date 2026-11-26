@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <branch_and_bound/domain_propagation.hpp>
+#include <branch_and_bound/mip_node.hpp>
 
 #include <presolve/conflict_graph/clique_table.cuh>
 #include <presolve/probing_implied_bound.hpp>
@@ -441,6 +442,16 @@ i_t domain_propagation_t<i_t, f_t>::count_fixed_integers(
     }
   }
   return num_fixed;
+}
+
+template <typename i_t, typename f_t>
+void domain_propagation_t<i_t, f_t>::rebuild_variable_bounds(
+  const std::vector<const mip_node_t<i_t, f_t>*>& path)
+{
+  bound_changes_.clear();
+  for (auto it = path.rbegin(); it != path.rend(); ++it) {
+    record_bound_change((*it)->get_bound_change());
+  }
 }
 
 template <typename i_t, typename f_t>
