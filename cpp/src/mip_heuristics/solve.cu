@@ -135,6 +135,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
   std::vector<f_t>& initial_incumbent_assignment,
   size_t n_user_warmstarts,
   std::exception_ptr& task_exception,
+  bool& solved_by_full_reduction,
   std::unique_ptr<mip::mip_symmetry_t<i_t, f_t>> symmetry = nullptr)
 {
   try {
@@ -405,6 +406,8 @@ mip_solution_t<i_t, f_t> run_mip_solver(
 
     auto sol = presolved_sol.get_solution(
       is_feasible_on_presolved || is_feasible_on_original, solver.get_solver_stats(), false);
+    solved_by_full_reduction =
+      scaled_problem.empty && sol.get_termination_status() == mip_termination_status_t::Optimal;
 
     // Write back the (possibly updated) incumbent from the papilo-phase callback.
     initial_upper_bound          = solver.context.initial_upper_bound;
@@ -852,6 +855,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       presolve_result_opt->reduced_problem.write_to_file(
         settings.presolve_file, dump_file_format_from_path(settings.presolve_file));
     }
+    bool solved_by_full_reduction = false;
     // early_best_user_obj is in user-space.
     // run_mip_solver stores it in context.initial_upper_bound and converts to target spaces as
     // needed.
@@ -862,6 +866,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
                               early_best_user_assignment,
                               n_user_warmstarts,
                               task_exception,
+                              solved_by_full_reduction,
                               std::move(symmetry));
 
     const f_t cuopt_presolve_time = sol.get_stats().presolve_time;
@@ -904,12 +909,16 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         if (!full_sol.get_feasible()) {
           CUOPT_LOG_WARN("The solution is not feasible after post solve");
         }
+
+        auto full_stats = sol.get_stats();
         if (mip::has_variable_bounds_violation(
               full_problem.handle_ptr, full_sol.assignment, &full_problem)) {
           CUOPT_LOG_WARN("The solution violates the variable bounds after post solve");
+        } else if (solved_by_full_reduction && full_sol.get_feasible()) {
+          // Use the restored objective as the exact bound after complete reduction.
+          full_stats.set_solution_bound(full_sol.get_user_objective());
         }
 
-        auto full_stats = sol.get_stats();
         // add third party presolve time to cuopt presolve time
         full_stats.presolve_time = cuopt_presolve_time + presolve_time;
 

@@ -230,8 +230,6 @@ void mip_solver_t<i_t, f_t>::stop_early_heuristics()
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 {
-  solution_t<i_t, f_t> sol(*context.problem_ptr);
-
   //  we need to keep original problem const
   cuopt_assert(context.problem_ptr != nullptr, "invalid problem pointer");
   context.problem_ptr->tolerances = context.settings.get_tolerances();
@@ -243,6 +241,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem fully reduced in presolve");
     stop_early_heuristics();
+    solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
     context.solution_publication.publish_if_better(
       context.problem_ptr, sol.get_host_assignment(), sol.get_objective());
@@ -264,6 +263,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   // Stop early CPUFJ after cuopt presolve (probing cache) but before main solve
   stop_early_heuristics();
 
+  // Presolve can change the assignment size, including reducing it to zero.
+  solution_t<i_t, f_t> sol(*context.problem_ptr);
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
     sol.set_problem_fully_reduced();
