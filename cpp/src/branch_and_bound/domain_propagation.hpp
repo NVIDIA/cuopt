@@ -183,13 +183,7 @@ class domain_propagation_t {
 
   // Rebuild the variable bounds from the tree, traversing from this node
   // to the root node.
-  void rebuild_variable_bounds(const std::vector<mip_node_t<i_t, f_t>*>& path)
-  {
-    bound_changes_.clear();
-    for (auto it = path.rbegin(); it != path.rend(); ++it) {
-      record_bound_change((*it)->get_bound_change());
-    }
-  }
+  void rebuild_variable_bounds(const std::vector<const mip_node_t<i_t, f_t>*>& path);
 
   // Pops the changes back to and including the last branching, restoring their bounds in lp and
   // reverting their activities.
