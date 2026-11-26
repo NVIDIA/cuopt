@@ -38,30 +38,31 @@ void extract_probing_implied_bounds(
   // First pass: count entries per binary variable
   // Probing cache indices are in pre-trivial-presolve space; remap to post-presolve (B&B) space
   for (auto& [var_idx, entries] : pc) {
-    if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
     i_t j = remap_probing_variable(var_idx, reverse_original_ids);
     if (j < 0 || j >= num_cols) { continue; }
     if (branch_and_bound_problem.lower[j] != 0.0 || branch_and_bound_problem.upper[j] != 1.0) {
       continue;
     }
 
-    for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
-      i_t i = remap_probing_variable(imp_var, reverse_original_ids);
-      if (i < 0 || i >= num_cols) { continue; }
-      if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
-          bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
-        continue;
+    // The probed interval, not the slot, decides the value of x_j it covers: {0} or (-inf, 0] for
+    // x_j = 0, {1} or [1, inf) for x_j = 1.
+    for (auto& entry : entries) {
+      if (entry.var_to_cached_bound_map.empty()) { continue; }
+      const auto& probe = entry.val_interval;
+      const bool zero   = probe.interval_type != interval_type_t::GEQ && probe.val == 0;
+      const bool one    = probe.interval_type != interval_type_t::LEQ && probe.val == 1;
+      if (!zero && !one) { continue; }
+      auto& offsets = zero ? probing_implied_bound.zero_offsets : probing_implied_bound.one_offsets;
+
+      for (auto& [imp_var, bound] : entry.var_to_cached_bound_map) {
+        i_t i = remap_probing_variable(imp_var, reverse_original_ids);
+        if (i < 0 || i >= num_cols) { continue; }
+        if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
+            bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
+          continue;
+        }
+        offsets[j + 1]++;
       }
-      probing_implied_bound.zero_offsets[j + 1]++;
-    }
-    for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
-      i_t i = remap_probing_variable(imp_var, reverse_original_ids);
-      if (i < 0 || i >= num_cols) { continue; }
-      if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
-          bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
-        continue;
-      }
-      probing_implied_bound.one_offsets[j + 1]++;
     }
   }
 
@@ -86,36 +87,38 @@ void extract_probing_implied_bounds(
   std::vector<i_t> one_cursor(probing_implied_bound.one_offsets);
 
   for (auto& [var_idx, entries] : pc) {
-    if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
     i_t j = remap_probing_variable(var_idx, reverse_original_ids);
     if (j < 0 || j >= num_cols) { continue; }
     if (branch_and_bound_problem.lower[j] != 0.0 || branch_and_bound_problem.upper[j] != 1.0) {
       continue;
     }
 
-    for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
-      i_t i = remap_probing_variable(imp_var, reverse_original_ids);
-      if (i < 0 || i >= num_cols) { continue; }
-      if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
-          bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
-        continue;
+    for (auto& entry : entries) {
+      if (entry.var_to_cached_bound_map.empty()) { continue; }
+      const auto& probe = entry.val_interval;
+      const bool zero   = probe.interval_type != interval_type_t::GEQ && probe.val == 0;
+      const bool one    = probe.interval_type != interval_type_t::LEQ && probe.val == 1;
+      if (!zero && !one) { continue; }
+      auto& cursor = zero ? zero_cursor : one_cursor;
+      auto& variables =
+        zero ? probing_implied_bound.zero_variables : probing_implied_bound.one_variables;
+      auto& lower =
+        zero ? probing_implied_bound.zero_lower_bound : probing_implied_bound.one_lower_bound;
+      auto& upper =
+        zero ? probing_implied_bound.zero_upper_bound : probing_implied_bound.one_upper_bound;
+
+      for (auto& [imp_var, bound] : entry.var_to_cached_bound_map) {
+        i_t i = remap_probing_variable(imp_var, reverse_original_ids);
+        if (i < 0 || i >= num_cols) { continue; }
+        if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
+            bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
+          continue;
+        }
+        i_t p        = cursor[j]++;
+        variables[p] = i;
+        lower[p]     = bound.lb;
+        upper[p]     = bound.ub;
       }
-      i_t p                                     = zero_cursor[j]++;
-      probing_implied_bound.zero_variables[p]   = i;
-      probing_implied_bound.zero_lower_bound[p] = bound.lb;
-      probing_implied_bound.zero_upper_bound[p] = bound.ub;
-    }
-    for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
-      i_t i = remap_probing_variable(imp_var, reverse_original_ids);
-      if (i < 0 || i >= num_cols) { continue; }
-      if (bound.ub < branch_and_bound_problem.lower[i] - 1e-6 ||
-          bound.lb > branch_and_bound_problem.upper[i] + 1e-6) {
-        continue;
-      }
-      i_t p                                    = one_cursor[j]++;
-      probing_implied_bound.one_variables[p]   = i;
-      probing_implied_bound.one_lower_bound[p] = bound.lb;
-      probing_implied_bound.one_upper_bound[p] = bound.ub;
     }
   }
 
