@@ -8,9 +8,11 @@
 #pragma once
 
 #include <dual_simplex/presolve.hpp>
-#include <utilities/circular_deque.hpp>
 
+#include <cassert>
+#include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -74,6 +76,53 @@ struct row_activity_t {
   bool recompute = false;
 };
 
+// FIFO container where each entry is unique.
+template <typename i_t>
+struct domain_propagation_queue_t {
+  void resize(i_t m)
+  {
+    is_queued.assign(m, 0);
+    queue.resize(m);
+    head = 0;
+    tail = 0;
+    size = 0;
+  }
+
+  bool empty() const { return size == 0; }
+
+  void push(i_t i)
+  {
+    assert(!is_queued[i]);
+    queue[tail] = i;
+    if (++tail == queue.size()) { tail = 0; }
+    ++size;
+    is_queued[i] = 1;
+  }
+
+  i_t pop()
+  {
+    assert(size > 0);
+    const i_t i = queue[head];
+    if (++head == queue.size()) { head = 0; }
+    --size;
+    is_queued[i] = 0;
+    return i;
+  }
+
+  void clear()
+  {
+    while (size > 0) {
+      pop();
+    }
+  }
+
+  std::vector<uint8_t> is_queued;
+  std::vector<i_t> queue;
+  size_t head = 0;
+  size_t tail = 0;
+  size_t size = 0;
+};
+
 // This object stores the row activities over the LP bounds as well as the stack of bound changes
 // that produced those bounds, in the order they were applied.
 // This is used for bound propagation and backtracking. Every row is treated as an equality
@@ -134,7 +183,7 @@ class domain_propagation_t {
 
   // Rebuild the variable bounds from the tree, traversing from this node
   // to the root node.
-  void rebuild_variable_bounds(const std::vector<const mip_node_t<i_t, f_t>*>& path)
+  void rebuild_variable_bounds(const std::vector<mip_node_t<i_t, f_t>*>& path)
   {
     bound_changes_.clear();
     for (auto it = path.rbegin(); it != path.rend(); ++it) {
@@ -206,8 +255,7 @@ class domain_propagation_t {
   size_t propagation_start_{0};
 
   std::vector<row_activity_t<i_t, f_t>> row_activities_;
-  std::vector<uint8_t> row_queued_;
-  circular_deque_t<i_t> row_queue_;
+  domain_propagation_queue_t<i_t> constraint_row_queue_;
 
   std::vector<bound_change_t<i_t, f_t>> bound_changes_;
 

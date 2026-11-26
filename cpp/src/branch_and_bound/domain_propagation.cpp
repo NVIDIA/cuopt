@@ -77,8 +77,7 @@ void domain_propagation_t<i_t, f_t>::compute_activities(const lp_problem_t<i_t, 
                                                         const csr_matrix_t<i_t, f_t>& Arow)
 {
   row_activities_.resize(Arow.m);
-  row_queued_.resize(Arow.m, false);
-  row_queue_.clear_resize(std::max(Arow.m, 1));
+  constraint_row_queue_.resize(Arow.m);
   last_change_.resize(lp.num_cols, 0);
 
   for (i_t i = 0; i < Arow.m; ++i) {
@@ -144,7 +143,7 @@ void domain_propagation_t<i_t, f_t>::update_activities(const lp_problem_t<i_t, f
 template <typename i_t, typename f_t>
 void domain_propagation_t<i_t, f_t>::queue_row(const lp_problem_t<i_t, f_t>& lp, i_t i, f_t tol)
 {
-  if (row_queued_[i]) { return; }
+  if (constraint_row_queue_.is_queued[i]) { return; }
 
   const row_activity_t<i_t, f_t>& activity = row_activities_[i];
   if (!activity.recompute) {
@@ -165,8 +164,7 @@ void domain_propagation_t<i_t, f_t>::queue_row(const lp_problem_t<i_t, f_t>& lp,
     if (!propagate_upper && !propagate_lower) { return; }
   }
 
-  row_queue_.push_back(i);
-  row_queued_[i] = true;
+  constraint_row_queue_.push(i);
 }
 
 template <typename i_t, typename f_t>
@@ -375,9 +373,8 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
   bool feasible      = true;
   i_t iter           = 0;
   propagation_start_ = bound_changes_.size();
-  while (feasible && !row_queue_.empty()) {
-    i_t i          = row_queue_.pop_front();
-    row_queued_[i] = false;
+  while (feasible && !constraint_row_queue_.empty()) {
+    i_t i = constraint_row_queue_.pop();
     ++iter;
 
     if (row_activities_[i].recompute) { compute_row_activity(i, Arow, lp.lower, lp.upper); }
@@ -509,9 +506,7 @@ bool domain_propagation_t<i_t, f_t>::run_bound_propagation(
   }
 
   // Clear the rows left in the queue when infeasibility stops the propagation early.
-  while (!row_queue_.empty()) {
-    row_queued_[row_queue_.pop_front()] = false;
-  }
+  constraint_row_queue_.clear();
 
   last_nnz_processed = nnz_processed_;
   nnz_processed_     = 0;
