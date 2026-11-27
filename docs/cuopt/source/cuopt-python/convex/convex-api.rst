@@ -26,6 +26,10 @@ Convex Optimization API Reference
    :undoc-members:
    :exclude-members: compute_slack
 
+Parameter names, defaults and ranges for ``SolverSettings.set_parameter`` are in
+:doc:`Convex Optimization Settings <../../convex-settings>` and
+:doc:`MIP Settings <../../mip-settings>`.
+
 .. autoclass:: cuopt.linear_programming.solver_settings.SolverSettings
    :members:
    :undoc-members:
