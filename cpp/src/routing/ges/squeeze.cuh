@@ -192,7 +192,7 @@ __global__ void find_best_squeeze_pos(typename solution_t<i_t, f_t, REQUEST>::vi
                                       shmem,
                                       include_objective,
                                       weights,
-                                      std::numeric_limits<f_t>::max(),
+                                      std::numeric_limits<double>::max(),
                                       route_id);
   if (threadIdx.x == 0) {
     // add the route id to which

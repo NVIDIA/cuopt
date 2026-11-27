@@ -220,7 +220,8 @@ class problem_t {
     DI bool has_non_uniform_breaks() const { return non_uniform_breaks; }
     DI bool is_cvrp_intra() const
     {
-      return !order_info.is_pdp() && !dimensions_info.has_dimension(dim_t::TIME) &&
+      return !dimensions_info.cost_dim.has_max_distance && !order_info.is_pdp() &&
+             !dimensions_info.has_dimension(dim_t::TIME) &&
              !dimensions_info.has_dimension(dim_t::BREAK);
     }
     DI bool is_cvrp() const { return is_cvrp_; }

@@ -418,6 +418,14 @@ class data_model_view_t {
   void set_min_vehicles(i_t min_vehicles);
 
   /**
+   * @brief Limit the physical distance accumulated along each vehicle's route.
+   * Requires a distance matrix for each vehicle type used in the fleet.
+   * @param[in] vehicle_max_distances Non-owning device pointer to one finite,
+   * non-negative upper bound per vehicle, in the units of its distance matrix.
+   */
+  void set_vehicle_max_distances(f_t const* vehicle_max_distances);
+
+  /**
    * @brief Limits the primary matrix cost cumulated along a route.
    * @param[in] vehicle_max_costs Upper bound for route cost.
    */
@@ -638,6 +646,9 @@ class data_model_view_t {
    */
   i_t get_min_vehicles() const noexcept;
 
+  /** @brief Return the physical distance limits, or an empty span if unset. */
+  raft::device_span<f_t const> get_vehicle_max_distances() const noexcept;
+
   /**
    * @brief Return max cost allowed per vehicle
    * @return max cost per route
@@ -703,6 +714,7 @@ class data_model_view_t {
   std::unordered_map<i_t, std::pair<i_t const*, i_t>> precedence_{};
   i_t min_num_vehicles_{0};
 
+  raft::device_span<f_t const> vehicle_max_distances_{};
   raft::device_span<f_t const> vehicle_max_costs_{};
   raft::device_span<f_t const> vehicle_max_times_{};
   raft::device_span<f_t const> vehicle_fixed_costs_{};

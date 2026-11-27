@@ -153,11 +153,11 @@ __device__ void try_permutations(
     auto next_node = s_route.get_node(window_start_idx + window_size);
 
     loop_over_constrained_dimensions(dimensions_info, [&] __device__(auto I) {
-      get_dimension_of<I>(nodes[window_size - 1])
-        .calculate_forward(
-          get_dimension_of<I>(next_node),
-          get_arc_of_dimension<i_t, f_t, I>(
-            nodes[window_size - 1].request.info, next_node.request.info, s_route.vehicle_info()));
+      nodes[window_size - 1].template propagate_forward<I>(
+        next_node,
+        get_arc_of_dimension<i_t, f_t, I>(
+          nodes[window_size - 1].request.info, next_node.request.info, s_route.vehicle_info()),
+        s_route.vehicle_info());
     });
 
     bool valid = true;
@@ -311,11 +311,11 @@ __device__ void try_permutations(
       auto next_node = s_route.get_node(i + 1);
 
       loop_over_constrained_dimensions(dimensions_info, [&] __device__(auto I) {
-        get_dimension_of<I>(nodes[window_size - 1])
-          .calculate_forward(
-            get_dimension_of<I>(next_node),
-            get_arc_of_dimension<i_t, f_t, I>(
-              nodes[window_size - 1].request.info, next_node.request.info, s_route.vehicle_info()));
+        nodes[window_size - 1].template propagate_forward<I>(
+          next_node,
+          get_arc_of_dimension<i_t, f_t, I>(
+            nodes[window_size - 1].request.info, next_node.request.info, s_route.vehicle_info()),
+          s_route.vehicle_info());
       });
 
       bool valid = true;

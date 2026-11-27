@@ -30,6 +30,7 @@ DI static void copy_forward_data(dst_t& dst, const src_t& src)
 
   if constexpr (is_src_a_node && !is_dst_a_node) {
     dst.cost_forward             = src.cost_dim.cost_forward;
+    dst.distance_forward         = src.cost_dim.distance_forward;
     dst.transit_time_forward     = src.time_dim.transit_time_forward;
     dst.latest_arrival_forward   = src.time_dim.latest_arrival_forward;
     dst.unavoidable_wait_forward = src.time_dim.unavoidable_wait_forward;
@@ -43,6 +44,7 @@ DI static void copy_forward_data(dst_t& dst, const src_t& src)
     });
   } else if constexpr (is_dst_a_node && !is_src_a_node) {
     dst.cost_dim.cost_forward             = src.cost_forward;
+    dst.cost_dim.distance_forward         = src.distance_forward;
     dst.time_dim.transit_time_forward     = src.transit_time_forward;
     dst.time_dim.latest_arrival_forward   = src.latest_arrival_forward;
     dst.time_dim.unavoidable_wait_forward = src.unavoidable_wait_forward;
@@ -56,6 +58,7 @@ DI static void copy_forward_data(dst_t& dst, const src_t& src)
     });
   } else if constexpr (!is_src_a_node && !is_dst_a_node) {
     dst.cost_forward             = src.cost_forward;
+    dst.distance_forward         = src.distance_forward;
     dst.transit_time_forward     = src.transit_time_forward;
     dst.latest_arrival_forward   = src.latest_arrival_forward;
     dst.unavoidable_wait_forward = src.unavoidable_wait_forward;
@@ -67,6 +70,7 @@ DI static void copy_forward_data(dst_t& dst, const src_t& src)
     }
   } else {
     dst.cost_dim.cost_forward             = src.cost_dim.cost_forward;
+    dst.cost_dim.distance_forward         = src.cost_dim.distance_forward;
     dst.time_dim.transit_time_forward     = src.time_dim.transit_time_forward;
     dst.time_dim.latest_arrival_forward   = src.time_dim.latest_arrival_forward;
     dst.time_dim.unavoidable_wait_forward = src.time_dim.unavoidable_wait_forward;
@@ -121,6 +125,7 @@ struct node_stack_t {
   // this will be in shared memory for each thread
   struct __align__(32ul) item_t {
     double cost_forward;
+    double distance_forward;
     double transit_time_forward;
     double latest_arrival_forward;
     double unavoidable_wait_forward;
@@ -414,10 +419,12 @@ struct node_stack_t {
   {
     auto d_node = s_route.get_node(top().intra_idx);
     copy_forward_data(d_node, top());
+    // A stack item holds prefix state; the next physical arc starts at from_idx.
+    d_node.request.info = s_route.node_info(from_idx);
     loop_over_dimensions(dim_info(), [&] __device__(auto I) {
       if (get_dimension_of<I>(dim_info()).has_constraints()) {
         auto dim_between = get_dim_between<I>(from_idx, to_idx);
-        get_dimension_of<I>(d_node).calculate_forward(get_dimension_of<I>(node), dim_between);
+        d_node.template propagate_forward<I>(node, dim_between, s_route.vehicle_info());
       }
     });
   }
@@ -459,8 +466,7 @@ struct node_stack_t {
     loop_over_dimensions(dim_info(), [&] __device__(auto I) {
       if (get_dimension_of<I>(dim_info()).has_constraints()) {
         auto dim_to_delivery = get_dim_to_delivery<I>(idx);
-        get_dimension_of<I>(node).calculate_forward(get_dimension_of<I>(delivery_node),
-                                                    dim_to_delivery);
+        node.template propagate_forward<I>(delivery_node, dim_to_delivery, s_route.vehicle_info());
       }
     });
   }
@@ -482,8 +488,8 @@ struct node_stack_t {
     loop_over_dimensions(dim_info(), [&] __device__(auto I) {
       if (get_dimension_of<I>(dim_info()).has_constraints()) {
         auto dim_from_delivery = get_dim_from_delivery<I>(idx);
-        get_dimension_of<I>(delivery_node)
-          .calculate_forward(get_dimension_of<I>(node), dim_from_delivery);
+        delivery_node.template propagate_forward<I>(
+          node, dim_from_delivery, s_route.vehicle_info());
       }
     });
   }
@@ -696,8 +702,8 @@ struct node_stack_t {
         loop_over_dimensions(beginning_of_hole.dimensions_info, [&] __device__(auto I) {
           if (get_dimension_of<I>(beginning_of_hole.dimensions_info).has_constraints()) {
             auto dim_between = get_dim_between<I>(i - size_of_hole, i + 1);
-            get_dimension_of<I>(beginning_of_hole)
-              .calculate_forward(get_dimension_of<I>(next_node), dim_between);
+            beginning_of_hole.template propagate_forward<I>(
+              next_node, dim_between, s_route.vehicle_info());
           }
         });
 
@@ -726,8 +732,7 @@ struct node_stack_t {
         loop_over_dimensions(iter_node.dimensions_info, [&] __device__(auto I) {
           if (get_dimension_of<I>(iter_node.dimensions_info).has_constraints()) {
             auto dim_between = get_dim_between<I>(i, i + 1);
-            get_dimension_of<I>(iter_node).calculate_forward(get_dimension_of<I>(next_node),
-                                                             dim_between);
+            iter_node.template propagate_forward<I>(next_node, dim_between, s_route.vehicle_info());
           }
         });
         if (!advance) {
@@ -799,8 +804,8 @@ struct node_stack_t {
             loop_over_dimensions(beginning_of_hole.dimensions_info, [&] __device__(auto I) {
               if (get_dimension_of<I>(beginning_of_hole.dimensions_info).has_constraints()) {
                 auto dim_between = get_dim_from_delivery<I>(i + 1);
-                get_dimension_of<I>(beginning_of_hole)
-                  .calculate_forward(get_dimension_of<I>(next_node), dim_between);
+                beginning_of_hole.template propagate_forward<I>(
+                  next_node, dim_between, s_route.vehicle_info());
               }
             });
           } else {
@@ -809,8 +814,8 @@ struct node_stack_t {
             loop_over_dimensions(beginning_of_hole.dimensions_info, [&] __device__(auto I) {
               if (get_dimension_of<I>(beginning_of_hole.dimensions_info).has_constraints()) {
                 auto dim_between = get_dim_between<I>(i - size_of_hole, i + 1);
-                get_dimension_of<I>(beginning_of_hole)
-                  .calculate_forward(get_dimension_of<I>(next_node), dim_between);
+                beginning_of_hole.template propagate_forward<I>(
+                  next_node, dim_between, s_route.vehicle_info());
               }
             });
           }
@@ -841,8 +846,7 @@ struct node_stack_t {
         loop_over_dimensions(iter_node.dimensions_info, [&] __device__(auto I) {
           if (get_dimension_of<I>(iter_node.dimensions_info).has_constraints()) {
             auto dim_between = get_dim_between<I>(i, i + 1);
-            get_dimension_of<I>(iter_node).calculate_forward(get_dimension_of<I>(next_node),
-                                                             dim_between);
+            iter_node.template propagate_forward<I>(next_node, dim_between, s_route.vehicle_info());
           }
         });
         if (!advance) {

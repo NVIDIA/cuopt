@@ -39,6 +39,7 @@ class fleet_info_t {
       v_vehicle_infos_(num_vehicles, handle_ptr_->get_stream()),
       matrices_(handle_ptr_->get_stream()),
       fleet_order_constraints_(handle_ptr, 0, 0),
+      v_max_distances_(0, handle_ptr_->get_stream()),
       v_max_costs_(0, handle_ptr_->get_stream()),
       v_max_times_(0, handle_ptr_->get_stream()),
       v_fixed_costs_(0, handle_ptr_->get_stream()),
@@ -88,6 +89,7 @@ class fleet_info_t {
     h.drop_return_trip        = host_copy(v_drop_return_trip_, stream);
     h.skip_first_trip         = host_copy(v_skip_first_trip_, stream);
     h.capacities              = host_copy(v_capacities_, stream);
+    h.max_distances           = host_copy(v_max_distances_, stream);
     h.max_costs               = host_copy(v_max_costs_, stream);
     h.max_times               = host_copy(v_max_times_, stream);
     h.fixed_costs             = host_copy(v_fixed_costs_, stream);
@@ -96,8 +98,9 @@ class fleet_info_t {
     h.buckets                 = host_copy(v_buckets_, stream);
     h.matrices                = detail::create_host_mdarray<f_t>(
       matrices_.extent[2], matrices_.extent[0], matrices_.extent[1]);
-    h.matrices.cost_matrix_index = matrices_.cost_matrix_index;
-    h.matrices.time_matrix_index = matrices_.time_matrix_index;
+    h.matrices.distance_matrix_index = matrices_.distance_matrix_index;
+    h.matrices.cost_matrix_index     = matrices_.cost_matrix_index;
+    h.matrices.time_matrix_index     = matrices_.time_matrix_index;
     raft::copy(h.matrices.buffer.data(), matrices_.buffer.data(), matrices_.buffer.size(), stream);
     return h;
   }
@@ -128,6 +131,7 @@ class fleet_info_t {
       info.skip_first_trip  = skip_first_trip[vehicle_id];
       info.type             = types[vehicle_id];
 
+      if (!max_distances.empty()) { info.max_distance = max_distances[vehicle_id]; }
       if (!max_costs.empty()) { info.max_cost = max_costs[vehicle_id]; }
 
       if (!max_times.empty()) { info.max_time = max_times[vehicle_id]; }
@@ -164,6 +168,7 @@ class fleet_info_t {
     typename fleet_order_constraints_t<i_t>::host_t fleet_order_constraints;
     std::vector<bool> drop_return_trip;
     std::vector<bool> skip_first_trip;
+    std::vector<f_t> max_distances;
     std::vector<f_t> max_costs;
     std::vector<f_t> max_times;
     std::vector<f_t> fixed_costs;
@@ -273,6 +278,9 @@ class fleet_info_t {
     info.skip_first_trip  = v_skip_first_trip_.element(vehicle_id, handle_ptr_->get_stream());
     info.type             = v_types_.element(vehicle_id, handle_ptr_->get_stream());
 
+    if (!v_max_distances_.is_empty()) {
+      info.max_distance = v_max_distances_.element(vehicle_id, handle_ptr_->get_stream());
+    }
     if (!v_max_costs_.is_empty()) {
       info.max_cost = v_max_costs_.element(vehicle_id, handle_ptr_->get_stream());
     }
@@ -317,6 +325,7 @@ class fleet_info_t {
   rmm::device_uvector<bool> v_drop_return_trip_;
   rmm::device_uvector<bool> v_skip_first_trip_;
   fleet_order_constraints_t<i_t> fleet_order_constraints_;
+  rmm::device_uvector<f_t> v_max_distances_;
   rmm::device_uvector<f_t> v_max_costs_;
   rmm::device_uvector<f_t> v_max_times_;
   rmm::device_uvector<f_t> v_fixed_costs_;

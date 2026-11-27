@@ -113,8 +113,8 @@ class guided_ejection_search_t {
   local_search_t<i_t, f_t, REQUEST>* local_search_ptr_;
   ges_config_t config{};
   ejection_pool_t<request_info_t<i_t, REQUEST>> EP;
-  f_t min_excess_overall = std::numeric_limits<f_t>::max();
-  i_t min_ep_size        = std::numeric_limits<i_t>::max();
+  double min_excess_overall = std::numeric_limits<double>::max();
+  i_t min_ep_size           = std::numeric_limits<i_t>::max();
 
  private:
   bool execute_best_insertion_ejection_solution(request_info_t<i_t, REQUEST>* d_request,

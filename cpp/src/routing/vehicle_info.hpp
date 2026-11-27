@@ -31,7 +31,8 @@ struct VehicleInfo {
            break_durations == rhs.break_durations && break_earliest == rhs.break_earliest &&
            break_latest == rhs.break_latest && earliest == rhs.earliest && latest == rhs.latest &&
            start == rhs.start && end == rhs.end && max_cost == rhs.max_cost &&
-           max_time == rhs.max_time && fixed_cost == rhs.fixed_cost && priority == rhs.priority;
+           max_distance == rhs.max_distance && max_time == rhs.max_time &&
+           fixed_cost == rhs.fixed_cost && priority == rhs.priority;
   }
 
   HDI int num_breaks() const { return break_durations.size(); }
@@ -63,8 +64,9 @@ struct VehicleInfo {
   int latest{};
   int start{};
   int end{};
-  f_t max_cost = std::numeric_limits<f_t>::max();
-  f_t max_time = std::numeric_limits<f_t>::max();
+  f_t max_distance = std::numeric_limits<f_t>::max();
+  f_t max_cost     = std::numeric_limits<f_t>::max();
+  f_t max_time     = std::numeric_limits<f_t>::max();
   f_t fixed_cost{};
   int priority{};
 };

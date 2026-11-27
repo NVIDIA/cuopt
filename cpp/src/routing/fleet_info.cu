@@ -39,10 +39,9 @@ void populate_matrices(data_model_view_t<i_t, f_t> const& data_model, d_mdarray_
     }
   }
 
+  auto const types = get_unique_vehicle_types(data_model.get_vehicle_types(), stream_view_);
   if (n_vehicle_types > 1) {
-    const auto& vtypes = data_model.get_vehicle_types();
-    auto vtypes_h      = cuopt::host_copy(vtypes, stream_view_);
-    for (auto& vtype : vtypes_h) {
+    for (auto const& [vtype, mapped_type] : types) {
       if (!cost_matrices.count(vtype)) {
         auto msg = std::string("Cost matrix for vehicle type ") + std::to_string(vtype) +
                    std::string(" is not specified");
@@ -51,6 +50,10 @@ void populate_matrices(data_model_view_t<i_t, f_t> const& data_model, d_mdarray_
     }
   }
 
+  const bool has_distance = !data_model.get_vehicle_max_distances().empty();
+  cuopt_expects(!has_distance || !distance_matrices.empty(),
+                error_type_t::ValidationError,
+                "Vehicle maximum distances require a distance matrix");
   if (!distance_matrices.empty()) {
     for (auto const& [vtype, distance_matrix] : distance_matrices) {
       cuopt_expects(cost_matrices.count(vtype) > 0,
@@ -66,7 +69,6 @@ void populate_matrices(data_model_view_t<i_t, f_t> const& data_model, d_mdarray_
                     error_type_t::ValidationError,
                     "Distance matrix values must be non-negative and not NaN");
     }
-    auto const types = get_unique_vehicle_types(data_model.get_vehicle_types(), stream_view_);
     for (auto const& [vtype, mapped_type] : types) {
       cuopt_expects(distance_matrices.count(vtype) > 0,
                     error_type_t::ValidationError,
@@ -74,10 +76,10 @@ void populate_matrices(data_model_view_t<i_t, f_t> const& data_model, d_mdarray_
     }
   }
 
-  auto n_matrix_types = detail::get_cost_matrix_type_dim<i_t, f_t>(data_model);
-  matrices_ =
-    detail::create_device_mdarray<f_t>(nlocations, n_vehicle_types, n_matrix_types, stream_view_);
-  detail::fill_mdarray_from_data_model(matrices_, data_model);
+  const bool has_time = has_transit_time_matrix(data_model, types);
+  matrices_           = detail::create_device_mdarray<f_t>(
+    nlocations, types.size(), 1 + has_time + has_distance, stream_view_);
+  detail::fill_mdarray_from_data_model(matrices_, data_model, types, has_time, has_distance);
 }
 
 template <typename i_t, typename f_t>
@@ -253,6 +255,22 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
   populate_fleet_order_constraints(data_model, fleet_info_.fleet_order_constraints_, is_homogenous);
 
   // max constraints
+  if (auto vehicle_max_distances = data_model.get_vehicle_max_distances();
+      !vehicle_max_distances.empty()) {
+    auto valid = thrust::all_of(handle_ptr_->get_thrust_policy(),
+                                vehicle_max_distances.begin(),
+                                vehicle_max_distances.end(),
+                                [] __device__(f_t value) { return isfinite(value) && value >= 0; });
+    cuopt_expects(valid,
+                  error_type_t::ValidationError,
+                  "Vehicle maximum distances must be finite and non-negative");
+    fleet_info_.v_max_distances_.resize(fleet_size, stream_view);
+    raft::copy(
+      fleet_info_.v_max_distances_.data(), vehicle_max_distances.data(), fleet_size, stream_view);
+    is_homogenous =
+      is_homogenous &&
+      all_entries_are_equal(handle_ptr_, fleet_info_.v_max_distances_.data(), fleet_size);
+  }
   if (auto vehicle_max_costs = data_model.get_vehicle_max_costs(); !vehicle_max_costs.empty()) {
     fleet_info_.v_max_costs_.resize(fleet_size, stream_view);
     raft::copy(fleet_info_.v_max_costs_.data(), vehicle_max_costs.data(), fleet_size, stream_view);

@@ -86,7 +86,7 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::set_solution_ptr(
   solution_t<i_t, f_t, REQUEST>* solution_ptr_, bool clear_scores)
 {
   solution_ptr       = solution_ptr_;
-  min_excess_overall = std::numeric_limits<f_t>::max();
+  min_excess_overall = std::numeric_limits<double>::max();
   min_ep_size        = std::numeric_limits<i_t>::max();
   EP.index_          = -1;
   if (clear_scores) reset_p_scores();

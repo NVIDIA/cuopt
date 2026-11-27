@@ -261,7 +261,8 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   dimensions_info.enable_dimension(dim_t::COST);
   dimensions_info.enable_objective(objective_t::COST, cost_obj_weight);
 
-  auto& cost_dim_info = dimensions_info.cost_dim;
+  auto& cost_dim_info            = dimensions_info.cost_dim;
+  cost_dim_info.has_max_distance = !data_view_ptr->get_vehicle_max_distances().empty();
   if (auto vehicle_max_costs = data_view_ptr->get_vehicle_max_costs(); !vehicle_max_costs.empty()) {
     cost_dim_info.has_max_constraint = true;
   }
@@ -375,7 +376,7 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
     }
   }
 
-  if (data_view_ptr->get_fleet_size() == 1) {
+  if (!cost_dim_info.has_max_distance && data_view_ptr->get_fleet_size() == 1) {
     is_tsp = true;
     loop_over_dimensions(dimensions_info, [&](auto I) {
       if constexpr (I != (size_t)dim_t::COST) { is_tsp = false; }
@@ -384,7 +385,8 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   dimensions_info.is_tsp = is_tsp;
 
   if (!is_tsp) {
-    is_cvrp_ = !is_pdp() && (data_view_ptr->get_cost_matrices().size() == 1);
+    is_cvrp_ = !cost_dim_info.has_max_distance && !is_pdp() &&
+               (data_view_ptr->get_cost_matrices().size() == 1);
     if (is_cvrp_) {
       loop_over_dimensions(dimensions_info, [&](auto I) {
         if (I != (int)dim_t::COST && I != (int)dim_t::CAP) { is_cvrp_ = false; }
@@ -815,7 +817,8 @@ bool problem_t<i_t, f_t>::is_pdp() const
 template <typename i_t, typename f_t>
 bool problem_t<i_t, f_t>::is_cvrp_intra() const
 {
-  return !is_pdp() && !dimensions_info.has_dimension(dim_t::TIME) &&
+  return !dimensions_info.cost_dim.has_max_distance && !is_pdp() &&
+         !dimensions_info.has_dimension(dim_t::TIME) &&
          !dimensions_info.has_dimension(dim_t::BREAK);
 }
 
