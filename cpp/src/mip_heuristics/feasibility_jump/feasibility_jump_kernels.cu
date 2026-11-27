@@ -554,7 +554,7 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
   // Update the LHSs of all involved constraints.
   auto [offset_begin, offset_end] = fj.pb.reverse_range_for_var(var_idx);
 
-  for (auto i = offset_begin + blockIdx.x; i < offset_end; i += gridDim.x) {
+  for (auto i = offset_begin + TH_ID_X; i < offset_end; i += GRID_STRIDE) {
     cuopt_assert(i < (i_t)fj.pb.reverse_constraints.size(), "");
 
     auto cstr_idx   = fj.pb.reverse_constraints[i];
@@ -565,20 +565,16 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
     f_t old_cost = fj.excess_score(cstr_idx, old_lhs);
     f_t new_cost = fj.excess_score(cstr_idx, new_lhs);
 
-    if (threadIdx.x == 0) {
-      cuopt_assert(
-        *fj.constraints_changed_count >= 0 && *fj.constraints_changed_count <= fj.pb.n_constraints,
-        "");
-      f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx);
-      if (new_cost < -cstr_tolerance && !fj.violated_constraints.contains(cstr_idx))
-        fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
-          (cstr_idx << 1) | CONSTRAINT_FLAG_INSERT;
-      else if (!(new_cost < -cstr_tolerance) && fj.violated_constraints.contains(cstr_idx))
-        fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
-          cstr_idx << 1 | CONSTRAINT_FLAG_REMOVE;
-    }
-
-    __syncthreads();
+    cuopt_assert(
+      *fj.constraints_changed_count >= 0 && *fj.constraints_changed_count <= fj.pb.n_constraints,
+      "");
+    f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx);
+    if (new_cost < -cstr_tolerance && !fj.violated_constraints.contains(cstr_idx))
+      fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
+        (cstr_idx << 1) | CONSTRAINT_FLAG_INSERT;
+    else if (!(new_cost < -cstr_tolerance) && fj.violated_constraints.contains(cstr_idx))
+      fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
+        cstr_idx << 1 | CONSTRAINT_FLAG_REMOVE;
 
     cuopt_assert(isfinite(fj.jump_move_delta[var_idx]), "delta should be finite");
     // Kahan compensated summation
