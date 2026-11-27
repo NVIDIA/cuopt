@@ -20,6 +20,7 @@ __pycache__
 .nfs*
 .clangd
 build
+devcontainer-lock.json
 dist
 html
 *.egg-info
