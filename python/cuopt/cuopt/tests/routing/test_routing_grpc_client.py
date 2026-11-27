@@ -13,6 +13,7 @@ supports VRP (``host:port``). Run locally with, e.g.::
 import os
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from cuopt import routing
@@ -59,6 +60,32 @@ def test_remote_solve_matches_local():
     assert remote["total_objective_value"] == pytest.approx(
         local.get_total_objective(), rel=0.2
     )
+
+
+def test_remote_distance_is_independent_of_cost_and_time():
+    dm = routing.DataModel(2, 1, 1)
+    dm.add_cost_matrix(np.array([[0, 3], [5, 0]], dtype=np.float32))
+    dm.add_transit_time_matrix(np.array([[0, 11], [17, 0]], dtype=np.float32))
+    dm.add_distance_matrix(pd.DataFrame([[0, 100], [200, 0]], dtype="Int64"))
+    dm.set_order_locations(np.array([1], dtype=np.int32))
+    result = _client().solve(dm, {"time_limit": 1.0}, timeout=30)
+    assert result["status"] == 0, result["error_message"]
+    assert result["total_objective_value"] == pytest.approx(8)
+    np.testing.assert_allclose(result["arrival_stamp"], [0, 11, 28])
+
+
+def test_remote_validates_registered_distance_values():
+    dm = routing.DataModel(24, 1, 1)
+    dm.add_cost_matrix(np.ones((24, 24), dtype=np.float32))
+    dm.set_order_locations(np.array([1], dtype=np.int32))
+    distances = np.zeros((24, 24), dtype=np.float32)
+    distances[1, 0] = -1
+    # Bypass the Python value check to verify that distance reaches the server.
+    dm.add_distance_matrix(distances, skip_validation=True)
+    with pytest.raises(
+        grpc_routing.RoutingSolveError, match="distance matrix values"
+    ):
+        _client().solve(dm, {"time_limit": 1.0}, timeout=30)
 
 
 def test_submit_wait_result_lifecycle():

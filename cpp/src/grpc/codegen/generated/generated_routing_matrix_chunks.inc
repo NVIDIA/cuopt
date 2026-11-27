@@ -10,3 +10,7 @@
     chunk_container_typed_array(chunks, 11, static_cast<int32_t>(_i), 0,
                                  problem.transit_time_matrices[_i].matrix, upload_id, chunk_data_budget);
   }
+  for (size_t _i = 0; _i < problem.distance_matrices.size(); ++_i) {
+    chunk_container_typed_array(chunks, 12, static_cast<int32_t>(_i), 0,
+                                 problem.distance_matrices[_i].matrix, upload_id, chunk_data_budget);
+  }

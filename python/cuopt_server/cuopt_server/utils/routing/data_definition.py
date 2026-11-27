@@ -264,6 +264,20 @@ class CostMatrices(StrictModel):
     )
 
 
+class DistanceMatrices(StrictModel):
+    """Physical distance inputs, independent from cost and transit time."""
+
+    data: Optional[Dict[int, List[List[float]]]] = Field(
+        default=None,
+        description=(
+            "Square non-negative float32 distance matrices keyed by vehicle type "
+            "within [0, 255]. Dimensions must match the corresponding cost matrix. "
+            "Values must be finite. The solver validates these distances but "
+            "does not yet use them to constrain routes or compute the objective."
+        ),
+    )
+
+
 class FleetData(StrictModel):
     vehicle_locations: List[List[int]] = Field(
         ...,
@@ -778,6 +792,11 @@ class OptimizedRoutingData(StrictModel):
             "where key is vehicle-type and value is cost matrix. Value of \n"
             "vehicle type should be within [0, 255]"
         ),
+    )
+    distance_matrix_data: Optional[DistanceMatrices] = Field(
+        default=DistanceMatrices(),
+        examples=[{"data": {0: [[0, 5], [5, 0]]}}],
+        description="Physical distance matrices, independent from cost and transit time.",
     )
     travel_time_matrix_data: Optional[CostMatrices] = Field(
         default=CostMatrices(),

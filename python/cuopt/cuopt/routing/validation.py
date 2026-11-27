@@ -25,7 +25,7 @@ def _contains_null(mat):
     return False
 
 
-def validate_matrix(mat, mat_name, num_locations):
+def validate_matrix(mat, mat_name, num_locations, *, check_values=True):
     _reject_list(mat, mat_name)
     if mat.shape[0] != mat.shape[1]:
         raise ValueError(mat_name + " is expected to be a square matrix")
@@ -36,10 +36,10 @@ def validate_matrix(mat, mat_name, num_locations):
             + " number of locations in matrix"
         )
 
-    if _contains_null(mat):
-        raise ValueError(mat_name + " cannot have NULL values")
-
-    validate_positive_df(mat, mat_name)
+    if check_values:
+        if _contains_null(mat):
+            raise ValueError(mat_name + " cannot have NULL values")
+        validate_positive_df(mat, mat_name)
 
 
 def validate_positive_df(df, df_name):

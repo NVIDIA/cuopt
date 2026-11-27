@@ -80,6 +80,13 @@
       copy_vector_to_repeated(_entry.matrix, _out->mutable_values());
     }
   }
+  for (auto const& _entry : p.distance_matrices) {
+    auto* _out = pb->add_distance_matrices();
+    _out->set_vehicle_type(static_cast<uint32_t>(_entry.vehicle_type));
+    if (include_matrix_values) {
+      copy_vector_to_repeated(_entry.matrix, _out->mutable_values());
+    }
+  }
   for (auto const& _entry : p.capacity_dimensions) {
     auto* _out = pb->add_capacity_dimensions();
     _out->set_name(_entry.name);

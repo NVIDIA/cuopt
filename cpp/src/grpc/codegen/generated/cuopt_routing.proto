@@ -143,6 +143,7 @@ message RoutingProblem {
   int32 num_orders = 3;
   repeated CostMatrix cost_matrices = 10;
   repeated CostMatrix transit_time_matrices = 11;
+  repeated CostMatrix distance_matrices = 12;
   repeated int32 vehicle_start_locations = 20;
   repeated int32 vehicle_return_locations = 21;
   repeated int32 vehicle_tw_earliest = 22;

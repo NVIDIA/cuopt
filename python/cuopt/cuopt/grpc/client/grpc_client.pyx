@@ -773,6 +773,7 @@ class RoutingSolveError(RuntimeError):
 # name in cuopt.routing._deferred._SETTERS so a new setter cannot be missed.
 HANDLED_SETTERS = frozenset({
     "add_cost_matrix",
+    "add_distance_matrix",
     "add_transit_time_matrix",
     "set_order_time_windows",
     "set_vehicle_time_windows",
@@ -938,6 +939,8 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
             _add_matrix(p.cost_matrices, args)
         elif name == "add_transit_time_matrix":
             _add_matrix(p.transit_time_matrices, args)
+        elif name == "add_distance_matrix":
+            _add_matrix(p.distance_matrices, args)
         elif name == "set_order_time_windows":
             _fill_i32(p.order_tw_earliest, args[0])
             _fill_i32(p.order_tw_latest, args[1])
@@ -1052,6 +1055,7 @@ def problem_summary(data_model):
         "min_vehicles": int(p.min_vehicles),
         "cost_matrices": p.cost_matrices.size(),
         "transit_time_matrices": p.transit_time_matrices.size(),
+        "distance_matrices": p.distance_matrices.size(),
         "vehicle_start_locations": p.vehicle_start_locations.size(),
         "vehicle_return_locations": p.vehicle_return_locations.size(),
         "vehicle_tw_earliest": p.vehicle_tw_earliest.size(),

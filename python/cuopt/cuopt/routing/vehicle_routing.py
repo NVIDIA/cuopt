@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
+import pandas as pd
 
 import cudf
 
@@ -148,6 +149,93 @@ class DataModel(_DeferredDataModel):
             validate_matrix(cost_mat, "cost matrix", self.get_num_locations())
 
         super().add_cost_matrix(cost_mat, vehicle_type)
+
+    @catch_cuopt_exception
+    def add_distance_matrix(
+        self,
+        distance_mat: np.ndarray | pd.DataFrame | cudf.DataFrame,
+        vehicle_type: int | np.integer = 0,
+        *,
+        skip_validation: bool = False,
+    ) -> None:
+        """Register physical distance independently from cost and transit time.
+
+        The solver validates the distances but does not yet use them to
+        constrain routes or compute the objective.
+
+        Parameters
+        ----------
+        distance_mat : array-like, float32
+            Square matrix with one row and column per location. See the
+            DataModel note on accepted host and device array types. Values
+            must be real, non-negative and not NaN. Positive infinity is accepted;
+            finite values must fit in float32.
+        vehicle_type : int
+            Vehicle-type identifier within [0, 255].
+        skip_validation : bool
+            Skip Python checks for matrix values. Shape is always checked.
+
+        Raises
+        ------
+        TypeError
+            If the vehicle type is not an integer or the matrix does not
+            contain real numeric values.
+        ValueError
+            If the vehicle type is out of range or already registered, the
+            matrix shape does not match the locations, or a checked value
+            is missing, negative, or exceeds the finite float32 range.
+        """
+        if not isinstance(vehicle_type, (int, np.integer)):
+            raise TypeError("vehicle_type must be an integer")
+        if not 0 <= int(vehicle_type) <= np.iinfo(np.uint8).max:
+            raise ValueError("vehicle_type must be within [0, 255]")
+        if vehicle_type in {
+            args[1] for args in self._recorded("add_distance_matrix")
+        }:
+            raise ValueError(
+                "Vehicle type distance matrix has already been added"
+            )
+        # Check dtype metadata before recording: both backends cast to float32.
+        dtypes = (
+            distance_mat.dtypes
+            if hasattr(distance_mat, "dtypes") and distance_mat.ndim == 2
+            else (getattr(distance_mat, "dtype", None),)
+        )
+        if any(
+            getattr(dtype, "kind", "") not in {"i", "u", "f"}
+            for dtype in dtypes
+        ):
+            raise TypeError("distance matrix must contain real numeric values")
+        if distance_mat.ndim != 2:
+            raise ValueError("distance matrix must be two-dimensional")
+        validate_matrix(
+            distance_mat,
+            "distance matrix",
+            self.get_num_locations(),
+            check_values=not skip_validation,
+        )
+        if not skip_validation:
+            if np.ma.isMaskedArray(distance_mat) and np.ma.is_masked(
+                distance_mat
+            ):
+                raise ValueError("distance matrix cannot have NULL values")
+            # Only wider floating types can overflow the float32 range.
+            if any(
+                dtype.kind == "f" and dtype.itemsize > 4 for dtype in dtypes
+            ):
+                overflow = (distance_mat > np.finfo(np.float32).max) & (
+                    distance_mat < np.inf
+                )
+                if overflow.any(axis=1).any():
+                    raise ValueError(
+                        "distance matrix finite values must be representable as float32"
+                    )
+        if isinstance(distance_mat, pd.DataFrame):
+            # Nullable numeric columns can otherwise produce an object array.
+            distance_mat = distance_mat.to_numpy(
+                dtype=np.float32, na_value=np.nan
+            )
+        super().add_distance_matrix(distance_mat, vehicle_type)
 
     @catch_cuopt_exception
     def add_transit_time_matrix(self, mat, vehicle_type=0):

@@ -40,6 +40,8 @@ def test_populate_scalar_matrix_and_dimension_fields():
     dm.add_cost_matrix(cost, 0)
     dm.add_cost_matrix(cost * 2, 1)
     dm.add_transit_time_matrix(cost, 0)
+    dm.add_distance_matrix(cost * 3, 0)
+    dm.add_distance_matrix(cost * 4, 1)
     dm.set_vehicle_time_windows(
         np.zeros(2, np.int32), np.full(2, 100, np.int32)
     )
@@ -62,6 +64,7 @@ def test_populate_scalar_matrix_and_dimension_fields():
     assert (s["num_locations"], s["fleet_size"], s["num_orders"]) == (5, 2, 5)
     assert s["cost_matrices"] == 2
     assert s["transit_time_matrices"] == 1
+    assert s["distance_matrices"] == 2
     assert s["vehicle_tw_latest"] == 2
     assert s["order_tw_latest"] == 5
     assert s["order_locations"] == 5

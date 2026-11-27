@@ -31,6 +31,11 @@ void map_proto_to_routing_problem(
   const std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>&
     container_arrays)
 {
+  for (const auto& matrix : pb.distance_matrices()) {
+    if (matrix.vehicle_type() > std::numeric_limits<uint8_t>::max()) {
+      throw std::invalid_argument("distance matrix vehicle_type must be within [0, 255]");
+    }
+  }
 #include "generated_routing_problem_from_proto.inc"
 }
 

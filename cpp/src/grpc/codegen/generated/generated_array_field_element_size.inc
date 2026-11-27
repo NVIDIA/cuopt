@@ -70,6 +70,12 @@
       }
       return -1;
     }
+    case 12: {  // CostMatrix (distance_matrices)
+      switch (field_id) {
+        case 0: return 4;  // values
+      }
+      return -1;
+    }
     case 50: {  // CapacityDimension (capacity_dimensions)
       switch (field_id) {
         case 0: return 4;  // demand

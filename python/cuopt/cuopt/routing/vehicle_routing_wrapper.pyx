@@ -120,7 +120,8 @@ def prepare_matrix(mat, name):
     elif isinstance(mat, pd.DataFrame):
         arr = cp.asarray(mat.to_numpy())
     elif isinstance(mat, np.ndarray):
-        arr = cp.asarray(mat)
+        # CuPy cannot create an array of NumPy's extended-precision floats.
+        arr = cp.asarray(mat, dtype=np.float32 if mat.dtype.kind == "f" else None)
     elif isinstance(mat, cp.ndarray):
         arr = mat
     else:
@@ -233,6 +234,7 @@ cdef class DataModel:
             n_orders
         ))
         self.costs = {}
+        self.distance_matrices = {}
         self.transit_times = {}
 
         self.demand_name = []
@@ -279,6 +281,17 @@ cdef class DataModel:
         cdef uintptr_t c_costs = self.costs[vehicle_type].data.ptr
         self.c_data_model_view.get().add_cost_matrix(
             <const float *> c_costs, <uint8_t> vehicle_type
+        )
+
+    def add_distance_matrix(self, distances, vehicle_type):
+        distances = prepare_matrix(distances, "distance_matrix")
+        n = self.c_data_model_view.get().get_num_locations()
+        if distances.shape != (n, n):
+            raise ValueError("distance matrix shape must match the number of locations")
+        self.distance_matrices[vehicle_type] = distances
+        cdef uintptr_t c_distances = self.distance_matrices[vehicle_type].data.ptr
+        self.c_data_model_view.get().add_distance_matrix(
+            <const float *> c_distances, <uint8_t> vehicle_type
         )
 
     def add_transit_time_matrix(self, times, vehicle_type):
