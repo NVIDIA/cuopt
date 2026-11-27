@@ -319,6 +319,10 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
    */
   std::unique_ptr<cpu_lp_solution_t<i_t, f_t>> to_cpu_solution() const
   {
+    if (get_error_status().get_error_type() != cuopt::error_type_t::Success) {
+      return std::make_unique<cpu_lp_solution_t<i_t, f_t>>(get_termination_status(),
+                                                           get_error_status());
+    }
     auto primal_host  = get_primal_solution_host();
     auto dual_host    = get_dual_solution_host();
     auto reduced_host = get_reduced_cost_host();
@@ -445,6 +449,10 @@ class gpu_mip_solution_t : public mip_solution_interface_t<i_t, f_t> {
    */
   std::unique_ptr<cpu_mip_solution_t<i_t, f_t>> to_cpu_solution() const
   {
+    if (get_error_status().get_error_type() != cuopt::error_type_t::Success) {
+      return std::make_unique<cpu_mip_solution_t<i_t, f_t>>(get_termination_status(),
+                                                            get_error_status());
+    }
     auto solution_host = get_solution_host();
 
     return std::make_unique<cpu_mip_solution_t<i_t, f_t>>(std::move(solution_host),
