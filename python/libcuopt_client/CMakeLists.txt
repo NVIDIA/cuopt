@@ -15,6 +15,9 @@ project(
   LANGUAGES CXX CUDA
 )
 
+# Find C++ libraries from RAPIDS wheels in site-packages.
+set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
+
 # Already installed: nothing to build, the wheel just stages the component. Checking
 # cuopt::client specifically, not cuopt_FOUND, matters now that libcuopt-client ships
 # cuopt-config.cmake: a sibling wheel resolving it must not short-circuit this build.

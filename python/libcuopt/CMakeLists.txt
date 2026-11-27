@@ -15,6 +15,9 @@ project(
   LANGUAGES CXX CUDA
 )
 
+# Find C++ libraries from RAPIDS wheels in site-packages.
+set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
+
 # Already installed: nothing to build, the wheel just stages the component. Checking for
 # the cuopt_grpc_server binary itself, not cuopt_FOUND, matters now that this build installs
 # the client/mathopt/routing sibling wheels as dependencies -- those alone resolve cuopt_FOUND
