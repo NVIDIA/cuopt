@@ -554,7 +554,7 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
   // Update the LHSs of all involved constraints.
   auto [offset_begin, offset_end] = fj.pb.reverse_range_for_var(var_idx);
 
-  for (auto i = offset_begin + blockIdx.x; i < offset_end; i += gridDim.x) {
+  for (auto i = offset_begin + TH_ID_X; i < offset_end; i += GRID_STRIDE) {
     cuopt_assert(i < (i_t)fj.pb.reverse_constraints.size(), "");
 
     auto cstr_idx   = fj.pb.reverse_constraints[i];
@@ -565,20 +565,16 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
     f_t old_cost = fj.excess_score(cstr_idx, old_lhs);
     f_t new_cost = fj.excess_score(cstr_idx, new_lhs);
 
-    if (threadIdx.x == 0) {
-      cuopt_assert(
-        *fj.constraints_changed_count >= 0 && *fj.constraints_changed_count <= fj.pb.n_constraints,
-        "");
-      f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx);
-      if (new_cost < -cstr_tolerance && !fj.violated_constraints.contains(cstr_idx))
-        fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
-          (cstr_idx << 1) | CONSTRAINT_FLAG_INSERT;
-      else if (!(new_cost < -cstr_tolerance) && fj.violated_constraints.contains(cstr_idx))
-        fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
-          cstr_idx << 1 | CONSTRAINT_FLAG_REMOVE;
-    }
-
-    __syncthreads();
+    cuopt_assert(
+      *fj.constraints_changed_count >= 0 && *fj.constraints_changed_count <= fj.pb.n_constraints,
+      "");
+    f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx);
+    if (new_cost < -cstr_tolerance && !fj.violated_constraints.contains(cstr_idx))
+      fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
+        (cstr_idx << 1) | CONSTRAINT_FLAG_INSERT;
+    else if (!(new_cost < -cstr_tolerance) && fj.violated_constraints.contains(cstr_idx))
+      fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
+        cstr_idx << 1 | CONSTRAINT_FLAG_REMOVE;
 
     cuopt_assert(isfinite(fj.jump_move_delta[var_idx]), "delta should be finite");
     // Kahan compensated summation
@@ -771,6 +767,7 @@ DI void update_lift_moves(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
     f_t lfd_lb = BlockReduce(shmem.cub).Reduce(th_lower_delta, cuda::maximum());
     __syncthreads();
     f_t lfd_ub = BlockReduce(shmem.cub).Reduce(th_upper_delta, cuda::minimum());
+    __syncthreads();
 
     // invalid crossing bounds
     if (lfd_lb >= lfd_ub) { lfd_lb = lfd_ub = 0; }
@@ -981,7 +978,6 @@ __device__ void compute_mtm_moves(typename fj_t<i_t, f_t>::climber_data_t::view_
   // related variable table couldn't be computed ahead of time, get related variables dynamically
   else if (fj.pb.related_variables.size() == 0) {
     compute_iteration_related_variables<i_t, f_t>(fj);
-    __syncwarp();
     cg::this_grid().sync();
     split_begin = 0;
     split_end   = fj.pb.n_variables;
@@ -1049,8 +1045,6 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
 {
   // in a graph mode, we run multiple iterations and we want to stop when break condition is reached
   if (*fj.break_condition) return;
-  raft::random::PCGenerator rng(
-    fj.settings->seed, *fj.iterations * fj.settings->parameters.max_sampled_moves, 0);
 
   using move_score_t = typename fj_t<i_t, f_t>::move_score_t;
   __shared__ alignas(move_score_t) char shmem_storage[2 * raft::WarpSize * sizeof(move_score_t)];
@@ -1064,6 +1058,9 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
   *fj.last_iter_candidates = good_var_count;
 
   if (good_var_count > 0) {
+    raft::random::PCGenerator rng(
+      fj.settings->seed, *fj.iterations * fj.settings->parameters.max_sampled_moves, 0);
+
     // FIXME
     auto sample_size = std::min<i_t>(200000, good_var_count);
 
@@ -1215,7 +1212,6 @@ DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> gridwide_reduc
 
   // grid-wide reduce
   // will be replaced by a proper load balancing scheme
-  __syncwarp();
   cg::this_grid().sync();
 
   if (blockIdx.x == 0) {
@@ -1277,6 +1273,7 @@ DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> best_sat_cstr_
 {
   // compute all MTM moves within satisfied constraints
   compute_mtm_moves<i_t, f_t, MTMMoveType::FJ_MTM_SATISFIED, false>(fj, true);
+  cg::this_grid().sync();
   return gridwide_reduce_best_move<i_t, f_t, TPB, /*WeakTabu=*/false, /*recompute_score=*/false>(
     fj, fj.objective_vars.begin(), fj.objective_vars.end(), [fj] __device__(i_t var_idx) {
       return fj.jump_move_delta[var_idx];
@@ -1385,7 +1382,6 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
 
   // Pick the best move among the variables involved in a random violated constraint.
   if (!fj.violated_constraints.empty()) {
-    __syncwarp();
     cg::this_grid().sync();
     thrust::tie(best_var, best_delta, best_score) =
       best_random_mtm_move<i_t, f_t, TPB_localmin>(fj);
@@ -1398,7 +1394,6 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
   // also consider breakthrough moves
   if (*fj.best_objective < std::numeric_limits<f_t>::infinity() &&
       *fj.incumbent_objective > *fj.best_objective) {
-    __syncwarp();
     cg::this_grid().sync();
     auto [bm_best_var, bm_best_delta, bm_best_score] =
       best_breakthrough_move_at_local_min<i_t, f_t, TPB_localmin>(fj);
@@ -1414,7 +1409,6 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
   }
 
   if (FIRST_THREAD) *fj.selected_var = best_var;
-  __syncwarp();
   cg::this_grid().sync();
   // still nothing? try sat MTM moves if we are in the feasible region
   // Attempt to find a valid move by going over MTM moves in valid constraints
