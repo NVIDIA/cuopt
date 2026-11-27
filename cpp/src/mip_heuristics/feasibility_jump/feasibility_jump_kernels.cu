@@ -1045,8 +1045,6 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
 {
   // in a graph mode, we run multiple iterations and we want to stop when break condition is reached
   if (*fj.break_condition) return;
-  raft::random::PCGenerator rng(
-    fj.settings->seed, *fj.iterations * fj.settings->parameters.max_sampled_moves, 0);
 
   using move_score_t = typename fj_t<i_t, f_t>::move_score_t;
   __shared__ alignas(move_score_t) char shmem_storage[2 * raft::WarpSize * sizeof(move_score_t)];
@@ -1060,6 +1058,9 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
   *fj.last_iter_candidates = good_var_count;
 
   if (good_var_count > 0) {
+    raft::random::PCGenerator rng(
+      fj.settings->seed, *fj.iterations * fj.settings->parameters.max_sampled_moves, 0);
+
     // FIXME
     auto sample_size = std::min<i_t>(200000, good_var_count);
 
