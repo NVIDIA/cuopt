@@ -978,7 +978,6 @@ __device__ void compute_mtm_moves(typename fj_t<i_t, f_t>::climber_data_t::view_
   // related variable table couldn't be computed ahead of time, get related variables dynamically
   else if (fj.pb.related_variables.size() == 0) {
     compute_iteration_related_variables<i_t, f_t>(fj);
-    __syncwarp();
     cg::this_grid().sync();
     split_begin = 0;
     split_end   = fj.pb.n_variables;
@@ -1212,7 +1211,6 @@ DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> gridwide_reduc
 
   // grid-wide reduce
   // will be replaced by a proper load balancing scheme
-  __syncwarp();
   cg::this_grid().sync();
 
   if (blockIdx.x == 0) {
@@ -1274,7 +1272,6 @@ DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> best_sat_cstr_
 {
   // compute all MTM moves within satisfied constraints
   compute_mtm_moves<i_t, f_t, MTMMoveType::FJ_MTM_SATISFIED, false>(fj, true);
-  __syncwarp();
   cg::this_grid().sync();
   return gridwide_reduce_best_move<i_t, f_t, TPB, /*WeakTabu=*/false, /*recompute_score=*/false>(
     fj, fj.objective_vars.begin(), fj.objective_vars.end(), [fj] __device__(i_t var_idx) {
@@ -1384,7 +1381,6 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
 
   // Pick the best move among the variables involved in a random violated constraint.
   if (!fj.violated_constraints.empty()) {
-    __syncwarp();
     cg::this_grid().sync();
     thrust::tie(best_var, best_delta, best_score) =
       best_random_mtm_move<i_t, f_t, TPB_localmin>(fj);
@@ -1397,7 +1393,6 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
   // also consider breakthrough moves
   if (*fj.best_objective < std::numeric_limits<f_t>::infinity() &&
       *fj.incumbent_objective > *fj.best_objective) {
-    __syncwarp();
     cg::this_grid().sync();
     auto [bm_best_var, bm_best_delta, bm_best_score] =
       best_breakthrough_move_at_local_min<i_t, f_t, TPB_localmin>(fj);
@@ -1413,7 +1408,6 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
   }
 
   if (FIRST_THREAD) *fj.selected_var = best_var;
-  __syncwarp();
   cg::this_grid().sync();
   // still nothing? try sat MTM moves if we are in the feasible region
   // Attempt to find a valid move by going over MTM moves in valid constraints
