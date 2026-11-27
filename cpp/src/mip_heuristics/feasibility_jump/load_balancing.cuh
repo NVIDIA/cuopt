@@ -564,7 +564,9 @@ __launch_bounds__(TPB_loadbalance, loadbalance_min_blocks_per_sm) __global__
 
         // if this was the last warp to arrive on this jump candidate, then its score is final.
         // update the current best candidate accordingly
-        i_t arrived_count = 1 + atomicAdd(&fj.candidate_arrived_workids[i], 1);
+        cuda::atomic_ref<i_t, cuda::thread_scope_device> arrived_ref{
+          fj.candidate_arrived_workids[i]};
+        i_t arrived_count = 1 + arrived_ref.fetch_add(1, cuda::memory_order_acq_rel);
         cuopt_assert(arrived_count > 0 && arrived_count <= warp_count, "invalid arrival count");
         if (arrived_count == warp_count) {
           // check if this move candidate would be better than the current assigned one for this
