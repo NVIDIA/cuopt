@@ -767,6 +767,7 @@ DI void update_lift_moves(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
     f_t lfd_lb = BlockReduce(shmem.cub).Reduce(th_lower_delta, cuda::maximum());
     __syncthreads();
     f_t lfd_ub = BlockReduce(shmem.cub).Reduce(th_upper_delta, cuda::minimum());
+    __syncthreads();
 
     // invalid crossing bounds
     if (lfd_lb >= lfd_ub) { lfd_lb = lfd_ub = 0; }
