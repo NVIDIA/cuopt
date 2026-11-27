@@ -475,6 +475,49 @@ Mixed Integer Programming FAQs
     - On a H100 SXM with 80GB memory, this is the biggest dataset that was tested:
         - 27 million non-zeros coefficients on a problem from MIPLIB2017.
 
+Common Pitfalls (LP, MILP, and QP)
+--------------------------------------
+
+Behaviours that fail quietly: a confident, feasible-looking result, or a status that reads as a solver problem rather than a usage error.
+
+.. dropdown:: Why does my solve return ``NoTermination`` with an objective value of ``nan``?
+
+    The model has no constraints. A problem expressed only with variable bounds is not solved: the status comes back as ``NoTermination`` and ``ObjValue`` is ``nan``, rather than an objective value.
+
+    Express at least one constraint explicitly with ``addConstraint``. A bound such as ``ub=100`` on a variable is not a constraint for this purpose.
+
+.. dropdown:: Why does my quadratic objective return ``NumericalError``?
+
+    Quadratic objectives must be convex when minimizing and concave when maximizing. A wrong-shaped objective, such as maximizing ``x*x``, does not raise an error: the solve returns status ``NumericalError``, which looks like a numerical problem rather than an unsupported model.
+
+    Quadratic objectives also require continuous variables; integer QP is not supported.
+
+.. dropdown:: Why does my status check never match, even though the solve succeeded?
+
+    Termination status names are PascalCase, not uppercase. ``problem.Status.name`` returns ``Optimal``, ``PrimalFeasible``, ``NoTermination`` and so on, so a comparison against ``"OPTIMAL"`` silently never matches and a solved model reads as a failure.
+
+    .. code-block:: python
+
+        if problem.Status.name in ["Optimal", "PrimalFeasible"]:   # LP / QP
+            print(problem.ObjValue)
+
+    For MIP, the equivalent check is ``["Optimal", "FeasibleFound"]``.
+
+.. dropdown:: Why do I get an ``AttributeError`` reading a variable's name or value?
+
+    The accessors are ``getVariableName()`` and ``getValue()``. There is no ``getName()`` and no ``.name`` attribute; both raise ``AttributeError``.
+
+    .. code-block:: python
+
+        for variable in problem.getVariables():
+            print(variable.getVariableName(), variable.getValue())
+
+    Other variable accessors are ``getLowerBound()``, ``getUpperBound()``, ``getVariableType()``, ``getIndex()`` and ``ReducedCost``.
+
+.. dropdown:: Why are the dual values ``NaN``?
+
+    Duals and reduced costs are available for LP and QP only. A MIP solve has no duals, since an integer optimum is not a continuous one. In addition, a model containing quadratic constraints returns ``NaN`` duals even for LP and QP.
+
 Container FAQs
 ------------------------------
 
