@@ -1274,6 +1274,8 @@ DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> best_sat_cstr_
 {
   // compute all MTM moves within satisfied constraints
   compute_mtm_moves<i_t, f_t, MTMMoveType::FJ_MTM_SATISFIED, false>(fj, true);
+  __syncwarp();
+  cg::this_grid().sync();
   return gridwide_reduce_best_move<i_t, f_t, TPB, /*WeakTabu=*/false, /*recompute_score=*/false>(
     fj, fj.objective_vars.begin(), fj.objective_vars.end(), [fj] __device__(i_t var_idx) {
       return fj.jump_move_delta[var_idx];
