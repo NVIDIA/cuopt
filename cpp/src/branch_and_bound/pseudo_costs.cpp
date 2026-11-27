@@ -1424,65 +1424,53 @@ void pseudo_costs_t<i_t, f_t>::initialize_with_estimate(
                                                work_estimate);
 
       if (pseudo_cost_num_down[j] == 0) {
-        pseudo_cost_sum_down[j] += estimate.down_obj_change;
-        ++pseudo_cost_num_down[j];
+        const f_t frac = lp_solution.x[j] - std::floor(lp_solution.x[j]);
+        update_pseudo_cost_down(j, estimate.down_obj_change, frac);
       }
 
       if (pseudo_cost_num_up[j] == 0) {
-        pseudo_cost_sum_up[j] += estimate.up_obj_change;
-        ++pseudo_cost_num_up[j];
+        const f_t frac = std::ceil(lp_solution.x[j]) - lp_solution.x[j];
+        update_pseudo_cost_up(j, estimate.up_obj_change, frac);
       }
     }
   }
 }
 
 template <typename i_t, typename f_t>
-inline f_t pseudo_costs_t<i_t, f_t>::compute_pseudocost_average_down()
+void pseudo_costs_t<i_t, f_t>::update_pseudo_cost_down(i_t j, f_t obj_change, f_t frac)
 {
-  i_t num_initialized = 0;
-  f_t avg             = 0.0;
+  f_t x = std::max(obj_change / frac, 1e-6);
+  pseudo_cost_sum_down[j] += x;
+  ++pseudo_cost_num_down[j];
 
-  for (size_t j = 0; j < pseudo_cost_sum_down.size(); ++j) {
-    i_t num = pseudo_cost_num_down[j];
-    f_t sum = pseudo_cost_sum_down[j];
-    if (num > 0 && std::isfinite(sum)) {
-      ++num_initialized;
-      avg += sum / num;
-    }
+  if (std::isfinite(x)) {
+    pseudo_cost_total_sum_down += x;
+    ++pseudo_cost_total_num_down;
   }
-
-  return (num_initialized > 0) ? avg / num_initialized : 1.0;
 }
 
 template <typename i_t, typename f_t>
-inline f_t pseudo_costs_t<i_t, f_t>::compute_pseudocost_average_up()
+void pseudo_costs_t<i_t, f_t>::update_pseudo_cost_up(i_t j, f_t obj_change, f_t frac)
 {
-  i_t num_initialized = 0;
-  f_t avg             = 0.0;
+  f_t x = std::max(obj_change / frac, 1e-6);
+  pseudo_cost_sum_up[j] += x;
+  ++pseudo_cost_num_up[j];
 
-  for (size_t j = 0; j < pseudo_cost_sum_up.size(); ++j) {
-    i_t num = pseudo_cost_num_up[j];
-    f_t sum = pseudo_cost_sum_up[j];
-    if (num > 0 && std::isfinite(sum)) {
-      ++num_initialized;
-      avg += sum / num;
-    }
+  if (std::isfinite(x)) {
+    pseudo_cost_total_sum_up += x;
+    ++pseudo_cost_total_num_up;
   }
-
-  return (num_initialized > 0) ? avg / num_initialized : 1.0;
 }
 
 template <typename i_t, typename f_t>
 f_t pseudo_costs_t<i_t, f_t>::calculate_pseudocost_score(i_t j,
-                                                         const std::vector<f_t>& solution,
-                                                         f_t avg_down,
-                                                         f_t avg_up) const
+                                                         const std::vector<f_t>& solution) const
 {
   constexpr f_t eps = 1e-6;
   f_t f_down        = solution[j] - std::floor(solution[j]);
   f_t f_up          = std::ceil(solution[j]) - solution[j];
-  f_t pc_down       = get_pseudocost_down(j, avg_down);
-  f_t pc_up         = get_pseudocost_up(j, avg_up);
+  f_t pc_down       = get_pseudocost_down(j);
+  f_t pc_up         = get_pseudocost_up(j);
   return std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
 }
 
@@ -1500,11 +1488,9 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_pt
                               : std::ceil(node_ptr->fractional_val) - node_ptr->fractional_val;
 
   if (node_ptr->branch_dir == branch_direction_t::DOWN) {
-    pseudo_cost_sum_down[node_ptr->branch_var] += change_in_obj / frac;
-    pseudo_cost_num_down[node_ptr->branch_var]++;
+    update_pseudo_cost_down(node_ptr->branch_var, change_in_obj, frac);
   } else {
-    pseudo_cost_sum_up[node_ptr->branch_var] += change_in_obj / frac;
-    pseudo_cost_num_up[node_ptr->branch_var]++;
+    update_pseudo_cost_up(node_ptr->branch_var, change_in_obj, frac);
   }
 }
 
@@ -1516,13 +1502,9 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
 
   i_t branch_var = fractional[0];
   f_t max_score  = -1;
-  f_t avg_down   = compute_pseudocost_average_down();
-  f_t avg_up     = compute_pseudocost_average_up();
-
-  settings.log.debug("PC: avg down %e up %e\n", avg_down, avg_up);
 
   for (i_t j : fractional) {
-    f_t score = calculate_pseudocost_score(j, solution, avg_down, avg_up);
+    f_t score = calculate_pseudocost_score(j, solution);
 
     if (score > max_score) {
       max_score  = score;
@@ -1552,12 +1534,10 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 {
   raft::common::nvtx::range scope("BB::reliability_branching");
 
-  constexpr f_t eps = 1e-6;
-  f_t start_time    = bnb_stats.start_time;
-  i_t branch_var    = fractional[0];
-  f_t max_score     = -1;
-  f_t avg_down{0};
-  f_t avg_up{0};
+  constexpr f_t eps                      = 1e-6;
+  f_t start_time                         = bnb_stats.start_time;
+  i_t branch_var                         = fractional[0];
+  f_t max_score                          = -1;
   lp_solution_t<i_t, f_t>& leaf_solution = worker->leaf_solution;
 
   const int64_t branch_and_bound_lp_iters = bnb_stats.total_simplex_iters;
@@ -1585,15 +1565,6 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
     reliable_threshold = strong_branching_lp_iter < max_reliability_iter ? reliable_threshold : 0;
   }
 
-  // If `reliable_threshold == 0`, then we set the uninitialized pseudocosts to the average.
-  // Otherwise, the best ones are initialized via strong branching, while the other are ignored.  //
-  // So we only need to initialize the average for the former.
-  if (reliable_threshold == 0) {
-    avg_down = compute_pseudocost_average_down();
-    avg_up   = compute_pseudocost_average_up();
-    settings.log.debug("PC: avg down %e up %e\n", avg_down, avg_up);
-  }
-
   std::vector<std::pair<f_t, i_t>> unreliable_list;
   omp_mutex_t score_mutex;
 
@@ -1603,7 +1574,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       unreliable_list.push_back(std::make_pair(-1, j));
       continue;
     }
-    f_t score = calculate_pseudocost_score(j, leaf_solution.x, avg_down, avg_up);
+    f_t score = calculate_pseudocost_score(j, leaf_solution.x);
 
     if (score > max_score) {
       max_score  = score;
@@ -1755,7 +1726,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           score = std::max(estimate.up_obj_change, eps) * std::max(estimate.down_obj_change, eps);
         } else {
           // Use the previous score, even if it is unreliable
-          score = calculate_pseudocost_score(j, leaf_solution.x, avg_down, avg_up);
+          score = calculate_pseudocost_score(j, leaf_solution.x);
         }
       }
     } else {
@@ -1864,8 +1835,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           if (!std::isnan(obj)) {
             f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = leaf_solution.x[j] - std::floor(leaf_solution.x[j]);
-            pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
-            pseudo_cost_num_down[j]++;
+            update_pseudo_cost_down(j, change_in_obj, change_in_x);
             if (rb_mode == 1 && is_dual_simplex_done(status)) { sb_view.mark_solved(i); }
           }
         } else {
@@ -1909,8 +1879,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           if (!std::isnan(obj)) {
             f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = std::ceil(leaf_solution.x[j]) - leaf_solution.x[j];
-            pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
-            pseudo_cost_num_up[j]++;
+            update_pseudo_cost_up(j, change_in_obj, change_in_x);
             if (rb_mode == 1 && is_dual_simplex_done(status)) { sb_view.mark_solved(shared_idx); }
           }
         } else {
@@ -1922,7 +1891,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
       if (toc(start_time) > settings.time_limit) { continue; }
 
-      score = calculate_pseudocost_score(j, leaf_solution.x, avg_down, avg_up);
+      score = calculate_pseudocost_score(j, leaf_solution.x);
       score_mutex.lock();
       if (score > max_score) {
         max_score  = score;
@@ -1956,8 +1925,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           if (pseudo_cost_num_down[j] < reliable_threshold) {
             f_t change_in_obj = std::max(merged_obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = leaf_solution.x[j] - std::floor(leaf_solution.x[j]);
-            pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
-            pseudo_cost_num_down[j]++;
+            update_pseudo_cost_down(j, change_in_obj, change_in_x);
             pdlp_applied++;
           }
           pseudo_cost_mutex_down[j].unlock();
@@ -1976,15 +1944,14 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           if (pseudo_cost_num_up[j] < reliable_threshold) {
             f_t change_in_obj = std::max(merged_obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = std::ceil(leaf_solution.x[j]) - leaf_solution.x[j];
-            pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
-            pseudo_cost_num_up[j]++;
+            update_pseudo_cost_up(j, change_in_obj, change_in_x);
             pdlp_applied++;
           }
           pseudo_cost_mutex_up[j].unlock();
         }
       }
 
-      f_t score = calculate_pseudocost_score(j, leaf_solution.x, avg_down, avg_up);
+      f_t score = calculate_pseudocost_score(j, leaf_solution.x);
       if (score > max_score) {
         max_score  = score;
         branch_var = j;
@@ -2010,12 +1977,10 @@ f_t pseudo_costs_t<i_t, f_t>::obj_estimate(const std::vector<i_t>& fractional,
                                            f_t lower_bound)
 {
   f_t estimate = lower_bound;
-  f_t avg_down = compute_pseudocost_average_down();
-  f_t avg_up   = compute_pseudocost_average_up();
 
   for (i_t j : fractional) {
-    f_t pc_down = get_pseudocost_down(j, avg_down);
-    f_t pc_up   = get_pseudocost_up(j, avg_up);
+    f_t pc_down = get_pseudocost_down(j);
+    f_t pc_up   = get_pseudocost_up(j);
     f_t f_down  = solution[j] - std::floor(solution[j]);
     f_t f_up    = std::ceil(solution[j]) - solution[j];
     estimate += std::min(pc_down * f_down, pc_up * f_up);
@@ -2039,14 +2004,12 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs_from_strong_branching(
         f_t change_in_obj = strong_branch_down[k];
         if (std::isnan(change_in_obj)) { continue; }
         f_t frac = root_soln[j] - std::floor(root_soln[j]);
-        pseudo_cost_sum_down[j] += change_in_obj / frac;
-        pseudo_cost_num_down[j]++;
+        update_pseudo_cost_down(j, change_in_obj, frac);
       } else {
         f_t change_in_obj = strong_branch_up[k];
         if (std::isnan(change_in_obj)) { continue; }
         f_t frac = std::ceil(root_soln[j]) - root_soln[j];
-        pseudo_cost_sum_up[j] += change_in_obj / frac;
-        pseudo_cost_num_up[j]++;
+        update_pseudo_cost_up(j, change_in_obj, frac);
       }
     }
   }
